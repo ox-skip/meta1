@@ -7,6 +7,8 @@ import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createPublicClient, http, keccak256, toHex } from "viem";
 
+import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
+import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { supabase } from "@/services/supabase";
 import { releaseUsdcForOrder } from "@/services/market/usdcCheckout";
@@ -652,139 +654,12 @@ export default function OrderDetails() {
   const hasPendingUnexpiredOtp = !!otp && !otpVerified && otpExpiryRemainingSec > 0;
   const canGenerateOtpNow = canRequestOtp && !busy && !otpVerified && otpCooldownRemainingSec === 0 && !hasPendingUnexpiredOtp;
   const orderStatus = String(order?.status || "").toUpperCase();
-  const orderGuidance = useMemo(() => {
-    if (!order) return null;
-
-    if (awaitingConfirmations) {
-      return {
-        tone: "warn" as const,
-        title: "Awaiting blockchain confirmations",
-        body: "Your deposit was submitted. Escrow will activate after confirmations. Do not resend payment unless support tells you to.",
-      };
-    }
-
-    if (orderStatus === "CREATED") {
-      if (isBuyer) {
-        return {
-          tone: "warn" as const,
-          title: "Complete payment to lock escrow",
-          body: "Choose NGN wallet or crypto checkout. Seller actions stay locked until payment is confirmed.",
-        };
-      }
-      return {
-        tone: "neutral" as const,
-        title: "Waiting for buyer payment",
-        body: "Order was created, but escrow is not funded yet. You can prepare deliverables while waiting.",
-      };
-    }
-
-    if (orderStatus === "IN_ESCROW") {
-      if (isSeller) {
-        return {
-          tone: "neutral" as const,
-          title: "Escrow is funded",
-          body: "Prepare delivery, upload files if needed, then mark Out for delivery.",
-        };
-      }
-      return {
-        tone: "neutral" as const,
-        title: "Payment secured in escrow",
-        body: "Seller can now continue with delivery. Keep updates inside order chat.",
-      };
-    }
-
-    if (orderStatus === "OUT_FOR_DELIVERY") {
-      if (isBuyer) {
-        return {
-          tone: "warn" as const,
-          title: "Share OTP only after receiving item",
-          body: "Generate OTP when delivery is complete. Sharing OTP early can release funds too soon.",
-        };
-      }
-      return {
-        tone: "warn" as const,
-        title: "Complete delivery, then verify OTP",
-        body: "Ask buyer for OTP only after handoff, then verify to mark delivery complete.",
-      };
-    }
-
-    if (orderStatus === "DELIVERED") {
-      if (isBuyer) {
-        if (canRelease) {
-          return {
-            tone: "success" as const,
-            title: "Ready to release funds",
-            body: "OTP is verified and delivery is complete. Release funds when satisfied.",
-          };
-        }
-        return {
-          tone: "warn" as const,
-          title: "Waiting for OTP verification",
-          body: "Release stays locked until OTP is verified by the seller.",
-        };
-      }
-      return {
-        tone: "neutral" as const,
-        title: "Delivered - waiting for buyer release",
-        body: "Buyer must release escrow funds. Keep evidence and updates in this order thread.",
-      };
-    }
-
-    if (orderStatus === "RELEASED") {
-      return {
-        tone: "success" as const,
-        title: "Order completed",
-        body: "Escrow funds were released successfully.",
-      };
-    }
-
-    if (orderStatus === "REFUNDED") {
-      return {
-        tone: "danger" as const,
-        title: "Order refunded",
-        body: "Escrow was returned to the buyer.",
-      };
-    }
-
-    if (orderStatus === "CANCELLED") {
-      return {
-        tone: "danger" as const,
-        title: "Order cancelled",
-        body: "This order is closed. Create a new order if both parties still want to proceed.",
-      };
-    }
-
-    return {
-      tone: "neutral" as const,
-      title: "Order in progress",
-      body: "Follow the required actions shown below.",
-    };
-  }, [order, awaitingConfirmations, orderStatus, isBuyer, isSeller, canRelease]);
-  const orderGuidanceColors = useMemo(() => {
-    const tone = orderGuidance?.tone || "neutral";
-    if (tone === "success") {
-      return {
-        bg: "rgba(16,185,129,0.14)",
-        border: "rgba(16,185,129,0.35)",
-      };
-    }
-    if (tone === "warn") {
-      return {
-        bg: "rgba(251,191,36,0.12)",
-        border: "rgba(251,191,36,0.4)",
-      };
-    }
-    if (tone === "danger") {
-      return {
-        bg: "rgba(239,68,68,0.12)",
-        border: "rgba(239,68,68,0.35)",
-      };
-    }
-    return {
-      bg: "rgba(255,255,255,0.06)",
-      border: "rgba(255,255,255,0.12)",
-    };
-  }, [orderGuidance?.tone]);
+  const policyAudience = isSeller ? "seller" : isBuyer ? "buyer" : "both";
+  const { bySection: orderPolicy, loading: orderPolicyLoading } = useMarketPolicyBlocks({
+    surface: "order",
+    audience: policyAudience,
+    orderStatus,
+  });
 
   function fmtCountdown(totalSec: number) {
     const m = Math.floor(totalSec / 60);
@@ -830,7 +705,7 @@ export default function OrderDetails() {
       }
 
       if (otpCode) {
-        Alert.alert("Delivery OTP", `Share this OTP with the seller only after delivery:
+        Alert.alert("Delivery OTP", `Share this OTP with the seller when you are ready to confirm delivery:
 
 ${otpCode}`);
       }
@@ -888,9 +763,12 @@ async function releaseFunds() {
     setBusy(true);
     setErr(null);
     try {
+      const reason = isSeller
+        ? "Seller reported buyer manipulation / policy violation"
+        : "Buyer requested refund / issue with delivery";
       const { error } = await supabase.rpc(RPC_OPEN_DISPUTE, {
         p_order_id: order.id,
-        p_reason: "Buyer requested refund / issue with delivery",
+        p_reason: reason,
       });
       if (error) throw error;
       await load();
@@ -1096,6 +974,18 @@ async function releaseFunds() {
       await Linking.openURL(url);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't open this file right now."));
+    }
+  }
+
+  async function onPolicyAction(action: string) {
+    const next = String(action || "").trim().toLowerCase();
+    if (!next) return;
+    if (next === "open_dispute") {
+      await openDispute();
+      return;
+    }
+    if (next === "go_checkout" && canGoCheckout && order?.id) {
+      router.push(`/market/checkout/${order.id}` as any);
     }
   }
 
@@ -1311,23 +1201,14 @@ async function pickAndUpload(access: "preview" | "final") {
               </Text>
             </View>
 
-            {orderGuidance ? (
-              <View
-                style={{
-                  marginTop: 10,
-                  borderRadius: 16,
-                  padding: 12,
-                  backgroundColor: orderGuidanceColors.bg,
-                  borderWidth: 1,
-                  borderColor: orderGuidanceColors.border,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>{orderGuidance.title}</Text>
-                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                  {orderGuidance.body}
-                </Text>
-              </View>
-            ) : null}
+            <MarketPolicyPanel
+              title="Order guidance"
+              blocks={orderPolicy.status_guidance}
+              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+              onAction={(action) => {
+                void onPolicyAction(action);
+              }}
+            />
 
             {awaitingConfirmations ? (
               <Card title="Waiting for blockchain confirmations">
@@ -1835,16 +1716,19 @@ async function pickAndUpload(access: "preview" | "final") {
               </View>
             ) : null}
 
-            {/* Timeline */}
-            <Card title="Progress">
-              <Text style={{ color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                1) Buyer pays → funds go to escrow{"\n"}
-                2) Seller marks out-for-delivery{"\n"}
-                3) OTP is generated for buyer{"\n"}
-                4) Seller enters OTP after delivery{"\n"}
-                5) Buyer releases funds to seller
-              </Text>
-            </Card>
+            <MarketPolicyPanel
+              title="Progress"
+              blocks={orderPolicy.progress}
+              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+            />
+            <MarketPolicyPanel
+              title="Safety and complaints"
+              blocks={orderPolicy.safety}
+              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+              onAction={(action) => {
+                void onPolicyAction(action);
+              }}
+            />
 
             {/* Crypto intents */}
             <Card title="Crypto activity (USDC)">
@@ -1879,10 +1763,6 @@ async function pickAndUpload(access: "preview" | "final") {
             {/* Seller actions */}
             {isSeller ? (
               <Card title="Seller actions">
-                <Text style={{ color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-                  After escrow is confirmed, mark order as out for delivery. OTP will be generated for buyer.
-                </Text>
-
                 <Pressable
                   disabled={!canOutForDelivery || busy}
                   onPress={doOutForDelivery}
@@ -1917,9 +1797,9 @@ async function pickAndUpload(access: "preview" | "final") {
                   </View>
                 ) : (
                   <View style={{ marginTop: 14 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Enter OTP (after delivery)</Text>
+                    <Text style={{ color: "#fff", fontWeight: "900" }}>Enter OTP</Text>
                   <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                    Buyer shares OTP after receiving item. Server checks hash + limits attempts.
+                    Buyer provides OTP to complete server verification.
                   </Text>
 
                   <View
@@ -1972,16 +1852,28 @@ async function pickAndUpload(access: "preview" | "final") {
                   )}
                   </View>
                 )}
+
+                <Pressable
+                  disabled={busy}
+                  onPress={openDispute}
+                  style={{
+                    marginTop: 10,
+                    borderRadius: 18,
+                    paddingVertical: 14,
+                    alignItems: "center",
+                    backgroundColor: "rgba(239,68,68,0.12)",
+                    borderWidth: 1,
+                    borderColor: "rgba(239,68,68,0.25)",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Report issue / open complaint"}</Text>
+                </Pressable>
               </Card>
             ) : null}
 
             {/* Buyer actions */}
             {isBuyer ? (
               <Card title="Buyer actions">
-                <Text style={{ color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-                  When seller is out-for-delivery, generate OTP and only share it after you receive your item.
-                </Text>
-
                 <Pressable
                   disabled={!canGenerateOtpNow}
                   onPress={requestOTP}
@@ -2010,7 +1902,7 @@ async function pickAndUpload(access: "preview" | "final") {
                     }}
                   >
                     <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>
-                      Your OTP (share only after delivery)
+                      Your OTP code
                     </Text>
                     <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 24, letterSpacing: 3 }}>
                       {generatedOtpCode}

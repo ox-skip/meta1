@@ -8,6 +8,8 @@ import * as Clipboard from "expo-clipboard";
 import { createPublicClient, formatUnits, http } from "viem";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
+import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
@@ -187,6 +189,11 @@ export default function Checkout() {
     typeof paymentOptions?.allow_ngn === "boolean" ||
     typeof paymentOptions?.allow_usdc === "boolean" ||
     typeof paymentOptions?.allow_usdt === "boolean";
+  const { bySection: checkoutPolicy, loading: checkoutPolicyLoading } = useMarketPolicyBlocks({
+    surface: "checkout",
+    audience: "buyer",
+    orderStatus,
+  });
 
   const allowNgnRaw = hasExplicitRoutes
     ? paymentOptions?.allow_ngn === true
@@ -741,24 +748,16 @@ export default function Checkout() {
           </Text>
         </View>
 
-        <View
-          style={{
-            marginTop: 10,
-            borderRadius: 16,
-            padding: 12,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.12)",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>What happens next</Text>
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-            1. Your payment locks in escrow.{"\n"}
-            2. Seller marks out for delivery.{"\n"}
-            3. Buyer generates OTP after receiving item.{"\n"}
-            4. Seller verifies OTP, then buyer releases funds.
-          </Text>
-        </View>
+        <MarketPolicyPanel
+          title="Checkout flow"
+          blocks={checkoutPolicy.flow}
+          emptyText={checkoutPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+        />
+        <MarketPolicyPanel
+          title="Safety and complaints"
+          blocks={checkoutPolicy.safety}
+          emptyText={checkoutPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+        />
 
         <View
           style={{
