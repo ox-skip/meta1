@@ -47,7 +47,7 @@ export default function OfficialMarketSocials() {
     <View style={{ marginTop: 10, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
       <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>BestCity official community</Text>
       <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 11 }}>
-        Follow official channels for announcements. Disabled icons mean no live link is set yet.
+        Follow official channels for announcements.
       </Text>
 
       <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
