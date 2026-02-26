@@ -1,12 +1,7 @@
-import { supabase } from "@/services/supabase";
-import {
-  fetchJsonWithTimeout,
-  getSupabaseAnonKeyOrThrow,
-  getSupabaseFunctionsBaseUrl,
-  getSupabaseJwtOrThrow,
-} from "@/services/net";
+import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
+import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 
-export type HistoryKind =
+type HistoryKind =
   | "deposit"
   | "withdrawal"
   | "transfer_in"
@@ -21,7 +16,7 @@ export type HistoryKind =
   | "refund"
   | "release";
 
-export type MarketHistoryEntry = {
+type HistoryRow = {
   id: string;
   source_table: string;
   source_id: string;
@@ -33,12 +28,22 @@ export type MarketHistoryEntry = {
   tx_hash: string | null;
   order_id: string | null;
   stock_id: string | null;
-  details: any;
+  details: Record<string, unknown>;
   occurred_at: string;
   created_at: string;
 };
 
-const FN_MARKET_HISTORY_LIST = "market-history-list";
+function extractBearerToken(req: Request): string | null {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  return token.length ? token : null;
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
 
 function toNum(input: unknown, fallback = 0) {
   const n = Number(input);
@@ -51,7 +56,7 @@ function toIso(input: unknown, fallback?: string) {
   return fallback || new Date().toISOString();
 }
 
-function normalizeRow(row: any): MarketHistoryEntry {
+function normalizeRow(row: any): HistoryRow {
   return {
     id: String(row.id || ""),
     source_table: String(row.source_table || ""),
@@ -68,28 +73,6 @@ function normalizeRow(row: any): MarketHistoryEntry {
     occurred_at: toIso(row.occurred_at, toIso(row.created_at)),
     created_at: toIso(row.created_at),
   };
-}
-
-function isMissingHistoryTableError(error: unknown) {
-  const msg = String((error as any)?.message || error || "").toLowerCase();
-  return (
-    msg.includes("market_transaction_history") &&
-    (msg.includes("does not exist") ||
-      msg.includes("relation") ||
-      msg.includes("schema cache") ||
-      msg.includes("pgrst"))
-  );
-}
-
-function isMissingHistoryRpcError(error: unknown) {
-  const msg = String((error as any)?.message || error || "").toLowerCase();
-  return (
-    msg.includes("does not exist") ||
-    msg.includes("could not find the function") ||
-    msg.includes("schema cache") ||
-    msg.includes("pgrst202") ||
-    msg.includes("42883")
-  );
 }
 
 function orderStatusToHistory(status: unknown) {
@@ -131,101 +114,72 @@ function walletTypeTitle(input: unknown) {
   return "Wallet transaction";
 }
 
-async function safeListQuery<T>(
-  label: string,
-  run: () => Promise<{ data: T[] | null; error: any }> | { data: T[] | null; error: any } | any,
-) {
+async function safeListQuery<T>(_label: string, run: () => Promise<{ data: T[] | null; error: any }>) {
   try {
     const res = await run();
-    if (res.error) {
-      console.warn(`[history] ${label} skipped: ${String(res.error?.message || res.error)}`);
-      return [] as T[];
-    }
+    if (res.error) return [] as T[];
     return (res.data ?? []) as T[];
-  } catch (e: any) {
-    console.warn(`[history] ${label} failed: ${String(e?.message || e)}`);
+  } catch {
     return [] as T[];
   }
 }
 
-async function fetchHistoryViaFunction(limit: number) {
-  const base = getSupabaseFunctionsBaseUrl();
-  const anon = getSupabaseAnonKeyOrThrow();
-  const jwt = await getSupabaseJwtOrThrow();
-
-  const url = `${base}/${FN_MARKET_HISTORY_LIST}?limit=${encodeURIComponent(String(Math.min(Math.max(limit, 1), 500)))}`;
-  const { res, json, text } = await fetchJsonWithTimeout(
-    url,
-    {
-      method: "GET",
-      headers: {
-        apikey: anon,
-        Authorization: `Bearer ${jwt}`,
-      },
-    },
-    18000,
-  );
-
-  if (!res.ok) {
-    throw new Error(String((json as any)?.error || text || `History function failed (${res.status})`));
-  }
-
-  const rows = Array.isArray((json as any)?.items) ? ((json as any).items as any[]) : [];
-  return rows.map(normalizeRow);
-}
-
-async function fetchLegacyHistory(userId: string, limit: number) {
+async function fetchLegacyHistory(admin: ReturnType<typeof supabaseAdminClient>, userId: string, limit: number) {
   const maxRows = Math.min(limit, 250);
   const [walletRows, withdrawalRows, paystackRows, orderRows, stockTradeRows, stockPositionRows] = await Promise.all([
     safeListQuery("app_wallet_tx_simple", () =>
-      supabase
+      admin
         .from("app_wallet_tx_simple")
         .select("id,type,amount,reference,meta,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(maxRows),
-    ),
+    ) as Promise<any[]>,
     safeListQuery("withdrawals_simple", () =>
-      supabase
+      admin
         .from("withdrawals_simple")
-        .select("id,amount,fee,total_debit,bank_name,account_number,account_name,paystack_reference,paystack_transfer_code,status,meta,created_at,updated_at")
+        .select(
+          "id,amount,fee,total_debit,bank_name,account_number,account_name,paystack_reference,paystack_transfer_code,status,meta,created_at,updated_at",
+        )
         .eq("user_id", userId)
         .order("updated_at", { ascending: false })
         .limit(maxRows),
-    ),
+    ) as Promise<any[]>,
     safeListQuery("paystack_events_simple", () =>
-      supabase
+      admin
         .from("paystack_events_simple")
         .select("reference,amount,fee,raw,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(maxRows),
-    ),
+    ) as Promise<any[]>,
     safeListQuery("market_orders", () =>
-      supabase
+      admin
         .from("market_orders")
-        .select("id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,fee_amount,currency,status,created_at,in_escrow_at,delivered_at,released_at,refunded_at,cancelled_at")
+        .select(
+          "id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,fee_amount,currency,status,created_at,in_escrow_at,delivered_at,released_at,refunded_at,cancelled_at",
+        )
         .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
         .order("created_at", { ascending: false })
         .limit(maxRows),
-    ),
+    ) as Promise<any[]>,
     safeListQuery("market_stock_trades", () =>
-      supabase
+      admin
         .from("market_stock_trades")
         .select("id,stock_id,side,price_usdc,quantity,notional_usdc,fee_usdc,chain_tx_hash,traded_at,created_at")
         .eq("user_id", userId)
         .order("traded_at", { ascending: false })
         .limit(maxRows),
-    ),
+    ) as Promise<any[]>,
     safeListQuery("market_stock_positions", () =>
-      supabase
+      admin
         .from("market_stock_positions")
         .select("stock_id,realized_pnl_usdc,updated_at")
         .eq("user_id", userId)
         .neq("realized_pnl_usdc", 0)
         .order("updated_at", { ascending: false })
         .limit(100),
-    ),
+    ) as Promise<any[]>,
   ]);
 
   const orders = (orderRows ?? []) as any[];
@@ -235,9 +189,11 @@ async function fetchLegacyHistory(userId: string, limit: number) {
   const [intentRows, chainEventRows] = await Promise.all([
     orderIds.length
       ? safeListQuery("market_crypto_intents", () =>
-          supabase
+          admin
             .from("market_crypto_intents")
-            .select("id,order_id,intent_type,status,chain,from_wallet,to_wallet,amount_units,amount_raw,tx_hash,client_reference,created_at,updated_at")
+            .select(
+              "id,order_id,intent_type,status,chain,from_wallet,to_wallet,amount_units,amount_raw,tx_hash,client_reference,created_at,updated_at",
+            )
             .in("order_id", orderIds)
             .order("created_at", { ascending: false })
             .limit(Math.min(limit * 2, 500)),
@@ -245,7 +201,7 @@ async function fetchLegacyHistory(userId: string, limit: number) {
       : Promise.resolve([] as any[]),
     orderIds.length
       ? safeListQuery("market_chain_events", () =>
-          supabase
+          admin
             .from("market_chain_events")
             .select("id,order_id,event_type,tx_hash,chain,block_time,created_at,amount_units,amount_raw,buyer_wallet,seller_wallet")
             .in("order_id", orderIds)
@@ -264,12 +220,12 @@ async function fetchLegacyHistory(userId: string, limit: number) {
 
   const stockRows = stockIds.length
     ? await safeListQuery("market_stock_identities", () =>
-        supabase.from("market_stock_identities").select("id,slug,name,symbol").in("id", stockIds),
+        admin.from("market_stock_identities").select("id,slug,name,symbol").in("id", stockIds),
       )
     : [];
   const stockMap = new Map<string, any>((stockRows ?? []).map((s: any) => [String(s.id), s]));
 
-  const out: MarketHistoryEntry[] = [];
+  const out: HistoryRow[] = [];
 
   for (const tx of walletRows ?? []) {
     const kind = walletTypeToKind((tx as any).type);
@@ -370,12 +326,7 @@ async function fetchLegacyHistory(userId: string, limit: number) {
         order_status: String(order.status || "").toUpperCase(),
       },
       occurred_at: toIso(
-        order.released_at ||
-          order.refunded_at ||
-          order.cancelled_at ||
-          order.delivered_at ||
-          order.in_escrow_at ||
-          order.created_at,
+        order.released_at || order.refunded_at || order.cancelled_at || order.delivered_at || order.in_escrow_at || order.created_at,
       ),
       created_at: toIso(order.created_at),
     });
@@ -517,123 +468,56 @@ async function fetchLegacyHistory(userId: string, limit: number) {
     });
   }
 
-  return out
-    .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
-    .slice(0, limit);
+  return out.sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, limit);
 }
 
-let historyBackfillAttemptedForUser = "";
-let historyBackfillAttemptedAt = 0;
+Deno.serve(async (req) => {
+  if (req.method !== "GET") return methodNotAllowed(req);
 
-async function maybeBackfillHistory(limit: number) {
-  const candidates = ["market_history_backfill_me"];
-  for (const fn of candidates) {
-    const { error } = await supabase.rpc(fn, { p_limit: Math.min(Math.max(limit, 100), 5000) } as any);
-    if (!error) return true;
-    if (!isMissingHistoryRpcError(error)) {
-      console.warn(`[history] ${fn} failed: ${String(error?.message || error)}`);
-      return false;
-    }
-  }
-  return false;
-}
+  const token = extractBearerToken(req);
+  if (!token) return unauth();
 
-export async function fetchMarketHistory(limit = 300) {
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
-  const user = auth?.user;
-  if (!user) throw new Error("Not authenticated");
+  const authClient = supabaseUserClient(req);
+  const admin = supabaseAdminClient();
 
-  const now = Date.now();
-  const shouldAttemptBackfill =
-    historyBackfillAttemptedForUser !== user.id ||
-    now - historyBackfillAttemptedAt > 60_000;
-  if (shouldAttemptBackfill) {
-    historyBackfillAttemptedForUser = user.id;
-    historyBackfillAttemptedAt = now;
-    await maybeBackfillHistory(limit);
-  }
+  const { data: userRes, error: userErr } = await authClient.auth.getUser(token);
+  if (userErr || !userRes?.user) return unauth();
+
+  const userId = userRes.user.id;
+  const url = new URL(req.url);
+  const limit = clampInt(url.searchParams.get("limit"), 1, 500, 300);
 
   const readHistoryTable = async () =>
-    await supabase
+    await admin
       .from("market_transaction_history")
       .select("id,source_table,source_id,kind,title,amount,currency,status,tx_hash,order_id,stock_id,details,occurred_at,created_at")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .order("occurred_at", { ascending: false })
-      .limit(Math.min(limit, 500));
-
-  const tryFunctionFallback = async () => {
-    try {
-      return await fetchHistoryViaFunction(limit);
-    } catch (e: any) {
-      console.warn(`[history] ${FN_MARKET_HISTORY_LIST} failed: ${String(e?.message || e)}`);
-      return [] as MarketHistoryEntry[];
-    }
-  };
+      .limit(limit);
 
   let tableRes = await readHistoryTable();
-
-  if (!tableRes.error) {
-    let rows = ((tableRes.data ?? []) as any[]).map(normalizeRow);
-    if (rows.length > 0) return rows;
-
-    const backfilled = await maybeBackfillHistory(limit);
-    if (backfilled) {
-      tableRes = await readHistoryTable();
-      if (!tableRes.error) {
-        rows = ((tableRes.data ?? []) as any[]).map(normalizeRow);
-        if (rows.length > 0) return rows;
-      }
-    }
-
-    // If history table exists but isn't populated yet, fall back to live legacy sources.
-    const legacyRows = await fetchLegacyHistory(user.id, limit);
-    if (legacyRows.length > 0) return legacyRows;
-
-    return await tryFunctionFallback();
+  if (!tableRes.error && (tableRes.data?.length ?? 0) > 0) {
+    return ok({ items: (tableRes.data ?? []).map(normalizeRow), source: "market_transaction_history" });
   }
 
-  if (!isMissingHistoryTableError(tableRes.error)) {
-    const functionRows = await tryFunctionFallback();
-    if (functionRows.length > 0) return functionRows;
-    throw new Error(tableRes.error.message);
-  }
-
-  const legacyRows = await fetchLegacyHistory(user.id, limit);
-  if (legacyRows.length > 0) return legacyRows;
-
-  return await tryFunctionFallback();
-}
-
-function looksLikeUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
-}
-
-export async function fetchMarketHistoryDetail(entryId: string) {
-  const id = String(entryId || "").trim();
-  if (!id) return null;
-
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
-  const user = auth?.user;
-  if (!user) throw new Error("Not authenticated");
-
-  if (looksLikeUuid(id)) {
-    const tableRes = await supabase
-      .from("market_transaction_history")
-      .select("id,source_table,source_id,kind,title,amount,currency,status,tx_hash,order_id,stock_id,details,occurred_at,created_at")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (!tableRes.error && tableRes.data) return normalizeRow(tableRes.data);
-    if (tableRes.error && !isMissingHistoryTableError(tableRes.error)) {
-      const functionRows = await fetchHistoryViaFunction(500).catch(() => [] as MarketHistoryEntry[]);
-      const fromFunction = functionRows.find((x) => x.id === id);
-      if (fromFunction) return fromFunction;
-      throw new Error(tableRes.error.message);
+  let backfillError: string | null = null;
+  const { error: bfErr } = await authClient.rpc("market_history_backfill_me", {
+    p_limit: Math.min(Math.max(limit, 100), 5000),
+  } as any);
+  if (bfErr) {
+    backfillError = String(bfErr?.message || bfErr);
+  } else {
+    tableRes = await readHistoryTable();
+    if (!tableRes.error && (tableRes.data?.length ?? 0) > 0) {
+      return ok({ items: (tableRes.data ?? []).map(normalizeRow), source: "market_transaction_history_backfill" });
     }
   }
 
-  const items = await fetchMarketHistory(500);
-  return items.find((x) => x.id === id) ?? null;
-}
+  const fallbackRows = await fetchLegacyHistory(admin, userId, limit);
+  return ok({
+    items: fallbackRows,
+    source: "legacy_fallback",
+    backfill_error: backfillError,
+    history_table_error: tableRes.error ? String(tableRes.error?.message || tableRes.error) : null,
+  });
+});

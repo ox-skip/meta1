@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
 import { supabase } from "@/services/supabase";
@@ -593,6 +594,8 @@ export default function MarketHome() {
                 <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Digital Stock</Text>
               </Pressable>
             </View>
+
+            <OfficialMarketSocials />
 
             {section === "social" ? (
               <View style={{ marginTop: 10, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>

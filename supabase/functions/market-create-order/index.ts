@@ -1,6 +1,39 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 
+function toPositiveDecimalString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const [intPartRaw, fracPartRaw = ""] = raw.split(".");
+    const intPart = intPartRaw.replace(/^0+(?=\d)/, "");
+    const fracPart = fracPartRaw.replace(/0+$/, "");
+    const normalized = fracPart ? `${intPart}.${fracPart}` : intPart;
+    return normalized === "0" ? null : normalized;
+  }
+
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const plain = n.toString();
+  return /^\d+(\.\d+)?$/.test(plain) ? plain : null;
+}
+
+function multiplyDecimalByQuantity(decimalStr: string, quantity: number): string {
+  const [whole, frac = ""] = decimalStr.split(".");
+  const digits = `${whole}${frac}`.replace(/^0+(?=\d)/, "") || "0";
+  const scale = frac.length;
+  const product = BigInt(digits) * BigInt(quantity);
+
+  if (scale === 0) return product.toString();
+
+  const padded = product.toString().padStart(scale + 1, "0");
+  const intPart = padded.slice(0, -scale);
+  const fracPart = padded.slice(-scale).replace(/0+$/, "");
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
 function isMissingReserveStockFunction(input: unknown) {
   const msg = String(input ?? "").toLowerCase();
   return (
@@ -63,17 +96,20 @@ Deno.serve(async (req) => {
     }
   }
 
-  let unit_price = Number(listing.price_amount);
+  const baseUnitPrice = toPositiveDecimalString(listing.price_amount);
+  if (!baseUnitPrice) return bad("Invalid listing price");
+
+  let unit_price = baseUnitPrice;
   const d = (listing as any)?.payment_options?.discount;
   if (d?.enabled) {
     const endsAt = d?.endsAt ? Date.parse(String(d.endsAt)) : null;
     const stillValid = !endsAt || (Number.isFinite(endsAt) && endsAt > Date.now());
-    const discounted = Number(d?.discountedPrice);
-    if (stillValid && Number.isFinite(discounted) && discounted > 0) {
+    const discounted = toPositiveDecimalString(d?.discountedPrice);
+    if (stillValid && discounted) {
       unit_price = discounted;
     }
   }
-  const amount = Number((unit_price * quantity).toFixed(2));
+  const amount = multiplyDecimalByQuantity(unit_price, quantity);
 
   let reservedStock:
     | {
