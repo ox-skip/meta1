@@ -264,8 +264,23 @@ function isTooLittleReceivedReason(reason: string) {
   return r.includes("too little received") || r.includes("insufficient output amount");
 }
 
-function slippageFromBps(bps: number) {
-  return Math.max(0.0001, Math.min(0.95, bps / 10_000));
+function minOutFromExpectedRaw(expectedOutRaw: bigint, slippageBps: number) {
+  const bps = Math.max(1, Math.min(9900, Math.round(slippageBps || 0)));
+  const keptBps = 10_000n - BigInt(bps);
+  const minRaw = (expectedOutRaw * keptBps) / 10_000n;
+  return minRaw > 0n ? minRaw : 1n;
+}
+
+function toBigIntSafe(input: unknown) {
+  try {
+    if (typeof input === "bigint") return input;
+    if (typeof input === "number" && Number.isFinite(input)) return BigInt(Math.floor(input));
+    const text = String(input ?? "").trim();
+    if (!text) return 0n;
+    return BigInt(text);
+  } catch {
+    return 0n;
+  }
 }
 
 function buildAdaptiveSlippagePlan(baseBps: number, quoteImpactBps: number, launchGuardActive: boolean) {
@@ -1205,6 +1220,8 @@ export async function submitStockTradeOnchain(input: {
     const amountInRaw = toRaw(toNumber(quoteRes?.quote?.notional_usdc, 0), 6, 6);
     const quotedOut = toNumber(quoteRes?.quote?.quantity, 0);
     if (amountInRaw <= 0n || quotedOut <= 0) throw new Error("Invalid buy quote amount.");
+    let quotedOutRaw = toRaw(quotedOut, 18, 12);
+    if (quotedOutRaw <= 0n) throw new Error("Invalid buy quote amount.");
 
     const maxTrade = await resolveBootstrapMaxTrade(publicClient, {
       routerAddress,
@@ -1259,6 +1276,36 @@ export async function submitStockTradeOnchain(input: {
     const quoteImpactBps = toNumber(quoteRes?.quote?.price_impact_bps, 0);
     const launchGuardActive = Boolean(quoteRes?.quote?.launch_guard_active);
     const slippagePlan = buildAdaptiveSlippagePlan(slippageBps, quoteImpactBps, launchGuardActive);
+    let refreshedFromOnchainPreview = false;
+
+    try {
+      const preview = await publicClient.simulateContract({
+        abi: IDENTITY_ROUTER_ABI,
+        address: routerAddress,
+        functionName: "buyExactIn",
+        args: [storeKey as `0x${string}`, amountInRaw, 0n, 0n],
+        account: address as `0x${string}`,
+      });
+      const previewOutRaw = toBigIntSafe((preview as any)?.result);
+      if (previewOutRaw > 0n) {
+        quotedOutRaw = previewOutRaw;
+        refreshedFromOnchainPreview = true;
+      }
+    } catch (e: any) {
+      const reason = shortRevertReason(e).toLowerCase();
+      if (reason.includes("max trade")) {
+        throw new Error("Order exceeds current on-chain max size. Try a smaller amount.");
+      }
+      if (reason.includes("cooldown")) {
+        throw new Error("Trade cooldown is active. Wait a few seconds and retry.");
+      }
+      if (reason.includes("twap deviation")) {
+        throw new Error("Price moved too far from TWAP. Wait briefly and retry.");
+      }
+      if (!(approvalSubmitted && isAllowanceSimulationReason(reason))) {
+        // Quote endpoint is off-chain and can lag. If preview fails for unknown reason, keep adaptive slippage fallback.
+      }
+    }
 
     let amountOutMinRaw = 0n;
     let preflightPassed = false;
@@ -1266,8 +1313,7 @@ export async function submitStockTradeOnchain(input: {
     let lastReason = "";
 
     for (const slippageTryBps of slippagePlan) {
-      const minOut = toRaw(quotedOut * (1 - slippageFromBps(slippageTryBps)), 18, 12);
-      if (minOut <= 0n) continue;
+      const minOut = minOutFromExpectedRaw(quotedOutRaw, slippageTryBps);
       amountOutMinRaw = minOut;
 
       try {
@@ -1299,6 +1345,24 @@ export async function submitStockTradeOnchain(input: {
         }
         if (isTooLittleReceivedReason(reason)) {
           sawTooLittleReceived = true;
+          if (!refreshedFromOnchainPreview) {
+            try {
+              const preview = await publicClient.simulateContract({
+                abi: IDENTITY_ROUTER_ABI,
+                address: routerAddress,
+                functionName: "buyExactIn",
+                args: [storeKey as `0x${string}`, amountInRaw, 0n, 0n],
+                account: address as `0x${string}`,
+              });
+              const previewOutRaw = toBigIntSafe((preview as any)?.result);
+              if (previewOutRaw > 0n) {
+                quotedOutRaw = previewOutRaw;
+                refreshedFromOnchainPreview = true;
+              }
+            } catch {
+              // keep original quote-based fallback path
+            }
+          }
           continue;
         }
         throw new Error(reason ? `Cannot submit buy yet: ${reason}` : "Cannot submit buy yet due to on-chain guardrails.");
@@ -1307,7 +1371,9 @@ export async function submitStockTradeOnchain(input: {
 
     if (!preflightPassed || amountOutMinRaw <= 0n) {
       if (sawTooLittleReceived) {
-        throw new Error("Cannot submit buy yet: pool price moved during quote. Reduce amount and retry.");
+        throw new Error(
+          "Cannot submit buy yet: pool price moved during quote. We refreshed quote safeguards, but price is still moving fast. Retry now or use a smaller amount.",
+        );
       }
       throw new Error(lastReason ? `Cannot submit buy yet: ${lastReason}` : "Cannot submit buy yet due to on-chain guardrails.");
     }
@@ -1322,6 +1388,8 @@ export async function submitStockTradeOnchain(input: {
     const quotedOutUsdc = toNumber(quoteRes?.quote?.notional_usdc, 0);
     const amountInRaw = toRaw(quotedInQty, 18, 12);
     if (amountInRaw <= 0n || quotedOutUsdc <= 0) throw new Error("Invalid sell quote amount.");
+    let quotedOutRaw = toRaw(quotedOutUsdc, 6, 6);
+    if (quotedOutRaw <= 0n) throw new Error("Invalid sell quote amount.");
 
     const maxTrade = await resolveBootstrapMaxTrade(publicClient, {
       routerAddress,
@@ -1376,6 +1444,36 @@ export async function submitStockTradeOnchain(input: {
     const quoteImpactBps = toNumber(quoteRes?.quote?.price_impact_bps, 0);
     const launchGuardActive = Boolean(quoteRes?.quote?.launch_guard_active);
     const slippagePlan = buildAdaptiveSlippagePlan(slippageBps, quoteImpactBps, launchGuardActive);
+    let refreshedFromOnchainPreview = false;
+
+    try {
+      const preview = await publicClient.simulateContract({
+        abi: IDENTITY_ROUTER_ABI,
+        address: routerAddress,
+        functionName: "sellExactIn",
+        args: [storeKey as `0x${string}`, amountInRaw, 0n, 0n],
+        account: address as `0x${string}`,
+      });
+      const previewOutRaw = toBigIntSafe((preview as any)?.result);
+      if (previewOutRaw > 0n) {
+        quotedOutRaw = previewOutRaw;
+        refreshedFromOnchainPreview = true;
+      }
+    } catch (e: any) {
+      const reason = shortRevertReason(e).toLowerCase();
+      if (reason.includes("max trade")) {
+        throw new Error("Order exceeds current on-chain max size. Try a smaller quantity.");
+      }
+      if (reason.includes("cooldown")) {
+        throw new Error("Trade cooldown is active. Wait a few seconds and retry.");
+      }
+      if (reason.includes("twap deviation")) {
+        throw new Error("Price moved too far from TWAP. Wait briefly and retry.");
+      }
+      if (!(approvalSubmitted && isAllowanceSimulationReason(reason))) {
+        // Quote endpoint is off-chain and can lag. If preview fails for unknown reason, keep adaptive slippage fallback.
+      }
+    }
 
     let amountOutMinRaw = 0n;
     let preflightPassed = false;
@@ -1383,8 +1481,7 @@ export async function submitStockTradeOnchain(input: {
     let lastReason = "";
 
     for (const slippageTryBps of slippagePlan) {
-      const minOut = toRaw(quotedOutUsdc * (1 - slippageFromBps(slippageTryBps)), 6, 6);
-      if (minOut <= 0n) continue;
+      const minOut = minOutFromExpectedRaw(quotedOutRaw, slippageTryBps);
       amountOutMinRaw = minOut;
 
       try {
@@ -1416,6 +1513,24 @@ export async function submitStockTradeOnchain(input: {
         }
         if (isTooLittleReceivedReason(reason)) {
           sawTooLittleReceived = true;
+          if (!refreshedFromOnchainPreview) {
+            try {
+              const preview = await publicClient.simulateContract({
+                abi: IDENTITY_ROUTER_ABI,
+                address: routerAddress,
+                functionName: "sellExactIn",
+                args: [storeKey as `0x${string}`, amountInRaw, 0n, 0n],
+                account: address as `0x${string}`,
+              });
+              const previewOutRaw = toBigIntSafe((preview as any)?.result);
+              if (previewOutRaw > 0n) {
+                quotedOutRaw = previewOutRaw;
+                refreshedFromOnchainPreview = true;
+              }
+            } catch {
+              // keep original quote-based fallback path
+            }
+          }
           continue;
         }
         throw new Error(reason ? `Cannot submit sell yet: ${reason}` : "Cannot submit sell yet due to on-chain guardrails.");
@@ -1424,7 +1539,9 @@ export async function submitStockTradeOnchain(input: {
 
     if (!preflightPassed || amountOutMinRaw <= 0n) {
       if (sawTooLittleReceived) {
-        throw new Error("Cannot submit sell yet: pool price moved during quote. Reduce quantity and retry.");
+        throw new Error(
+          "Cannot submit sell yet: pool price moved during quote. We refreshed quote safeguards, but price is still moving fast. Retry now or use a smaller quantity.",
+        );
       }
       throw new Error(lastReason ? `Cannot submit sell yet: ${lastReason}` : "Cannot submit sell yet due to on-chain guardrails.");
     }
