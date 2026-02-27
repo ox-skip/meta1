@@ -14,6 +14,7 @@ import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
 import { getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
+import { payPiForOrder } from "@/services/market/piCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -188,7 +189,8 @@ export default function Checkout() {
   const hasExplicitRoutes =
     typeof paymentOptions?.allow_ngn === "boolean" ||
     typeof paymentOptions?.allow_usdc === "boolean" ||
-    typeof paymentOptions?.allow_usdt === "boolean";
+    typeof paymentOptions?.allow_usdt === "boolean" ||
+    typeof paymentOptions?.allow_pi === "boolean";
   const { bySection: checkoutPolicy, loading: checkoutPolicyLoading } = useMarketPolicyBlocks({
     surface: "checkout",
     audience: "buyer",
@@ -206,6 +208,15 @@ export default function Checkout() {
   const allowUsdt = hasExplicitRoutes
     ? paymentOptions?.allow_usdt === true
     : listingCurrency === "USDT";
+  const allowPi = hasExplicitRoutes
+    ? paymentOptions?.allow_pi === true
+    : false;
+  const enabledRoutes = [
+    allowNgn ? "NGN" : null,
+    allowUsdc ? "USDC" : null,
+    allowUsdt ? "USDT" : null,
+    allowPi ? "PI" : null,
+  ].filter(Boolean) as string[];
   const ngnRequired = orderCurrency === "NGN" ? orderAmount : 0;
   const ngnShortfall = allowNgn && ngnRequired > 0 ? Math.max(0, ngnRequired - ngnBalance) : 0;
   const usdcRequired = orderCurrency === "USDC" ? orderAmount : 0;
@@ -691,6 +702,65 @@ export default function Checkout() {
     router.replace(`/market/order/${oid}` as any);
   }
 
+  async function payWithPi() {
+    if (busy) return;
+    setErr(null);
+    if (!oid) return setErr("Missing orderId");
+    if (!allowPi) return setErr("This listing does not accept Pi payments.");
+    const user = await requireAuth();
+    if (!user) return;
+
+    console.log("[Checkout] payWithPi start", { orderId: oid });
+    setBusy(true);
+    try {
+      const res: any = await payPiForOrder(oid);
+      await showPiDepositResult(res);
+    } catch (e: any) {
+      console.log("[Checkout] payWithPi error", { message: String(e?.message || e) });
+      setErr(friendlyMarketError(e, "We couldn't complete Pi checkout."));
+    } finally {
+      setBusy(false);
+      console.log("[Checkout] payWithPi end");
+    }
+  }
+
+  async function showPiDepositResult(res: any) {
+    const underpaid = res?.underpaid === true || res?.settled === false;
+    const paymentId = String(res?.payment_id || "").trim();
+    const txid = String(res?.txid || "").trim();
+
+    if (underpaid) {
+      const shortfallUsd = Number(res?.shortfall_usd ?? 0);
+      const topupPi = Number(res?.topup_pi_required ?? 0);
+      Alert.alert(
+        "Pi value moved, top-up required",
+        `Your payment was received but is below required USD value.\n\nShortfall: $${shortfallUsd.toFixed(4)}\nTop-up needed: ${topupPi.toFixed(8)} PI`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Pay top-up", onPress: () => void payWithPi() },
+        ],
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Pi payment confirmed",
+      `Your Pi payment is confirmed and order moved to escrow.\n\nPayment ID:\n${paymentId || "n/a"}\n\nTxid:\n${txid || "n/a"}`,
+      [
+        {
+          text: "Copy payment ID",
+          onPress: () => {
+            if (paymentId) void Clipboard.setStringAsync(paymentId);
+          },
+        },
+        {
+          text: "Continue",
+          onPress: () => router.replace(`/market/order/${oid}` as any),
+        },
+      ],
+    );
+  }
+
   return (
     <LinearGradient
       colors={[BG1, BG0]}
@@ -838,6 +908,7 @@ export default function Checkout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
             {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
+            {"\n"}- PI (testnet): strict seller protection with automatic underpayment top-up requirement.
           </Text>
 
           <View
@@ -951,10 +1022,11 @@ export default function Checkout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
             {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
+            {"\n"}- PI (testnet): strict seller protection with automatic underpayment top-up requirement.
           </Text>
           {!isNigeria && allowNgnRaw ? (
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-              NGN payments are available only to Nigeria users. Please use USDC/USDT.
+              NGN payments are available only to Nigeria users. Please use USDC/USDT/PI.
             </Text>
           ) : null}
 
@@ -1174,9 +1246,17 @@ export default function Checkout() {
             disabled={busy || fundingLoading || !allowUsdt || usdtShortfall > 0}
           />
 
-          {!allowNgn || !allowUsdc || !allowUsdt ? (
+          <Pill
+            icon="planet-outline"
+            title="Pay with PI (testnet)"
+            subtitle="Pi Browser checkout with strict seller-protection top-up checks"
+            onPress={payWithPi}
+            disabled={busy || fundingLoading || !allowPi}
+          />
+
+          {enabledRoutes.length < 4 ? (
             <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-              Seller payment setting: {allowNgn && allowUsdc && allowUsdt ? "NGN + USDC + USDT" : allowNgn && allowUsdc ? "NGN + USDC" : allowNgn && allowUsdt ? "NGN + USDT" : allowUsdc && allowUsdt ? "USDC + USDT" : allowNgn ? "NGN only" : allowUsdc ? "USDC only" : allowUsdt ? "USDT only" : "No payment route enabled"}.
+              Seller payment setting: {enabledRoutes.length ? enabledRoutes.join(" + ") : "No payment route enabled"}.
             </Text>
           ) : null}
 

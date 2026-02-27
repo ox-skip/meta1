@@ -439,7 +439,8 @@ export default function ListingDetails() {
       const hasExplicitRoutes =
         typeof paymentOptions?.allow_ngn === "boolean" ||
         typeof paymentOptions?.allow_usdc === "boolean" ||
-        typeof paymentOptions?.allow_usdt === "boolean";
+        typeof paymentOptions?.allow_usdt === "boolean" ||
+        typeof paymentOptions?.allow_pi === "boolean";
       const listingCurrency = String(listing.currency ?? "").toUpperCase();
       const allowUsdc = hasExplicitRoutes
         ? paymentOptions?.allow_usdc === true
@@ -447,8 +448,11 @@ export default function ListingDetails() {
       const allowUsdt = hasExplicitRoutes
         ? paymentOptions?.allow_usdt === true
         : listingCurrency === "USDT";
-      if (shouldApplyRegionRestriction && !effectiveIsNigeria && !allowUsdc && !allowUsdt) {
-        const msg = "This listing does not support USDC/USDT checkout for your region.";
+      const allowPi = hasExplicitRoutes
+        ? paymentOptions?.allow_pi === true
+        : false;
+      if (shouldApplyRegionRestriction && !effectiveIsNigeria && !allowUsdc && !allowUsdt && !allowPi) {
+        const msg = "This listing does not support USDC/USDT/PI checkout for your region.";
         if (Platform.OS === "web" && typeof window !== "undefined") window.alert(msg);
         else Alert.alert("Crypto only", msg);
         return;

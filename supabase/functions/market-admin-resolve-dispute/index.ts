@@ -29,7 +29,17 @@ Deno.serve(async (req) => {
       .single();
 
     if (oe || !order) return bad("Order not found");
-    if (order.currency !== "NGN") return bad("Admin resolver currently supports NGN wallet only");
+    const { data: piRows } = await admin
+      .from("market_pi_payments")
+      .select("id,status")
+      .eq("order_id", order_id)
+      .in("status", ["UNDERPAID", "SETTLED"])
+      .limit(1);
+    const isPiOrder = Array.isArray(piRows) && piRows.length > 0;
+
+    if (order.currency !== "NGN" && !isPiOrder) {
+      return bad("Admin resolver supports NGN wallet and PI testnet orders only");
+    }
 
     const { data: dispute } = await admin
       .from("market_disputes")
@@ -45,6 +55,33 @@ Deno.serve(async (req) => {
     let curStatus = String(order.status);
 
     if (decision === "RELEASE") {
+      if (isPiOrder) {
+        const { data: released, error: te } = await admin.rpc("market_transition_order_status", {
+          p_order_id: order_id,
+          p_expected_version: curVersion,
+          p_new_status: "RELEASED",
+          p_note: note ?? "Admin released PI escrow during dispute resolution",
+        });
+        if (te) return bad(te.message);
+
+        await admin.from("market_disputes").update({
+          status: "RESOLVED",
+          resolution: "RELEASE_TO_SELLER",
+          resolved_by: null,
+        }).eq("order_id", order_id);
+
+        await admin.from("market_audit_logs").insert({
+          actor_id: null,
+          actor_type: "admin",
+          action: "DISPUTE_RESOLVED_RELEASE_PI",
+          entity_type: "market_orders",
+          entity_id: order_id,
+          payload: { note },
+        });
+
+        return ok({ order: released, dispute_resolution: "RELEASE_TO_SELLER" });
+      }
+
       if (curStatus === "DISPUTED" || curStatus === "OUT_FOR_DELIVERY" || curStatus === "DELIVERABLE_UPLOADED" || curStatus === "IN_ESCROW") {
         // Force to DELIVERED as admin decision basis (audit note)
         const { data: delivered, error: te } = await admin.rpc("market_transition_order_status", {
@@ -87,6 +124,33 @@ Deno.serve(async (req) => {
 
     // decision === REFUND
     // refund allowed from IN_ESCROW/DELIVERED/DISPUTED (your SQL function enforces)
+    if (isPiOrder) {
+      const { data: refunded, error: te } = await admin.rpc("market_transition_order_status", {
+        p_order_id: order_id,
+        p_expected_version: curVersion,
+        p_new_status: "REFUNDED",
+        p_note: note ?? "Admin refunded PI escrow during dispute resolution",
+      });
+      if (te) return bad(te.message);
+
+      await admin.from("market_disputes").update({
+        status: "RESOLVED",
+        resolution: "REFUND_TO_BUYER",
+        resolved_by: null,
+      }).eq("order_id", order_id);
+
+      await admin.from("market_audit_logs").insert({
+        actor_id: null,
+        actor_type: "admin",
+        action: "DISPUTE_RESOLVED_REFUND_PI",
+        entity_type: "market_orders",
+        entity_id: order_id,
+        payload: { note },
+      });
+
+      return ok({ order: refunded, dispute_resolution: "REFUND_TO_BUYER" });
+    }
+
     const { data: refunded, error: fe } = await admin.rpc("market_wallet_refund_buyer", {
       p_order_id: order_id,
       p_expected_version: curVersion,

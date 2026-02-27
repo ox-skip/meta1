@@ -200,6 +200,7 @@ export default function SellTab() {
   const [description, setDescription] = useState("");
   const [payMode, setPayMode] = useState<"ngn" | "crypto" | "all">("ngn");
   const [cryptoCoinMode, setCryptoCoinMode] = useState<"all" | "usdc" | "usdt">("all");
+  const [piEnabled, setPiEnabled] = useState(false);
   const [cryptoNetworkMode, setCryptoNetworkMode] = useState<"all" | "base_sepolia" | "polygon_amoy">("all");
   const [price, setPrice] = useState("");
   const [localCurrency, setLocalCurrency] = useState("NGN");
@@ -579,8 +580,10 @@ export default function SellTab() {
           allow_crypto: effectivePayMode === "crypto" || effectivePayMode === "all",
           allow_usdc: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdc"),
           allow_usdt: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdt"),
+          allow_pi: (effectivePayMode === "crypto" || effectivePayMode === "all") && piEnabled === true,
           chain_mode: cryptoNetworkMode,
           coin_mode: cryptoCoinMode,
+          pi_mode: piEnabled ? "testnet" : "off",
           stock_mode: category === "product" ? stockMode : "unlimited",
           out_of_stock: false,
           base_currency: baseCurrency,
@@ -633,8 +636,10 @@ export default function SellTab() {
         allow_crypto: effectivePayMode === "crypto" || effectivePayMode === "all",
         allow_usdc: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdc"),
         allow_usdt: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdt"),
+        allow_pi: (effectivePayMode === "crypto" || effectivePayMode === "all") && piEnabled === true,
         chain_mode: cryptoNetworkMode,
         coin_mode: cryptoCoinMode,
+        pi_mode: piEnabled ? "testnet" : "off",
         stock_mode: category === "product" ? stockMode : "unlimited",
         out_of_stock: false,
         base_currency: baseCurrency,
@@ -1068,6 +1073,12 @@ export default function SellTab() {
                 <Pill active={cryptoCoinMode === "all"} label="All (USDC/USDT)" onPress={() => setCryptoCoinMode("all")} />
                 <Pill active={cryptoCoinMode === "usdc"} label="USDC only" onPress={() => setCryptoCoinMode("usdc")} />
                 <Pill active={cryptoCoinMode === "usdt"} label="USDT only" onPress={() => setCryptoCoinMode("usdt")} />
+              </Row>
+
+              <Label>Pi (testnet)</Label>
+              <Row>
+                <Pill active={piEnabled} label="Enable PI" onPress={() => setPiEnabled(true)} />
+                <Pill active={!piEnabled} label="Disable PI" onPress={() => setPiEnabled(false)} />
               </Row>
 
               <Label>Network</Label>

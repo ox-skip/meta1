@@ -12,6 +12,7 @@ import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { supabase } from "@/services/supabase";
 import { releaseUsdcForOrder } from "@/services/market/usdcCheckout";
+import { releasePiForOrder } from "@/services/market/piCheckout";
 import { getPreferredMarketChain } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
 
@@ -360,6 +361,15 @@ export default function OrderDetails() {
     if (!rel.length) return null;
     return rel.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
   }, [intents]);
+  const isPiRailOrder = useMemo(
+    () =>
+      intents.some(
+        (i) =>
+          String(i.intent_type || "").toUpperCase() === "DEPOSIT" &&
+          String(i.chain || "").toLowerCase() === "pi_testnet",
+      ),
+    [intents],
+  );
   const isStableOrder = useMemo(
     () => ["USDC", "USDT"].includes(String(order?.currency || "").toUpperCase()),
     [order?.currency],
@@ -388,8 +398,9 @@ export default function OrderDetails() {
     !!order &&
     order.status === "CREATED" &&
     isStableOrder &&
+    !isPiRailOrder &&
     hasSubmittedCryptoDeposit;
-  const canResyncDeposit = !!order && order.status === "CREATED" && isStableOrder;
+  const canResyncDeposit = !!order && order.status === "CREATED" && isStableOrder && !isPiRailOrder;
   const pollIntervalMs = 5 * 60 * 1000;
   const depositCreatedAtMs = latestDepositIntent?.created_at ? new Date(latestDepositIntent.created_at).getTime() : 0;
   const nextPollAtMs = depositCreatedAtMs > 0 ? depositCreatedAtMs + pollIntervalMs : 0;
@@ -592,6 +603,7 @@ export default function OrderDetails() {
   useEffect(() => {
     if (!order?.id) return;
     if (!isStableOrder) return;
+    if (isPiRailOrder) return;
     if (String(order.status || "").toUpperCase() === "RELEASED") return;
     if (String(order.status || "").toUpperCase() === "REFUNDED") return;
 
@@ -631,7 +643,7 @@ export default function OrderDetails() {
       alive = false;
       clearInterval(timer);
     };
-  }, [order?.id, order?.status, isStableOrder, latestReleaseIntent?.status, latestReleaseIntent?.tx_hash, latestReleaseIntent?.chain]);
+  }, [order?.id, order?.status, isStableOrder, isPiRailOrder, latestReleaseIntent?.status, latestReleaseIntent?.tx_hash, latestReleaseIntent?.chain]);
 
   // Buttons conditions (your existing logic)
   const canGoCheckout = !!order && order.status === "CREATED" && isBuyer && !hasSubmittedCryptoDeposit;
@@ -743,7 +755,11 @@ async function releaseFunds() {
   setErr(null);
   try {
     if (["USDC", "USDT"].includes(String(order.currency || "").toUpperCase())) {
-      await releaseUsdcForOrder(order.id);
+      if (isPiRailOrder) {
+        await releasePiForOrder(order.id);
+      } else {
+        await releaseUsdcForOrder(order.id);
+      }
     } else {
       const auth = await requireLocalAuth("Release escrow to seller");
       if (!auth.ok) throw new Error(auth.message || "Authentication required");
@@ -1686,7 +1702,7 @@ async function pickAndUpload(access: "preview" | "final") {
                 >
                   <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Continue to checkout</Text>
                   <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
-                    Choose NGN wallet or USDC
+                    Choose NGN wallet, USDC/USDT, or PI
                   </Text>
                 </Pressable>
               </>
@@ -1731,7 +1747,7 @@ async function pickAndUpload(access: "preview" | "final") {
             />
 
             {/* Crypto intents */}
-            <Card title="Crypto activity (USDC)">
+            <Card title="Crypto activity (USDC / USDT / PI)">
               {intents.length === 0 ? (
                 <Text style={{ color: "rgba(255,255,255,0.65)" }}>No crypto intents yet.</Text>
               ) : (
