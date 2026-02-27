@@ -17,7 +17,9 @@ type PiPaymentIntent = {
   metadata: {
     order_id: string;
     quote_ref: string;
+    seller_pi_wallet?: string;
   };
+  seller_pi_wallet?: string;
 };
 
 type PiCompleteResult = {
@@ -209,4 +211,3 @@ export async function releasePiForOrder(orderId: string) {
   });
   return out as any;
 }
-

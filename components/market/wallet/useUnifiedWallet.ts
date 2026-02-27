@@ -4,7 +4,15 @@ import { createPublicClient, encodeFunctionData, formatUnits, http, parseUnits }
 import { useWalletSimple } from "@/hooks/wallet/useWalletSimple";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { fetchMyStockPortfolio } from "@/services/market/stocks";
-import { ensureWalletAddressOnChain, getMyWalletForChain, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
+import {
+  ensureWalletAddressOnChain,
+  getMyPiWallet,
+  getMyWalletForChain,
+  isPiChain,
+  isPiWalletAddress,
+  replaceSavedWalletWithDevice,
+  saveMyPiWallet,
+} from "@/services/market/usdcCheckout";
 import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession, subscribeActiveWalletSession } from "@/services/wallet/activeWalletSession";
 import { getWalletModeSync, isBaseSmartSupported, setWalletMode, subscribeWalletMode, type WalletMode } from "@/services/wallet/walletMode";
 import { getRpcUrlForChain, getSmartAccount } from "@/utils/aaWallet";
@@ -151,6 +159,7 @@ export function useUnifiedWallet() {
   const [chain, setChain] = useState<MarketChainConfig | null>(null);
   const [chainErr, setChainErr] = useState<string | null>(null);
   const [savedAddress, setSavedAddress] = useState("");
+  const [savedPiAddress, setSavedPiAddress] = useState("");
   const [connectedAddress, setConnectedAddress] = useState("");
   const [walletMode, setWalletModeState] = useState<WalletMode>(getWalletModeSync());
   const [usdcBalance, setUsdcBalance] = useState("0");
@@ -161,12 +170,13 @@ export function useUnifiedWallet() {
   const [busy, setBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [securityBusy, setSecurityBusy] = useState(false);
+  const [piSaving, setPiSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isNigeria = isNigeriaCountry(country?.code || country?.name);
   const stableTotalUsd = useMemo(() => Number(usdcBalance || 0) + Number(usdtBalance || 0), [usdcBalance, usdtBalance]);
   const overallUsdApprox = useMemo(() => stableTotalUsd + Number(portfolioTotalUsdc || 0), [stableTotalUsd, portfolioTotalUsdc]);
-  const loading = ngnLoading || portfolioLoading || busy || sendBusy || securityBusy || country === undefined;
+  const loading = ngnLoading || portfolioLoading || busy || sendBusy || securityBusy || piSaving || country === undefined;
 
   const refreshCountry = useCallback(async () => {
     try {
@@ -202,6 +212,18 @@ export function useUnifiedWallet() {
       setPortfolioTotalUsdc(0);
     } finally {
       setPortfolioLoading(false);
+    }
+  }, []);
+
+  const refreshPiWallet = useCallback(async () => {
+    try {
+      const row = await getMyPiWallet();
+      const next = String((row as any)?.address || "").trim();
+      setSavedPiAddress(next);
+      return next;
+    } catch {
+      setSavedPiAddress("");
+      return "";
     }
   }, []);
 
@@ -309,6 +331,9 @@ export function useUnifiedWallet() {
     setBusy(true);
     setError(null);
     try {
+      if (isPiChain(chain.chain)) {
+        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+      }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await ensureWalletAddressOnChain(chain);
       await refreshChainBalances(chain, out.address);
@@ -324,6 +349,9 @@ export function useUnifiedWallet() {
     setBusy(true);
     setError(null);
     try {
+      if (isPiChain(chain.chain)) {
+        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+      }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await replaceSavedWalletWithDevice(chain);
       await refreshChainBalances(chain, out.address);
@@ -337,12 +365,33 @@ export function useUnifiedWallet() {
   const refreshAll = useCallback(async () => {
     try {
       setError(null);
-      await Promise.allSettled([reloadNgn(), refreshPortfolio(), refreshCountry()]);
+      await Promise.allSettled([reloadNgn(), refreshPortfolio(), refreshCountry(), refreshPiWallet()]);
       await refreshChainBalances();
     } catch (e: any) {
       setError(friendlyMarketError(e, "Unable to refresh wallet data."));
     }
-  }, [refreshChainBalances, refreshCountry, refreshPortfolio, reloadNgn]);
+  }, [refreshChainBalances, refreshCountry, refreshPiWallet, refreshPortfolio, reloadNgn]);
+
+  const savePiAddress = useCallback(async (addressInput: string) => {
+    const normalized = String(addressInput || "").trim();
+    setPiSaving(true);
+    setError(null);
+    try {
+      if (normalized && !isPiWalletAddress(normalized)) {
+        throw new Error("Enter a valid PI wallet address.");
+      }
+      const out = await saveMyPiWallet(normalized);
+      const next = String((out as any)?.address || "").trim();
+      setSavedPiAddress(next);
+      return { address: next };
+    } catch (e: any) {
+      const msg = friendlyMarketError(e, "Unable to save PI wallet address.");
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setPiSaving(false);
+    }
+  }, []);
 
   const sendStableToken = useCallback(
     async (input: { symbol: "USDC" | "USDT"; to: string; amount: string }) => {
@@ -525,7 +574,8 @@ export function useUnifiedWallet() {
     loadChains();
     refreshPortfolio();
     refreshCountry();
-  }, [loadChains, refreshCountry, refreshPortfolio]);
+    refreshPiWallet();
+  }, [loadChains, refreshCountry, refreshPiWallet, refreshPortfolio]);
 
   return {
     loading,
@@ -541,6 +591,7 @@ export function useUnifiedWallet() {
     chains,
     chain,
     savedAddress,
+    savedPiAddress,
     connectedAddress,
     usdcBalance: Number(usdcBalance || 0),
     usdtBalance: Number(usdtBalance || 0),
@@ -556,6 +607,9 @@ export function useUnifiedWallet() {
     selectChain,
     loadChains,
     refreshChainBalances,
+    refreshPiWallet,
+    savePiAddress,
+    piSaving,
     sendStableToken,
     exportWalletSecret,
   };

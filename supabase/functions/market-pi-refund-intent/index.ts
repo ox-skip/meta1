@@ -1,5 +1,5 @@
-import { requireAdmin } from "../_shared/market/admin.ts";
-import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
+import { adminError, requireAdmin } from "../_shared/market/admin.ts";
+import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
 import {
   piCancelPayment,
   piCompletePayment,
@@ -8,7 +8,7 @@ import {
   toFixedString,
   toSafeNumber,
 } from "../_shared/market/pi.ts";
-import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { supabaseAdminClient } from "../_shared/market/supabase.ts";
 
 const PI_CHAIN = "pi_testnet";
 const ACTIVE_SETTLEMENT_STATUSES = ["CREATED", "SUBMITTED"];
@@ -30,7 +30,7 @@ async function safeInsertIntent(admin: any, input: {
 }) {
   const { error } = await admin.from("market_crypto_intents").insert({
     order_id: input.order_id,
-    intent_type: "RELEASE",
+    intent_type: "REFUND",
     status: input.status,
     chain: PI_CHAIN,
     from_wallet: "pi_escrow",
@@ -42,22 +42,22 @@ async function safeInsertIntent(admin: any, input: {
     failure_reason: input.failure_reason || null,
   });
   if (error) {
-    console.warn("[market-pi-release-intent] intent insert skipped:", error.message);
+    console.warn("[market-pi-refund-intent] intent insert skipped:", error.message);
   }
 }
 
-async function transitionToReleased(admin: any, order: any, note?: string | null) {
+async function transitionToRefunded(admin: any, order: any, note?: string | null) {
   const status = String(order?.status || "").toUpperCase();
-  if (status === "RELEASED") return null;
+  if (status === "REFUNDED") return null;
 
   const { error } = await admin.rpc("market_transition_order_status", {
     p_order_id: order.id,
     p_expected_version: Number(order.version ?? 0),
-    p_new_status: "RELEASED",
-    p_note: note ?? "Pi native payout confirmed",
+    p_new_status: "REFUNDED",
+    p_note: note ?? "Pi native refund confirmed",
   });
 
-  return error ? String(error.message || "Unable to transition order to RELEASED") : null;
+  return error ? String(error.message || "Unable to transition order to REFUNDED") : null;
 }
 
 async function readPiEscrowTotals(admin: any, order_id: string) {
@@ -96,90 +96,53 @@ async function getOrderForUpdate(admin: any, order_id: string) {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
-  const supabase = supabaseUserClient(req);
-  const admin = supabaseAdminClient();
-
-  let adminMode = false;
   try {
-    const adminFail = requireAdmin(req);
-    adminMode = adminFail === null;
-  } catch {
-    adminMode = false;
-  }
+    const authFail = requireAdmin(req);
+    if (authFail) return authFail;
 
-  let user: any = null;
-  if (!adminMode) {
-    const { data: auth, error: authErr } = await supabase.auth.getUser();
-    user = auth?.user;
-    if (authErr || !user) return unauth();
-  }
+    const admin = supabaseAdminClient();
+    const body = await req.json().catch(() => ({}));
+    const order_id = String(body?.order_id ?? "").trim();
+    const note = String(body?.note ?? "").trim() || null;
 
-  const body = await req.json().catch(() => ({}));
-  const order_id = String(body?.order_id ?? "").trim();
-  const note = String(body?.note ?? "").trim() || null;
+    if (!order_id) return bad("order_id required");
 
-  if (!order_id) return bad("order_id required");
-
-  try {
     const order = await getOrderForUpdate(admin, order_id);
-
-    if (!adminMode && order.buyer_id !== user.id) {
-      return bad("Not your order");
-    }
-
-    const allowed = new Set(["IN_ESCROW", "DELIVERED", "DELIVERABLE_UPLOADED"]);
-    if (adminMode) allowed.add("DISPUTED");
-
     const orderStatus = String(order.status || "").toUpperCase();
-    if (orderStatus === "RELEASED") {
+    if (orderStatus === "REFUNDED") {
       return ok({
         ok: true,
         order_id,
-        already_released: true,
+        already_refunded: true,
         settlement_mode: "pi_native_a2u",
       });
     }
-    if (!allowed.has(orderStatus)) return bad(`Cannot release from status: ${order.status}`);
 
-    const { data: dispute } = await admin
-      .from("market_disputes")
-      .select("status")
-      .eq("order_id", order_id)
-      .maybeSingle();
-    if (dispute && isOpenDisputeStatus(dispute.status) && !adminMode) {
-      return bad("Order is under dispute");
-    }
+    const allowed = new Set(["IN_ESCROW", "DELIVERED", "DELIVERABLE_UPLOADED", "DISPUTED"]);
+    if (!allowed.has(orderStatus)) return bad(`Cannot refund from status: ${order.status}`);
 
     const { paid_usd, paid_pi } = await readPiEscrowTotals(admin, order_id);
     if (paid_usd <= 0 || paid_pi <= 0) {
       return bad("No settled Pi escrow balance found for this order.");
     }
 
-    const orderUsd = toSafeNumber(order.amount, 0);
-    const shortfallUsd = Math.max(0, orderUsd - paid_usd);
-    if (shortfallUsd > 0.0000001) {
-      return bad(
-        `Pi escrow is still underpaid. Remaining shortfall: ${Number(toFixedString(shortfallUsd, 8))} USD.`,
-      );
-    }
-
-    const { data: sellerWallet, error: sellerWalletErr } = await admin
+    const { data: buyerWallet, error: buyerWalletErr } = await admin
       .from("crypto_wallets")
       .select("address")
-      .eq("user_id", order.seller_id)
+      .eq("user_id", order.buyer_id)
       .eq("chain", PI_CHAIN)
       .maybeSingle();
-    if (sellerWalletErr) return bad(sellerWalletErr.message);
-    const sellerPiUid = String((sellerWallet as any)?.address || "").trim();
-    if (!sellerPiUid) {
-      return bad("Seller PI payout uid is not saved. Ask seller to save PI wallet/uid first.");
+    if (buyerWalletErr) return bad(buyerWalletErr.message);
+    const buyerPiUid = String((buyerWallet as any)?.address || "").trim();
+    if (!buyerPiUid) {
+      return bad("Buyer PI payout uid is not saved. Buyer must save PI wallet/uid first.");
     }
 
     const { data: confirmedSettlement } = await admin
       .from("market_pi_settlements")
       .select("*")
       .eq("order_id", order_id)
-      .eq("kind", "RELEASE")
+      .eq("kind", "REFUND")
       .eq("status", "CONFIRMED")
       .order("created_at", { ascending: false })
       .limit(1)
@@ -187,13 +150,13 @@ Deno.serve(async (req) => {
 
     if (confirmedSettlement) {
       const latest = await getOrderForUpdate(admin, order_id);
-      const trErr = await transitionToReleased(admin, latest, note);
-      if (trErr) return bad(`Payout already confirmed but order transition failed: ${trErr}`);
+      const trErr = await transitionToRefunded(admin, latest, note);
+      if (trErr) return bad(`Refund already confirmed but order transition failed: ${trErr}`);
 
       return ok({
         ok: true,
         order_id,
-        already_released: true,
+        already_refunded: true,
         settlement_id: confirmedSettlement.id,
         payment_id: confirmedSettlement.payment_id || null,
         txid: confirmedSettlement.txid || null,
@@ -207,7 +170,7 @@ Deno.serve(async (req) => {
         .from("market_pi_settlements")
         .select("*")
         .eq("order_id", order_id)
-        .eq("kind", "RELEASE")
+        .eq("kind", "REFUND")
         .in("status", ACTIVE_SETTLEMENT_STATUSES)
         .order("created_at", { ascending: false })
         .limit(1);
@@ -219,18 +182,18 @@ Deno.serve(async (req) => {
           .from("market_pi_settlements")
           .insert({
             order_id,
-            kind: "RELEASE",
+            kind: "REFUND",
             status: "CREATED",
-            actor_id: adminMode ? null : user.id,
-            actor_type: adminMode ? "admin" : "buyer",
-            recipient_user_id: order.seller_id,
-            recipient_pi_uid: sellerPiUid,
-            recipient_wallet: sellerPiUid,
+            actor_id: null,
+            actor_type: "admin",
+            recipient_user_id: order.buyer_id,
+            recipient_pi_uid: buyerPiUid,
+            recipient_wallet: buyerPiUid,
             amount_pi: Number(toFixedString(paid_pi, 8)),
             amount_usd_snapshot: Number(toFixedString(paid_usd, 8)),
             raw: {
               order_status: order.status,
-              mode: adminMode ? "admin" : "buyer",
+              mode: "admin",
             },
           })
           .select("*")
@@ -245,7 +208,7 @@ Deno.serve(async (req) => {
       status: "CREATED",
       amount_usd: paid_usd,
       amount_pi: paid_pi,
-      to_wallet: sellerPiUid,
+      to_wallet: buyerPiUid,
       payment_id: String(settlement?.payment_id || "").trim() || null,
     });
 
@@ -259,16 +222,16 @@ Deno.serve(async (req) => {
       if (!paymentId) {
         createdPayment = await piCreateA2UPayment({
           amount: Number(toFixedString(paid_pi, 8)),
-          memo: `BestCity release ${order_id}`,
+          memo: `BestCity refund ${order_id}`,
           metadata: {
             order_id,
-            kind: "release",
-            recipient_user_id: order.seller_id,
+            kind: "refund",
+            recipient_user_id: order.buyer_id,
           },
-          uid: sellerPiUid,
+          uid: buyerPiUid,
         });
         paymentId = String((createdPayment as any)?.identifier || "").trim();
-        if (!paymentId) throw new Error("PI payout create failed: missing payment_id.");
+        if (!paymentId) throw new Error("PI refund create failed: missing payment_id.");
 
         const { error: updCreateErr } = await admin
           .from("market_pi_settlements")
@@ -286,7 +249,7 @@ Deno.serve(async (req) => {
       if (!txid) {
         submittedPayment = await piSubmitA2UPayment(paymentId);
         txid = String((submittedPayment as any)?.txid || "").trim();
-        if (!txid) throw new Error("PI payout submit failed: missing txid.");
+        if (!txid) throw new Error("PI refund submit failed: missing txid.");
 
         const { error: updSubmitErr } = await admin
           .from("market_pi_settlements")
@@ -307,7 +270,7 @@ Deno.serve(async (req) => {
           status: "SUBMITTED",
           amount_usd: paid_usd,
           amount_pi: paid_pi,
-          to_wallet: sellerPiUid,
+          to_wallet: buyerPiUid,
           payment_id: paymentId,
           txid,
         });
@@ -318,7 +281,7 @@ Deno.serve(async (req) => {
         (completedPayment as any)?.status?.developer_completed === true &&
         (completedPayment as any)?.status?.transaction_verified === true;
       if (!verified) {
-        throw new Error("PI payout completion did not return verified + completed status.");
+        throw new Error("PI refund completion did not return verified + completed status.");
       }
 
       const { error: updConfirmErr } = await admin
@@ -339,12 +302,12 @@ Deno.serve(async (req) => {
         status: "CONFIRMED",
         amount_usd: paid_usd,
         amount_pi: paid_pi,
-        to_wallet: sellerPiUid,
+        to_wallet: buyerPiUid,
         payment_id: paymentId,
         txid,
       });
     } catch (e: any) {
-      const failMessage = String(e?.message || e || "Pi payout failed");
+      const failMessage = String(e?.message || e || "Pi refund failed");
 
       let finalStatus: "FAILED" | "CANCELLED" = "FAILED";
       let cancelResult: any = null;
@@ -359,7 +322,7 @@ Deno.serve(async (req) => {
         raw: {
           ...(settlement?.raw || {}),
           cancel_result: cancelResult,
-          release_error: failMessage,
+          refund_error: failMessage,
         },
       };
       if (finalStatus === "FAILED") updates.failed_at = new Date().toISOString();
@@ -372,7 +335,7 @@ Deno.serve(async (req) => {
         status: "FAILED",
         amount_usd: paid_usd,
         amount_pi: paid_pi,
-        to_wallet: sellerPiUid,
+        to_wallet: buyerPiUid,
         payment_id: paymentId || null,
         txid: txid || null,
         failure_reason: failMessage,
@@ -382,15 +345,20 @@ Deno.serve(async (req) => {
     }
 
     const latestOrder = await getOrderForUpdate(admin, order_id);
-    const trErr = await transitionToReleased(admin, latestOrder, note);
-    if (trErr) return bad(`PI payout confirmed but order transition failed: ${trErr}`);
+    const trErr = await transitionToRefunded(admin, latestOrder, note);
+    if (trErr) return bad(`PI refund confirmed but order transition failed: ${trErr}`);
 
+    const { data: dispute } = await admin
+      .from("market_disputes")
+      .select("status")
+      .eq("order_id", order_id)
+      .maybeSingle();
     if (dispute && isOpenDisputeStatus(dispute.status)) {
       await admin
         .from("market_disputes")
         .update({
           status: "RESOLVED",
-          resolution: "RELEASE_TO_SELLER",
+          resolution: "REFUND_TO_BUYER",
           resolved_by: null,
         })
         .eq("order_id", order_id)
@@ -398,9 +366,9 @@ Deno.serve(async (req) => {
     }
 
     await admin.from("market_audit_logs").insert({
-      actor_id: adminMode ? null : user.id,
-      actor_type: adminMode ? "admin" : "user",
-      action: "PI_RELEASE_CONFIRMED",
+      actor_id: null,
+      actor_type: "admin",
+      action: "PI_REFUND_CONFIRMED",
       entity_type: "market_orders",
       entity_id: order_id,
       payload: {
@@ -409,8 +377,7 @@ Deno.serve(async (req) => {
         settlement_mode: "pi_native_a2u",
         amount_usd: Number(toFixedString(paid_usd, 8)),
         amount_pi: Number(toFixedString(paid_pi, 8)),
-        recipient_pi_uid: sellerPiUid,
-        admin_mode: adminMode,
+        recipient_pi_uid: buyerPiUid,
       },
     });
 
@@ -422,10 +389,10 @@ Deno.serve(async (req) => {
       settlement_mode: "pi_native_a2u",
       amount_usd: Number(toFixedString(paid_usd, 8)),
       amount_pi: Number(toFixedString(paid_pi, 8)),
-      recipient_pi_uid: sellerPiUid,
-      note: "Pi native payout was submitted and confirmed.",
+      recipient_pi_uid: buyerPiUid,
+      note: "Pi native refund was submitted and confirmed.",
     });
-  } catch (e: any) {
-    return bad(String(e?.message || e || "Unable to process PI release."));
+  } catch (e) {
+    return adminError(e);
   }
 });

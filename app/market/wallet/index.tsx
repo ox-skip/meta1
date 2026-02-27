@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -27,8 +28,11 @@ import {
 import { claimFaucet, readFaucetStatus, type FaucetStatus } from "@/services/market/faucet";
 import {
   ensureWalletAddressOnChain,
+  getMyPiWallet,
   getMyWalletForChain,
+  isPiChain,
   replaceSavedWalletWithDevice,
+  saveMyPiWallet,
 } from "@/services/market/usdcCheckout";
 import {
   connectActiveWalletEvm,
@@ -90,9 +94,18 @@ function fmt(v: string) {
 }
 
 function shortAddr(value?: string | null) {
-  const v = String(value || "");
-  if (!isAddress(v)) return "Not connected";
-  return `${v.slice(0, 6)}...${v.slice(-4)}`;
+  const v = String(value || "").trim();
+  if (!v) return "Not connected";
+  if (isAddress(v)) return `${v.slice(0, 6)}...${v.slice(-4)}`;
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}...${v.slice(-6)}`;
+}
+
+function shortValue(value?: string | null) {
+  const v = String(value || "").trim();
+  if (!v) return "Not set";
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}...${v.slice(-6)}`;
 }
 
 function chainLabel(raw?: string | null) {
@@ -131,9 +144,12 @@ export default function MarketWallet() {
   const [chain, setChain] = useState<MarketChainConfig | null>(null);
   const [chainErr, setChainErr] = useState<string | null>(null);
   const [walletAddr, setWalletAddr] = useState("");
+  const [piWalletAddr, setPiWalletAddr] = useState("");
+  const [piInput, setPiInput] = useState("");
   const [connectedAddr, setConnectedAddr] = useState("");
   const [walletMode, setWalletMode] = useState<WalletMode>(getWalletModeSync());
   const [busy, setBusy] = useState(false);
+  const [piSaving, setPiSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [usdc, setUsdc] = useState("0");
   const [usdt, setUsdt] = useState("0");
@@ -179,6 +195,20 @@ export default function MarketWallet() {
     const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setPiInput(piWalletAddr);
+  }, [piWalletAddr]);
+
+  async function loadPiWallet() {
+    try {
+      const row = await getMyPiWallet();
+      const next = String((row as any)?.address || "").trim();
+      setPiWalletAddr(next);
+    } catch {
+      setPiWalletAddr("");
+    }
+  }
 
   async function loadFaucet(selected?: MarketChainConfig | null, addrInput?: string | null) {
     const c = selected ?? chain;
@@ -281,6 +311,7 @@ export default function MarketWallet() {
       setChain(selected);
       const addr = await refresh(selected);
       await loadTx(addr);
+      await loadPiWallet();
     } catch (e: any) {
       setChainErr(String(e?.message || "Unable to load networks."));
     }
@@ -295,6 +326,9 @@ export default function MarketWallet() {
     setErr(null);
     setBusy(true);
     try {
+      if (isPiChain(chain.chain)) {
+        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+      }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await ensureWalletAddressOnChain(chain);
       const addr = await refresh(chain, out.address);
@@ -312,6 +346,9 @@ export default function MarketWallet() {
     setErr(null);
     setBusy(true);
     try {
+      if (isPiChain(chain.chain)) {
+        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+      }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await replaceSavedWalletWithDevice(chain);
       const addr = await refresh(chain, out.address);
@@ -329,6 +366,9 @@ export default function MarketWallet() {
     setErr(null);
     setFaucetBusy(true);
     try {
+      if (isPiChain(chain.chain)) {
+        throw new Error("Faucet is only available for EVM testnet wallets.");
+      }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const linked = await ensureWalletAddressOnChain(chain);
       const out = await claimFaucet(chain);
@@ -341,6 +381,22 @@ export default function MarketWallet() {
       setErr(friendlyMarketError(e, "Unable to claim faucet."));
     } finally {
       setFaucetBusy(false);
+    }
+  }
+
+  async function onSavePiWallet() {
+    setErr(null);
+    setPiSaving(true);
+    try {
+      const out = await saveMyPiWallet(piInput);
+      const next = String((out as any)?.address || "").trim();
+      setPiWalletAddr(next);
+      setPiInput(next);
+      Alert.alert("Saved", next ? "PI wallet address updated." : "PI wallet address cleared.");
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "Unable to save PI wallet address."));
+    } finally {
+      setPiSaving(false);
     }
   }
 
@@ -525,6 +581,58 @@ export default function MarketWallet() {
                   <View style={s.addrRow}>
                     <Text style={s.addrLabel}>Session</Text>
                     <Text style={s.addrValue}>{shortAddr(connectedAddr)}</Text>
+                  </View>
+                  <View style={s.addrRow}>
+                    <Text style={s.addrLabel}>PI wallet</Text>
+                    <Text style={s.addrValue}>{shortValue(piWalletAddr)}</Text>
+                  </View>
+                </View>
+
+                <View style={s.addrCard}>
+                  <Text style={s.addrLabel}>Save PI wallet address</Text>
+                  <TextInput
+                    value={piInput}
+                    onChangeText={setPiInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="Enter PI wallet address"
+                    placeholderTextColor="rgba(255,255,255,0.42)"
+                    style={{
+                      marginTop: 8,
+                      height: 42,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.14)",
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                      color: "#fff",
+                      fontWeight: "700",
+                      fontSize: 12,
+                      paddingHorizontal: 12,
+                    }}
+                  />
+                  <View style={s.row}>
+                    <Pressable
+                      style={s.btnSmall}
+                      disabled={piSaving || piInput.trim() === String(piWalletAddr || "").trim()}
+                      onPress={onSavePiWallet}
+                    >
+                      <Text style={s.btnText}>{piSaving ? "Saving..." : "Save PI Wallet"}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={s.btnSmall}
+                      disabled={!piWalletAddr}
+                      onPress={async () => {
+                        if (!piWalletAddr) return;
+                        try {
+                          await Clipboard.setStringAsync(piWalletAddr);
+                          Alert.alert("Copied", "PI wallet address copied.");
+                        } catch {
+                          Alert.alert("Copy failed", "Unable to copy PI wallet address right now.");
+                        }
+                      }}
+                    >
+                      <Text style={s.btnText}>Copy PI Wallet</Text>
+                    </Pressable>
                   </View>
                 </View>
 

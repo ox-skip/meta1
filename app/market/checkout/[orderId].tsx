@@ -13,7 +13,7 @@ import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
-import { getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
+import { getMyPiWallet, getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
 import { payPiForOrder } from "@/services/market/piCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -171,6 +171,7 @@ export default function Checkout() {
   const [chains, setChains] = useState<MarketChainConfig[]>([]);
   const [chain, setChain] = useState<MarketChainConfig | null>(null);
   const [walletAddress, setWalletAddress] = useState("");
+  const [piWalletAddress, setPiWalletAddress] = useState("");
   const [ngnBalance, setNgnBalance] = useState(0);
   const [usdcBalance, setUsdcBalance] = useState(0);
   const [usdtBalance, setUsdtBalance] = useState(0);
@@ -245,6 +246,7 @@ export default function Checkout() {
         setUsdcBalance(0);
         setUsdtBalance(0);
         setWalletAddress("");
+        setPiWalletAddress("");
         return;
       }
 
@@ -254,6 +256,8 @@ export default function Checkout() {
         .eq("user_id", user.id)
         .maybeSingle();
       setNgnBalance(Number((ngnWallet as any)?.balance ?? 0));
+      const piWallet = await getMyPiWallet().catch(() => null);
+      setPiWalletAddress(String((piWallet as any)?.address || "").trim());
 
       if (!active) {
         setUsdcBalance(0);
@@ -1067,9 +1071,17 @@ export default function Checkout() {
             <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
               USDT {usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
             </Text>
+            <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
+              PI Wallet {piWalletAddress || "Not set"}
+            </Text>
             {walletAddress ? (
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
                 Saved wallet: {walletAddress}
+              </Text>
+            ) : null}
+            {piWalletAddress ? (
+              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
+                Saved PI wallet: {piWalletAddress}
               </Text>
             ) : null}
             {fundingLoading ? (

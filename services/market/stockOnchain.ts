@@ -1,4 +1,5 @@
 import { createPublicClient, encodeFunctionData, http, keccak256, stringToHex } from "viem";
+import { Platform } from "react-native";
 
 import { createStockIdentity, getStockQuote, submitStockOrder } from "@/services/market/stocks";
 import { fetchMarketChains, MarketChainConfig } from "@/services/market/chainConfig";
@@ -6,6 +7,7 @@ import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { getSmartAccount } from "@/utils/aaWallet";
 import { ensureWalletAddressOnChain, getMyWalletForChain, registerWallet } from "@/services/market/usdcCheckout";
+import { getWalletModeSync, setWalletMode } from "@/services/wallet/walletMode";
 import * as SecureStore from "@/utils/secureStore";
 
 const ERC20_ABI = [
@@ -200,6 +202,66 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(id);
+        reject(error);
+      });
+  });
+}
+
+function isWalletConnectionIssue(err: unknown) {
+  const msg = String((err as any)?.message || err || "").toLowerCase();
+  return (
+    msg.includes("wallet connection timed out") ||
+    msg.includes("connection timed out") ||
+    msg.includes("provider is unavailable") ||
+    msg.includes("still initializing") ||
+    msg.includes("reconnect and try again")
+  );
+}
+
+async function resolveSmartAccountForTrade(chain: MarketChainConfig, userId: string) {
+  const mode = getWalletModeSync();
+  const firstAttemptTimeoutMs =
+    Platform.OS === "web" && mode === "base_smart"
+      ? 15_000
+      : 45_000;
+
+  try {
+    return await withTimeout(
+      getSmartAccount(chain, userId),
+      firstAttemptTimeoutMs,
+      "Wallet connection timed out. Open wallet and reconnect, then retry.",
+    );
+  } catch (e: any) {
+    // Base Smart can fail to complete popup handshake in some desktop browsers.
+    // Fallback to WalletConnect once so trade flow can continue.
+    const canFallback = Platform.OS === "web" && mode === "base_smart" && isWalletConnectionIssue(e);
+    if (!canFallback) throw e;
+
+    try {
+      await setWalletMode("walletconnect");
+      await sleep(250);
+      return await withTimeout(
+        getSmartAccount(chain, userId),
+        45_000,
+        "WalletConnect connection timed out. Open wallet and approve the session, then retry.",
+      );
+    } catch (fallbackErr: any) {
+      const fallbackMsg = String(fallbackErr?.message || fallbackErr || "Wallet connection failed");
+      throw new Error(`Base Smart connection failed. Switched to WalletConnect but could not connect: ${fallbackMsg}`);
+    }
+  }
+}
+
 const UINT256_MAX = (2n ** 256n) - 1n;
 const KEY_LAST_TRADE_DRAFT = "stock_last_trade_draft";
 
@@ -368,8 +430,8 @@ async function submitStockOrderWithRetry(
     execution_mode: "onchain";
     quote_snapshot?: any;
   },
-  attempts = 60,
-  delayMs = 2000,
+  attempts = 20,
+  delayMs = 1500,
 ) {
   let lastErr: any = null;
   for (let i = 0; i < attempts; i++) {
@@ -380,7 +442,11 @@ async function submitStockOrderWithRetry(
       const msg = String(e?.message ?? e ?? "").toLowerCase();
       const retryable =
         msg.includes("awaiting confirmations") ||
-        msg.includes("transaction receipt not found on chain yet");
+        msg.includes("transaction receipt not found on chain yet") ||
+        msg.includes("timed out") ||
+        msg.includes("timeout") ||
+        msg.includes("abort") ||
+        msg.includes("network");
       if (!retryable || i === attempts - 1) break;
       await sleep(delayMs);
     }
@@ -477,7 +543,7 @@ async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
   try {
     const publicClient = createPublicClient({ transport: http(String(chain.rpc_url || "")) });
     const reqAny = publicClient.request as any;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 25; i++) {
       const receipt: any =
         (await reqAny({
           method: "eth_getUserOperationReceipt" as any,
@@ -491,7 +557,7 @@ async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
       if (opTx.startsWith("0x")) {
         return { txHash: opTx, userOpHash };
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     }
     return { txHash: "", userOpHash };
   } catch {
@@ -1175,16 +1241,24 @@ export async function submitStockTradeOnchain(input: {
   const user = auth?.user;
   if (!user) throw new Error("Not authenticated");
 
-  const authCheck = await requireLocalAuth(input.side === "buy" ? "Confirm stock buy" : "Confirm stock sell");
+  const authCheck = await withTimeout(
+    requireLocalAuth(input.side === "buy" ? "Confirm stock buy" : "Confirm stock sell"),
+    60_000,
+    "Authentication timed out. Retry and complete biometric/passcode confirmation promptly.",
+  );
   if (!authCheck.ok) throw new Error(authCheck.message || "Authentication required");
 
-  const quoteRes = await getStockQuote({
-    slug: input.slug,
-    side: input.side,
-    amount_usdc: input.amount_usdc,
-    quantity: input.quantity,
-    max_slippage_bps: input.max_slippage_bps ?? 1200,
-  });
+  const quoteRes = await withTimeout(
+    getStockQuote({
+      slug: input.slug,
+      side: input.side,
+      amount_usdc: input.amount_usdc,
+      quantity: input.quantity,
+      max_slippage_bps: input.max_slippage_bps ?? 1200,
+    }),
+    25_000,
+    "Quote request timed out. Check network and retry.",
+  );
   await writeTradeDraft({
     slug: input.slug,
     side: input.side,
@@ -1196,9 +1270,7 @@ export async function submitStockTradeOnchain(input: {
 
   const chainName = String(quoteRes?.identity?.chain || "");
   const chain = await resolveStockChain(chainName);
-  await ensureWalletAddressOnChain(chain);
-
-  const { client, account, address } = await getSmartAccount(chain, user.id);
+  const { client, account, address } = await resolveSmartAccountForTrade(chain, user.id);
   await registerWallet(chain.chain, address);
   const routerAddress = chain.identity_router as `0x${string}`;
   const stableAddress = (chain.identity_stable_address || chain.usdc_address) as `0x${string}`;
@@ -1265,11 +1337,15 @@ export async function submitStockTradeOnchain(input: {
         functionName: "approve",
         args: [routerAddress, UINT256_MAX],
       });
-      await (client as any).sendTransaction({
-        account,
-        to: stableAddress,
-        data: approveData,
-      });
+      await withTimeout(
+        (client as any).sendTransaction({
+          account,
+          to: stableAddress,
+          data: approveData,
+        }),
+        90_000,
+        "Approve transaction timed out in wallet. Retry and approve the request in your wallet app.",
+      );
       approvalSubmitted = true;
     }
 
@@ -1433,11 +1509,15 @@ export async function submitStockTradeOnchain(input: {
         functionName: "approve",
         args: [routerAddress, UINT256_MAX],
       });
-      await (client as any).sendTransaction({
-        account,
-        to: tokenAddress,
-        data: approveData,
-      });
+      await withTimeout(
+        (client as any).sendTransaction({
+          account,
+          to: tokenAddress,
+          data: approveData,
+        }),
+        90_000,
+        "Approve transaction timed out in wallet. Retry and approve the request in your wallet app.",
+      );
       approvalSubmitted = true;
     }
 
@@ -1553,41 +1633,76 @@ export async function submitStockTradeOnchain(input: {
     });
   }
 
-  const sendResult = await (client as any).sendTransaction({
-    account,
-    to: routerAddress,
-    data: tradeData,
-  });
-  const { txHash, userOpHash } = await resolveTxHash(chain, sendResult);
+  const sendResult = await withTimeout(
+    (client as any).sendTransaction({
+      account,
+      to: routerAddress,
+      data: tradeData,
+    }),
+    120_000,
+    "Transaction submission timed out. Check wallet activity and retry.",
+  );
+  const { txHash, userOpHash } = await withTimeout(
+    resolveTxHash(chain, sendResult),
+    80_000,
+    "Transaction hash resolution timed out. Check wallet activity and retry.",
+  );
 
   if (!txHash.startsWith("0x")) {
     throw new Error("Trade submitted but transaction hash is not available yet. Retry in a few seconds.");
   }
   await writeTradeDraft({ tx_hash: txHash, user_op_hash: userOpHash || undefined });
 
-  await publicClient.waitForTransactionReceipt({
-    hash: txHash as `0x${string}`,
-    confirmations: 1,
-    timeout: 120_000,
-  });
+  await withTimeout(
+    publicClient.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+      confirmations: 1,
+      timeout: 120_000,
+    }),
+    140_000,
+    "Transaction confirmation timed out. If your wallet shows success, use Repair Last Trade shortly.",
+  );
 
-  const out = await submitStockOrderWithRetry({
-    slug: input.slug,
-    side: input.side,
-    amount_usdc: input.amount_usdc,
-    quantity: input.quantity,
-    max_slippage_bps: input.max_slippage_bps ?? 1200,
-    tx_hash: txHash,
-    user_op_hash: userOpHash || undefined,
-    execution_mode: "onchain",
-    quote_snapshot: quoteRes?.quote ?? null,
-  });
+  try {
+    const out = await withTimeout(
+      submitStockOrderWithRetry({
+        slug: input.slug,
+        side: input.side,
+        amount_usdc: input.amount_usdc,
+        quantity: input.quantity,
+        max_slippage_bps: input.max_slippage_bps ?? 1200,
+        tx_hash: txHash,
+        user_op_hash: userOpHash || undefined,
+        execution_mode: "onchain",
+        quote_snapshot: quoteRes?.quote ?? null,
+      }),
+      40_000,
+      "Trade confirmed, but indexing is taking longer than expected.",
+    );
 
-  return {
-    ...out,
-    tx_hash: txHash,
-    user_op_hash: userOpHash || null,
-    explorer_url: explorerTxUrl(chain.chain, txHash),
-    quote: quoteRes?.quote ?? null,
-  };
+    return {
+      ...out,
+      tx_hash: txHash,
+      user_op_hash: userOpHash || null,
+      explorer_url: explorerTxUrl(chain.chain, txHash),
+      quote: quoteRes?.quote ?? null,
+    };
+  } catch (indexErr: any) {
+    return {
+      ok: true,
+      order_id: null,
+      trade: null,
+      identity: quoteRes?.identity ?? null,
+      wallet: { address, chain: chain.chain },
+      execution: {
+        mode: "onchain",
+        status: "PENDING_INDEX",
+        index_error: String(indexErr?.message || indexErr || "index_pending"),
+      },
+      tx_hash: txHash,
+      user_op_hash: userOpHash || null,
+      explorer_url: explorerTxUrl(chain.chain, txHash),
+      quote: quoteRes?.quote ?? null,
+    };
+  }
 }

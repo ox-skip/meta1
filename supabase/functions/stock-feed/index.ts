@@ -175,8 +175,8 @@ Deno.serve(async (req) => {
   const stockId = String(body?.stock_id ?? body?.identity_id ?? "").trim();
   const slug = String(body?.slug ?? "").trim().toLowerCase();
   const timeframe = parseTimeframe(body?.timeframe);
-  const candleLimit = toInt(body?.candle_limit, 180, 20, 800);
-  const tradeLimit = toInt(body?.trade_limit, 80, 20, 300);
+  const candleLimit = toInt(body?.candle_limit, 140, 20, 800);
+  const tradeLimit = toInt(body?.trade_limit, 50, 20, 300);
 
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
@@ -256,15 +256,26 @@ Deno.serve(async (req) => {
     myPosition = pos ?? null;
   }
 
-  const { data: trades24, error: trades24Err } = await admin
-    .from("market_stock_trades")
-    .select("notional_usdc")
+  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: candles24, error: candles24Err } = await admin
+    .from("market_stock_candles_1m")
+    .select("volume_usdc,trades_count")
     .eq("stock_id", identity.id)
-    .gte("traded_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
-  if (trades24Err) return bad(trades24Err.message);
+    .gte("bucket_start", cutoffIso);
+  if (candles24Err) return bad(candles24Err.message);
 
-  const volume24h = (trades24 ?? []).reduce((acc: number, t: any) => acc + toNum(t.notional_usdc, 0), 0);
-  const trades24h = (trades24 ?? []).length;
+  let volume24h = 0;
+  let trades24h = 0;
+  for (const row of candles24 ?? []) {
+    volume24h += toNum((row as any)?.volume_usdc, 0);
+    trades24h += toNum((row as any)?.trades_count, 0);
+  }
+
+  // Fallback for early bootstrap periods before candles are populated.
+  if ((candles24 ?? []).length === 0) {
+    volume24h = (tradesRes.data ?? []).reduce((acc: number, t: any) => acc + toNum(t.notional_usdc, 0), 0);
+    trades24h = (tradesRes.data ?? []).length;
+  }
 
   return ok({
     ok: true,

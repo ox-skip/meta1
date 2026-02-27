@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import { authenticateWithDevice, getLocalAuthInfo } from "@/utils/localAuth";
 
 export type LocalAuthResult = {
@@ -7,6 +9,11 @@ export type LocalAuthResult = {
 };
 
 export async function requireLocalAuth(reason = "Confirm this action"): Promise<LocalAuthResult> {
+  if (Platform.OS === "web") {
+    // Web wallets already require explicit user approval for each action.
+    return { ok: true };
+  }
+
   try {
     const info = await getLocalAuthInfo();
     const hasHardware = info.hasHardware;

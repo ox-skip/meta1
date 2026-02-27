@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
@@ -20,9 +20,18 @@ function isAddress(value?: string | null) {
 }
 
 function shortAddress(value?: string | null) {
-  const v = String(value || "");
-  if (!isAddress(v)) return "Not connected";
-  return `${v.slice(0, 6)}...${v.slice(-4)}`;
+  const v = String(value || "").trim();
+  if (!v) return "Not connected";
+  if (isAddress(v)) return `${v.slice(0, 6)}...${v.slice(-4)}`;
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}...${v.slice(-6)}`;
+}
+
+function shortValue(value?: string | null) {
+  const v = String(value || "").trim();
+  if (!v) return "Not set";
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}...${v.slice(-6)}`;
 }
 
 function chainLabel(v?: string | null) {
@@ -46,6 +55,11 @@ export default function UnifiedWalletPanel({
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sendToken, setSendToken] = useState<"USDC" | "USDT">("USDC");
+  const [piAddressInput, setPiAddressInput] = useState(wallet.savedPiAddress || "");
+
+  useEffect(() => {
+    setPiAddressInput(wallet.savedPiAddress || "");
+  }, [wallet.savedPiAddress]);
 
   const portfolio = wallet.portfolioPositions.slice(0, compact ? 3 : 5);
   const copyAddress = firstValidAddress(wallet.savedAddress, wallet.connectedAddress);
@@ -56,6 +70,9 @@ export default function UnifiedWalletPanel({
     !sendTo.trim() ||
     !sendAmount.trim() ||
     (sendToken === "USDT" && !canSendUsdt);
+  const piAddressTrimmed = piAddressInput.trim();
+  const piSaveDisabled =
+    wallet.piSaving || piAddressTrimmed === String(wallet.savedPiAddress || "").trim();
 
   const doSend = async () => {
     try {
@@ -86,6 +103,16 @@ export default function UnifiedWalletPanel({
     }
   };
 
+  const savePiWallet = async () => {
+    try {
+      const out = await wallet.savePiAddress(piAddressInput);
+      setPiAddressInput(String(out?.address || ""));
+      Alert.alert("Saved", out?.address ? "PI wallet address updated." : "PI wallet address cleared.");
+    } catch (e: any) {
+      Alert.alert("Save failed", String(e?.message || e || "Unable to save PI wallet address."));
+    }
+  };
+
   return (
     <View
       style={{
@@ -100,7 +127,7 @@ export default function UnifiedWalletPanel({
         <View>
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 17 }}>Unified Wallet</Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-            NGN, crypto, and stock portfolio in one place.
+            NGN, crypto, PI, and stock portfolio in one place.
           </Text>
         </View>
         <Pressable
@@ -190,6 +217,23 @@ export default function UnifiedWalletPanel({
           </Text>
         </View>
       </View>
+      <View
+        style={{
+          marginTop: 8,
+          borderRadius: 14,
+          padding: 10,
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.1)",
+          backgroundColor: "rgba(255,255,255,0.04)",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>PI WALLET</Text>
+        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortValue(wallet.savedPiAddress)}</Text>
+      </View>
 
       <View
         style={{
@@ -210,7 +254,96 @@ export default function UnifiedWalletPanel({
           <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 11 }}>Connected session</Text>
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortAddress(wallet.connectedAddress)}</Text>
         </View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+          <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 11 }}>Saved PI wallet</Text>
+          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortValue(wallet.savedPiAddress)}</Text>
+        </View>
       </View>
+
+      {!compact ? (
+        <View
+          style={{
+            marginTop: 10,
+            borderRadius: 14,
+            padding: 10,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.1)",
+            backgroundColor: "rgba(255,255,255,0.04)",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>PI Wallet Address</Text>
+          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
+            Save the PI wallet address sellers use for PI settlements.
+          </Text>
+          <TextInput
+            value={piAddressInput}
+            onChangeText={setPiAddressInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="Enter PI wallet address"
+            placeholderTextColor="rgba(255,255,255,0.42)"
+            style={{
+              marginTop: 8,
+              height: 42,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.14)",
+              backgroundColor: "rgba(255,255,255,0.06)",
+              color: "#fff",
+              fontWeight: "700",
+              fontSize: 12,
+              paddingHorizontal: 12,
+            }}
+          />
+          <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
+            <Pressable
+              onPress={savePiWallet}
+              disabled={piSaveDisabled}
+              style={{
+                flex: 1,
+                borderRadius: 12,
+                height: 40,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "rgba(45,212,191,0.4)",
+                backgroundColor: "rgba(45,212,191,0.2)",
+                opacity: piSaveDisabled ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 12 }}>
+                {wallet.piSaving ? "Saving..." : "Save PI Wallet"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={async () => {
+                const value = String(wallet.savedPiAddress || "").trim();
+                if (!value) return;
+                try {
+                  await Clipboard.setStringAsync(value);
+                  Alert.alert("Copied", "PI wallet address copied.");
+                } catch {
+                  Alert.alert("Copy failed", "Unable to copy PI wallet address right now.");
+                }
+              }}
+              disabled={!wallet.savedPiAddress}
+              style={{
+                flex: 1,
+                borderRadius: 12,
+                height: 40,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                backgroundColor: "rgba(255,255,255,0.05)",
+                opacity: wallet.savedPiAddress ? 1 : 0.6,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Copy PI Wallet</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <View style={{ marginTop: 10 }}>
         <Text style={{ color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 11, marginBottom: 8 }}>

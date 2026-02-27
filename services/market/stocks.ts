@@ -30,12 +30,12 @@ function shouldFallbackStockOverview(err: unknown) {
   );
 }
 
-async function callStockFn<T>(primary: string, body: any, fallback?: string) {
+async function callStockFn<T>(primary: string, body: any, fallback?: string, timeoutMs = 20_000) {
   try {
-    return await callFn<T>(primary, body);
+    return await callFn<T>(primary, body, timeoutMs);
   } catch (e) {
     if (fallback && isMissingFunctionError(e)) {
-      return await callFn<T>(fallback, body);
+      return await callFn<T>(fallback, body, timeoutMs);
     }
     throw e;
   }
@@ -258,7 +258,7 @@ export async function fetchStockDetail(params: {
     timeframe: params.timeframe ?? "1m",
     candle_limit: params.candle_limit ?? 180,
     trade_limit: params.trade_limit ?? 80,
-  }, "stocks-market-data");
+  }, "stocks-market-data", 30_000);
 }
 
 export async function createStockIdentity(input: {
@@ -326,7 +326,7 @@ export async function submitStockOrder(input: {
     identity: any;
     wallet: any;
     execution: any;
-  }>("stock-submit-order", input, "stocks-place-trade");
+  }>("stock-submit-order", input, "stocks-place-trade", 35_000);
 }
 
 export async function listStockChat(input: {

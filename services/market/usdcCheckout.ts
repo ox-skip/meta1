@@ -10,6 +10,7 @@ const RPC_RELEASE_INTENT_CANDIDATES = ["market_usdc_release_intent_rpc", "market
 const RPC_DEPOSIT_SUBMIT_CANDIDATES = ["market_usdc_deposit_submit_rpc", "market_crypto_deposit_submit_rpc"];
 const RPC_RELEASE_SUBMIT_CANDIDATES = ["market_usdc_release_submit_rpc", "market_crypto_release_submit_rpc"];
 const RPC_CHAIN_TX_FINALIZE_CANDIDATES = ["market_chain_tx_finalize_rpc"];
+export const PI_TESTNET_CHAIN = "pi_testnet";
 
 function isMissingRpcError(err: any) {
   const msg = String(err?.message || err || "").toLowerCase();
@@ -51,6 +52,19 @@ export function isWalletMismatchError(input: unknown) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isEvmAddress(value?: string | null) {
+  return /^0x[a-fA-F0-9]{40}$/.test(String(value || "").trim());
+}
+
+function normalizeWalletAddress(value?: string | null) {
+  return String(value || "").trim();
+}
+
+function isLikelyPiWalletAddress(value?: string | null) {
+  const v = normalizeWalletAddress(value);
+  return /^[A-Za-z0-9._-]{8,128}$/.test(v);
 }
 
 function isHexHash(v?: string | null) {
@@ -456,12 +470,93 @@ export async function getMyWalletForChain(chain: string) {
 
   const { data, error } = await supabase
     .from("crypto_wallets")
-    .select("user_id,chain,address")
+    .select("id,user_id,chain,address,created_at")
     .eq("user_id", user.id)
     .eq("chain", chain)
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data ?? null;
+}
+
+export async function getMyPiWallet() {
+  return getMyWalletForChain(PI_TESTNET_CHAIN);
+}
+
+export async function saveMyPiWallet(rawAddress: string) {
+  const { data: auth, error: authErr } = await supabase.auth.getUser();
+  if (authErr) throw authErr;
+  const user = auth?.user;
+  if (!user) throw new Error("Not authenticated");
+
+  const address = normalizeWalletAddress(rawAddress);
+
+  if (!address) {
+    const { error: delErr } = await supabase
+      .from("crypto_wallets")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("chain", PI_TESTNET_CHAIN);
+    if (delErr) throw new Error(delErr.message);
+    return { address: "" };
+  }
+
+  if (!isLikelyPiWalletAddress(address)) {
+    throw new Error("Enter a valid PI wallet address.");
+  }
+
+  const existing = await supabase
+    .from("crypto_wallets")
+    .select("id,user_id,chain,address,created_at")
+    .eq("user_id", user.id)
+    .eq("chain", PI_TESTNET_CHAIN)
+    .order("created_at", { ascending: true });
+  if (existing.error) throw new Error(existing.error.message);
+
+  const rows = existing.data ?? [];
+  if (rows.length > 0) {
+    const normalizedTarget = address.toLowerCase();
+    const keeper = rows.find((r: any) => String(r.address || "").toLowerCase() === normalizedTarget) ?? rows[0];
+    const duplicateIds = rows.filter((r: any) => r.id !== keeper.id).map((r: any) => r.id);
+
+    if (duplicateIds.length > 0) {
+      const { error: delErr } = await supabase
+        .from("crypto_wallets")
+        .delete()
+        .in("id", duplicateIds);
+      if (delErr) throw new Error(delErr.message);
+    }
+
+    if (String(keeper.address || "").toLowerCase() !== normalizedTarget) {
+      const { error: updErr } = await supabase
+        .from("crypto_wallets")
+        .update({ address })
+        .eq("id", keeper.id);
+      if (updErr) throw new Error(updErr.message);
+    }
+
+    return { address };
+  }
+
+  const { data: pairConflict, error: pairErr } = await supabase
+    .from("crypto_wallets")
+    .select("id,user_id")
+    .eq("chain", PI_TESTNET_CHAIN)
+    .eq("address", address)
+    .neq("user_id", user.id)
+    .limit(1);
+  if (pairErr) throw new Error(pairErr.message);
+  if (pairConflict && pairConflict.length > 0) {
+    throw new Error(`PI wallet ${address} is already linked to another account.`);
+  }
+
+  const { error: insErr } = await supabase
+    .from("crypto_wallets")
+    .insert({ user_id: user.id, chain: PI_TESTNET_CHAIN, address });
+  if (insErr) throw new Error(insErr.message);
+
+  return { address };
 }
 
 export async function registerWallet(chain: string, address: string) {
@@ -584,6 +679,11 @@ export async function replaceSavedWalletWithDevice(chainConfig: MarketChainConfi
   }
 
   for (const [chain, rows] of byChain.entries()) {
+    if (String(chain || "").toLowerCase() === PI_TESTNET_CHAIN) {
+      // PI wallet addresses are manually managed and are not derived from EVM sessions.
+      continue;
+    }
+
     const { data: pairConflict, error: pairErr } = await supabase
       .from("crypto_wallets")
       .select("id,user_id")
@@ -615,34 +715,51 @@ export async function replaceSavedWalletWithDevice(chainConfig: MarketChainConfi
     }
   }
 
-  const { data: existingChainRows, error: chainErr } = await supabase
-    .from("crypto_wallets")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("chain", chainConfig.chain)
-    .limit(1);
-  if (chainErr) throw new Error(chainErr.message);
-
-  if (!existingChainRows || existingChainRows.length === 0) {
-    const { data: pairConflict, error: pairErr } = await supabase
+  if (String(chainConfig.chain || "").toLowerCase() !== PI_TESTNET_CHAIN) {
+    const { data: existingChainRows, error: chainErr } = await supabase
       .from("crypto_wallets")
-      .select("id,user_id")
+      .select("id")
+      .eq("user_id", user.id)
       .eq("chain", chainConfig.chain)
-      .eq("address", derived)
-      .neq("user_id", user.id)
       .limit(1);
-    if (pairErr) throw new Error(pairErr.message);
-    if (pairConflict && pairConflict.length > 0) {
-      throw new Error(`Address ${derived} is already registered on ${chainConfig.chain} for another account.`);
-    }
+    if (chainErr) throw new Error(chainErr.message);
 
-    const { error: insErr } = await supabase
-      .from("crypto_wallets")
-      .insert({ user_id: user.id, chain: chainConfig.chain, address: derived, wallet_type: "aa" });
-    if (insErr) throw new Error(insErr.message);
+    if (!existingChainRows || existingChainRows.length === 0) {
+      const { data: pairConflict, error: pairErr } = await supabase
+        .from("crypto_wallets")
+        .select("id,user_id")
+        .eq("chain", chainConfig.chain)
+        .eq("address", derived)
+        .neq("user_id", user.id)
+        .limit(1);
+      if (pairErr) throw new Error(pairErr.message);
+      if (pairConflict && pairConflict.length > 0) {
+        throw new Error(`Address ${derived} is already registered on ${chainConfig.chain} for another account.`);
+      }
+
+      const { error: insErr } = await supabase
+        .from("crypto_wallets")
+        .insert({ user_id: user.id, chain: chainConfig.chain, address: derived, wallet_type: "aa" });
+      if (insErr) throw new Error(insErr.message);
+    }
   }
 
   return { address: derived };
+}
+
+export function isPiChain(chain?: string | null) {
+  return String(chain || "").toLowerCase() === PI_TESTNET_CHAIN;
+}
+
+export function isPiWalletAddress(value?: string | null) {
+  const v = normalizeWalletAddress(value);
+  if (!v) return false;
+  if (isEvmAddress(v)) return false;
+  return isLikelyPiWalletAddress(v);
+}
+
+export function isEvmWalletAddress(value?: string | null) {
+  return isEvmAddress(value);
 }
 
 export async function payStableForOrder(orderId: string, symbol: StableSymbol = "USDC") {

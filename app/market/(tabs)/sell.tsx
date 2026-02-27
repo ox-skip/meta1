@@ -9,6 +9,7 @@ import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, Text, 
 import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, rollbackListingDraft, uploadToBucket } from "@/services/market/marketService";
+import { getMyPiWallet } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
 import { formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -47,6 +48,13 @@ function ensureExtFromMime(mime: string) {
 
 function isValidUrl(u: string) {
   return /^https?:\/\/.+/i.test(u.trim());
+}
+
+function shortWalletValue(value?: string | null) {
+  const v = String(value || "").trim();
+  if (!v) return "Not set";
+  if (v.length <= 20) return v;
+  return `${v.slice(0, 10)}...${v.slice(-8)}`;
 }
 
 const BANNED_KEYWORDS = [
@@ -185,6 +193,7 @@ function Chip({ active, label, onPress }: { active: boolean; label: string; onPr
 export default function SellTab() {
   const [checkingSeller, setCheckingSeller] = useState(true);
   const [hasSellerProfile, setHasSellerProfile] = useState(false);
+  const [sellerPiWalletAddress, setSellerPiWalletAddress] = useState("");
 
   const [category, setCategory] = useState<MainCategory>("product");
   const [deliveryType, setDeliveryType] = useState<DeliveryType>("physical");
@@ -235,6 +244,17 @@ export default function SellTab() {
   const [stage, setStage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const sellerPiWalletLabel = useMemo(
+    () => shortWalletValue(sellerPiWalletAddress),
+    [sellerPiWalletAddress],
+  );
+
+  async function refreshSellerPiWallet() {
+    const piWallet = await getMyPiWallet().catch(() => null);
+    const next = String((piWallet as any)?.address || "").trim();
+    if (mountedRef.current) setSellerPiWalletAddress(next);
+    return next;
+  }
 
   // merge your categories + extras
   const categories = useMemo(() => {
@@ -325,8 +345,13 @@ export default function SellTab() {
           const { data } = await supabase.from("market_seller_profiles").select("user_id,active").eq("user_id", user.id).maybeSingle();
           if (mountedRef.current) setHasSellerProfile(!!data && (data as any)?.active !== false);
         }
+
+        await refreshSellerPiWallet();
       } catch {
-        if (mountedRef.current) setHasSellerProfile(false);
+        if (mountedRef.current) {
+          setHasSellerProfile(false);
+          setSellerPiWalletAddress("");
+        }
       } finally {
         if (mountedRef.current) setCheckingSeller(false);
       }
@@ -544,6 +569,11 @@ export default function SellTab() {
           ? Math.max(0, Math.floor(safeNumber(stockQty)))
           : null;
       const effectivePayMode = isNigeria ? payMode : "crypto";
+      const piWalletAddress = (await refreshSellerPiWallet()) || String(sellerPiWalletAddress || "").trim();
+      setSellerPiWalletAddress(piWalletAddress);
+      if ((effectivePayMode === "crypto" || effectivePayMode === "all") && piEnabled && !piWalletAddress) {
+        throw new Error("PI is enabled, but your PI wallet address is not saved. Open Wallet and save your PI wallet first.");
+      }
       const baseCurrency: "NGN" | "USD" = localCurrency === "NGN" ? "NGN" : "USD";
       const listingCurrency: Currency = effectivePayMode === "ngn" ? "NGN" : "USDC";
       const toUsd = (valueLocal: number) => valueLocal / fxUsdToLocal;
@@ -1079,6 +1109,44 @@ export default function SellTab() {
               <Row>
                 <Pill active={piEnabled} label="Enable PI" onPress={() => setPiEnabled(true)} />
                 <Pill active={!piEnabled} label="Disable PI" onPress={() => setPiEnabled(false)} />
+              </Row>
+              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
+                Saved PI wallet: <Text style={{ color: "#fff", fontWeight: "900" }}>{sellerPiWalletLabel}</Text>
+              </Text>
+              {piEnabled && !sellerPiWalletAddress ? (
+                <Text style={{ marginTop: 6, color: "#FCA5A5", fontSize: 12, fontWeight: "800" }}>
+                  PI is enabled but no PI wallet is saved yet.
+                </Text>
+              ) : null}
+              <Row>
+                <Pressable
+                  onPress={() => router.push("/market/wallet" as any)}
+                  style={{
+                    flex: 1,
+                    borderRadius: 14,
+                    paddingVertical: 10,
+                    alignItems: "center",
+                    backgroundColor: "rgba(124,58,237,0.22)",
+                    borderWidth: 1,
+                    borderColor: "rgba(124,58,237,0.45)",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open Wallet</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => void refreshSellerPiWallet()}
+                  style={{
+                    flex: 1,
+                    borderRadius: 14,
+                    paddingVertical: 10,
+                    alignItems: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Refresh PI Wallet</Text>
+                </Pressable>
               </Row>
 
               <Label>Network</Label>

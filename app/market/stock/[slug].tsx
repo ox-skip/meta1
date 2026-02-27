@@ -69,6 +69,21 @@ function friendlyStockTradeError(error: unknown, fallback: string) {
   return friendlyMarketError(error, fallback);
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(id);
+        reject(err);
+      });
+  });
+}
+
 function CandleChart({ candles }: { candles: Candle[] }) {
   const [width, setWidth] = useState(0);
   const height = 262;
@@ -258,6 +273,9 @@ export default function StockDetailScreen() {
   const [successVisible, setSuccessVisible] = useState(false);
   const [successTxHash, setSuccessTxHash] = useState<string | null>(null);
   const [successExplorer, setSuccessExplorer] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState(
+    "Your order executed on-chain and was recorded in market history.",
+  );
   const [quickAmount, setQuickAmount] = useState(20);
   const [quickQuote, setQuickQuote] = useState<any | null>(null);
   const [quickQuoteErr, setQuickQuoteErr] = useState<string | null>(null);
@@ -277,8 +295,8 @@ export default function StockDetailScreen() {
       const res = await fetchStockDetail({
         slug,
         timeframe,
-        candle_limit: 200,
-        trade_limit: 80,
+        candle_limit: 140,
+        trade_limit: 50,
       });
       setDetail(res);
     } catch (e: any) {
@@ -413,16 +431,27 @@ export default function StockDetailScreen() {
     setQuoteErr(null);
     try {
       setSubmitting(true);
-      const res = await submitStockTradeOnchain({
-        slug,
-        side: pendingTrade.side,
-        amount_usdc: pendingTrade.amount_usdc,
-        quantity: pendingTrade.quantity,
-        max_slippage_bps: DEFAULT_TRADE_SLIPPAGE_BPS,
-      });
+      setConfirmVisible(false);
+      const res = await withTimeout(
+        submitStockTradeOnchain({
+          slug,
+          side: pendingTrade.side,
+          amount_usdc: pendingTrade.amount_usdc,
+          quantity: pendingTrade.quantity,
+          max_slippage_bps: DEFAULT_TRADE_SLIPPAGE_BPS,
+        }),
+        170_000,
+        "Trade is taking too long. Check your wallet for a submitted transaction, then retry or use Repair Last Trade.",
+      );
 
       setSuccessTxHash(String(res?.tx_hash || "") || null);
       setSuccessExplorer(String(res?.explorer_url || "") || null);
+      const pendingIndex = String(res?.execution?.status || "").toUpperCase() === "PENDING_INDEX";
+      setSuccessMessage(
+        pendingIndex
+          ? "Transaction is confirmed on-chain. Market history indexing is still syncing. Use Repair Last Trade if it does not appear shortly."
+          : "Your order executed on-chain and was recorded in market history.",
+      );
       setSuccessVisible(true);
       setAmountUsdc("");
       setQuantity("");
@@ -1111,7 +1140,7 @@ export default function StockDetailScreen() {
           <View style={{ width: "100%", maxWidth: 420, borderRadius: 16, padding: 14, backgroundColor: "#052019", borderWidth: 1, borderColor: "rgba(45,212,191,0.45)" }}>
             <Text style={{ color: "#A7F3D0", fontWeight: "900", fontSize: 16 }}>Trade Successful</Text>
             <Text style={{ marginTop: 8, color: "#ECFEFF", fontSize: 12 }}>
-              Your order executed on-chain and was recorded in market history.
+              {successMessage}
             </Text>
             {!!successTxHash ? (
               <Text style={{ marginTop: 8, color: "#99F6E4", fontSize: 11 }} numberOfLines={2}>

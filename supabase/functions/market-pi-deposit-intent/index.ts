@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
 
   const { data: listing, error: listingErr } = await admin
     .from("market_listings")
-    .select("id,payment_options,currency,is_active")
+    .select("id,seller_id,payment_options,currency,is_active")
     .eq("id", order.listing_id)
     .maybeSingle();
 
@@ -97,6 +97,18 @@ Deno.serve(async (req) => {
     typeof po.allow_pi === "boolean";
   const allowPi = hasRoutes ? po.allow_pi === true : false;
   if (!allowPi) return bad("Listing does not accept Pi payments");
+
+  const { data: sellerWallet, error: sellerWalletErr } = await admin
+    .from("crypto_wallets")
+    .select("address")
+    .eq("user_id", listing.seller_id)
+    .eq("chain", PI_CHAIN)
+    .maybeSingle();
+  if (sellerWalletErr) return bad(sellerWalletErr.message);
+  const sellerPiWallet = String((sellerWallet as any)?.address || "").trim();
+  if (!sellerPiWallet) {
+    return bad("Seller PI wallet not found. Ask seller to save PI wallet in Wallet first.");
+  }
 
   const orderCurrency = String(order.currency ?? "").toUpperCase();
   if (!["USDC", "USDT", "USD"].includes(orderCurrency)) {
@@ -154,12 +166,14 @@ Deno.serve(async (req) => {
       metadata: {
         order_id: order.id,
         quote_ref: activeQuote.quote_ref,
+        seller_pi_wallet: sellerPiWallet,
       },
       callbacks: {
         approve: "market-pi-payment-approve",
         complete: "market-pi-payment-complete",
         cancel: "market-pi-payment-cancel",
       },
+      seller_pi_wallet: sellerPiWallet,
     });
   }
 
@@ -234,12 +248,13 @@ Deno.serve(async (req) => {
     metadata: {
       order_id: order.id,
       quote_ref: quoteRef,
+      seller_pi_wallet: sellerPiWallet,
     },
     callbacks: {
       approve: "market-pi-payment-approve",
       complete: "market-pi-payment-complete",
       cancel: "market-pi-payment-cancel",
     },
+    seller_pi_wallet: sellerPiWallet,
   });
 });
-
