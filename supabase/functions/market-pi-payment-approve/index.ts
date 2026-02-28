@@ -44,18 +44,21 @@ Deno.serve(async (req) => {
   const supabase = supabaseUserClient(req);
   const admin = supabaseAdminClient();
 
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
-  const user = auth?.user;
-  if (authErr || !user) return unauth();
-
   const body = await req.json().catch(() => ({}));
   const order_id = String(body?.order_id ?? "").trim();
   const quote_ref = String(body?.quote_ref ?? "").trim();
   const payment_id = String(body?.payment_id ?? "").trim();
+  const checkout_token = String(body?.checkout_token ?? "").trim();
 
   if (!order_id) return bad("order_id required");
   if (!quote_ref) return bad("quote_ref required");
   if (!payment_id) return bad("payment_id required");
+
+  const { data: auth, error: authErr } = await supabase.auth.getUser();
+  const user = auth?.user ?? null;
+  const usingCheckoutToken = !user && !!checkout_token;
+  if (authErr && !usingCheckoutToken) return unauth();
+  if (!user && !usingCheckoutToken) return unauth();
 
   const { data: order, error: orderErr } = await admin
     .from("market_orders")
@@ -64,18 +67,28 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (orderErr) return bad(orderErr.message);
   if (!order) return bad("Order not found");
-  if (order.buyer_id !== user.id) return bad("Not your order");
+  if (user && order.buyer_id !== user.id) return bad("Not your order");
   if (String(order.status || "").toUpperCase() !== "CREATED") return bad(`Order status ${order.status} is not payable`);
 
-  const { data: row, error: rowErr } = await admin
+  let rowQuery = admin
     .from("market_pi_payments")
-    .select("id,quote_ref,payment_id,quote_expires_at,status,quote_usd_amount,quote_pi_amount")
+    .select("id,quote_ref,payment_id,quote_expires_at,status,quote_usd_amount,quote_pi_amount,buyer_id,checkout_token,checkout_token_expires_at")
     .eq("order_id", order_id)
-    .eq("buyer_id", user.id)
-    .eq("quote_ref", quote_ref)
-    .maybeSingle();
+    .eq("quote_ref", quote_ref);
+
+  if (user) rowQuery = rowQuery.eq("buyer_id", user.id);
+  if (!user && checkout_token) rowQuery = rowQuery.eq("checkout_token", checkout_token);
+
+  const { data: row, error: rowErr } = await rowQuery.maybeSingle();
   if (rowErr) return bad(rowErr.message);
   if (!row) return bad("Pi quote not found");
+  if (user && row.buyer_id !== user.id) return bad("Not your quote");
+  if (!user) {
+    const tokenExpiresAtMs = new Date(String((row as any)?.checkout_token_expires_at || "")).getTime();
+    if (!Number.isFinite(tokenExpiresAtMs) || tokenExpiresAtMs <= Date.now()) {
+      return bad("Pi checkout session expired. Start Pi checkout again.");
+    }
+  }
 
   const status = String(row.status || "").toUpperCase();
   if (["SETTLED", "UNDERPAID", "CANCELLED"].includes(status)) {
@@ -143,8 +156,8 @@ Deno.serve(async (req) => {
   });
 
   await safeAudit(admin, {
-    actor_id: user.id,
-    actor_type: "user",
+    actor_id: user?.id ?? null,
+    actor_type: user ? "user" : "system",
     action: "PI_DEPOSIT_APPROVED",
     entity_type: "market_orders",
     entity_id: order_id,
@@ -159,4 +172,3 @@ Deno.serve(async (req) => {
     status: "APPROVED",
   });
 });
-

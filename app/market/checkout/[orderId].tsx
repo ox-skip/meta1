@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { createPublicClient, formatUnits, http } from "viem";
@@ -14,7 +14,12 @@ import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
 import { getMyPiWallet, getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
-import { payPiForOrder } from "@/services/market/piCheckout";
+import {
+  buildNativeOrderReturnUrl,
+  buildPiReturnUrl,
+  payPiForOrder,
+  type PiPaymentHandoffResult,
+} from "@/services/market/piCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -49,6 +54,10 @@ function isAddress(v?: string | null) {
 
 function isHexHash(v?: string | null) {
   return /^0x[a-fA-F0-9]{64}$/.test(String(v || "").trim());
+}
+
+function isPiHandoffResult(value: any): value is PiPaymentHandoffResult {
+  return value?.handoff_required === true && typeof value?.pi_browser_url === "string";
 }
 
 async function invokeCheckoutWallet(orderId: string) {
@@ -717,7 +726,8 @@ export default function Checkout() {
     console.log("[Checkout] payWithPi start", { orderId: oid });
     setBusy(true);
     try {
-      const res: any = await payPiForOrder(oid);
+      const returnUrl = Platform.OS === "web" ? buildPiReturnUrl(oid) : buildNativeOrderReturnUrl(oid);
+      const res: any = await payPiForOrder(oid, { returnUrl });
       await showPiDepositResult(res);
     } catch (e: any) {
       console.log("[Checkout] payWithPi error", { message: String(e?.message || e) });
@@ -728,7 +738,43 @@ export default function Checkout() {
     }
   }
 
+  async function openPiHandoff(res: PiPaymentHandoffResult) {
+    try {
+      await Linking.openURL(res.pi_browser_url);
+      return true;
+    } catch {
+      // fall through
+    }
+
+    try {
+      await Linking.openURL(res.checkout_url);
+      return true;
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't open Pi Browser."));
+      return false;
+    }
+  }
+
   async function showPiDepositResult(res: any) {
+    if (isPiHandoffResult(res)) {
+      const opened = await openPiHandoff(res);
+      Alert.alert(
+        "Continue in Pi Browser",
+        opened
+          ? "Pi checkout was opened in Pi Browser. Complete the payment there and then return to BestCity."
+          : "Pi checkout must continue in Pi Browser. Use the Pi Browser app to open the payment link.",
+        [
+          opened
+            ? { text: "OK" }
+            : {
+              text: "Retry",
+              onPress: () => void openPiHandoff(res),
+            },
+        ],
+      );
+      return;
+    }
+
     const underpaid = res?.underpaid === true || res?.settled === false;
     const paymentId = String(res?.payment_id || "").trim();
     const txid = String(res?.txid || "").trim();
@@ -1261,7 +1307,7 @@ export default function Checkout() {
           <Pill
             icon="planet-outline"
             title="Pay with PI (testnet)"
-            subtitle="Pi Browser checkout with strict seller-protection top-up checks"
+            subtitle="Starts here and continues in Pi Browser when required"
             onPress={payWithPi}
             disabled={busy || fundingLoading || !allowPi}
           />

@@ -233,7 +233,7 @@ export default function RootLayout() {
   /* ---------------- ROUTING (NO ONBOARDING) ---------------- */
   const group = segments[0];
 
-  if (!user && group !== "(auth)") {
+  if (!user && group !== "(auth)" && group !== "pi") {
     return <Redirect href="/(auth)/login" />;
   }
 

@@ -15,6 +15,10 @@ import {
 
 const PI_CHAIN = "pi_testnet";
 
+function newCheckoutToken() {
+  return crypto.randomUUID();
+}
+
 async function safeInsertIntent(admin: any, input: {
   order_id: string;
   status: string;
@@ -140,7 +144,7 @@ Deno.serve(async (req) => {
   const nowIso = new Date().toISOString();
   const { data: activeQuote } = await admin
     .from("market_pi_payments")
-    .select("id,quote_ref,quote_usd_amount,quote_pi_amount,quote_price_usd,quote_expires_at,is_topup")
+    .select("id,quote_ref,quote_usd_amount,quote_pi_amount,quote_price_usd,quote_expires_at,is_topup,checkout_token,checkout_token_expires_at")
     .eq("order_id", order.id)
     .eq("buyer_id", user.id)
     .eq("status", "QUOTED")
@@ -150,10 +154,31 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (activeQuote) {
+    let checkoutToken = String((activeQuote as any)?.checkout_token || "").trim();
+    const checkoutTokenExpiresAt = String(
+      (activeQuote as any)?.checkout_token_expires_at || activeQuote.quote_expires_at || "",
+    ).trim();
+    const checkoutTokenExpiresAtMs = new Date(checkoutTokenExpiresAt).getTime();
+    const needsTokenRefresh =
+      !checkoutToken || !Number.isFinite(checkoutTokenExpiresAtMs) || checkoutTokenExpiresAtMs <= Date.now();
+
+    if (needsTokenRefresh) {
+      checkoutToken = newCheckoutToken();
+      const { error: tokenErr } = await admin
+        .from("market_pi_payments")
+        .update({
+          checkout_token: checkoutToken,
+          checkout_token_expires_at: activeQuote.quote_expires_at,
+        })
+        .eq("id", activeQuote.id);
+      if (tokenErr) return bad(tokenErr.message);
+    }
+
     return ok({
       ok: true,
       order_id: order.id,
       quote_ref: activeQuote.quote_ref,
+      checkout_token: checkoutToken,
       quote_usd_amount: toSafeNumber(activeQuote.quote_usd_amount, remainingUsd),
       pi_amount: toSafeNumber(activeQuote.quote_pi_amount, 0),
       quote_price_usd: toSafeNumber(activeQuote.quote_price_usd, 0),
@@ -188,6 +213,7 @@ Deno.serve(async (req) => {
 
   const quoteRef = randomQuoteRef();
   const quoteExpiresAt = nowPlusSeconds(ttlSec);
+  const checkoutToken = newCheckoutToken();
   const isTopup = alreadyPaidUsd > 0;
 
   const { error: insertErr } = await admin.from("market_pi_payments").insert({
@@ -198,6 +224,8 @@ Deno.serve(async (req) => {
     quote_pi_amount: Number(toFixedString(piAmount, 8)),
     quote_price_usd: Number(toFixedString(priceUsd, 8)),
     quote_expires_at: quoteExpiresAt,
+    checkout_token: checkoutToken,
+    checkout_token_expires_at: quoteExpiresAt,
     is_topup: isTopup,
     status: "QUOTED",
     raw: {
@@ -235,6 +263,7 @@ Deno.serve(async (req) => {
     ok: true,
     order_id: order.id,
     quote_ref: quoteRef,
+    checkout_token: checkoutToken,
     quote_usd_amount: Number(toFixedString(remainingUsd, 8)),
     pi_amount: Number(toFixedString(piAmount, 8)),
     quote_price_usd: Number(toFixedString(priceUsd, 8)),

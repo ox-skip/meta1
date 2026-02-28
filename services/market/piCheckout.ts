@@ -1,12 +1,16 @@
 import { Platform } from "react-native";
 
 import { callFn } from "@/services/functions";
+import { fetchJsonWithTimeout, getSupabaseAnonKeyOrThrow, getSupabaseFunctionsBaseUrl } from "@/services/net";
 import { requireLocalAuth } from "@/utils/secureAuth";
 
-type PiPaymentIntent = {
+const PI_SDK_URL_DEFAULT = "https://sdk.minepi.com/pi-sdk.js";
+
+export type PiPaymentIntent = {
   ok: boolean;
   order_id: string;
   quote_ref: string;
+  checkout_token?: string;
   quote_usd_amount: number;
   pi_amount: number;
   quote_price_usd: number;
@@ -36,6 +40,23 @@ type PiCompleteResult = {
   required_usd?: number;
 };
 
+export type PiPaymentHandoffResult = {
+  ok: true;
+  order_id: string;
+  handoff_required: true;
+  mode: "web_browser" | "native_app";
+  checkout_url: string;
+  pi_browser_url: string;
+  quote_ref: string;
+  checkout_token: string;
+  quote_expires_at: string;
+  pi_amount: number;
+  quote_usd_amount: number;
+  quote_price_usd: number;
+  memo: string;
+  message: string;
+};
+
 type PiSdk = {
   init?: (input?: Record<string, unknown>) => void;
   createPayment?: (
@@ -51,16 +72,67 @@ type PiSdk = {
   __bestcityInited?: boolean;
 };
 
+let piSdkLoadPromise: Promise<PiSdk | null> | null = null;
+
 function isPiSandbox() {
   const raw = String(process.env.EXPO_PUBLIC_PI_SANDBOX ?? "true").trim().toLowerCase();
   return !["0", "false", "no", "off"].includes(raw);
 }
 
-function getPiSdk(): PiSdk {
+function getPiGlobal(): PiSdk | null {
   const anyGlobal = globalThis as any;
   const pi = (anyGlobal?.Pi ?? anyGlobal?.window?.Pi) as PiSdk | undefined;
+  return pi && typeof pi.createPayment === "function" ? pi : null;
+}
+
+async function loadPiSdkScript() {
+  if (Platform.OS !== "web") return null;
+
+  const existing = getPiGlobal();
+  if (existing) return existing;
+
+  if (piSdkLoadPromise) return await piSdkLoadPromise;
+
+  piSdkLoadPromise = new Promise<PiSdk | null>((resolve) => {
+    const doc = (globalThis as any)?.document as Document | undefined;
+    if (!doc) {
+      resolve(null);
+      return;
+    }
+
+    const scriptId = "bestcity-pi-sdk";
+    const existingScript = doc.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(getPiGlobal()), { once: true });
+      existingScript.addEventListener("error", () => resolve(null), { once: true });
+      setTimeout(() => resolve(getPiGlobal()), 4000);
+      return;
+    }
+
+    const script = doc.createElement("script");
+    script.id = scriptId;
+    script.async = true;
+    script.src = String(process.env.EXPO_PUBLIC_PI_SDK_URL || PI_SDK_URL_DEFAULT).trim();
+    script.onload = () => resolve(getPiGlobal());
+    script.onerror = () => resolve(null);
+    doc.head.appendChild(script);
+    setTimeout(() => resolve(getPiGlobal()), 5000);
+  });
+
+  const result = await piSdkLoadPromise;
+  return result;
+}
+
+async function resolvePiSdk() {
+  const existing = getPiGlobal();
+  if (existing) return existing;
+  return await loadPiSdkScript();
+}
+
+async function getPiSdk() {
+  const pi = await resolvePiSdk();
   if (!pi || typeof pi.createPayment !== "function") {
-    throw new Error("Pi SDK is unavailable. Open checkout in Pi Browser and try again.");
+    throw new Error("Pi SDK is unavailable. Continue in Pi Browser to finish this payment.");
   }
   return pi;
 }
@@ -76,63 +148,186 @@ function ensurePiSdkInitialized(pi: PiSdk) {
   pi.__bestcityInited = true;
 }
 
-async function requestPiIntent(orderId: string) {
-  const out = await callFn<PiPaymentIntent>("market-pi-deposit-intent", {
-    order_id: orderId,
-  });
-  return out;
+function normalizeBaseUrl(url: string) {
+  return url.trim().replace(/\/+$/, "");
 }
 
-async function approvePiPayment(orderId: string, quoteRef: string, paymentId: string) {
-  await callFn("market-pi-payment-approve", {
+function getPublicWebBaseUrl() {
+  const fromEnv = String(
+    process.env.EXPO_PUBLIC_SITE_URL ||
+      process.env.EXPO_PUBLIC_WEB_URL ||
+      process.env.EXPO_PUBLIC_APP_URL ||
+      "",
+  ).trim();
+
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin) {
+    return normalizeBaseUrl(fromEnv || window.location.origin);
+  }
+
+  if (fromEnv) return normalizeBaseUrl(fromEnv);
+  throw new Error("Missing EXPO_PUBLIC_SITE_URL for Pi Browser handoff.");
+}
+
+function buildQuery(input: Record<string, string | number | boolean | null | undefined>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value === null || value === undefined || value === "") continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
+
+function toPiBrowserUrl(checkoutUrl: string) {
+  const parsed = new URL(checkoutUrl);
+  return `pi://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
+function buildPiCheckoutUrl(intent: PiPaymentIntent, returnUrl?: string | null) {
+  const base = getPublicWebBaseUrl();
+  const query = buildQuery({
+    quote_ref: intent.quote_ref,
+    checkout_token: String(intent.checkout_token || "").trim(),
+    quote_usd_amount: intent.quote_usd_amount,
+    pi_amount: intent.pi_amount,
+    quote_price_usd: intent.quote_price_usd,
+    quote_expires_at: intent.quote_expires_at,
+    is_topup: intent.is_topup ? 1 : 0,
+    memo: intent.memo,
+    seller_pi_wallet: intent.seller_pi_wallet || intent.metadata?.seller_pi_wallet || "",
+    return_to: returnUrl || "",
+    auto: 1,
+  });
+  return `${base}/pi/checkout/${encodeURIComponent(intent.order_id)}?${query}`;
+}
+
+export function buildPiBrowserHandoff(intent: PiPaymentIntent, returnUrl?: string | null): PiPaymentHandoffResult {
+  const checkoutToken = String(intent.checkout_token || "").trim();
+  if (!checkoutToken) throw new Error("Missing Pi checkout token. Start Pi checkout again.");
+
+  const checkoutUrl = buildPiCheckoutUrl(intent, returnUrl);
+  return {
+    ok: true,
+    order_id: intent.order_id,
+    handoff_required: true,
+    mode: Platform.OS === "web" ? "web_browser" : "native_app",
+    checkout_url: checkoutUrl,
+    pi_browser_url: toPiBrowserUrl(checkoutUrl),
+    quote_ref: intent.quote_ref,
+    checkout_token: checkoutToken,
+    quote_expires_at: intent.quote_expires_at,
+    pi_amount: intent.pi_amount,
+    quote_usd_amount: intent.quote_usd_amount,
+    quote_price_usd: intent.quote_price_usd,
+    memo: intent.memo,
+    message: "Continue this payment in Pi Browser.",
+  };
+}
+
+function extractFnErrorMessage(name: string, res: Response, text: string, json: any) {
+  return (
+    json?.message ||
+    json?.error ||
+    (typeof json === "string" ? json : null) ||
+    (text && text.length < 500 ? text : null) ||
+    `Function ${name} failed (${res.status})`
+  );
+}
+
+async function callPiPublicFn<T>(name: string, body: Record<string, unknown>, timeoutMs = 20000): Promise<T> {
+  const base = getSupabaseFunctionsBaseUrl();
+  const { res, text, json } = await fetchJsonWithTimeout(
+    `${base}/${name}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: getSupabaseAnonKeyOrThrow(),
+      },
+      body: JSON.stringify(body ?? {}),
+    },
+    timeoutMs,
+  );
+
+  if (!res.ok || (json as any)?.success === false) {
+    throw new Error(extractFnErrorMessage(name, res, text, json));
+  }
+
+  return json as T;
+}
+
+async function requestPiIntent(orderId: string) {
+  return await callFn<PiPaymentIntent>("market-pi-deposit-intent", {
+    order_id: orderId,
+  });
+}
+
+async function approvePiPayment(orderId: string, quoteRef: string, paymentId: string, checkoutToken?: string | null) {
+  const body = {
     order_id: orderId,
     quote_ref: quoteRef,
     payment_id: paymentId,
-  });
+    checkout_token: checkoutToken || undefined,
+  };
+
+  if (checkoutToken) {
+    await callPiPublicFn("market-pi-payment-approve", body);
+    return;
+  }
+
+  await callFn("market-pi-payment-approve", body);
 }
 
-async function completePiPayment(orderId: string, quoteRef: string, paymentId: string, txid: string) {
-  return await callFn<PiCompleteResult>("market-pi-payment-complete", {
+async function completePiPayment(
+  orderId: string,
+  quoteRef: string,
+  paymentId: string,
+  txid: string,
+  checkoutToken?: string | null,
+) {
+  const body = {
     order_id: orderId,
     quote_ref: quoteRef,
     payment_id: paymentId,
     txid,
-  });
+    checkout_token: checkoutToken || undefined,
+  };
+
+  if (checkoutToken) {
+    return await callPiPublicFn<PiCompleteResult>("market-pi-payment-complete", body);
+  }
+
+  return await callFn<PiCompleteResult>("market-pi-payment-complete", body);
 }
 
-async function cancelPiPayment(orderId: string, quoteRef: string, paymentId?: string | null, reason?: string) {
+async function cancelPiPayment(
+  orderId: string,
+  quoteRef: string,
+  paymentId?: string | null,
+  reason?: string,
+  checkoutToken?: string | null,
+) {
   try {
-    await callFn("market-pi-payment-cancel", {
+    const body = {
       order_id: orderId,
       quote_ref: quoteRef,
       payment_id: paymentId || null,
       reason: reason || "cancelled_by_user",
-    });
+      checkout_token: checkoutToken || undefined,
+    };
+
+    if (checkoutToken) {
+      await callPiPublicFn("market-pi-payment-cancel", body);
+      return;
+    }
+
+    await callFn("market-pi-payment-cancel", body);
   } catch {
     // best-effort cancel
   }
 }
 
-export async function payPiForOrder(orderId: string) {
-  if (Platform.OS !== "web") {
-    throw new Error("Pi payment is currently available on web Pi Browser.");
-  }
-
-  const localAuth = await requireLocalAuth("Confirm PI deposit");
-  if (!localAuth.ok) throw new Error(localAuth.message || "Authentication required");
-
-  const intent = await requestPiIntent(orderId);
-  if ((intent as any)?.already_settled) {
-    return {
-      ok: true,
-      order_id: orderId,
-      settled: true,
-      already_settled: true,
-      strict_underpayment_protection: true,
-    };
-  }
-
-  const pi = getPiSdk();
+async function createPiPayment(intent: PiPaymentIntent, checkoutToken?: string | null) {
+  const pi = await getPiSdk();
   ensurePiSdkInitialized(pi);
 
   const result = await new Promise<PiCompleteResult>((resolve, reject) => {
@@ -157,31 +352,37 @@ export async function payPiForOrder(orderId: string) {
         },
         {
           onReadyForServerApproval: async (paymentId: string) => {
-            await approvePiPayment(orderId, intent.quote_ref, String(paymentId || "").trim());
+            await approvePiPayment(intent.order_id, intent.quote_ref, String(paymentId || "").trim(), checkoutToken);
           },
           onReadyForServerCompletion: async (paymentId: string, txid: string) => {
             const out = await completePiPayment(
-              orderId,
+              intent.order_id,
               intent.quote_ref,
               String(paymentId || "").trim(),
               String(txid || "").trim(),
+              checkoutToken,
             );
             finalizeResolve(out);
           },
           onCancel: async (paymentId?: string) => {
-            await cancelPiPayment(orderId, intent.quote_ref, paymentId ?? null, "cancelled_by_user");
+            await cancelPiPayment(
+              intent.order_id,
+              intent.quote_ref,
+              paymentId ?? null,
+              "cancelled_by_user",
+              checkoutToken,
+            );
             finalizeReject(new Error("Pi payment was cancelled."));
           },
           onIncompletePaymentFound: async (payment?: { identifier?: string }) => {
-            // Let normal flow continue; this callback is informational.
             const pid = String(payment?.identifier || "").trim();
             if (pid) {
-              await approvePiPayment(orderId, intent.quote_ref, pid).catch(() => null);
+              await approvePiPayment(intent.order_id, intent.quote_ref, pid, checkoutToken).catch(() => null);
             }
           },
           onError: async (error: unknown, payment?: { identifier?: string }) => {
             const pid = String(payment?.identifier || "").trim();
-            await cancelPiPayment(orderId, intent.quote_ref, pid || null, "sdk_error");
+            await cancelPiPayment(intent.order_id, intent.quote_ref, pid || null, "sdk_error", checkoutToken);
             const msg = String((error as any)?.message || error || "Pi payment failed");
             finalizeReject(new Error(msg));
           },
@@ -200,6 +401,99 @@ export async function payPiForOrder(orderId: string) {
     quote_price_usd: intent.quote_price_usd,
     strict_underpayment_protection: intent.strict_underpayment_protection === true,
   };
+}
+
+export async function payPiForOrder(orderId: string, options?: { returnUrl?: string | null }) {
+  const localAuth = await requireLocalAuth("Confirm PI deposit");
+  if (!localAuth.ok) throw new Error(localAuth.message || "Authentication required");
+
+  const intent = await requestPiIntent(orderId);
+  if ((intent as any)?.already_settled) {
+    return {
+      ok: true,
+      order_id: orderId,
+      settled: true,
+      already_settled: true,
+      strict_underpayment_protection: true,
+    };
+  }
+
+  const pi = Platform.OS === "web" ? await resolvePiSdk() : null;
+  if (!pi || typeof pi.createPayment !== "function") {
+    return buildPiBrowserHandoff(intent, options?.returnUrl || null);
+  }
+
+  ensurePiSdkInitialized(pi);
+  return await createPiPayment(intent);
+}
+
+export async function payPiWithCheckoutToken(intent: PiPaymentIntent) {
+  if (Platform.OS !== "web") {
+    throw new Error("Pi checkout must run inside Pi Browser web.");
+  }
+
+  const checkoutToken = String(intent.checkout_token || "").trim();
+  if (!checkoutToken) {
+    throw new Error("Missing Pi checkout token.");
+  }
+
+  return await createPiPayment(intent, checkoutToken);
+}
+
+export function parsePiIntentFromQuery(input: Record<string, string | string[] | undefined>): PiPaymentIntent {
+  const read = (key: string) => {
+    const value = input[key];
+    return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
+  };
+
+  const orderId = read("order_id");
+  const quoteRef = read("quote_ref");
+  const checkoutToken = read("checkout_token");
+  const piAmount = Number(read("pi_amount") || 0);
+  const quoteUsdAmount = Number(read("quote_usd_amount") || 0);
+  const quotePriceUsd = Number(read("quote_price_usd") || 0);
+  const quoteExpiresAt = read("quote_expires_at");
+  const memo = read("memo");
+  const sellerPiWallet = read("seller_pi_wallet");
+  const isTopup = ["1", "true", "yes"].includes(read("is_topup").toLowerCase());
+
+  if (!orderId) throw new Error("Missing order_id");
+  if (!quoteRef) throw new Error("Missing quote_ref");
+  if (!checkoutToken) throw new Error("Missing checkout_token");
+  if (!Number.isFinite(piAmount) || piAmount <= 0) throw new Error("Invalid pi_amount");
+  if (!Number.isFinite(quoteUsdAmount) || quoteUsdAmount <= 0) throw new Error("Invalid quote_usd_amount");
+  if (!Number.isFinite(quotePriceUsd) || quotePriceUsd <= 0) throw new Error("Invalid quote_price_usd");
+  if (!quoteExpiresAt) throw new Error("Missing quote_expires_at");
+  if (!memo) throw new Error("Missing memo");
+
+  return {
+    ok: true,
+    order_id: orderId,
+    quote_ref: quoteRef,
+    checkout_token: checkoutToken,
+    quote_usd_amount: quoteUsdAmount,
+    pi_amount: piAmount,
+    quote_price_usd: quotePriceUsd,
+    quote_expires_at: quoteExpiresAt,
+    is_topup: isTopup,
+    strict_underpayment_protection: true,
+    memo,
+    metadata: {
+      order_id: orderId,
+      quote_ref: quoteRef,
+      seller_pi_wallet: sellerPiWallet || undefined,
+    },
+    seller_pi_wallet: sellerPiWallet || undefined,
+  };
+}
+
+export function buildPiReturnUrl(orderId: string) {
+  const base = getPublicWebBaseUrl();
+  return `${base}/market/order/${encodeURIComponent(orderId)}`;
+}
+
+export function buildNativeOrderReturnUrl(orderId: string) {
+  return `bestcitypay://market/order/${encodeURIComponent(orderId)}`;
 }
 
 export async function releasePiForOrder(orderId: string) {
