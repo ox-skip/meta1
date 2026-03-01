@@ -96,6 +96,7 @@ export default function StockPortfolioScreen() {
             const slug = String(stock?.slug || "");
             const qty = Number(row.balance_qty ?? 0);
             const avg = Number(row.avg_cost_usdc ?? 0);
+            const locked = Number(row.locked_redemption_qty ?? 0);
             const price = Number(row.price_now_usdc ?? 0);
             const value = Number(row.value_usdc ?? 0);
             const pnl = Number(row.unrealized_pnl_usdc ?? 0);
@@ -112,6 +113,11 @@ export default function StockPortfolioScreen() {
                       {name} <Text style={{ color: "#99F6E4" }}>({symbol})</Text>
                     </Text>
                     <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Qty {qty.toFixed(6)} - Avg ${avg.toFixed(6)}</Text>
+                    {locked > 0 ? (
+                      <Text style={{ marginTop: 2, color: "#FDE68A", fontSize: 11 }}>
+                        Locked for redemption {locked.toFixed(6)}
+                      </Text>
+                    ) : null}
                     <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
                       Current ${price.toFixed(6)}
                     </Text>

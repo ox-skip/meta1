@@ -31,6 +31,42 @@ const PURPLE = "#7C3AED";
 
 const FN_MARKET_ORDERS_LIST = "market-orders-list"; // GET ONLY
 
+type StatusFilter = "all" | "pending" | "completed" | "cancelled" | "disputed";
+type PendingStageFilter =
+  | "all"
+  | "created"
+  | "in_escrow"
+  | "out_for_delivery"
+  | "deliverable_uploaded"
+  | "delivered";
+
+const STATUS_LABELS: Record<string, string> = {
+  CREATED: "Created",
+  IN_ESCROW: "In Escrow",
+  OUT_FOR_DELIVERY: "Out for Delivery",
+  DELIVERABLE_UPLOADED: "Deliverable Uploaded",
+  DELIVERED: "Delivered",
+  RELEASED: "Released",
+  DISPUTED: "Disputed",
+  REFUNDED: "Refunded",
+  CANCELLED: "Cancelled",
+};
+
+const STATUS_GROUPS: Record<Exclude<StatusFilter, "all">, string[]> = {
+  pending: ["CREATED", "IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED", "DELIVERED"],
+  completed: ["RELEASED"],
+  cancelled: ["CANCELLED", "REFUNDED"],
+  disputed: ["DISPUTED"],
+};
+
+const PENDING_STAGE_STATUS_MAP: Record<Exclude<PendingStageFilter, "all">, string[]> = {
+  created: ["CREATED"],
+  in_escrow: ["IN_ESCROW"],
+  out_for_delivery: ["OUT_FOR_DELIVERY"],
+  deliverable_uploaded: ["DELIVERABLE_UPLOADED"],
+  delivered: ["DELIVERED"],
+};
+
 type FnItem = {
   id: string;
   buyer_id: string;
@@ -222,9 +258,19 @@ function money(currency: string | null, amt: any) {
   return `${c || "AMOUNT"} ${n.toLocaleString()}`;
 }
 
+function normalizeStatus(status: string | null | undefined) {
+  return String(status || "").trim().toUpperCase();
+}
+
 function formatStatusLabel(status: string) {
-  const s = (status || "").toUpperCase();
-  return s.replace(/_/g, " ");
+  const s = normalizeStatus(status);
+  if (STATUS_LABELS[s]) return STATUS_LABELS[s];
+  return s
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function sleep(ms: number) {
@@ -248,12 +294,14 @@ function StatusDot({ status }: { status: string }) {
     CREATED: "rgba(255,255,255,0.55)",
     IN_ESCROW: "rgba(124,58,237,0.9)",
     OUT_FOR_DELIVERY: "rgba(59,130,246,0.9)",
+    DELIVERABLE_UPLOADED: "rgba(14,165,233,0.9)",
     DELIVERED: "rgba(16,185,129,0.9)",
     RELEASED: "rgba(16,185,129,0.9)",
+    DISPUTED: "rgba(251,146,60,0.9)",
     REFUNDED: "rgba(239,68,68,0.9)",
     CANCELLED: "rgba(239,68,68,0.9)",
   };
-  const c = map[(status || "").toUpperCase()] ?? "rgba(255,255,255,0.55)";
+  const c = map[normalizeStatus(status)] ?? "rgba(255,255,255,0.55)";
   return (
     <View
       style={{
@@ -270,10 +318,12 @@ function SegButton({
   label,
   active,
   onPress,
+  compact = false,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  compact?: boolean;
 }) {
   return (
     <Pressable
@@ -281,7 +331,9 @@ function SegButton({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       style={{
-        flex: 1,
+        flex: compact ? undefined : 1,
+        minWidth: compact ? 92 : undefined,
+        paddingHorizontal: compact ? 14 : 0,
         paddingVertical: 12,
         borderRadius: 16,
         alignItems: "center",
@@ -399,7 +451,8 @@ export default function MarketOrdersTab() {
   const [err, setErr] = useState<string | null>(null);
 
   const [mode, setMode] = useState<"all" | "buying" | "selling">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "completed" | "cancelled">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [pendingStageFilter, setPendingStageFilter] = useState<PendingStageFilter>("all");
   const [items, setItems] = useState<FnItem[]>([]);
 
   // Prevent state updates after unmount
@@ -563,16 +616,26 @@ export default function MarketOrdersTab() {
     router.push(`/market/order/${id}` as any);
   }
 
+  function selectStatusFilter(next: StatusFilter) {
+    setStatusFilter(next);
+    if (next !== "pending") setPendingStageFilter("all");
+  }
+
   const visibleItems = useMemo(() => {
     if (statusFilter === "all") return items;
+
     if (statusFilter === "pending") {
-      return items.filter((o) => ["CREATED", "IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERED"].includes((o.status || "").toUpperCase()));
+      return items.filter((o) => {
+        const status = normalizeStatus(o.status);
+        if (!STATUS_GROUPS.pending.includes(status)) return false;
+        if (pendingStageFilter === "all") return true;
+        return PENDING_STAGE_STATUS_MAP[pendingStageFilter].includes(status);
+      });
     }
-    if (statusFilter === "completed") {
-      return items.filter((o) => ["RELEASED"].includes((o.status || "").toUpperCase()));
-    }
-    return items.filter((o) => ["CANCELLED", "REFUNDED"].includes((o.status || "").toUpperCase()));
-  }, [items, statusFilter]);
+
+    const groupedStatuses = STATUS_GROUPS[statusFilter];
+    return items.filter((o) => groupedStatuses.includes(normalizeStatus(o.status)));
+  }, [items, pendingStageFilter, statusFilter]);
 
   return (
     <LinearGradient
@@ -633,12 +696,54 @@ export default function MarketOrdersTab() {
           <SegButton label="Selling" active={mode === "selling"} onPress={() => setMode("selling")} />
         </View>
 
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-          <SegButton label="All" active={statusFilter === "all"} onPress={() => setStatusFilter("all")} />
-          <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => setStatusFilter("pending")} />
-          <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => setStatusFilter("completed")} />
-          <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => setStatusFilter("cancelled")} />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+          <SegButton label="All" active={statusFilter === "all"} onPress={() => selectStatusFilter("all")} compact />
+          <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => selectStatusFilter("pending")} compact />
+          <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => selectStatusFilter("completed")} compact />
+          <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => selectStatusFilter("cancelled")} compact />
+          <SegButton label="Disputed" active={statusFilter === "disputed"} onPress={() => selectStatusFilter("disputed")} compact />
         </View>
+
+        {statusFilter === "pending" ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+            <SegButton
+              label="All"
+              active={pendingStageFilter === "all"}
+              onPress={() => setPendingStageFilter("all")}
+              compact
+            />
+            <SegButton
+              label="Created"
+              active={pendingStageFilter === "created"}
+              onPress={() => setPendingStageFilter("created")}
+              compact
+            />
+            <SegButton
+              label="In Escrow"
+              active={pendingStageFilter === "in_escrow"}
+              onPress={() => setPendingStageFilter("in_escrow")}
+              compact
+            />
+            <SegButton
+              label="Out for Delivery"
+              active={pendingStageFilter === "out_for_delivery"}
+              onPress={() => setPendingStageFilter("out_for_delivery")}
+              compact
+            />
+            <SegButton
+              label="Uploaded"
+              active={pendingStageFilter === "deliverable_uploaded"}
+              onPress={() => setPendingStageFilter("deliverable_uploaded")}
+              compact
+            />
+            <SegButton
+              label="Delivered"
+              active={pendingStageFilter === "delivered"}
+              onPress={() => setPendingStageFilter("delivered")}
+              compact
+            />
+          </View>
+        ) : null}
 
         {!!err ? <ErrorCard title="Couldn't load orders" message={err} onRetry={() => load()} /> : null}
 

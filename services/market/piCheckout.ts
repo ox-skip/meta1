@@ -59,6 +59,10 @@ export type PiPaymentHandoffResult = {
 
 type PiSdk = {
   init?: (input?: Record<string, unknown>) => void;
+  authenticate?: (
+    scopes: string[],
+    onIncompletePaymentFound?: (payment: { identifier?: string }) => void | Promise<void>,
+  ) => Promise<unknown>;
   createPayment?: (
     payment: { amount: number; memo?: string; metadata?: Record<string, unknown> },
     callbacks: {
@@ -70,6 +74,7 @@ type PiSdk = {
     },
   ) => void;
   __bestcityInited?: boolean;
+  __bestcityPaymentsScopeGranted?: boolean;
 };
 
 let piSdkLoadPromise: Promise<PiSdk | null> | null = null;
@@ -146,6 +151,19 @@ function ensurePiSdkInitialized(pi: PiSdk) {
     });
   }
   pi.__bestcityInited = true;
+}
+
+async function ensurePiPaymentsScope(
+  pi: PiSdk,
+  onIncompletePaymentFound?: (payment: { identifier?: string }) => void | Promise<void>,
+) {
+  if (pi.__bestcityPaymentsScopeGranted) return;
+  if (typeof pi.authenticate !== "function") {
+    throw new Error("Pi SDK authenticate() is unavailable. Open checkout in Pi Browser and try again.");
+  }
+
+  await pi.authenticate(["payments"], onIncompletePaymentFound);
+  pi.__bestcityPaymentsScopeGranted = true;
 }
 
 function normalizeBaseUrl(url: string) {
@@ -329,6 +347,12 @@ async function cancelPiPayment(
 async function createPiPayment(intent: PiPaymentIntent, checkoutToken?: string | null) {
   const pi = await getPiSdk();
   ensurePiSdkInitialized(pi);
+  await ensurePiPaymentsScope(pi, async (payment?: { identifier?: string }) => {
+    const pid = String(payment?.identifier || "").trim();
+    if (pid) {
+      await approvePiPayment(intent.order_id, intent.quote_ref, pid, checkoutToken).catch(() => null);
+    }
+  });
 
   const result = await new Promise<PiCompleteResult>((resolve, reject) => {
     let done = false;

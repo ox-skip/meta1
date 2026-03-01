@@ -5,23 +5,23 @@ import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  buildPiBrowserHandoff,
-  parsePiIntentFromQuery,
-  payPiWithCheckoutToken,
-  type PiPaymentIntent,
-} from "@/services/market/piCheckout";
+  buildPiStockBrowserHandoff,
+  parsePiStockIntentFromQuery,
+  payPiStockWithCheckoutToken,
+  type StockPiBuyIntent,
+} from "@/services/market/piStock";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
+const BG0 = "#071018";
+const BG1 = "#0D1B2A";
 
-export default function PublicPiCheckout() {
+export default function PublicPiStockCheckout() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
-  const orderId = useMemo(() => {
-    const value = params.orderId;
+  const stockId = useMemo(() => {
+    const value = params.stockId;
     return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
-  }, [params.orderId]);
+  }, [params.stockId]);
   const returnTo = useMemo(() => {
     const value = params.return_to;
     return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
@@ -38,20 +38,20 @@ export default function PublicPiCheckout() {
 
   const intentState = useMemo(() => {
     try {
-      const parsed = parsePiIntentFromQuery({
+      const parsed = parsePiStockIntentFromQuery({
         ...params,
-        order_id: orderId,
+        stock_id: stockId,
       });
-      return { intent: parsed as PiPaymentIntent, error: null as string | null };
+      return { intent: parsed as StockPiBuyIntent, error: null as string | null };
     } catch (e: any) {
-      return { intent: null, error: String(e?.message || "Invalid Pi checkout link.") };
+      return { intent: null, error: String(e?.message || "Invalid Pi stock checkout link.") };
     }
-  }, [orderId, params]);
+  }, [params, stockId]);
 
   const handoff = useMemo(() => {
     if (!intentState.intent) return null;
     try {
-      return buildPiBrowserHandoff(intentState.intent, returnTo || null);
+      return buildPiStockBrowserHandoff(intentState.intent, returnTo || null);
     } catch {
       return null;
     }
@@ -62,7 +62,7 @@ export default function PublicPiCheckout() {
     try {
       await Linking.openURL(returnTo);
     } catch {
-      // leave user on current page if the return target fails
+      // ignore
     }
   }
 
@@ -72,7 +72,7 @@ export default function PublicPiCheckout() {
       await Linking.openURL(handoff.pi_browser_url);
       return;
     } catch {
-      // fall through
+      // fallback below
     }
     try {
       await Linking.openURL(handoff.checkout_url);
@@ -82,30 +82,15 @@ export default function PublicPiCheckout() {
   }
 
   async function handleResult(res: any) {
-    if (res?.underpaid === true || res?.settled === false) {
-      const shortfallUsd = Number(res?.shortfall_usd ?? 0);
-      const topupPi = Number(res?.topup_pi_required ?? 0);
-      Alert.alert(
-        "Top-up required",
-        `This payment reached escrow but is still under the required USD value.\n\nShortfall: $${shortfallUsd.toFixed(4)}\nTop-up needed: ${topupPi.toFixed(8)} PI\n\nReturn to BestCity and start Pi checkout again for the top-up quote.`,
-        [
-          returnTo
-            ? { text: "Return", onPress: () => void openReturnTarget() }
-            : { text: "OK" },
-        ],
-      );
-      return;
-    }
-
     Alert.alert(
-      "Pi payment confirmed",
-      "Your Pi payment is confirmed and the order is now in escrow.",
+      "Pi stock purchase confirmed",
+      "Your Pi payment is confirmed and your stock position has been credited.",
       [
         returnTo
           ? { text: "Return to BestCity", onPress: () => void openReturnTarget() }
           : {
-            text: "Open order",
-            onPress: () => router.replace((`/market/order/${orderId}` as any) as any),
+            text: "Open stock",
+            onPress: () => router.replace((`/market/stock/${stockId}` as any) as any),
           },
       ],
     );
@@ -113,17 +98,17 @@ export default function PublicPiCheckout() {
 
   async function startPayment() {
     if (busy || !intentState.intent) return;
-    setErr(null);
     setBusy(true);
+    setErr(null);
     try {
-      const res = await payPiWithCheckoutToken(intentState.intent);
+      const res = await payPiStockWithCheckoutToken(intentState.intent);
       await handleResult(res);
     } catch (e: any) {
       const message = String(e?.message || e || "");
       if (message.toLowerCase().includes("pi sdk is unavailable")) {
         setErr("Pi Browser is required on this screen. Tap the button below to open it there.");
       } else {
-        setErr(friendlyMarketError(e, "We couldn't complete Pi checkout."));
+        setErr(friendlyMarketError(e, "We couldn't complete the Pi stock purchase."));
       }
     } finally {
       setBusy(false);
@@ -134,7 +119,7 @@ export default function PublicPiCheckout() {
     if (!autoStart || autoStartedRef.current || !intentState.intent) return;
     autoStartedRef.current = true;
     void startPayment();
-  }, [autoStart, intentState.intent?.quote_ref]);
+  }, [autoStart, intentState.intent?.quote.quote_ref]);
 
   return (
     <LinearGradient colors={[BG1, BG0]} style={{ flex: 1 }}>
@@ -154,23 +139,26 @@ export default function PublicPiCheckout() {
             borderColor: "rgba(255,255,255,0.12)",
           }}
         >
-          <Text style={{ color: "#fff", fontSize: 24, fontWeight: "900" }}>Pi Checkout</Text>
+          <Text style={{ color: "#fff", fontSize: 24, fontWeight: "900" }}>Pi Stock Checkout</Text>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
-            Finish this BestCity order payment in Pi Browser. The quote is already locked to this order.
+            Finish this BestCity stock purchase in Pi Browser. The share quantity and Pi amount are locked to this quote.
           </Text>
 
           <View style={{ marginTop: 18, gap: 8 }}>
-            <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Order</Text>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>{orderId || "n/a"}</Text>
+            <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Stock</Text>
+            <Text style={{ color: "#fff", fontWeight: "800" }}>{stockId || "n/a"}</Text>
             <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 10 }}>Required</Text>
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 20 }}>
-              {intentState.intent ? `${Number(intentState.intent.pi_amount).toFixed(8)} PI` : "n/a"}
+              {intentState.intent ? `${Number(intentState.intent.quote.gross_pi).toFixed(8)} PI` : "n/a"}
             </Text>
             <Text style={{ color: "rgba(255,255,255,0.72)" }}>
-              USD snapshot: {intentState.intent ? `$${Number(intentState.intent.quote_usd_amount).toFixed(4)}` : "n/a"}
+              Shares: {intentState.intent ? Number(intentState.intent.quote.quantity).toFixed(6) : "n/a"}
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.72)" }}>
+              USD: {intentState.intent ? `$${Number(intentState.intent.quote.gross_usdc).toFixed(4)}` : "n/a"}
             </Text>
             <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-              Quote expires: {intentState.intent?.quote_expires_at || "n/a"}
+              Quote expires: {intentState.intent?.quote.quote_expires_at || "n/a"}
             </Text>
           </View>
 
@@ -191,7 +179,7 @@ export default function PublicPiCheckout() {
               minHeight: 54,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: busy ? "rgba(124,58,237,0.45)" : "#7C3AED",
+              backgroundColor: busy ? "rgba(45,212,191,0.45)" : "rgba(45,212,191,0.74)",
               opacity: busy || !intentState.intent ? 0.75 : 1,
             }}
           >

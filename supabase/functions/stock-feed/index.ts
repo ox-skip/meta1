@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
 
-  const [sellerRes, pointRes, reserveRes, reinvestRes, tradesRes] = await Promise.all([
+  const [sellerRes, pointRes, reserveRes, reinvestRes, tradesRes, piMetricsRes] = await Promise.all([
     admin
       .from("market_seller_profiles")
       .select("user_id,market_username,display_name,business_name,is_verified,logo_path,banner_path")
@@ -205,10 +205,15 @@ Deno.serve(async (req) => {
       .limit(30),
     admin
       .from("market_stock_trades")
-      .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,traded_at,chain_tx_hash")
+      .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,traded_at,chain_tx_hash,settlement_rail,external_txid")
       .eq("stock_id", identity.id)
       .order("traded_at", { ascending: false })
       .limit(tradeLimit),
+    admin
+      .from("market_stock_pi_liquidity_metrics_v")
+      .select("*")
+      .eq("stock_id", identity.id)
+      .maybeSingle(),
   ]);
 
   if (sellerRes.error) return bad(sellerRes.error.message);
@@ -216,6 +221,7 @@ Deno.serve(async (req) => {
   if (reserveRes.error) return bad(reserveRes.error.message);
   if (reinvestRes.error) return bad(reinvestRes.error.message);
   if (tradesRes.error) return bad(tradesRes.error.message);
+  if (piMetricsRes.error) return bad(piMetricsRes.error.message);
 
   const multiplier = timeframeMinutes(timeframe);
   const sourceLimit = Math.max(candleLimit, candleLimit * multiplier);
@@ -246,14 +252,27 @@ Deno.serve(async (req) => {
   const uid = auth?.user?.id ?? null;
   let myPosition: any = null;
   if (uid) {
-    const { data: pos, error: posErr } = await admin
-      .from("market_stock_positions")
-      .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,updated_at")
-      .eq("stock_id", identity.id)
-      .eq("user_id", uid)
-      .maybeSingle();
+    const [{ data: pos, error: posErr }, { data: piRows, error: piRowsErr }] = await Promise.all([
+      admin
+        .from("market_stock_positions")
+        .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,locked_redemption_qty,updated_at")
+        .eq("stock_id", identity.id)
+        .eq("user_id", uid)
+        .maybeSingle(),
+      admin
+        .from("market_stock_pi_redemption_queue")
+        .select("id,queue_seq,status,quantity_locked,locked_net_usdc,locked_net_payout_pi,attempt_count,next_retry_at,created_at,completed_at")
+        .eq("stock_id", identity.id)
+        .eq("user_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(8),
+    ]);
     if (posErr) return bad(posErr.message);
-    myPosition = pos ?? null;
+    if (piRowsErr) return bad(piRowsErr.message);
+    myPosition = {
+      ...(pos || {}),
+      pi_redemptions: piRows ?? [],
+    };
   }
 
   const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -297,5 +316,9 @@ Deno.serve(async (req) => {
     candles,
     trades: tradesRes.data ?? [],
     my_position: myPosition,
+    pi: {
+      liquidity: piMetricsRes.data ?? null,
+      my_redemptions: (myPosition as any)?.pi_redemptions ?? [],
+    },
   });
 });

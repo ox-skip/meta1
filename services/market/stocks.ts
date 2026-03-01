@@ -371,7 +371,7 @@ export async function fetchMyStockPortfolio() {
 
   const { data: positions, error: posErr } = await supabase
     .from("market_stock_positions")
-    .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,updated_at")
+    .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,locked_redemption_qty,updated_at")
     .eq("user_id", user.id)
     .order("updated_at", { ascending: false });
   if (posErr) throw new Error(posErr.message);
@@ -401,12 +401,14 @@ export async function fetchMyStockPortfolio() {
     const point = pointMap.get(String(p.stock_id));
     const priceNow = Number(point?.last_price_usdc ?? 0);
     const qty = Number(p.balance_qty ?? 0);
+    const lockedQty = Number(p.locked_redemption_qty ?? 0);
     const avg = Number(p.avg_cost_usdc ?? 0);
     const value = qty * priceNow;
     const unrealized = (priceNow - avg) * qty;
     return {
       ...p,
       identity,
+      locked_redemption_qty: lockedQty,
       price_now_usdc: priceNow,
       value_usdc: value,
       unrealized_pnl_usdc: unrealized,
