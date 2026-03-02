@@ -198,16 +198,19 @@ Deno.serve(async (req) => {
     if (!permsBySeller.error) perms = permsBySeller.data;
   }
 
-  const allowCreate = perms?.can_create ?? perms?.allow_create ?? true;
+  const allowCreate = perms?.can_create_evm ?? perms?.can_create ?? perms?.allow_create ?? true;
   const allowReserved = perms?.allow_reserved ?? false;
 
   const { data: existingByStore, error: existingErr } = await admin
     .from("market_stock_identities")
     .select("id,slug,name,symbol,chain,chain_id,active,token_address,pool_address,trading_paused_until,launched_at")
     .eq("store_id", user.id)
+    .neq("chain", "pi_testnet")
     .maybeSingle();
   if (existingErr) return bad(existingErr.message);
   const hadExistingIdentity = !!existingByStore?.id;
+
+  if (preferredChain === "pi_testnet") return bad("Use the Pi stock creation flow for pi_testnet identities");
 
   let chainConfig: any = null;
   if (preferredChain) {

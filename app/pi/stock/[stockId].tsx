@@ -26,6 +26,10 @@ export default function PublicPiStockCheckout() {
     const value = params.return_to;
     return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
   }, [params.return_to]);
+  const stockSlug = useMemo(() => {
+    const value = params.slug;
+    return Array.isArray(value) ? String(value[0] || "").trim() : String(value || "").trim();
+  }, [params.slug]);
   const autoStart = useMemo(() => {
     const value = params.auto;
     const raw = Array.isArray(value) ? String(value[0] || "").trim().toLowerCase() : String(value || "").trim().toLowerCase();
@@ -90,7 +94,7 @@ export default function PublicPiStockCheckout() {
           ? { text: "Return to BestCity", onPress: () => void openReturnTarget() }
           : {
             text: "Open stock",
-            onPress: () => router.replace((`/market/stock/${stockId}` as any) as any),
+            onPress: () => router.replace((`/pi/stock/market/${stockSlug || stockId}` as any) as any),
           },
       ],
     );

@@ -60,6 +60,17 @@ Deno.serve(async (req) => {
   if (!quote_signature) return bad("quote_signature required");
 
   try {
+    const { data: identity, error: identityErr } = await admin
+      .from("market_stock_identities")
+      .select("id,chain")
+      .eq("id", stock_id)
+      .maybeSingle();
+    if (identityErr) return bad(identityErr.message);
+    if (!identity) return bad("Stock identity not found");
+    if (String(identity.chain || "").toLowerCase() !== "pi_testnet") {
+      return bad("Pi trading is only available for Pi-native stock identities");
+    }
+
     const { data: quote, error: quoteErr } = await admin
       .from("market_stock_quotes")
       .select("*")

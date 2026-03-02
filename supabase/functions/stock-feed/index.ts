@@ -16,6 +16,22 @@ function toInt(input: unknown, fallback: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.floor(n)));
 }
 
+function parseMarket(input: unknown): "evm" | "pi" | "all" {
+  const value = String(input ?? "evm").trim().toLowerCase();
+  if (value === "pi" || value === "all") return value;
+  return "evm";
+}
+
+function isMissingPiSchemaError(error: unknown) {
+  const msg = String((error as any)?.message ?? error ?? "").toLowerCase();
+  return (
+    msg.includes("market_stock_pi_") ||
+    msg.includes("market_stock_quotes") ||
+    msg.includes("locked_redemption_qty") ||
+    msg.includes("does not exist")
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -27,13 +43,16 @@ Deno.serve(async (req) => {
   if (mode === "list") {
     const limit = toInt(body?.limit, 30, 1, 100);
     const offset = toInt(body?.offset, 0, 0, 5000);
+    const market = parseMarket(body?.market);
 
-    const { data: identities, error: listErr } = await admin
+    let listQuery = admin
       .from("market_stock_identities")
       .select("id,store_id,slug,name,symbol,chain,active,launch_guard_until,trading_paused_until,launched_at,created_at")
       .neq("active", false)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order("created_at", { ascending: false });
+    if (market === "pi") listQuery = listQuery.eq("chain", "pi_testnet");
+    if (market === "evm") listQuery = listQuery.neq("chain", "pi_testnet");
+    const { data: identities, error: listErr } = await listQuery.range(offset, offset + limit - 1);
     if (listErr) return bad(listErr.message);
 
     const rows = identities ?? [];
@@ -181,7 +200,7 @@ Deno.serve(async (req) => {
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
 
-  const [sellerRes, pointRes, reserveRes, reinvestRes, tradesRes, piMetricsRes] = await Promise.all([
+  const [sellerRes, pointRes, reserveRes, reinvestRes] = await Promise.all([
     admin
       .from("market_seller_profiles")
       .select("user_id,market_username,display_name,business_name,is_verified,logo_path,banner_path")
@@ -203,25 +222,53 @@ Deno.serve(async (req) => {
       .eq("stock_id", identity.id)
       .order("created_at", { ascending: false })
       .limit(30),
-    admin
-      .from("market_stock_trades")
-      .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,traded_at,chain_tx_hash,settlement_rail,external_txid")
-      .eq("stock_id", identity.id)
-      .order("traded_at", { ascending: false })
-      .limit(tradeLimit),
-    admin
-      .from("market_stock_pi_liquidity_metrics_v")
-      .select("*")
-      .eq("stock_id", identity.id)
-      .maybeSingle(),
   ]);
 
   if (sellerRes.error) return bad(sellerRes.error.message);
   if (pointRes.error) return bad(pointRes.error.message);
   if (reserveRes.error) return bad(reserveRes.error.message);
   if (reinvestRes.error) return bad(reinvestRes.error.message);
-  if (tradesRes.error) return bad(tradesRes.error.message);
-  if (piMetricsRes.error) return bad(piMetricsRes.error.message);
+
+  let trades: any[] = [];
+  {
+    const tradesWithRail = await admin
+      .from("market_stock_trades")
+      .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,traded_at,chain_tx_hash,settlement_rail,external_txid")
+      .eq("stock_id", identity.id)
+      .order("traded_at", { ascending: false })
+      .limit(tradeLimit);
+    if (!tradesWithRail.error) {
+      trades = tradesWithRail.data ?? [];
+    } else if (isMissingPiSchemaError(tradesWithRail.error)) {
+      const tradesFallback = await admin
+        .from("market_stock_trades")
+        .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,traded_at,chain_tx_hash")
+        .eq("stock_id", identity.id)
+        .order("traded_at", { ascending: false })
+        .limit(tradeLimit);
+      if (tradesFallback.error) return bad(tradesFallback.error.message);
+      trades = (tradesFallback.data ?? []).map((row: any) => ({
+        ...row,
+        settlement_rail: "evm",
+        external_txid: null,
+      }));
+    } else {
+      return bad(tradesWithRail.error.message);
+    }
+  }
+
+  let piMetrics: any = null;
+  if (identity.chain === "pi_testnet") {
+    const piMetricsRes = await admin
+      .from("market_stock_pi_liquidity_metrics_v")
+      .select("*")
+      .eq("stock_id", identity.id)
+      .maybeSingle();
+    if (piMetricsRes.error && !isMissingPiSchemaError(piMetricsRes.error)) {
+      return bad(piMetricsRes.error.message);
+    }
+    piMetrics = piMetricsRes.error ? null : (piMetricsRes.data ?? null);
+  }
 
   const multiplier = timeframeMinutes(timeframe);
   const sourceLimit = Math.max(candleLimit, candleLimit * multiplier);
@@ -252,26 +299,46 @@ Deno.serve(async (req) => {
   const uid = auth?.user?.id ?? null;
   let myPosition: any = null;
   if (uid) {
-    const [{ data: pos, error: posErr }, { data: piRows, error: piRowsErr }] = await Promise.all([
-      admin
+    let pos: any = null;
+    {
+      const posWithLocked = await admin
         .from("market_stock_positions")
         .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,locked_redemption_qty,updated_at")
         .eq("stock_id", identity.id)
         .eq("user_id", uid)
-        .maybeSingle(),
-      admin
+        .maybeSingle();
+      if (!posWithLocked.error) {
+        pos = posWithLocked.data ?? null;
+      } else if (isMissingPiSchemaError(posWithLocked.error)) {
+        const posFallback = await admin
+          .from("market_stock_positions")
+          .select("stock_id,user_id,balance_qty,avg_cost_usdc,realized_pnl_usdc,updated_at")
+          .eq("stock_id", identity.id)
+          .eq("user_id", uid)
+          .maybeSingle();
+        if (posFallback.error) return bad(posFallback.error.message);
+        pos = posFallback.data ? { ...posFallback.data, locked_redemption_qty: 0 } : null;
+      } else {
+        return bad(posWithLocked.error.message);
+      }
+    }
+
+    let piRows: any[] = [];
+    if (identity.chain === "pi_testnet") {
+      const piRowsRes = await admin
         .from("market_stock_pi_redemption_queue")
         .select("id,queue_seq,status,quantity_locked,locked_net_usdc,locked_net_payout_pi,attempt_count,next_retry_at,created_at,completed_at")
         .eq("stock_id", identity.id)
         .eq("user_id", uid)
         .order("created_at", { ascending: false })
-        .limit(8),
-    ]);
-    if (posErr) return bad(posErr.message);
-    if (piRowsErr) return bad(piRowsErr.message);
+        .limit(8);
+      if (piRowsRes.error && !isMissingPiSchemaError(piRowsRes.error)) return bad(piRowsRes.error.message);
+      piRows = piRowsRes.error ? [] : (piRowsRes.data ?? []);
+    }
     myPosition = {
       ...(pos || {}),
-      pi_redemptions: piRows ?? [],
+      locked_redemption_qty: Number((pos as any)?.locked_redemption_qty ?? 0),
+      pi_redemptions: piRows,
     };
   }
 
@@ -292,8 +359,8 @@ Deno.serve(async (req) => {
 
   // Fallback for early bootstrap periods before candles are populated.
   if ((candles24 ?? []).length === 0) {
-    volume24h = (tradesRes.data ?? []).reduce((acc: number, t: any) => acc + toNum(t.notional_usdc, 0), 0);
-    trades24h = (tradesRes.data ?? []).length;
+    volume24h = trades.reduce((acc: number, t: any) => acc + toNum(t.notional_usdc, 0), 0);
+    trades24h = trades.length;
   }
 
   return ok({
@@ -314,10 +381,10 @@ Deno.serve(async (req) => {
     reserve: reserveRes.data ?? null,
     reinvestments: reinvestRes.data ?? [],
     candles,
-    trades: tradesRes.data ?? [],
+    trades,
     my_position: myPosition,
     pi: {
-      liquidity: piMetricsRes.data ?? null,
+      liquidity: piMetrics,
       my_redemptions: (myPosition as any)?.pi_redemptions ?? [],
     },
   });

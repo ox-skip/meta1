@@ -809,6 +809,7 @@ export async function createStockIdentityOnchain(input: {
       .from("market_stock_identities")
       .select("id,slug,name,symbol,chain,active,token_address,pool_address,trading_paused_until")
       .eq("store_id", user.id)
+      .neq("chain", "pi_testnet")
       .maybeSingle();
     if (existingErr) throw new Error(existingErr.message);
     const pausedUntilMs = Date.parse(String((existing as any)?.trading_paused_until || ""));

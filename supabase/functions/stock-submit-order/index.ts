@@ -102,6 +102,9 @@ Deno.serve(async (req) => {
   if (!isHexTxHash(txHash)) return bad("tx_hash is required for onchain execution");
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
+  if (identity.chain === "pi_testnet") {
+    return bad("This is a Pi-native stock. Use the Pi stock market flow.");
+  }
   if (!isAddress(String(identity.pool_address || ""))) return bad("Stock pool address is missing");
   if (!isAddress(String(identity.token_address || ""))) return bad("Stock token address is missing");
   if (isTradingPaused(identity)) return bad("Trading is paused for this stock");

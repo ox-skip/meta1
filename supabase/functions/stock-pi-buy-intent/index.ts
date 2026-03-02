@@ -56,6 +56,7 @@ Deno.serve(async (req) => {
   try {
     const identity = await resolveStockIdentity(admin as any, { stockId, slug });
     if (!identity) return bad("Stock identity not found");
+    if (identity.chain !== "pi_testnet") return bad("Pi trading is only available for Pi-native stock identities");
 
     const [piUsdPrice, market] = await Promise.all([
       getPiUsdPrice(),
@@ -188,6 +189,7 @@ Deno.serve(async (req) => {
     return ok({
       ok: true,
       stock_id: identity.id,
+      slug: identity.slug,
       order_id: order.id,
       quote: {
         ...quote,

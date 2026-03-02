@@ -129,7 +129,7 @@ export default function CreateStockIdentityScreen() {
       } else if (res?.created === false) {
         setOkMsg("Stock identity already exists and is ready for trading.");
       } else {
-        setOkMsg("Stock identity created on-chain. Fees split: $45 liquidity / $5 fee receiver.");
+        setOkMsg("EVM stock identity created on-chain. Fees split: $45 liquidity / $5 fee receiver.");
       }
       setSuccessVisible(true);
       if (createdSlug) {
@@ -170,7 +170,7 @@ export default function CreateStockIdentityScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Digital Stock" subtitle="One per verified store. Fixed supply: 10,000,000." />
+      <AppHeader title="Create Digital Stock" subtitle="One EVM stock per verified store. Fixed supply: 10,000,000." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
         {loading ? (
           <View style={{ marginTop: 30, alignItems: "center" }}>

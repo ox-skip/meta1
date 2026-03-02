@@ -19,6 +19,7 @@ const MENU_ITEMS: Array<{
 }> = [
   { title: "Market Home", icon: "storefront-outline", route: "/market/(tabs)" },
   { title: "Digital Stock", icon: "trending-up-outline", route: "/market/stock" },
+  { title: "Pi Stock", icon: "logo-bitcoin", route: "/pi/stock/market" },
   { title: "Sell", icon: "add-circle-outline", route: "/market/(tabs)/sell" },
   { title: "Orders", icon: "receipt-outline", route: "/market/(tabs)/orders" },
   { title: "Category", icon: "grid-outline", route: "/market/(tabs)/category" },

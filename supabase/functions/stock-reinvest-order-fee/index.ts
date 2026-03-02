@@ -57,11 +57,15 @@ Deno.serve(async (req) => {
         .from("market_stock_identities")
         .select("*")
         .eq("store_id", order.seller_id)
+        .neq("chain", "pi_testnet")
         .maybeSingle();
       if (error) return bad(error.message);
       identity = data;
     }
     if (!identity) return bad("No stock identity found for order seller");
+    if (String(identity.chain ?? "").toLowerCase() === "pi_testnet") {
+      return bad("Order-fee reinvestment is only supported for the formal EVM stock identity");
+    }
 
     const grossFee = round6(Number(order.fee_amount ?? 0) > 0 ? Number(order.fee_amount) : Number(order.amount ?? 0) * 0.01);
     if (!Number.isFinite(grossFee) || grossFee <= 0) return bad("Invalid fee amount for reinvestment");

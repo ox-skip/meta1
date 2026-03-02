@@ -647,6 +647,7 @@ export default function StockDetailScreen() {
 
   const title = detail?.identity?.name || "Stock";
   const symbol = detail?.identity?.symbol || "";
+  const isPiNativeStock = String(detail?.identity?.chain || "").toLowerCase() === "pi_testnet";
   const chainText = String(detail?.identity?.chain || "")
     .toUpperCase()
     .replace("_", " ");
@@ -686,6 +687,17 @@ export default function StockDetailScreen() {
     && !quoteErr
     && !!quote;
   const canQuickBuy = tradeRail === "evm" && !submitting && !tradingPaused && !!quickQuote && !quickQuoteErr;
+
+  useEffect(() => {
+    if (!detail?.identity?.slug) return;
+    if (!isPiNativeStock) return;
+    router.replace((`/pi/stock/market/${detail.identity.slug}` as any) as any);
+  }, [detail?.identity?.slug, isPiNativeStock]);
+
+  useEffect(() => {
+    if (isPiNativeStock) return;
+    if (tradeRail === "pi") setTradeRail("evm");
+  }, [isPiNativeStock, tradeRail]);
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
@@ -915,36 +927,14 @@ export default function StockDetailScreen() {
 
             {panel === "trade" ? (
               <View style={{ marginTop: 10, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
-                  <Pressable
-                    onPress={() => setTradeRail("evm")}
-                    style={{
-                      flex: 1,
-                      borderRadius: 10,
-                      paddingVertical: 9,
-                      alignItems: "center",
-                      backgroundColor: tradeRail === "evm" ? "rgba(45,212,191,0.20)" : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor: tradeRail === "evm" ? "rgba(45,212,191,0.55)" : BORDER,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>EVM Rail</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTradeRail("pi")}
-                    style={{
-                      flex: 1,
-                      borderRadius: 10,
-                      paddingVertical: 9,
-                      alignItems: "center",
-                      backgroundColor: tradeRail === "pi" ? "rgba(59,130,246,0.20)" : "rgba(255,255,255,0.05)",
-                      borderWidth: 1,
-                      borderColor: tradeRail === "pi" ? "rgba(59,130,246,0.52)" : BORDER,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Pi Rail</Text>
-                  </Pressable>
-                </View>
+                {!isPiNativeStock ? (
+                  <View style={{ marginBottom: 10, borderRadius: 10, padding: 10, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.28)" }}>
+                    <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>EVM Settlement</Text>
+                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                      This stock is part of the formal EVM market. Pi trading is available only on Pi-native stock identities.
+                    </Text>
+                  </View>
+                ) : null}
 
                 <View style={{ flexDirection: "row", gap: 8 }}>
                   <Pressable

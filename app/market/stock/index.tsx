@@ -82,7 +82,7 @@ export default function StockHomeScreen() {
   async function load() {
     setErr(null);
     try {
-      const res = await fetchStocksOverview(80, 0);
+      const res = await fetchStocksOverview(80, 0, "evm");
       setItems(res.items ?? []);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "Unable to load digital stock market right now."));
@@ -133,7 +133,7 @@ export default function StockHomeScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Digital Stock" subtitle="Internet stock identities tied to real store commerce." />
+      <AppHeader title="Digital Stock" subtitle="Formal EVM stock identities tied to real store commerce." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -151,7 +151,7 @@ export default function StockHomeScreen() {
               borderColor: "rgba(45,212,191,0.42)",
             }}
           >
-            <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Create Stock Identity</Text>
+            <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Create EVM Stock</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push("/market/stock/portfolio" as any)}
@@ -168,6 +168,21 @@ export default function StockHomeScreen() {
             <Text style={{ color: "#FFF7ED", fontWeight: "900" }}>My Portfolio</Text>
           </Pressable>
         </View>
+
+        <Pressable
+          onPress={() => router.push("/pi/stock/market" as any)}
+          style={{
+            marginTop: 10,
+            borderRadius: 14,
+            paddingVertical: 12,
+            alignItems: "center",
+            backgroundColor: "rgba(245,158,11,0.12)",
+            borderWidth: 1,
+            borderColor: "rgba(245,158,11,0.35)",
+          }}
+        >
+          <Text style={{ color: "#FFF7ED", fontWeight: "900" }}>Open Pi Stock Market</Text>
+        </Pressable>
 
         <View
           style={{

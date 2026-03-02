@@ -33,6 +33,9 @@ Deno.serve(async (req) => {
   if (!side) return bad("side must be buy or sell");
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
+  if (identity.chain === "pi_testnet") {
+    return bad("This is a Pi-native stock. Use the Pi stock market flow.");
+  }
   if (isTradingPaused(identity)) return bad("Trading is paused for this stock");
 
   const { data: chainConfig, error: chainErr } = await admin

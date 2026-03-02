@@ -58,6 +58,7 @@ export type StockPiLiquidity = {
 export type StockPiBuyIntent = {
   ok: boolean;
   stock_id: string;
+  slug?: string;
   order_id: string;
   quote: StockPiQuote & { quote_signature: string; quote_expires_at: string };
   checkout_token: string;
@@ -230,6 +231,7 @@ function buildPiStockCheckoutUrl(intent: StockPiBuyIntent, returnUrl?: string | 
   const base = getPublicWebBaseUrl();
   const query = buildQuery({
     stock_id: intent.stock_id,
+    slug: intent.slug || "",
     order_id: intent.order_id,
     quote_ref: intent.quote.quote_ref,
     quote_signature: intent.quote.quote_signature,
@@ -345,6 +347,19 @@ export async function submitPiStockSell(input: {
     cooldown_seconds: number;
     lpi: number;
   }>("stock-pi-sell-submit", input);
+}
+
+export async function createPiStockIdentity(input: {
+  name: string;
+  symbol: string;
+  slug?: string | null;
+  initial_price_usdc?: number;
+}) {
+  return await callFn<{
+    ok: boolean;
+    created: boolean;
+    identity: any;
+  }>("stock-pi-create-identity", input);
 }
 
 async function requestPiStockBuyIntent(input: { stock_id?: string; slug?: string; amount_usdc: number }) {
@@ -513,6 +528,7 @@ export function parsePiStockIntentFromQuery(input: Record<string, string | strin
   };
 
   const stockId = read("stock_id");
+  const slug = read("slug");
   const orderId = read("order_id");
   const quoteRef = read("quote_ref");
   const quoteSignature = read("quote_signature");
@@ -533,6 +549,7 @@ export function parsePiStockIntentFromQuery(input: Record<string, string | strin
   return {
     ok: true,
     stock_id: stockId,
+    slug: slug || undefined,
     order_id: orderId,
     checkout_token: checkoutToken,
     callbacks: {
