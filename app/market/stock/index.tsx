@@ -82,7 +82,7 @@ export default function StockHomeScreen() {
   async function load() {
     setErr(null);
     try {
-      const res = await fetchStocksOverview(80, 0, "evm");
+      const res = await fetchStocksOverview(80, 0, "all");
       setItems(res.items ?? []);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "Unable to load digital stock market right now."));
@@ -133,7 +133,7 @@ export default function StockHomeScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Digital Stock" subtitle="Formal EVM stock identities tied to real store commerce." />
+      <AppHeader title="Digital Stock" subtitle="Unified market view for EVM and Pi stock identities." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -170,7 +170,7 @@ export default function StockHomeScreen() {
         </View>
 
         <Pressable
-          onPress={() => router.push("/pi/stock/market" as any)}
+          onPress={() => router.push("/pi/stock/market/create" as any)}
           style={{
             marginTop: 10,
             borderRadius: 14,
@@ -181,7 +181,7 @@ export default function StockHomeScreen() {
             borderColor: "rgba(245,158,11,0.35)",
           }}
         >
-          <Text style={{ color: "#FFF7ED", fontWeight: "900" }}>Open Pi Stock Market</Text>
+          <Text style={{ color: "#FFF7ED", fontWeight: "900" }}>Create Pi Stock</Text>
         </Pressable>
 
         <View

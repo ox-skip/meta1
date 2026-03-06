@@ -94,7 +94,7 @@ export default function PublicPiStockCheckout() {
           ? { text: "Return to BestCity", onPress: () => void openReturnTarget() }
           : {
             text: "Open stock",
-            onPress: () => router.replace((`/pi/stock/market/${stockSlug || stockId}` as any) as any),
+            onPress: () => router.replace((`/market/stock/${stockSlug || stockId}` as any) as any),
           },
       ],
     );

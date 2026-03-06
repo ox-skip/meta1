@@ -689,14 +689,11 @@ export default function StockDetailScreen() {
   const canQuickBuy = tradeRail === "evm" && !submitting && !tradingPaused && !!quickQuote && !quickQuoteErr;
 
   useEffect(() => {
-    if (!detail?.identity?.slug) return;
-    if (!isPiNativeStock) return;
-    router.replace((`/pi/stock/market/${detail.identity.slug}` as any) as any);
-  }, [detail?.identity?.slug, isPiNativeStock]);
-
-  useEffect(() => {
-    if (isPiNativeStock) return;
-    if (tradeRail === "pi") setTradeRail("evm");
+    if (isPiNativeStock) {
+      if (tradeRail !== "pi") setTradeRail("pi");
+      return;
+    }
+    if (tradeRail !== "evm") setTradeRail("evm");
   }, [isPiNativeStock, tradeRail]);
 
   return (

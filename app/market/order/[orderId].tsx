@@ -754,12 +754,10 @@ async function releaseFunds() {
   setBusy(true);
   setErr(null);
   try {
-    if (["USDC", "USDT"].includes(String(order.currency || "").toUpperCase())) {
-      if (isPiRailOrder) {
-        await releasePiForOrder(order.id);
-      } else {
-        await releaseUsdcForOrder(order.id);
-      }
+    if (isPiRailOrder) {
+      await releasePiForOrder(order.id);
+    } else if (["USDC", "USDT"].includes(String(order.currency || "").toUpperCase())) {
+      await releaseUsdcForOrder(order.id);
     } else {
       const auth = await requireLocalAuth("Release escrow to seller");
       if (!auth.ok) throw new Error(auth.message || "Authentication required");

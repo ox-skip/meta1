@@ -398,6 +398,8 @@ async function ensureReleaseSettled(
   }
 
   for (let i = 0; i < 12; i++) {
+    await runReindexFallback(orderId, resolvedTxHash || null);
+
     const status = await readOrderStatus(orderId);
     if (status === "RELEASED") {
       return { settled: true, txHash: resolvedTxHash || "" };
@@ -980,7 +982,7 @@ export async function releaseUsdcForOrder(orderId: string) {
   });
 
   const sendResult = await (client as any).sendTransaction({
-    from: address as `0x${string}`,
+    account,
     to: intent.escrow_address as `0x${string}`,
     data,
   });

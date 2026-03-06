@@ -60,6 +60,59 @@ function isPiHandoffResult(value: any): value is PiPaymentHandoffResult {
   return value?.handoff_required === true && typeof value?.pi_browser_url === "string";
 }
 
+function parseJsonObject(value: unknown) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function normalizeDeliveryGeo(value: unknown): DeliveryGeo | null {
+  const raw = parseJsonObject(value) as any;
+  if (!raw) return null;
+
+  const lat = Number(raw?.lat ?? raw?.latitude);
+  const lng = Number(raw?.lng ?? raw?.longitude);
+  const next: DeliveryGeo = {
+    lat: Number.isFinite(lat) ? lat : Number.NaN,
+    lng: Number.isFinite(lng) ? lng : Number.NaN,
+    city: String(raw?.city ?? "").trim(),
+    region: String(raw?.region ?? "").trim(),
+    country: String(raw?.country ?? "").trim(),
+    countryCode: String(raw?.countryCode ?? raw?.country_code ?? "").trim(),
+    label: String(raw?.label ?? "").trim(),
+  };
+
+  const hasContent =
+    Number.isFinite(next.lat) ||
+    Number.isFinite(next.lng) ||
+    !!next.city ||
+    !!next.region ||
+    !!next.country ||
+    !!next.countryCode ||
+    !!next.label;
+
+  return hasContent ? next : null;
+}
+
+function normalizeBuyerContact(value: unknown) {
+  const raw = parseJsonObject(value) as any;
+  return {
+    name: String(raw?.name ?? "").trim(),
+    phone: String(raw?.phone ?? "").trim(),
+    email: String(raw?.email ?? "").trim(),
+    note: String(raw?.note ?? "").trim(),
+  };
+}
+
 async function invokeCheckoutWallet(orderId: string) {
   const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string) => {
     const timeout = new Promise<never>((_, reject) =>
@@ -233,6 +286,9 @@ export default function Checkout() {
   const usdtRequired = orderCurrency === "USDT" ? orderAmount : 0;
   const usdcShortfall = allowUsdc && usdcRequired > 0 ? Math.max(0, usdcRequired - usdcBalance) : 0;
   const usdtShortfall = allowUsdt && usdtRequired > 0 ? Math.max(0, usdtRequired - usdtBalance) : 0;
+  const deliveryLat = Number(deliveryGeo?.lat);
+  const deliveryLng = Number(deliveryGeo?.lng);
+  const hasDeliveryCoords = Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng);
 
   async function requireAuth() {
     const { data } = await supabase.auth.getUser();
@@ -371,11 +427,28 @@ export default function Checkout() {
         }
 
         if (mounted) {
-          setOrder(o);
-          setListing(l);
-          const geo = (o as any)?.delivery_address?.geo ?? null;
-          setDeliveryGeo(geo && Object.keys(geo).length ? geo : null);
-          const contact = (o as any)?.buyer_contact ?? {};
+          const parsedOrder = o
+            ? {
+              ...o,
+              delivery_address: parseJsonObject((o as any)?.delivery_address) ?? {},
+              buyer_contact: normalizeBuyerContact((o as any)?.buyer_contact),
+            }
+            : null;
+          const parsedListing = l
+            ? {
+              ...l,
+              availability: parseJsonObject((l as any)?.availability) ?? (l as any)?.availability ?? {},
+              payment_options: parseJsonObject((l as any)?.payment_options) ?? (l as any)?.payment_options ?? {},
+            }
+            : null;
+          const geo = normalizeDeliveryGeo((parsedOrder as any)?.delivery_address?.geo);
+          const contact = normalizeBuyerContact(
+            (parsedOrder as any)?.buyer_contact ?? (parsedOrder as any)?.delivery_address?.contact,
+          );
+
+          setOrder(parsedOrder);
+          setListing(parsedListing);
+          setDeliveryGeo(geo);
           setContactName(String(contact?.name ?? ""));
           setContactPhone(String(contact?.phone ?? ""));
           setContactEmail(String(contact?.email ?? ""));
@@ -935,7 +1008,8 @@ export default function Checkout() {
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>Loading order details...</Text>
           ) : deliveryGeo ? (
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-              Delivery location: {deliveryGeo.label || "Saved"} | {deliveryGeo.lat.toFixed(5)}, {deliveryGeo.lng.toFixed(5)}
+              Delivery location: {deliveryGeo.label || "Saved"}
+              {hasDeliveryCoords ? ` | ${deliveryLat.toFixed(5)}, ${deliveryLng.toFixed(5)}` : ""}
             </Text>
           ) : (
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>

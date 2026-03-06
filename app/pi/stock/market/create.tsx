@@ -37,7 +37,7 @@ export default function CreatePiStockIdentityScreen() {
       setOkMsg(res.created ? "Pi stock identity created." : "Pi stock identity already exists.");
       if (createdSlug) {
         setTimeout(() => {
-          router.replace(`/pi/stock/market/${createdSlug}` as any);
+          router.replace(`/market/stock/${createdSlug}` as any);
         }, 400);
       }
     } catch (e: any) {
@@ -49,7 +49,7 @@ export default function CreatePiStockIdentityScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Pi Stock" subtitle="Pi-native stock identity for verified stores." />
+      <AppHeader title="Create Pi Stock" subtitle="Create a Pi-native identity for the unified stock market." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
         <View style={{ marginTop: 12, gap: 10 }}>
           <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
@@ -106,7 +106,7 @@ export default function CreatePiStockIdentityScreen() {
         <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
           <Text style={{ color: "#fff", fontWeight: "900" }}>Pi-native Rules</Text>
           <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-            This creates a Pi-native stock identity. It is separate from your EVM stock identity and trades only through the Pi stock market.
+            This creates a Pi-native stock identity. It appears in the same market list as EVM stocks, but buy/sell settlement stays on Pi.
           </Text>
         </View>
 
