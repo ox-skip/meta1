@@ -78,6 +78,7 @@ function ctaLabel(reqRow: MarketVerificationRequest | null) {
 export default function VerificationApply() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [reqRow, setReqRow] = useState<MarketVerificationRequest | null>(null);
 
@@ -127,6 +128,8 @@ export default function VerificationApply() {
   }, []);
 
   async function submit() {
+    setSubmitError(null);
+
     if (!profile) {
       Alert.alert("Create seller profile", "You need a market seller profile before starting verification.", [
         { text: "Cancel", style: "cancel" },
@@ -159,7 +162,13 @@ export default function VerificationApply() {
       await load();
       router.replace("/market/verification/status" as any);
     } catch (e: any) {
-      Alert.alert("Failed", e?.message || "Could not start verification.");
+      const message = String(e?.message || "Could not start verification.");
+      console.error("[market-verification] start failed", {
+        message,
+        details: e?.details ?? null,
+      });
+      setSubmitError(message);
+      Alert.alert("Failed", message);
     } finally {
       setBusy(false);
     }
@@ -281,6 +290,22 @@ export default function VerificationApply() {
                 Verification opens in a secure browser session. Once the provider finishes review, their webhook
                 updates your seller badge automatically in our database.
               </Text>
+
+              {!!submitError ? (
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 16,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: "rgba(127,29,29,0.26)",
+                    borderWidth: 1,
+                    borderColor: "rgba(239,68,68,0.35)",
+                  }}
+                >
+                  <Text style={{ color: "#FCA5A5", lineHeight: 20 }}>{submitError}</Text>
+                </View>
+              ) : null}
 
               <Pressable
                 disabled={!canSubmit || busy}
