@@ -44,8 +44,27 @@ export type StartSellerVerificationResult = {
   request?: MarketVerificationRequest | null;
 };
 
+function normalizeVerificationError(error: unknown) {
+  const raw = String((error as any)?.message ?? error ?? "").trim();
+  const lower = raw.toLowerCase();
+
+  if (
+    lower === "invalid jwt" ||
+    lower.includes("verification provider credentials") ||
+    lower.includes("provider rejected server credentials")
+  ) {
+    return "Verification provider credentials are invalid on the server. Update the verification secrets and redeploy the verification functions.";
+  }
+
+  return raw || "Could not start verification.";
+}
+
 export async function startSellerVerification(countryCode?: string | null) {
-  return await callFn<StartSellerVerificationResult>("market-verification-start", {
-    country_code: countryCode || null,
-  });
+  try {
+    return await callFn<StartSellerVerificationResult>("market-verification-start", {
+      country_code: countryCode || null,
+    });
+  } catch (e) {
+    throw new Error(normalizeVerificationError(e));
+  }
 }

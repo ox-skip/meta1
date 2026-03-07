@@ -75,6 +75,18 @@ function ctaLabel(reqRow: MarketVerificationRequest | null) {
   return "Continue verification";
 }
 
+function isVerificationLinkUsable(reqRow: MarketVerificationRequest | null) {
+  if (!reqRow) return false;
+  if (reqRow.status === "VERIFIED") return false;
+  const url = String(reqRow.verification_url || "").trim();
+  if (!url) return false;
+  const expiresAtMs = reqRow.verification_url_expires_at
+    ? new Date(reqRow.verification_url_expires_at).getTime()
+    : Number.NaN;
+  if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) return false;
+  return true;
+}
+
 export default function VerificationApply() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -141,6 +153,22 @@ export default function VerificationApply() {
     if (profile.is_verified) {
       Alert.alert("Already verified", "Your seller account is already verified.");
       return;
+    }
+
+    if (isVerificationLinkUsable(reqRow)) {
+      try {
+        await openBrowserAsync(String(reqRow?.verification_url || "").trim(), {
+          presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+        });
+        await load();
+        router.replace("/market/verification/status" as any);
+        return;
+      } catch (e: any) {
+        const message = String(e?.message || "Could not reopen verification session.");
+        setSubmitError(message);
+        Alert.alert("Failed", message);
+        return;
+      }
     }
 
     setBusy(true);

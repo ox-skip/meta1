@@ -91,6 +91,28 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
   });
 }
 
+function delayResult<T>(timeoutMs: number, value: T) {
+  return new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), timeoutMs);
+  });
+}
+
+async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
+  const target = String(url || "").trim();
+  if (!target) return false;
+
+  try {
+    return await Promise.race([
+      Linking.openURL(target)
+        .then(() => true)
+        .catch(() => false),
+      delayResult(settleAfterMs, true),
+    ]);
+  } catch {
+    return false;
+  }
+}
+
 function CandleChart({ candles }: { candles: Candle[] }) {
   const [width, setWidth] = useState(0);
   const height = 262;
@@ -450,23 +472,30 @@ export default function StockDetailScreen() {
       setSubmitting(true);
       setConfirmVisible(false);
       if (pendingTrade.rail === "pi" && pendingTrade.side === "buy") {
-        const res: any = await buyStockWithPi(
-          {
+        const res: any = await withTimeout(
+          buyStockWithPi({
             slug,
             amount_usdc: Number(pendingTrade.amount_usdc || 0),
-          },
+          }),
+          25_000,
+          "Pi stock checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
         );
 
         if (res?.handoff_required) {
-          try {
-            await Linking.openURL(String(res.pi_browser_url || res.checkout_url || ""));
-            Alert.alert(
-              "Continue in Pi Browser",
-              "Pi checkout was opened in Pi Browser. Complete the payment there, then return to refresh your position.",
-            );
-          } catch (e: any) {
-            throw new Error(String(e?.message || e || "Unable to open Pi Browser."));
+          const piBrowserUrl = String(res.pi_browser_url || "").trim();
+          const checkoutUrl = String(res.checkout_url || "").trim();
+          const opened =
+            (await tryOpenExternalUrl(piBrowserUrl)) ||
+            (piBrowserUrl !== checkoutUrl && (await tryOpenExternalUrl(checkoutUrl)));
+
+          if (!opened) {
+            throw new Error("Unable to open Pi Browser. Open Pi Browser and retry this stock buy.");
           }
+
+          Alert.alert(
+            "Continue in Pi Browser",
+            "Pi checkout was opened. Complete the payment there, then return and refresh your position.",
+          );
           setPendingTrade(null);
           return;
         }

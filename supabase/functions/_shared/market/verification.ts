@@ -47,6 +47,20 @@ export function getDiditApiKey() {
   return envAny(["DIDIT_API_KEY"]);
 }
 
+function normalizeDiditErrorMessage(status: number, rawMessage: string) {
+  const lower = rawMessage.toLowerCase();
+
+  if (status === 401 || status === 403 || lower.includes("invalid jwt") || lower.includes("unauthorized")) {
+    return "Verification provider credentials are invalid. Update DIDIT_API_KEY in Supabase secrets and redeploy the verification functions.";
+  }
+
+  if (lower.includes("workflow")) {
+    return "Verification workflow is invalid. Update DIDIT_WORKFLOW_ID in Supabase secrets.";
+  }
+
+  return rawMessage;
+}
+
 export function getDiditWebhookSecret() {
   return envAny(["DIDIT_WEBHOOK_SECRET"]);
 }
@@ -131,12 +145,14 @@ export async function diditRequest<T>(method: string, path: string, body?: unkno
   const upperMethod = method.toUpperCase();
   const bodyText = body === undefined ? "" : JSON.stringify(body);
   const url = /^https?:\/\//i.test(path) ? path : `${getDiditBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+  const apiKey = getDiditApiKey();
 
   const res = await fetch(url, {
     method: upperMethod,
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": getDiditApiKey(),
+      "x-api-key": apiKey,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: bodyText || undefined,
   });
@@ -151,7 +167,7 @@ export async function diditRequest<T>(method: string, path: string, body?: unkno
     }
   }
   if (!res.ok) {
-    const message = String(
+    const rawMessage = String(
       json?.message ||
         json?.error ||
         json?.detail ||
@@ -159,7 +175,7 @@ export async function diditRequest<T>(method: string, path: string, body?: unkno
         text ||
         `Didit ${upperMethod} ${path} failed`,
     );
-    throw new Error(message);
+    throw new Error(normalizeDiditErrorMessage(res.status, rawMessage));
   }
   return json as T;
 }

@@ -25,6 +25,19 @@ function linkExpiresAt(ttlSecs: number) {
   return new Date(Date.now() + (ttlSecs * 1000)).toISOString();
 }
 
+function isReusableVerificationLink(existing: { verification_url?: string | null; verification_url_expires_at?: string | null; status?: string | null } | null) {
+  const url = String(existing?.verification_url ?? "").trim();
+  if (!url) return false;
+  if (String(existing?.status ?? "").toUpperCase() === "VERIFIED") return false;
+
+  const expiresAt = String(existing?.verification_url_expires_at ?? "").trim();
+  if (!expiresAt) return true;
+
+  const expiresAtMs = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresAtMs)) return true;
+  return expiresAtMs > Date.now();
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -59,7 +72,7 @@ Deno.serve(async (req) => {
   const { data: existing, error: reqErr } = await admin
     .from("market_verification_requests")
     .select(
-      "id,status,provider,provider_applicant_id,provider_external_user_id,provider_level_name,verification_url,verification_url_expires_at,submitted_at,verified_at,note,admin_note",
+      "id,user_id,status,provider,verification_type,provider_level_name,provider_applicant_id,provider_external_user_id,provider_review_status,provider_review_answer,provider_review_reject_type,provider_reject_labels,country_code,document_type,verification_url,verification_url_expires_at,provider_last_event_type,provider_last_event_at,submitted_at,reviewed_at,verified_at,last_error,note,admin_note,updated_at",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -78,6 +91,18 @@ Deno.serve(async (req) => {
   const workflowId = getDiditWorkflowId();
   const ttlSecs = getDiditSessionTtlSecs();
   const externalUserId = buildSellerVerificationExternalUserId(user.id);
+
+  if (isReusableVerificationLink(existing as any)) {
+    return ok({
+      ok: true,
+      verified: false,
+      status: existing?.status ?? "PENDING",
+      provider,
+      verification_url: existing?.verification_url ?? null,
+      verification_url_expires_at: existing?.verification_url_expires_at ?? null,
+      request: existing ?? null,
+    });
+  }
 
   const requestBody: Record<string, unknown> = {
     workflow_id: workflowId,

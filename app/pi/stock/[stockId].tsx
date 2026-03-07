@@ -15,6 +15,12 @@ import { friendlyMarketError } from "@/utils/marketUx";
 const BG0 = "#071018";
 const BG1 = "#0D1B2A";
 
+function delayResult<T>(timeoutMs: number, value: T) {
+  return new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), timeoutMs);
+  });
+}
+
 export default function PublicPiStockCheckout() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
@@ -72,16 +78,27 @@ export default function PublicPiStockCheckout() {
 
   async function openPiBrowser() {
     if (!handoff) return;
-    try {
-      await Linking.openURL(handoff.pi_browser_url);
-      return;
-    } catch {
-      // fallback below
-    }
-    try {
-      await Linking.openURL(handoff.checkout_url);
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't open Pi Browser."));
+    const tryOpen = async (url?: string | null) => {
+      const target = String(url || "").trim();
+      if (!target) return false;
+      try {
+        return await Promise.race([
+          Linking.openURL(target)
+            .then(() => true)
+            .catch(() => false),
+          delayResult(1200, true),
+        ]);
+      } catch {
+        return false;
+      }
+    };
+
+    const opened =
+      (await tryOpen(handoff.pi_browser_url)) ||
+      (handoff.pi_browser_url !== handoff.checkout_url && (await tryOpen(handoff.checkout_url)));
+
+    if (!opened) {
+      setErr("We couldn't open Pi Browser. Open Pi Browser manually and retry this payment.");
     }
   }
 
