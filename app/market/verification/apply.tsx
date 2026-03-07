@@ -162,7 +162,14 @@ export default function VerificationApply() {
       await load();
       router.replace("/market/verification/status" as any);
     } catch (e: any) {
-      const message = String(e?.message || "Could not start verification.");
+      const backendMessage =
+        e?.details?.json?.error ||
+        e?.details?.json?.message ||
+        (typeof e?.details?.text === "string" && e.details.text.length < 300 ? e.details.text : null);
+      const message =
+        typeof e?.message === "string" && !/non-2xx status code/i.test(e.message)
+          ? e.message
+          : String(backendMessage || e?.message || "Could not start verification.");
       console.error("[market-verification] start failed", {
         message,
         details: e?.details ?? null,
