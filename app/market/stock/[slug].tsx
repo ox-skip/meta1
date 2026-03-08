@@ -9,6 +9,7 @@ import {
   LayoutChangeEvent,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -111,6 +112,12 @@ async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
   } catch {
     return false;
   }
+}
+
+function isDesktopWebEnvironment() {
+  if (Platform.OS !== "web") return false;
+  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
+  return !/(android|iphone|ipad|ipod|mobile|pibrowser|minepi)/i.test(ua);
 }
 
 function CandleChart({ candles }: { candles: Candle[] }) {
@@ -482,6 +489,10 @@ export default function StockDetailScreen() {
         );
 
         if (res?.handoff_required) {
+          if (isDesktopWebEnvironment()) {
+            throw new Error("Pi stock buy must continue on a mobile phone with Pi Browser.");
+          }
+
           const piBrowserUrl = String(res.pi_browser_url || "").trim();
           const checkoutUrl = String(res.checkout_url || "").trim();
           const opened =
@@ -605,6 +616,12 @@ export default function StockDetailScreen() {
       setQuoteErr("Quote unavailable. Please retry.");
       return;
     }
+    if (tradeRail === "pi" && side === "buy" && isDesktopWebEnvironment()) {
+      const message = "Pi payments are mobile-only. Open this stock on your phone in Pi Browser to complete the purchase.";
+      setQuoteErr(message);
+      Alert.alert("Use mobile phone", message);
+      return;
+    }
     setQuoteErr(null);
     if (tradeRail === "pi" && side === "sell") {
       try {
@@ -695,6 +712,7 @@ export default function StockDetailScreen() {
   const tradingPaused = !!detail?.stats?.trading_paused;
   const launchGuard = !!detail?.stats?.launch_guard_active;
   const isPiBrowser = isPiBrowserEnvironment();
+  const isDesktopWeb = isDesktopWebEnvironment();
   const candles = (detail?.candles ?? []) as Candle[];
   const trades = detail?.trades ?? [];
   const sellerLogo = sellerLogoUrl(detail?.seller?.logo_path);
@@ -1052,7 +1070,9 @@ export default function StockDetailScreen() {
                     ) : null}
                     {tradeRail === "pi" && side === "buy" && !isPiBrowser ? (
                       <Text style={{ marginTop: 3, color: "#BFDBFE", fontSize: 12 }}>
-                        Pi buy will hand off to Pi Browser before server completion credits shares.
+                        {isDesktopWeb
+                          ? "Pi buy is mobile-only. Open this stock on your phone in Pi Browser to continue."
+                          : "Pi buy will hand off to Pi Browser before server completion credits shares."}
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && side === "sell" && piSellsPaused ? (
@@ -1092,7 +1112,11 @@ export default function StockDetailScreen() {
                     ) : null}
                     {tradeRail === "pi" && side === "buy" ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-                        {isPiBrowser ? "Pay with Pi is available in this browser." : "Open in Pi Browser is required to authorize this payment."}
+                        {isPiBrowser
+                          ? "Pay with Pi is available in this browser."
+                          : isDesktopWeb
+                          ? "Desktop browsers cannot complete Pi payment. Use a mobile phone with Pi Browser."
+                          : "Open in Pi Browser is required to authorize this payment."}
                       </Text>
                     ) : null}
                   </View>
@@ -1135,6 +1159,8 @@ export default function StockDetailScreen() {
                       : tradeRail === "pi" && side === "buy"
                       ? isPiBrowser
                         ? "Pay With Pi"
+                        : isDesktopWeb
+                        ? "Use Mobile Pi Browser"
                         : "Open In Pi Browser"
                       : tradeRail === "pi" && side === "sell"
                       ? piSellsPaused

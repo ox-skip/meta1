@@ -60,6 +60,12 @@ function isPiHandoffResult(value: any): value is PiPaymentHandoffResult {
   return value?.handoff_required === true && typeof value?.pi_browser_url === "string";
 }
 
+function isDesktopWebEnvironment() {
+  if (Platform.OS !== "web") return false;
+  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
+  return !/(android|iphone|ipad|ipod|mobile|pibrowser|minepi)/i.test(ua);
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -830,6 +836,12 @@ export default function Checkout() {
     setErr(null);
     if (!oid) return setErr("Missing orderId");
     if (!allowPi) return setErr("This listing does not accept Pi payments.");
+    if (isDesktopWebEnvironment()) {
+      const message = "Pi payments require Pi Browser on a mobile phone. Open this checkout on your phone to continue.";
+      setErr(message);
+      Alert.alert("Use mobile phone", message);
+      return;
+    }
     const user = await requireAuth();
     if (!user) return;
 
@@ -853,6 +865,11 @@ export default function Checkout() {
   }
 
   async function openPiHandoff(res: PiPaymentHandoffResult) {
+    if (isDesktopWebEnvironment()) {
+      setErr("Pi Browser is mobile-only. Open this checkout on your phone in Pi Browser.");
+      return false;
+    }
+
     const opened =
       (await tryOpenExternalUrl(res.pi_browser_url)) ||
       (res.pi_browser_url !== res.checkout_url && (await tryOpenExternalUrl(res.checkout_url)));

@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -50,6 +50,12 @@ async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
   } catch {
     return false;
   }
+}
+
+function isDesktopWebEnvironment() {
+  if (Platform.OS !== "web") return false;
+  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
+  return !/(android|iphone|ipad|ipod|mobile|pibrowser|minepi)/i.test(ua);
 }
 
 export default function PublicPiCheckout() {
@@ -105,6 +111,10 @@ export default function PublicPiCheckout() {
 
   async function openPiBrowser() {
     if (!handoff) return;
+    if (isDesktopWebEnvironment()) {
+      setErr("Pi Browser is mobile-only. Open this checkout link on your phone in Pi Browser.");
+      return;
+    }
     const opened =
       (await tryOpenExternalUrl(handoff.pi_browser_url)) ||
       (handoff.pi_browser_url !== handoff.checkout_url && (await tryOpenExternalUrl(handoff.checkout_url)));
@@ -145,6 +155,10 @@ export default function PublicPiCheckout() {
 
   async function startPayment() {
     if (busy || !intentState.intent) return;
+    if (isDesktopWebEnvironment()) {
+      setErr("Pi payments cannot complete in a desktop browser. Open this checkout on your phone in Pi Browser.");
+      return;
+    }
     setErr(null);
     setBusy(true);
     try {
@@ -195,6 +209,11 @@ export default function PublicPiCheckout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
             Finish this BestCity order payment in Pi Browser. The quote is already locked to this order.
           </Text>
+          {isDesktopWebEnvironment() ? (
+            <Text style={{ marginTop: 10, color: "#FDE68A", lineHeight: 20 }}>
+              Desktop browsers cannot complete Pi payment. Open this page on a mobile phone with Pi Browser.
+            </Text>
+          ) : null}
 
           <View style={{ marginTop: 18, gap: 8 }}>
             <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Order</Text>
