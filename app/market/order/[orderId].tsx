@@ -152,6 +152,19 @@ type CryptoIntent = {
   created_at: string;
 };
 
+type PiPaymentRow = {
+  id: string;
+  status: string;
+  quote_ref: string;
+  payment_id: string | null;
+  txid: string | null;
+  quote_expires_at: string | null;
+  topup_pi_required: number | null;
+  shortfall_usd: number | null;
+  updated_at: string | null;
+  created_at: string;
+};
+
 function money(currency: string | null, amt: any) {
   const n = Number(amt ?? 0);
   if (currency?.toUpperCase() === "USDC") return `$${n.toLocaleString()}`;
@@ -257,6 +270,7 @@ export default function OrderDetails() {
 
   const [otp, setOtp] = useState<OtpRow | null>(null);
   const [intents, setIntents] = useState<CryptoIntent[]>([]);
+  const [piPayment, setPiPayment] = useState<PiPaymentRow | null>(null);
 
   const [deliverables, setDeliverables] = useState<OrderDeliverable[]>([]);
 
@@ -361,14 +375,16 @@ export default function OrderDetails() {
     if (!rel.length) return null;
     return rel.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
   }, [intents]);
+  const latestPiPaymentStatus = useMemo(() => String(piPayment?.status || "").toUpperCase(), [piPayment?.status]);
   const isPiRailOrder = useMemo(
     () =>
+      !!piPayment ||
       intents.some(
         (i) =>
           String(i.intent_type || "").toUpperCase() === "DEPOSIT" &&
           String(i.chain || "").toLowerCase() === "pi_testnet",
       ),
-    [intents],
+    [intents, piPayment?.id],
   );
   const isStableOrder = useMemo(
     () => ["USDC", "USDT"].includes(String(order?.currency || "").toUpperCase()),
@@ -401,6 +417,12 @@ export default function OrderDetails() {
     !isPiRailOrder &&
     hasSubmittedCryptoDeposit;
   const canResyncDeposit = !!order && order.status === "CREATED" && isStableOrder && !isPiRailOrder;
+  const awaitingPiCompletion =
+    !!order &&
+    isBuyer &&
+    String(order.status || "").toUpperCase() === "CREATED" &&
+    isPiRailOrder &&
+    latestPiPaymentStatus === "APPROVED";
   const pollIntervalMs = 5 * 60 * 1000;
   const depositCreatedAtMs = latestDepositIntent?.created_at ? new Date(latestDepositIntent.created_at).getTime() : 0;
   const nextPollAtMs = depositCreatedAtMs > 0 ? depositCreatedAtMs + pollIntervalMs : 0;
@@ -520,6 +542,17 @@ export default function OrderDetails() {
         .eq("order_id", oid)
         .order("created_at", { ascending: false });
 
+      let latestPiPayment: PiPaymentRow | null = null;
+      if (String((o as any)?.buyer_id || "") === user.id) {
+        const { data: piRows } = await supabase
+          .from("market_pi_payments")
+          .select("id,status,quote_ref,payment_id,txid,quote_expires_at,topup_pi_required,shortfall_usd,updated_at,created_at")
+          .eq("order_id", oid)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        latestPiPayment = ((piRows ?? [])[0] as PiPaymentRow | undefined) ?? null;
+      }
+
       // deliverables (safe)
       try {
         const ds = await listOrderDeliverables(oid);
@@ -536,6 +569,7 @@ export default function OrderDetails() {
       setSellerProfileUsername(sellerUsernameFallback);
       setOtp((otpRow as any) ?? null);
       setIntents(((ints as any) ?? []) as any);
+      setPiPayment(latestPiPayment);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't load this order."));
       setOrder(null);
@@ -545,6 +579,7 @@ export default function OrderDetails() {
       setSellerProfileUsername(null);
       setOtp(null);
       setIntents([]);
+      setPiPayment(null);
       setDeliverables([]);
     } finally {
       setLoading(false);
@@ -646,7 +681,15 @@ export default function OrderDetails() {
   }, [order?.id, order?.status, isStableOrder, isPiRailOrder, latestReleaseIntent?.status, latestReleaseIntent?.tx_hash, latestReleaseIntent?.chain]);
 
   // Buttons conditions (your existing logic)
-  const canGoCheckout = !!order && order.status === "CREATED" && isBuyer && !hasSubmittedCryptoDeposit;
+  const canGoCheckout =
+    !!order &&
+    order.status === "CREATED" &&
+    isBuyer &&
+    (
+      isPiRailOrder
+        ? ["", "QUOTED", "FAILED", "CANCELLED", "UNDERPAID"].includes(latestPiPaymentStatus)
+        : !hasSubmittedCryptoDeposit
+    );
   const canCancel = !!order && order.status === "CREATED" && isBuyer && !hasSubmittedCryptoDeposit;
 
   const canOutForDelivery = !!order && isSeller && order.status === "IN_ESCROW";
@@ -1366,6 +1409,38 @@ async function pickAndUpload(access: "preview" | "final") {
               </Card>
             ) : null}
 
+            {awaitingPiCompletion ? (
+              <Card title="Waiting for Pi payment completion">
+                <Text style={{ color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
+                  Your Pi payment was approved and the order is waiting for server completion. If Pi Browser already
+                  finished the payment, refresh this order once.
+                </Text>
+                {!!piPayment?.payment_id ? (
+                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
+                    Payment ID: {piPayment.payment_id}
+                  </Text>
+                ) : null}
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void load()}
+                  style={{
+                    marginTop: 10,
+                    alignSelf: "flex-start",
+                    borderRadius: 12,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    backgroundColor: "rgba(124,58,237,0.18)",
+                    borderWidth: 1,
+                    borderColor: "rgba(124,58,237,0.35)",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                    {busy ? "Refreshing..." : "Refresh status"}
+                  </Text>
+                </Pressable>
+              </Card>
+            ) : null}
+
             {(isSeller || isBuyer) && (order as any)?.delivery_address?.geo ? (
               <Card title={isSeller ? "Buyer delivery location" : "Your delivery location"}>
                 <Text style={{ color: "#fff", fontWeight: "900" }}>
@@ -1698,9 +1773,17 @@ async function pickAndUpload(access: "preview" | "final") {
                     borderColor: PURPLE,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Continue to checkout</Text>
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
+                    {isPiRailOrder
+                      ? latestPiPaymentStatus === "UNDERPAID"
+                        ? "Retry Pi top-up"
+                        : "Continue Pi checkout"
+                      : "Continue to checkout"}
+                  </Text>
                   <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
-                    Choose NGN wallet, USDC/USDT, or PI
+                    {isPiRailOrder
+                      ? "Open the current Pi payment flow for this order"
+                      : "Choose NGN wallet, USDC/USDT, or PI"}
                   </Text>
                 </Pressable>
               </>

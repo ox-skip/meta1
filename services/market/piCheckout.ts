@@ -90,6 +90,23 @@ function getPiGlobal(): PiSdk | null {
   return pi && typeof pi.createPayment === "function" ? pi : null;
 }
 
+function hasPiBrowserUserAgent() {
+  if (Platform.OS !== "web") return false;
+  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
+  return ua.includes("pibrowser") || ua.includes("minepi") || ua.includes("pi browser");
+}
+
+export function isPiBrowserEnvironment() {
+  if (Platform.OS !== "web") return false;
+  const anyGlobal = globalThis as any;
+  const explicitMarker =
+    anyGlobal?.__PI_BROWSER__ === true ||
+    anyGlobal?.window?.__PI_BROWSER__ === true ||
+    anyGlobal?.Pi?.isPiBrowser === true ||
+    anyGlobal?.window?.Pi?.isPiBrowser === true;
+  return explicitMarker || hasPiBrowserUserAgent();
+}
+
 async function loadPiSdkScript() {
   if (Platform.OS !== "web") return null;
 
@@ -442,7 +459,11 @@ export async function payPiForOrder(orderId: string, options?: { returnUrl?: str
     };
   }
 
-  const pi = Platform.OS === "web" ? await resolvePiSdk() : null;
+  if (Platform.OS !== "web" || !isPiBrowserEnvironment()) {
+    return buildPiBrowserHandoff(intent, options?.returnUrl || null);
+  }
+
+  const pi = await resolvePiSdk();
   if (!pi || typeof pi.createPayment !== "function") {
     return buildPiBrowserHandoff(intent, options?.returnUrl || null);
   }
@@ -452,8 +473,8 @@ export async function payPiForOrder(orderId: string, options?: { returnUrl?: str
 }
 
 export async function payPiWithCheckoutToken(intent: PiPaymentIntent) {
-  if (Platform.OS !== "web") {
-    throw new Error("Pi checkout must run inside Pi Browser web.");
+  if (Platform.OS !== "web" || !isPiBrowserEnvironment()) {
+    throw new Error("Pi checkout must run inside Pi Browser.");
   }
 
   const checkoutToken = String(intent.checkout_token || "").trim();

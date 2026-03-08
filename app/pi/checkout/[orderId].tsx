@@ -15,6 +15,43 @@ import { friendlyMarketError } from "@/utils/marketUx";
 const BG0 = "#05040B";
 const BG1 = "#0A0620";
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(id);
+        reject(error);
+      });
+  });
+}
+
+function delayResult<T>(timeoutMs: number, value: T) {
+  return new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), timeoutMs);
+  });
+}
+
+async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
+  const target = String(url || "").trim();
+  if (!target) return false;
+
+  try {
+    return await Promise.race([
+      Linking.openURL(target)
+        .then(() => true)
+        .catch(() => false),
+      delayResult(settleAfterMs, true),
+    ]);
+  } catch {
+    return false;
+  }
+}
+
 export default function PublicPiCheckout() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
@@ -68,16 +105,11 @@ export default function PublicPiCheckout() {
 
   async function openPiBrowser() {
     if (!handoff) return;
-    try {
-      await Linking.openURL(handoff.pi_browser_url);
-      return;
-    } catch {
-      // fall through
-    }
-    try {
-      await Linking.openURL(handoff.checkout_url);
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't open Pi Browser."));
+    const opened =
+      (await tryOpenExternalUrl(handoff.pi_browser_url)) ||
+      (handoff.pi_browser_url !== handoff.checkout_url && (await tryOpenExternalUrl(handoff.checkout_url)));
+    if (!opened) {
+      setErr("We couldn't open Pi Browser. Open Pi Browser manually and retry this payment.");
     }
   }
 
@@ -116,11 +148,16 @@ export default function PublicPiCheckout() {
     setErr(null);
     setBusy(true);
     try {
-      const res = await payPiWithCheckoutToken(intentState.intent);
+      const res = await withTimeout(
+        payPiWithCheckoutToken(intentState.intent),
+        25_000,
+        "Pi checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
+      );
       await handleResult(res);
     } catch (e: any) {
       const message = String(e?.message || e || "");
-      if (message.toLowerCase().includes("pi sdk is unavailable")) {
+      const lower = message.toLowerCase();
+      if (lower.includes("pi sdk is unavailable") || lower.includes("pi browser")) {
         setErr("Pi Browser is required on this screen. Tap the button below to open it there.");
       } else {
         setErr(friendlyMarketError(e, "We couldn't complete Pi checkout."));

@@ -60,6 +60,43 @@ function isPiHandoffResult(value: any): value is PiPaymentHandoffResult {
   return value?.handoff_required === true && typeof value?.pi_browser_url === "string";
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(id);
+        reject(error);
+      });
+  });
+}
+
+function delayResult<T>(timeoutMs: number, value: T) {
+  return new Promise<T>((resolve) => {
+    setTimeout(() => resolve(value), timeoutMs);
+  });
+}
+
+async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
+  const target = String(url || "").trim();
+  if (!target) return false;
+
+  try {
+    return await Promise.race([
+      Linking.openURL(target)
+        .then(() => true)
+        .catch(() => false),
+      delayResult(settleAfterMs, true),
+    ]);
+  } catch {
+    return false;
+  }
+}
+
 function parseJsonObject(value: unknown) {
   if (!value) return null;
   if (typeof value === "string") {
@@ -800,7 +837,11 @@ export default function Checkout() {
     setBusy(true);
     try {
       const returnUrl = Platform.OS === "web" ? buildPiReturnUrl(oid) : buildNativeOrderReturnUrl(oid);
-      const res: any = await payPiForOrder(oid, { returnUrl });
+      const res: any = await withTimeout(
+        payPiForOrder(oid, { returnUrl }),
+        25_000,
+        "Pi checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
+      );
       await showPiDepositResult(res);
     } catch (e: any) {
       console.log("[Checkout] payWithPi error", { message: String(e?.message || e) });
@@ -812,20 +853,14 @@ export default function Checkout() {
   }
 
   async function openPiHandoff(res: PiPaymentHandoffResult) {
-    try {
-      await Linking.openURL(res.pi_browser_url);
-      return true;
-    } catch {
-      // fall through
-    }
+    const opened =
+      (await tryOpenExternalUrl(res.pi_browser_url)) ||
+      (res.pi_browser_url !== res.checkout_url && (await tryOpenExternalUrl(res.checkout_url)));
 
-    try {
-      await Linking.openURL(res.checkout_url);
-      return true;
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't open Pi Browser."));
-      return false;
+    if (!opened) {
+      setErr("We couldn't open Pi Browser. Open Pi Browser manually and retry this payment.");
     }
+    return opened;
   }
 
   async function showPiDepositResult(res: any) {
@@ -838,7 +873,10 @@ export default function Checkout() {
           : "Pi checkout must continue in Pi Browser. Use the Pi Browser app to open the payment link.",
         [
           opened
-            ? { text: "OK" }
+            ? {
+              text: "Open order",
+              onPress: () => router.replace(`/market/order/${oid}` as any),
+            }
             : {
               text: "Retry",
               onPress: () => void openPiHandoff(res),

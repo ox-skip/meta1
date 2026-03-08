@@ -21,6 +21,21 @@ function delayResult<T>(timeoutMs: number, value: T) {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(id);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(id);
+        reject(error);
+      });
+  });
+}
+
 export default function PublicPiStockCheckout() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
@@ -122,11 +137,16 @@ export default function PublicPiStockCheckout() {
     setBusy(true);
     setErr(null);
     try {
-      const res = await payPiStockWithCheckoutToken(intentState.intent);
+      const res = await withTimeout(
+        payPiStockWithCheckoutToken(intentState.intent),
+        25_000,
+        "Pi stock checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
+      );
       await handleResult(res);
     } catch (e: any) {
       const message = String(e?.message || e || "");
-      if (message.toLowerCase().includes("pi sdk is unavailable")) {
+      const lower = message.toLowerCase();
+      if (lower.includes("pi sdk is unavailable") || lower.includes("pi browser")) {
         setErr("Pi Browser is required on this screen. Tap the button below to open it there.");
       } else {
         setErr(friendlyMarketError(e, "We couldn't complete the Pi stock purchase."));

@@ -322,7 +322,7 @@ export default function VerificationApply() {
 
             <Card title="Start with provider">
               <Text style={{ color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
-                Verification opens in a secure browser session. Once the provider finishes review, their webhook
+                Verifcation opens in a secure browser session. Once the provider finishes review, their webhook
                 updates your seller badge automatically in our database.
               </Text>
 

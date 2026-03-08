@@ -227,8 +227,7 @@ export default function VerificationStatus() {
             )}
 
             <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-              Once the provider confirms your government ID, your seller profile is updated from `false` to `true`
-              automatically.
+              Once the provider confirms your government ID, your seller profile be verified automatically.
             </Text>
 
             {!profile ? (

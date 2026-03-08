@@ -134,8 +134,14 @@ function getPiGlobal(): PiSdk | null {
 
 export function isPiBrowserEnvironment() {
   if (Platform.OS !== "web") return false;
-  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
-  return ua.includes("pibrowser") || !!getPiGlobal();
+  const anyGlobal = globalThis as any;
+  const ua = String(anyGlobal?.navigator?.userAgent || "").toLowerCase();
+  const explicitMarker =
+    anyGlobal?.__PI_BROWSER__ === true ||
+    anyGlobal?.window?.__PI_BROWSER__ === true ||
+    anyGlobal?.Pi?.isPiBrowser === true ||
+    anyGlobal?.window?.Pi?.isPiBrowser === true;
+  return explicitMarker || ua.includes("pibrowser") || ua.includes("minepi") || ua.includes("pi browser");
 }
 
 async function loadPiSdkScript() {
@@ -526,7 +532,11 @@ export async function buyStockWithPi(
   if (!localAuth.ok) throw new Error(localAuth.message || "Authentication required");
 
   const intent = await requestPiStockBuyIntent(input);
-  const pi = Platform.OS === "web" ? await resolvePiSdk() : null;
+  if (Platform.OS !== "web" || !isPiBrowserEnvironment()) {
+    return buildPiStockBrowserHandoff(intent, options?.returnUrl || null);
+  }
+
+  const pi = await resolvePiSdk();
   if (!pi || typeof pi.createPayment !== "function") {
     return buildPiStockBrowserHandoff(intent, options?.returnUrl || null);
   }
@@ -536,8 +546,8 @@ export async function buyStockWithPi(
 }
 
 export async function payPiStockWithCheckoutToken(intent: StockPiBuyIntent) {
-  if (Platform.OS !== "web") {
-    throw new Error("Pi stock checkout must run inside Pi Browser web.");
+  if (Platform.OS !== "web" || !isPiBrowserEnvironment()) {
+    throw new Error("Pi stock checkout must run inside Pi Browser.");
   }
   if (!intent.checkout_token) {
     throw new Error("Missing checkout token");
