@@ -6,7 +6,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
-import { startSellerVerification, type MarketVerificationRequest } from "@/services/market/verification";
+import {
+  startSellerVerification,
+  syncSellerVerification,
+  type MarketVerificationRequest,
+} from "@/services/market/verification";
 import { supabase } from "@/services/supabase";
 
 const BG0 = "#05040B";
@@ -39,16 +43,22 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function StatusPill({ status }: { status: MarketVerificationRequest["status"] }) {
+function pendingLabel(request: Pick<MarketVerificationRequest, "provider_review_status">) {
+  const raw = String(request.provider_review_status ?? "").trim();
+  if (raw === "In Progress") return "In progress";
+  return "Waiting to start";
+}
+
+function StatusPill({ request }: { request: MarketVerificationRequest }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    PENDING: { bg: "rgba(59,130,246,0.16)", fg: "#93C5FD", label: "Waiting to start" },
+    PENDING: { bg: "rgba(59,130,246,0.16)", fg: "#93C5FD", label: pendingLabel(request) },
     IN_REVIEW: { bg: "rgba(14,165,233,0.16)", fg: "#7DD3FC", label: "Under review" },
     VERIFIED: { bg: "rgba(16,185,129,0.16)", fg: "#6EE7B7", label: "Verified" },
     REJECTED: { bg: "rgba(239,68,68,0.16)", fg: "#FCA5A5", label: "Rejected" },
     RESUBMISSION_REQUIRED: { bg: "rgba(245,158,11,0.16)", fg: "#FCD34D", label: "Retry required" },
     EXPIRED: { bg: "rgba(148,163,184,0.16)", fg: "#CBD5E1", label: "Expired" },
   };
-  const s = map[status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: status };
+  const s = map[request.status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: request.status };
   return (
     <View
       style={{
@@ -100,7 +110,7 @@ export default function VerificationApply() {
     return true;
   }, [profile]);
 
-  async function load() {
+  async function load(options: { sync?: boolean } = {}) {
     setLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -116,7 +126,8 @@ export default function VerificationApply() {
         .eq("user_id", uid)
         .maybeSingle();
 
-      setProfile(spErr ? null : (sp as SellerProfile | null));
+      const nextProfile = spErr ? null : (sp as SellerProfile | null);
+      setProfile(nextProfile);
 
       const { data: vr } = await supabase
         .from("market_verification_requests")
@@ -126,7 +137,26 @@ export default function VerificationApply() {
         .eq("user_id", uid)
         .maybeSingle();
 
-      setReqRow((vr as MarketVerificationRequest | null) ?? null);
+      const nextReqRow = (vr as MarketVerificationRequest | null) ?? null;
+      setReqRow(nextReqRow);
+
+      if (
+        options.sync &&
+        nextProfile &&
+        !nextProfile.is_verified &&
+        nextReqRow?.provider === "didit" &&
+        nextReqRow.provider_applicant_id
+      ) {
+        try {
+          const synced = await syncSellerVerification();
+          if (synced.request) setReqRow(synced.request);
+          if (synced.verified) {
+            setProfile((prev) => (prev ? { ...prev, is_verified: true } : prev));
+          }
+        } catch (e: any) {
+          console.warn("[market-verification] sync failed", e?.message || e);
+        }
+      }
     } catch {
       setProfile(null);
       setReqRow(null);
@@ -136,7 +166,7 @@ export default function VerificationApply() {
   }
 
   useEffect(() => {
-    load();
+    load({ sync: true });
   }, []);
 
   async function submit() {
@@ -156,13 +186,13 @@ export default function VerificationApply() {
     }
 
     if (isVerificationLinkUsable(reqRow)) {
-      try {
-        await openBrowserAsync(String(reqRow?.verification_url || "").trim(), {
-          presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
-        });
-        await load();
-        router.replace("/market/verification/status" as any);
-        return;
+        try {
+          await openBrowserAsync(String(reqRow?.verification_url || "").trim(), {
+            presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+          });
+          await load({ sync: true });
+          router.replace("/market/verification/status" as any);
+          return;
       } catch (e: any) {
         const message = String(e?.message || "Could not reopen verification session.");
         setSubmitError(message);
@@ -187,7 +217,7 @@ export default function VerificationApply() {
       await openBrowserAsync(verificationUrl, {
         presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
       });
-      await load();
+      await load({ sync: true });
       router.replace("/market/verification/status" as any);
     } catch (e: any) {
       const backendMessage =
@@ -286,9 +316,14 @@ export default function VerificationApply() {
 
               {reqRow ? (
                 <View style={{ marginTop: 12 }}>
-                  <StatusPill status={reqRow.status} />
-                  {!!reqRow.document_type ? (
+                  <StatusPill request={reqRow} />
+                  {!!reqRow.provider_review_status ? (
                     <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
+                      Provider status: {reqRow.provider_review_status}
+                    </Text>
+                  ) : null}
+                  {!!reqRow.document_type ? (
+                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
                       Document type: {reqRow.document_type}
                     </Text>
                   ) : null}

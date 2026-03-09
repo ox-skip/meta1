@@ -4,7 +4,11 @@ import {
   collectDiditRejectLabels,
   deriveDiditCountryCode,
   deriveDiditDocumentType,
+  deriveDiditLastError,
+  deriveDiditRejectType,
+  deriveDiditReviewAnswer,
   getVerificationProviderName,
+  getDiditPayloadStatus,
   mapDiditVerificationStatus,
   parseDiditTimestamp,
   parseSellerVerificationExternalUserId,
@@ -38,30 +42,6 @@ async function deriveEventId(payload: any, rawBody: string) {
   if (sessionId) return `${sessionId}:${webhookType}:${status || "unknown"}`;
   const hash = await sha256Hex(rawBody);
   return `didit:${hash}`;
-}
-
-function deriveReviewAnswer(rawStatus: string) {
-  if (rawStatus === "Approved") return "GREEN";
-  if (rawStatus === "Declined") return "RED";
-  return null;
-}
-
-function deriveRejectType(rawStatus: string) {
-  if (rawStatus === "Resubmitted") return "RETRY";
-  return null;
-}
-
-function deriveLastError(payload: any, mappedStatus: string, labels: string[]) {
-  if (mappedStatus === "VERIFIED") return null;
-  if (labels.length > 0) return labels.join(", ");
-  const detail = String(payload?.decision?.message ?? payload?.decision?.summary ?? "").trim();
-  if (detail) return detail;
-  const rawStatus = String(payload?.status ?? "").trim();
-  if (rawStatus === "Declined") return "Verification declined by provider";
-  if (rawStatus === "Resubmitted") return "Provider requested resubmission";
-  if (rawStatus === "Abandoned") return "Verification session was abandoned";
-  if (rawStatus === "Expired" || rawStatus === "Kyc Expired") return "Verification session expired";
-  return null;
 }
 
 Deno.serve(async (req) => {
@@ -102,7 +82,7 @@ Deno.serve(async (req) => {
   const sessionId = String(payload?.session_id ?? "").trim() || null;
   const vendorData = String(payload?.vendor_data ?? "").trim() || null;
   const webhookType = String(payload?.webhook_type ?? "").trim() || "status.updated";
-  const rawStatus = String(payload?.status ?? "").trim();
+  const rawStatus = getDiditPayloadStatus(payload);
 
   let userId = extractUserId(vendorData);
   if (!userId && sessionId) {
@@ -141,14 +121,14 @@ Deno.serve(async (req) => {
     p_provider_external_user_id: vendorData,
     p_provider_level_name: String(payload?.workflow_id ?? "").trim() || null,
     p_provider_review_status: rawStatus || null,
-    p_provider_review_answer: deriveReviewAnswer(rawStatus),
-    p_provider_review_reject_type: deriveRejectType(rawStatus),
+    p_provider_review_answer: deriveDiditReviewAnswer(rawStatus),
+    p_provider_review_reject_type: deriveDiditRejectType(rawStatus),
     p_provider_reject_labels: rejectLabels,
     p_country_code: countryCode,
     p_document_type: documentType,
     p_provider_event_at: eventAt,
     p_verified_at: mappedStatus === "VERIFIED" ? eventAt : null,
-    p_last_error: deriveLastError(payload, mappedStatus, rejectLabels),
+    p_last_error: deriveDiditLastError(payload, mappedStatus, rejectLabels),
   });
 
   if (error) return bad(error.message);

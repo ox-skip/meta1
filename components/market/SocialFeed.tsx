@@ -476,12 +476,18 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
     if (result.canceled) return;
 
-    const next = (result.assets ?? [])
+    const pickedAssets = (result.assets ?? []) as Array<{
+      uri?: string;
+      mimeType?: string | null;
+      type?: string | null;
+    }>;
+
+    const next = pickedAssets
       .filter((item) => !!item.uri)
       .map((item) => {
         const mime = item.mimeType || (item.type === "video" ? "video/mp4" : "image/jpeg");
         return {
-          uri: item.uri,
+          uri: item.uri || "",
           mimeType: mime,
           kind: item.type === "video" ? "video" : "image",
         } as LocalAsset;
@@ -911,20 +917,20 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     return (
       <View
         style={{
-          marginTop: isContained ? 14 : 0,
-          borderRadius: 26,
+          marginTop: 0,
+          borderRadius: 22,
           borderWidth: 1,
           borderColor: BORDER,
           backgroundColor: SURFACE,
-          padding: isTablet ? 18 : 14,
+          padding: 14,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
           <View
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 23,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",
@@ -932,38 +938,32 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             }}
           >
             {myAvatar ? (
-              <Image source={{ uri: myAvatar }} style={{ width: 46, height: 46 }} />
+              <Image source={{ uri: myAvatar }} style={{ width: 44, height: 44 }} />
             ) : (
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{getInitial(composerName)}</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>{getInitial(composerName)}</Text>
             )}
           </View>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ color: MUTED, fontSize: 12, fontWeight: "700" }}>{composerName}</Text>
             <TextInput
               value={body}
               onChangeText={setBody}
               multiline
-              placeholder="Share something your followers should see..."
+              placeholder="What's happening in your store?"
               placeholderTextColor="rgba(226,232,240,0.34)"
               textAlignVertical="top"
               style={{
-                marginTop: 8,
-                minHeight: 96,
-                borderRadius: 18,
-                borderWidth: 1,
-                borderColor: BORDER_SOFT,
-                backgroundColor: "rgba(255,255,255,0.02)",
+                minHeight: 78,
                 color: TEXT,
-                fontSize: 15,
+                fontSize: 16,
                 lineHeight: 22,
-                paddingHorizontal: 14,
-                paddingVertical: 14,
+                paddingHorizontal: 0,
+                paddingVertical: 4,
               }}
             />
 
             {assets.length ? (
-              <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 {assets.map((asset, index) => (
                   <Pressable key={`${asset.uri}-${index}`} onPress={() => setPreviewAsset(asset)}>
                     <View
@@ -1007,64 +1007,42 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               </View>
             ) : null}
 
-            <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <MetricChip icon="people-outline" label={profileUserId ? "Visible on this profile" : "Followers-only feed"} />
-              <MetricChip icon="images-outline" label={`${assets.length}/4 attachments`} />
-            </View>
-
-            <View style={{ marginTop: 14, flexDirection: isTablet ? "row" : "column", gap: 10 }}>
-              <Pressable
-                onPress={chooseMedia}
-                style={{
-                  flex: 1,
-                  minHeight: 46,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 8,
-                }}
-              >
-                <Ionicons name="images-outline" size={18} color={TEXT} />
-                <Text style={{ color: TEXT, fontWeight: "800" }}>Add media</Text>
-              </Pressable>
+            <View
+              style={{
+                marginTop: 12,
+                paddingTop: 12,
+                borderTopWidth: 1,
+                borderTopColor: BORDER_SOFT,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <Pressable onPress={chooseMedia} style={{ padding: 4 }}>
+                  <Ionicons name="image-outline" size={19} color={ACCENT} />
+                </Pressable>
+                <Text style={{ color: MUTED, fontSize: 12 }}>{assets.length}/4</Text>
+              </View>
 
               <Pressable
-                disabled={posting}
+                disabled={posting || (!body.trim() && assets.length === 0)}
                 onPress={submitPost}
                 style={{
-                  flex: isTablet ? 0.7 : 1,
-                  minHeight: 46,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: "rgba(29,155,240,0.35)",
-                  backgroundColor: ACCENT_BG,
+                  minWidth: 88,
+                  height: 38,
+                  borderRadius: 19,
                   alignItems: "center",
                   justifyContent: "center",
+                  backgroundColor:
+                    posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : ACCENT,
                 }}
               >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>{posting ? "Posting..." : "Post update"}</Text>
+                <Text style={{ color: TEXT, fontWeight: "900" }}>{posting ? "Posting..." : "Post"}</Text>
               </Pressable>
             </View>
 
-            {error ? (
-              <View
-                style={{
-                  marginTop: 12,
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: "rgba(248,113,113,0.22)",
-                  backgroundColor: "rgba(127,29,29,0.25)",
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                }}
-              >
-                <Text style={{ color: "#FECACA", fontSize: 12 }}>{error}</Text>
-              </View>
-            ) : null}
+            {error ? <Text style={{ marginTop: 10, color: "#FCA5A5", fontSize: 12 }}>{error}</Text> : null}
           </View>
         </View>
       </View>

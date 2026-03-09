@@ -598,9 +598,40 @@ export default function MarketHome() {
             <OfficialMarketSocials />
 
             {section === "social" ? (
-              <View style={{ marginTop: 10, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Followers feed</Text>
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>You only see posts from accounts you follow and your own posts.</Text>
+              <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#000", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                <View
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    borderBottomWidth: 1,
+                    borderBottomColor: "rgba(255,255,255,0.08)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Following timeline</Text>
+                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                      Posts from accounts you follow and your own updates, styled like a real social feed.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => router.push("/market/social" as any)}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: "rgba(29,155,240,0.35)",
+                      backgroundColor: "rgba(29,155,240,0.16)",
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open full feed</Text>
+                  </Pressable>
+                </View>
+
                 <SocialFeed />
               </View>
             ) : (

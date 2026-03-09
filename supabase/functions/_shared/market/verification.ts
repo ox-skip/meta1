@@ -141,6 +141,43 @@ export function mapDiditVerificationStatus(input: unknown) {
   return "PENDING";
 }
 
+export function getDiditPayloadStatus(payload: any) {
+  const candidates = [
+    payload?.status,
+    payload?.decision?.status,
+    payload?.session?.status,
+  ];
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+export function deriveDiditReviewAnswer(rawStatus: string) {
+  if (rawStatus === "Approved") return "GREEN";
+  if (rawStatus === "Declined") return "RED";
+  return null;
+}
+
+export function deriveDiditRejectType(rawStatus: string) {
+  if (rawStatus === "Resubmitted") return "RETRY";
+  return null;
+}
+
+export function deriveDiditLastError(payload: any, mappedStatus: string, labels: string[]) {
+  if (mappedStatus === "VERIFIED") return null;
+  if (labels.length > 0) return labels.join(", ");
+  const detail = String(payload?.decision?.message ?? payload?.decision?.summary ?? "").trim();
+  if (detail) return detail;
+  const rawStatus = getDiditPayloadStatus(payload);
+  if (rawStatus === "Declined") return "Verification declined by provider";
+  if (rawStatus === "Resubmitted") return "Provider requested resubmission";
+  if (rawStatus === "Abandoned") return "Verification session was abandoned";
+  if (rawStatus === "Expired" || rawStatus === "Kyc Expired") return "Verification session expired";
+  return null;
+}
+
 export async function diditRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const upperMethod = method.toUpperCase();
   const bodyText = body === undefined ? "" : JSON.stringify(body);

@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
-import type { MarketVerificationRequest } from "@/services/market/verification";
+import { syncSellerVerification, type MarketVerificationRequest } from "@/services/market/verification";
 import { supabase } from "@/services/supabase";
 
 const BG0 = "#05040B";
@@ -20,16 +20,22 @@ type SellerProfile = {
   payout_tier: "standard" | "fast";
 };
 
-function StatusPill({ status }: { status: MarketVerificationRequest["status"] }) {
+function pendingLabel(request: Pick<MarketVerificationRequest, "provider_review_status">) {
+  const raw = String(request.provider_review_status ?? "").trim();
+  if (raw === "In Progress") return "In progress";
+  return "Waiting to start";
+}
+
+function StatusPill({ request }: { request: MarketVerificationRequest }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    PENDING: { bg: "rgba(59,130,246,0.16)", fg: "#93C5FD", label: "Waiting to start" },
+    PENDING: { bg: "rgba(59,130,246,0.16)", fg: "#93C5FD", label: pendingLabel(request) },
     IN_REVIEW: { bg: "rgba(14,165,233,0.16)", fg: "#7DD3FC", label: "Under review" },
     VERIFIED: { bg: "rgba(16,185,129,0.16)", fg: "#6EE7B7", label: "Verified" },
     REJECTED: { bg: "rgba(239,68,68,0.16)", fg: "#FCA5A5", label: "Rejected" },
     RESUBMISSION_REQUIRED: { bg: "rgba(245,158,11,0.16)", fg: "#FCD34D", label: "Retry required" },
     EXPIRED: { bg: "rgba(148,163,184,0.16)", fg: "#CBD5E1", label: "Expired" },
   };
-  const s = map[status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: status };
+  const s = map[request.status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: request.status };
   return (
     <View
       style={{
@@ -65,7 +71,11 @@ export default function VerificationStatus() {
     if (!profile) return "No seller profile";
     if (verified) return "Verified";
     if (!reqRow) return "Not started";
-    if (reqRow.status === "PENDING") return "Ready to start";
+    if (reqRow.status === "PENDING") {
+      return String(reqRow.provider_review_status ?? "").trim() === "In Progress"
+        ? "Verification in progress"
+        : "Ready to start";
+    }
     if (reqRow.status === "IN_REVIEW") return "Provider review in progress";
     if (reqRow.status === "REJECTED") return "Verification rejected";
     if (reqRow.status === "RESUBMISSION_REQUIRED") return "Retry required";
@@ -73,7 +83,7 @@ export default function VerificationStatus() {
     return "Verification";
   }, [profile, verified, reqRow]);
 
-  async function load() {
+  async function load(options: { sync?: boolean } = {}) {
     setLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -89,7 +99,8 @@ export default function VerificationStatus() {
         .eq("user_id", me)
         .maybeSingle();
 
-      setProfile((sp as SellerProfile | null) ?? null);
+      const nextProfile = (sp as SellerProfile | null) ?? null;
+      setProfile(nextProfile);
 
       const { data: vr } = await supabase
         .from("market_verification_requests")
@@ -99,7 +110,26 @@ export default function VerificationStatus() {
         .eq("user_id", me)
         .maybeSingle();
 
-      setReqRow((vr as MarketVerificationRequest | null) ?? null);
+      const nextReqRow = (vr as MarketVerificationRequest | null) ?? null;
+      setReqRow(nextReqRow);
+
+      if (
+        options.sync &&
+        nextProfile &&
+        !nextProfile.is_verified &&
+        nextReqRow?.provider === "didit" &&
+        nextReqRow.provider_applicant_id
+      ) {
+        try {
+          const synced = await syncSellerVerification();
+          if (synced.request) setReqRow(synced.request);
+          if (synced.verified) {
+            setProfile((prev) => (prev ? { ...prev, is_verified: true } : prev));
+          }
+        } catch (e: any) {
+          console.warn("[market-verification] sync failed", e?.message || e);
+        }
+      }
     } catch {
       setProfile(null);
       setReqRow(null);
@@ -109,7 +139,7 @@ export default function VerificationStatus() {
   }
 
   useEffect(() => {
-    load();
+    load({ sync: true });
   }, []);
 
   return (
@@ -176,11 +206,17 @@ export default function VerificationStatus() {
 
             {reqRow ? (
               <View style={{ marginTop: 12 }}>
-                <StatusPill status={reqRow.status} />
+                <StatusPill request={reqRow} />
 
                 {!!reqRow.provider ? (
                   <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
                     Provider: {reqRow.provider}
+                  </Text>
+                ) : null}
+
+                {!!reqRow.provider_review_status ? (
+                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
+                    Provider status: {reqRow.provider_review_status}
                   </Text>
                 ) : null}
 
@@ -265,7 +301,7 @@ export default function VerificationStatus() {
             )}
 
             <Pressable
-              onPress={load}
+              onPress={() => load({ sync: true })}
               style={{
                 marginTop: 10,
                 borderRadius: 18,

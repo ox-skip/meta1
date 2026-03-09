@@ -44,6 +44,15 @@ export type StartSellerVerificationResult = {
   request?: MarketVerificationRequest | null;
 };
 
+export type SyncSellerVerificationResult = {
+  ok: boolean;
+  synced: boolean;
+  applied?: boolean;
+  verified: boolean;
+  status?: MarketVerificationStatus | "VERIFIED";
+  request?: MarketVerificationRequest | null;
+};
+
 function normalizeVerificationError(error: unknown) {
   const raw = String((error as any)?.message ?? error ?? "").trim();
   const lower = raw.toLowerCase();
@@ -64,6 +73,14 @@ export async function startSellerVerification(countryCode?: string | null) {
     return await callFn<StartSellerVerificationResult>("market-verification-start", {
       country_code: countryCode || null,
     });
+  } catch (e) {
+    throw new Error(normalizeVerificationError(e));
+  }
+}
+
+export async function syncSellerVerification() {
+  try {
+    return await callFn<SyncSellerVerificationResult>("market-verification-sync", {});
   } catch (e) {
     throw new Error(normalizeVerificationError(e));
   }
