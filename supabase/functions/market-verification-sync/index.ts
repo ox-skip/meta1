@@ -30,6 +30,25 @@ type DiditDecisionResponse = {
   };
 };
 
+async function fetchDiditSessionDecision(sessionId: string) {
+  const paths = [
+    `/v3/session/${encodeURIComponent(sessionId)}/decision/`,
+    `/v3/sessions/${encodeURIComponent(sessionId)}/decision/`,
+    `/v3/session/${encodeURIComponent(sessionId)}/`,
+  ];
+
+  let lastError: unknown = null;
+  for (const path of paths) {
+    try {
+      return await diditRequest<DiditDecisionResponse>("GET", path);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  throw lastError ?? new Error("Could not sync verification status");
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -89,7 +108,7 @@ Deno.serve(async (req) => {
 
   let payload: DiditDecisionResponse;
   try {
-    payload = await diditRequest<DiditDecisionResponse>("GET", `/v3/session/${encodeURIComponent(sessionId)}/decision/`);
+    payload = await fetchDiditSessionDecision(sessionId);
   } catch (e: any) {
     return bad(String(e?.message || "Could not sync verification status"));
   }
