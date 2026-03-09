@@ -49,41 +49,54 @@ function base64ToUint8Array(base64: string) {
   return bytes.slice(0, p);
 }
 
-function shouldReadViaFetch(localUri: string) {
-  if (Platform.OS === "web") return true;
-  return /^(https?:\/\/|blob:|data:)/i.test(String(localUri || ""));
-}
-
 async function readFileAsBytesViaFetch(localUri: string) {
-  const res = await withTimeout(fetch(localUri, { cache: "no-store" }), 30_000, "Reading file");
+  const res = await withTimeout(fetch(localUri, { cache: "no-store" }), 120_000, "Reading file");
   if (!res.ok) {
     throw new Error(`Reading file failed (HTTP ${res.status})`);
   }
-  const buf = await withTimeout(res.arrayBuffer(), 30_000, "Reading file bytes");
+  const buf = await withTimeout(res.arrayBuffer(), 120_000, "Reading file bytes");
   return new Uint8Array(buf);
 }
 
 async function readFileAsBytesViaFileSystem(localUri: string) {
   const base64 = await withTimeout(
     FileSystem.readAsStringAsync(localUri, {
-      encoding: "base64" as any,
-    }),
-    30_000,
+        encoding: "base64" as any,
+      }),
+    120_000,
     "Reading file",
   );
   return base64ToUint8Array(base64);
 }
 
 async function readFileAsBytes(localUri: string) {
-  if (shouldReadViaFetch(localUri)) {
+  const rawUri = String(localUri || "");
+  let preparedUri = rawUri;
+  let cleanupUri: string | null = null;
+
+  if (Platform.OS !== "web" && /^content:\/\//i.test(rawUri) && FileSystem.cacheDirectory) {
+    const ext = rawUri.split(".").pop()?.split("?")[0] || "bin";
+    preparedUri = `${FileSystem.cacheDirectory}supabase-upload-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
     try {
-      return await readFileAsBytesViaFetch(localUri);
-    } catch (e) {
-      if (Platform.OS === "web") throw e;
-      // Fallback for native if URI can still be read by FileSystem.
+      await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 60_000, "Preparing file");
+      cleanupUri = preparedUri;
+    } catch {
+      preparedUri = rawUri;
     }
   }
-  return readFileAsBytesViaFileSystem(localUri);
+
+  try {
+    try {
+      return await readFileAsBytesViaFetch(preparedUri);
+    } catch (e) {
+      if (Platform.OS === "web") throw e;
+      return await readFileAsBytesViaFileSystem(preparedUri);
+    }
+  } finally {
+    if (cleanupUri) {
+      await FileSystem.deleteAsync(cleanupUri, { idempotent: true }).catch(() => undefined);
+    }
+  }
 }
 
 export async function uploadToSupabaseStorage(params: UploadParams) {
@@ -100,7 +113,7 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
     upsert,
   });
 
-  const { error: uploadErr } = await withTimeout(uploadPromise, 120_000, "Storage upload");
+  const { error: uploadErr } = await withTimeout(uploadPromise, 240_000, "Storage upload");
   if (uploadErr) throw uploadErr;
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
@@ -114,4 +127,3 @@ export async function uploadImageToSupabase(params: UploadParams): Promise<strin
 }
 
 export const uploadListingImage = uploadImageToSupabase;
-

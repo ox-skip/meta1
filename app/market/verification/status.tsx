@@ -227,7 +227,7 @@ export default function VerificationStatus() {
             )}
 
             <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-              Once the provider confirms your government ID, your seller profile be verified automatically.
+              Once the provider confirms your government issued ID, your store profile will be verified automatically.
             </Text>
 
             {!profile ? (

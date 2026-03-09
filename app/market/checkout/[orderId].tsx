@@ -836,12 +836,6 @@ export default function Checkout() {
     setErr(null);
     if (!oid) return setErr("Missing orderId");
     if (!allowPi) return setErr("This listing does not accept Pi payments.");
-    if (isDesktopWebEnvironment()) {
-      const message = "Pi payments require Pi Browser on a mobile phone. Open this checkout on your phone to continue.";
-      setErr(message);
-      Alert.alert("Use mobile phone", message);
-      return;
-    }
     const user = await requireAuth();
     if (!user) return;
 
@@ -866,8 +860,11 @@ export default function Checkout() {
 
   async function openPiHandoff(res: PiPaymentHandoffResult) {
     if (isDesktopWebEnvironment()) {
-      setErr("Pi Browser is mobile-only. Open this checkout on your phone in Pi Browser.");
-      return false;
+      const opened = await tryOpenExternalUrl(res.checkout_url);
+      if (!opened) {
+        setErr("We couldn't open the Pi checkout handoff page. Open this checkout on your phone and retry.");
+      }
+      return opened;
     }
 
     const opened =
@@ -883,11 +880,20 @@ export default function Checkout() {
   async function showPiDepositResult(res: any) {
     if (isPiHandoffResult(res)) {
       const opened = await openPiHandoff(res);
+      const desktopWeb = isDesktopWebEnvironment();
       Alert.alert(
-        "Continue in Pi Browser",
+        desktopWeb ? "Open on your phone" : "Continue in Pi Browser",
         opened
-          ? "Pi checkout was opened in Pi Browser. Complete the payment there and then return to BestCity."
-          : "Pi checkout must continue in Pi Browser. Use the Pi Browser app to open the payment link.",
+          ? (
+            desktopWeb
+              ? "A Pi checkout page was opened for this order. Scan the QR code there or copy the link to your phone, then continue in Pi Browser."
+              : "Pi checkout was opened in Pi Browser. Complete the payment there and then return to BestCity."
+          )
+          : (
+            desktopWeb
+              ? "Pi payment must continue on a mobile phone. Open the handoff page and move the link to Pi Browser on your phone."
+              : "Pi checkout must continue in Pi Browser. Use the Pi Browser app to open the payment link."
+          ),
         [
           opened
             ? {

@@ -2,6 +2,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
+import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -66,6 +68,7 @@ export default function PublicPiStockCheckout() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const autoStartedRef = useRef(false);
+  const desktopWeb = isDesktopWebEnvironment();
 
   const intentState = useMemo(() => {
     try {
@@ -87,6 +90,7 @@ export default function PublicPiStockCheckout() {
       return null;
     }
   }, [intentState.intent, returnTo]);
+  const desktopCheckoutUrl = String(handoff?.checkout_url || "").trim();
 
   async function openReturnTarget() {
     if (!returnTo) return;
@@ -97,10 +101,16 @@ export default function PublicPiStockCheckout() {
     }
   }
 
+  async function copyCheckoutLink() {
+    if (!desktopCheckoutUrl) return;
+    await Clipboard.setStringAsync(desktopCheckoutUrl);
+    Alert.alert("Link copied", "Send this link to your phone and open it in Pi Browser.");
+  }
+
   async function openPiBrowser() {
     if (!handoff) return;
-    if (isDesktopWebEnvironment()) {
-      setErr("Pi Browser is mobile-only. Open this stock checkout on your phone in Pi Browser.");
+    if (desktopWeb) {
+      setErr("Pi Browser is mobile-only on this flow. Scan the QR code or copy the link to your phone.");
       return;
     }
     const tryOpen = async (url?: string | null) => {
@@ -144,8 +154,8 @@ export default function PublicPiStockCheckout() {
 
   async function startPayment() {
     if (busy || !intentState.intent) return;
-    if (isDesktopWebEnvironment()) {
-      setErr("Pi stock purchase cannot complete in a desktop browser. Open this stock on your phone in Pi Browser.");
+    if (desktopWeb) {
+      setErr("Pi stock purchase cannot complete in a desktop browser. Scan the QR code or copy the link to your phone.");
       return;
     }
     setBusy(true);
@@ -171,10 +181,10 @@ export default function PublicPiStockCheckout() {
   }
 
   useEffect(() => {
-    if (!autoStart || autoStartedRef.current || !intentState.intent) return;
+    if (desktopWeb || !autoStart || autoStartedRef.current || !intentState.intent) return;
     autoStartedRef.current = true;
     void startPayment();
-  }, [autoStart, intentState.intent?.quote.quote_ref]);
+  }, [autoStart, desktopWeb, intentState.intent?.quote.quote_ref]);
 
   return (
     <LinearGradient colors={[BG1, BG0]} style={{ flex: 1 }}>
@@ -198,10 +208,48 @@ export default function PublicPiStockCheckout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
             Finish this BestCity stock purchase in Pi Browser. The share quantity and Pi amount are locked to this quote.
           </Text>
-          {isDesktopWebEnvironment() ? (
+          {desktopWeb ? (
             <Text style={{ marginTop: 10, color: "#FDE68A", lineHeight: 20 }}>
-              Desktop browsers cannot complete Pi payment. Open this page on a mobile phone with Pi Browser.
+              Desktop browsers cannot complete Pi payment directly. Scan the QR code below or copy this link to your
+              phone, then open it in Pi Browser.
             </Text>
+          ) : null}
+
+          {desktopWeb && !!desktopCheckoutUrl ? (
+            <View
+              style={{
+                marginTop: 14,
+                borderRadius: 20,
+                padding: 16,
+                backgroundColor: "rgba(255,255,255,0.04)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.1)",
+                alignItems: "center",
+              }}
+            >
+              <View style={{ padding: 10, borderRadius: 16, backgroundColor: "#fff" }}>
+                <QRCode value={desktopCheckoutUrl} size={176} />
+              </View>
+              <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.72)", textAlign: "center", lineHeight: 20 }}>
+                Scan with your phone to open this locked stock checkout page, then continue in Pi Browser.
+              </Text>
+              <Pressable
+                onPress={() => void copyCheckoutLink()}
+                style={{
+                  marginTop: 12,
+                  borderRadius: 16,
+                  minHeight: 46,
+                  paddingHorizontal: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(45,212,191,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(45,212,191,0.4)",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "900" }}>Copy link to phone</Text>
+              </Pressable>
+            </View>
           ) : null}
 
           <View style={{ marginTop: 18, gap: 8 }}>

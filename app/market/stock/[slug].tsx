@@ -489,23 +489,29 @@ export default function StockDetailScreen() {
         );
 
         if (res?.handoff_required) {
-          if (isDesktopWebEnvironment()) {
-            throw new Error("Pi stock buy must continue on a mobile phone with Pi Browser.");
-          }
-
           const piBrowserUrl = String(res.pi_browser_url || "").trim();
           const checkoutUrl = String(res.checkout_url || "").trim();
-          const opened =
-            (await tryOpenExternalUrl(piBrowserUrl)) ||
-            (piBrowserUrl !== checkoutUrl && (await tryOpenExternalUrl(checkoutUrl)));
+          const desktopWeb = isDesktopWebEnvironment();
+          const opened = desktopWeb
+            ? await tryOpenExternalUrl(checkoutUrl)
+            : (
+              (await tryOpenExternalUrl(piBrowserUrl)) ||
+              (piBrowserUrl !== checkoutUrl && (await tryOpenExternalUrl(checkoutUrl)))
+            );
 
           if (!opened) {
-            throw new Error("Unable to open Pi Browser. Open Pi Browser and retry this stock buy.");
+            throw new Error(
+              desktopWeb
+                ? "Unable to open the Pi stock handoff page. Open this stock on your phone and retry."
+                : "Unable to open Pi Browser. Open Pi Browser and retry this stock buy.",
+            );
           }
 
           Alert.alert(
-            "Continue in Pi Browser",
-            "Pi checkout was opened. Complete the payment there, then return and refresh your position.",
+            desktopWeb ? "Open on your phone" : "Continue in Pi Browser",
+            desktopWeb
+              ? "A Pi stock checkout page was opened. Scan its QR code or copy the link to your phone, then continue in Pi Browser."
+              : "Pi checkout was opened. Complete the payment there, then return and refresh your position.",
           );
           setPendingTrade(null);
           return;
@@ -614,12 +620,6 @@ export default function StockDetailScreen() {
     }
     if (!quote) {
       setQuoteErr("Quote unavailable. Please retry.");
-      return;
-    }
-    if (tradeRail === "pi" && side === "buy" && isDesktopWebEnvironment()) {
-      const message = "Pi payments are mobile-only. Open this stock on your phone in Pi Browser to complete the purchase.";
-      setQuoteErr(message);
-      Alert.alert("Use mobile phone", message);
       return;
     }
     setQuoteErr(null);
