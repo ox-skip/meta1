@@ -219,20 +219,29 @@ async function ensurePiPaymentsScope(
 }
 
 function normalizeBaseUrl(url: string) {
-  return url.trim().replace(/\/+$/, "");
+  let value = String(url || "").trim();
+  if (!value) return "";
+  value = value.replace(/^(https?):\/\/https?:?\/\/+/i, "$1://");
+  value = value.replace(/^(https?):?\/\/+/i, "$1://");
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+    value = `https://${value.replace(/^\/+/, "")}`;
+  }
+  const parsed = new URL(value);
+  const path = parsed.pathname.replace(/\/+$/, "");
+  return `${parsed.origin}${path}`;
 }
 
 function getPublicWebBaseUrl() {
+  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin) {
+    return normalizeBaseUrl(window.location.origin);
+  }
+
   const fromEnv = String(
     process.env.EXPO_PUBLIC_SITE_URL ||
       process.env.EXPO_PUBLIC_WEB_URL ||
       process.env.EXPO_PUBLIC_APP_URL ||
       "",
   ).trim();
-
-  if (Platform.OS === "web" && typeof window !== "undefined" && window.location?.origin) {
-    return normalizeBaseUrl(fromEnv || window.location.origin);
-  }
   if (fromEnv) return normalizeBaseUrl(fromEnv);
   throw new Error("Missing EXPO_PUBLIC_SITE_URL for Pi Browser handoff.");
 }
