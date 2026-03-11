@@ -1071,7 +1071,7 @@ export default function StockDetailScreen() {
                     {tradeRail === "pi" && side === "buy" && !isPiBrowser ? (
                       <Text style={{ marginTop: 3, color: "#BFDBFE", fontSize: 12 }}>
                         {isDesktopWeb
-                          ? "Pi buy is mobile-only. Open this stock on your phone in Pi Browser to continue."
+                          ? "Desktop will open a phone handoff page with QR and copy-link. Continue on your phone in Pi Browser."
                           : "Pi buy will hand off to Pi Browser before server completion credits shares."}
                       </Text>
                     ) : null}
@@ -1115,7 +1115,7 @@ export default function StockDetailScreen() {
                         {isPiBrowser
                           ? "Pay with Pi is available in this browser."
                           : isDesktopWeb
-                          ? "Desktop browsers cannot complete Pi payment. Use a mobile phone with Pi Browser."
+                          ? "Desktop opens a phone handoff page. Scan the QR code there or copy the link to your phone."
                           : "Open in Pi Browser is required to authorize this payment."}
                       </Text>
                     ) : null}
@@ -1160,7 +1160,7 @@ export default function StockDetailScreen() {
                       ? isPiBrowser
                         ? "Pay With Pi"
                         : isDesktopWeb
-                        ? "Use Mobile Pi Browser"
+                        ? "Continue On Phone"
                         : "Open In Pi Browser"
                       : tradeRail === "pi" && side === "sell"
                       ? piSellsPaused

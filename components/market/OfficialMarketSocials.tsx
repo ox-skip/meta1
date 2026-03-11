@@ -1,88 +1,144 @@
-import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Image, Linking, Pressable, Text, View } from "react-native";
 
-import { OfficialSocialPlatform, useOfficialSocialLinks } from "@/hooks/market/useOfficialSocialLinks";
+import { useOfficialSocialLinks } from "@/hooks/market/useOfficialSocialLinks";
 
 const BORDER = "rgba(255,255,255,0.10)";
 const CARD = "rgba(255,255,255,0.06)";
+const MUTED = "rgba(255,255,255,0.66)";
 
-type PlatformMeta = {
-  platform: OfficialSocialPlatform;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-};
+function extractHost(url: string) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./i, "");
+    return host || "link";
+  } catch {
+    return "link";
+  }
+}
 
-const PLATFORM_META: PlatformMeta[] = [
-  { platform: "discord", label: "Discord", icon: "logo-discord" },
-  { platform: "twitter", label: "Twitter", icon: "logo-twitter" },
-  { platform: "telegram", label: "Telegram", icon: "paper-plane" },
-  { platform: "instagram", label: "Instagram", icon: "logo-instagram" },
-  { platform: "youtube", label: "YouTube", icon: "logo-youtube" },
-  { platform: "tiktok", label: "TikTok", icon: "logo-tiktok" },
-  { platform: "facebook", label: "Facebook", icon: "logo-facebook" },
-  { platform: "linkedin", label: "LinkedIn", icon: "logo-linkedin" },
-];
+function buildLogoUrl(url: string) {
+  return `https://www.google.com/s2/favicons?sz=128&domain_url=${encodeURIComponent(url)}`;
+}
+
+function fallbackLabel(url: string, label: string | null) {
+  const first = (label || extractHost(url)).trim().charAt(0).toUpperCase();
+  return first || "L";
+}
 
 export default function OfficialMarketSocials() {
-  const { byPlatform, loading } = useOfficialSocialLinks();
+  const { rows, loading } = useOfficialSocialLinks();
+  const [brokenLogos, setBrokenLogos] = useState<Record<string, boolean>>({});
 
   const items = useMemo(
     () =>
-      PLATFORM_META.map((meta) => {
-        const row = byPlatform.get(meta.platform);
-        const url = row?.url ?? null;
-        const enabled = Boolean(url);
-        return {
-          ...meta,
-          url,
-          enabled,
-          title: row?.label || meta.label,
-        };
-      }),
-    [byPlatform],
+      rows
+        .filter((row) => !!row.url)
+        .map((row) => ({
+          id: `${row.platform}-${row.url}`,
+          label: row.label,
+          url: row.url as string,
+          host: extractHost(row.url as string),
+          logoUrl: buildLogoUrl(row.url as string),
+          fallback: fallbackLabel(row.url as string, row.label),
+        })),
+    [rows],
   );
 
-  return (
-    <View style={{ marginTop: 10, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
-      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>BestCity official community</Text>
-      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 11 }}>
-        Follow official channels for announcements.
-      </Text>
+  if (!loading && items.length === 0) return null;
 
-      <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {items.map((item) => (
-          <Pressable
-            key={item.platform}
-            disabled={!item.enabled}
-            onPress={async () => {
-              if (!item.url) return;
-              const canOpen = await Linking.canOpenURL(item.url);
-              if (!canOpen) return;
-              await Linking.openURL(item.url);
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: item.enabled ? "rgba(124,58,237,0.45)" : "rgba(255,255,255,0.14)",
-              backgroundColor: item.enabled ? "rgba(124,58,237,0.20)" : "rgba(255,255,255,0.04)",
-              opacity: item.enabled ? 1 : 0.5,
-            }}
-          >
-            <Ionicons name={item.icon} size={14} color={item.enabled ? "#fff" : "rgba(255,255,255,0.7)"} />
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{item.title}</Text>
-          </Pressable>
-        ))}
+  return (
+    <View
+      style={{
+        marginTop: 10,
+        borderRadius: 18,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: BORDER,
+        backgroundColor: CARD,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>BestCity official community</Text>
+          <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>
+            Follow official channels for announcements.
+          </Text>
+        </View>
+        <View
+          style={{
+            minWidth: 44,
+            height: 32,
+            borderRadius: 16,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 10,
+            borderWidth: 1,
+            borderColor: "rgba(29,155,240,0.30)",
+            backgroundColor: "rgba(29,155,240,0.12)",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{items.length}</Text>
+        </View>
       </View>
 
-      {loading ? (
-        <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.52)", fontSize: 11 }}>Loading official links...</Text>
-      ) : null}
+      <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        {loading && items.length === 0
+          ? Array.from({ length: 5 }).map((_, index) => (
+              <View
+                key={`official-social-loading-${index}`}
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                }}
+              />
+            ))
+          : items.map((item) => {
+              const broken = !!brokenLogos[item.id];
+
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={async () => {
+                    const canOpen = await Linking.canOpenURL(item.url);
+                    if (!canOpen) return;
+                    await Linking.openURL(item.url);
+                  }}
+                  style={({ pressed }) => ({
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.14)",
+                    backgroundColor: pressed ? "rgba(29,155,240,0.20)" : "rgba(255,255,255,0.04)",
+                    overflow: "hidden",
+                  })}
+                >
+                  {broken ? (
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>{item.fallback}</Text>
+                  ) : (
+                    <Image
+                      source={{ uri: item.logoUrl }}
+                      accessibilityLabel={item.label || item.host}
+                      onError={() =>
+                        setBrokenLogos((prev) => ({
+                          ...prev,
+                          [item.id]: true,
+                        }))
+                      }
+                      style={{ width: 22, height: 22, borderRadius: 11 }}
+                      resizeMode="contain"
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
+      </View>
     </View>
   );
 }

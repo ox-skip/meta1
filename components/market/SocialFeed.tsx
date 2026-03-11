@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { supabase } from "@/services/supabase";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
@@ -74,20 +75,22 @@ type Props = {
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-const TIMELINE_BG = "#08101E";
-const SURFACE = "rgba(9,15,28,0.92)";
-const SURFACE_ALT = "rgba(15,23,42,0.88)";
-const CARD = "rgba(15,23,42,0.72)";
-const BORDER = "rgba(148,163,184,0.20)";
-const BORDER_SOFT = "rgba(148,163,184,0.10)";
-const TEXT = "#F8FAFC";
-const MUTED = "rgba(226,232,240,0.72)";
+const TIMELINE_BG = "#000000";
+const SURFACE = "#090B0F";
+const SURFACE_ALT = "#0F1419";
+const CARD = "#111821";
+const BORDER = "rgba(255,255,255,0.14)";
+const BORDER_SOFT = "rgba(255,255,255,0.08)";
+const TEXT = "#F7F9F9";
+const MUTED = "rgba(247,249,249,0.66)";
 const ACCENT = "#1D9BF0";
 const ACCENT_BG = "rgba(29,155,240,0.16)";
 const LIKE = "#F91880";
 const LIKE_BG = "rgba(249,24,128,0.16)";
 const MEDIA = "#22C55E";
 const MEDIA_BG = "rgba(34,197,94,0.16)";
+const GOLD = "#F59E0B";
+const GOLD_BG = "rgba(245,158,11,0.16)";
 const SOCIAL_BUCKET = "market-social";
 
 function fileExtFromMime(mime: string) {
@@ -243,6 +246,7 @@ function ActionButton({
 
 export default function SocialFeed({ profileUserId, hideComposer = false, mode = "inline" }: Props) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [meId, setMeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -264,11 +268,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const postingLockRef = useRef(false);
+  const pendingPostIdsRef = useRef(new Set<string>());
 
   const isContained = mode === "contained";
   const isTablet = width >= 768;
   const showLeftRail = isContained && width >= 1024;
-  const showRightRail = isContained && width >= 1360;
+  const showRightRail = isContained && width >= 1280;
+  const showRailLabels = isContained && width >= 1180;
   const thumbSize = isTablet ? 108 : 88;
 
   const myProfile = meId ? profileMap[meId] : undefined;
@@ -418,6 +425,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const oldRow = payload.old as any;
 
         if (payload.eventType === "INSERT" && row?.id) {
+          if (pendingPostIdsRef.current.has(String(row.id))) return;
           setPosts((prev) => {
             if (prev.some((post) => post.id === row.id)) return prev;
             if (profileUserId && row.author_id !== profileUserId) return prev;
@@ -426,6 +434,58 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         } else if (payload.eventType === "DELETE" && oldRow?.id) {
           setPosts((prev) => prev.filter((post) => post.id !== oldRow.id));
         }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "market_social_media" }, (payload) => {
+        const row = (payload.new ?? payload.old) as any;
+        const postId = String(row?.post_id || "");
+        if (!postId) return;
+
+        setMediaMap((prev) => {
+          if (payload.eventType === "INSERT" && payload.new) {
+            const incoming = payload.new as FeedMedia;
+            const current = prev[postId] ?? [];
+            if (current.some((item) => item.id === incoming.id)) return prev;
+
+            return {
+              ...prev,
+              [postId]: [...current, incoming].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+            };
+          }
+
+          if (payload.eventType === "UPDATE" && payload.new) {
+            const incoming = payload.new as FeedMedia;
+            const current = prev[postId] ?? [];
+            const next = current.some((item) => item.id === incoming.id)
+              ? current
+                  .map((item) => (item.id === incoming.id ? incoming : item))
+                  .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+              : [...current, incoming].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+            return {
+              ...prev,
+              [postId]: next,
+            };
+          }
+
+          if (payload.eventType === "DELETE" && payload.old) {
+            const current = prev[postId] ?? [];
+            const next = current.filter((item) => item.id !== String(payload.old.id));
+            if (next.length === current.length) return prev;
+
+            if (next.length === 0) {
+              const trimmed = { ...prev };
+              delete trimmed[postId];
+              return trimmed;
+            }
+
+            return {
+              ...prev,
+              [postId]: next,
+            };
+          }
+
+          return prev;
+        });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "market_social_reactions" }, (payload) => {
         const row = (payload.new ?? payload.old) as any;
@@ -527,12 +587,15 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   async function submitPost() {
     const cleanBody = body.trim();
+    let createdPostId: string | null = null;
     if (!cleanBody && assets.length === 0) return;
     if (!meId) {
       setError("Please sign in to post.");
       return;
     }
+    if (postingLockRef.current) return;
 
+    postingLockRef.current = true;
     setPosting(true);
     setError(null);
     try {
@@ -545,6 +608,10 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       if (postErr) throw postErr;
 
       const created = inserted as FeedPost;
+      createdPostId = created.id;
+      pendingPostIdsRef.current.add(created.id);
+      setPosts((prev) => prev.filter((post) => post.id !== created.id));
+
       const createdMedia: FeedMedia[] = [];
       const failedUploads: string[] = [];
       for (let i = 0; i < assets.length; i += 1) {
@@ -555,10 +622,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         }
       }
 
-      setPosts((prev) => (prev.some((post) => post.id === created.id) ? prev : [created, ...prev]));
       if (createdMedia.length) {
         setMediaMap((prev) => ({ ...prev, [created.id]: createdMedia }));
       }
+      setPosts((prev) => [created, ...prev.filter((post) => post.id !== created.id)]);
+      pendingPostIdsRef.current.delete(created.id);
 
       setBody("");
       setAssets([]);
@@ -567,6 +635,12 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         if (!cleanBody && createdMedia.length === 0) {
           await supabase.from("market_social_posts").delete().eq("id", created.id);
           setPosts((prev) => prev.filter((post) => post.id !== created.id));
+          setMediaMap((prev) => {
+            const next = { ...prev };
+            delete next[created.id];
+            return next;
+          });
+          pendingPostIdsRef.current.delete(created.id);
           setError("We could not upload that attachment. Try a smaller photo/video or upload it again.");
           return;
         }
@@ -581,6 +655,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         }
       }
     } catch (e: any) {
+      if (createdPostId) pendingPostIdsRef.current.delete(createdPostId);
       const msg = String(e?.message || "Could not publish post");
       if (msg.toLowerCase().includes("row-level security")) {
         setError("Upload blocked by storage/table policy. Add insert policy for your user on bucket: market-social.");
@@ -588,6 +663,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         setError(msg);
       }
     } finally {
+      postingLockRef.current = false;
       setPosting(false);
     }
   }
@@ -775,172 +851,37 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderComposer() {
     const composerName = getDisplayName(myProfile);
-
-    if (isContained) {
-      return (
-        <View
-          style={{
-            paddingHorizontal: 16,
-            paddingTop: 14,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: BORDER_SOFT,
-            backgroundColor: "#000",
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-            <View
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 23,
-                overflow: "hidden",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.10)",
-              }}
-            >
-              {myAvatar ? (
-                <Image source={{ uri: myAvatar }} style={{ width: 46, height: 46 }} />
-              ) : (
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{getInitial(composerName)}</Text>
-              )}
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <TextInput
-                value={body}
-                onChangeText={setBody}
-                multiline
-                placeholder="What's happening?"
-                placeholderTextColor="rgba(255,255,255,0.34)"
-                textAlignVertical="top"
-                style={{
-                  minHeight: 58,
-                  color: TEXT,
-                  fontSize: isTablet ? 22 : 18,
-                  lineHeight: isTablet ? 30 : 24,
-                  paddingHorizontal: 0,
-                  paddingVertical: 6,
-                }}
-              />
-
-              {assets.length ? (
-                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  {assets.map((asset, index) => (
-                    <Pressable key={`${asset.uri}-${index}`} onPress={() => setPreviewAsset(asset)}>
-                      <View
-                        style={{
-                          width: thumbSize,
-                          height: thumbSize,
-                          borderRadius: 18,
-                          overflow: "hidden",
-                          borderWidth: 1,
-                          borderColor: BORDER,
-                          backgroundColor: CARD,
-                        }}
-                      >
-                        {asset.kind === "image" ? (
-                          <Image source={{ uri: asset.uri }} style={{ width: thumbSize, height: thumbSize }} />
-                        ) : (
-                          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                            <Ionicons name="videocam-outline" size={24} color={TEXT} />
-                          </View>
-                        )}
-
-                        <Pressable
-                          onPress={() => setAssets((prev) => prev.filter((_, assetIndex) => assetIndex !== index))}
-                          style={{
-                            position: "absolute",
-                            top: 6,
-                            right: 6,
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "rgba(0,0,0,0.72)",
-                          }}
-                        >
-                          <Ionicons name="close" size={14} color={TEXT} />
-                        </Pressable>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              <View
-                style={{
-                  marginTop: 12,
-                  paddingTop: 12,
-                  borderTopWidth: assets.length ? 1 : 0,
-                  borderTopColor: BORDER_SOFT,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                  <Pressable onPress={chooseMedia} style={{ padding: 4 }}>
-                    <Ionicons name="image-outline" size={20} color={ACCENT} />
-                  </Pressable>
-                  <Ionicons name="happy-outline" size={20} color="rgba(29,155,240,0.85)" />
-                  <Ionicons name="location-outline" size={20} color="rgba(29,155,240,0.85)" />
-                  <Text style={{ color: MUTED, fontSize: 12 }}>{assets.length}/4</Text>
-                </View>
-
-                <Pressable
-                  disabled={posting || (!body.trim() && assets.length === 0)}
-                  onPress={submitPost}
-                  style={{
-                    minWidth: 92,
-                    height: 38,
-                    borderRadius: 19,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : "#FFFFFF",
-                  }}
-                >
-                  <Text style={{ color: "#000", fontWeight: "900" }}>{posting ? "Posting..." : "Post"}</Text>
-                </Pressable>
-              </View>
-
-              {error ? <Text style={{ marginTop: 10, color: "#FCA5A5", fontSize: 12 }}>{error}</Text> : null}
-            </View>
-          </View>
-        </View>
-      );
-    }
+    const avatarSize = isContained ? 48 : 44;
 
     return (
       <View
         style={{
-          marginTop: 0,
-          borderRadius: 22,
-          borderWidth: 1,
-          borderColor: BORDER,
-          backgroundColor: SURFACE,
-          padding: 14,
+          paddingHorizontal: 16,
+          paddingTop: isContained ? 12 : 14,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: BORDER_SOFT,
+          backgroundColor: "#000",
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
           <View
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
+              width: avatarSize,
+              height: avatarSize,
+              borderRadius: avatarSize / 2,
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: ACCENT_BG,
+              backgroundColor: isContained ? "rgba(255,255,255,0.10)" : ACCENT_BG,
             }}
           >
             {myAvatar ? (
-              <Image source={{ uri: myAvatar }} style={{ width: 44, height: 44 }} />
+              <Image source={{ uri: myAvatar }} style={{ width: avatarSize, height: avatarSize }} />
             ) : (
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>{getInitial(composerName)}</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: isContained ? 16 : 15 }}>
+                {getInitial(composerName)}
+              </Text>
             )}
           </View>
 
@@ -949,16 +890,16 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               value={body}
               onChangeText={setBody}
               multiline
-              placeholder="What's happening in your store?"
-              placeholderTextColor="rgba(226,232,240,0.34)"
+              placeholder={profileUserId ? "Share an update with your audience" : "What's happening?"}
+              placeholderTextColor="rgba(255,255,255,0.34)"
               textAlignVertical="top"
               style={{
-                minHeight: 78,
+                minHeight: isContained ? 64 : 72,
                 color: TEXT,
-                fontSize: 16,
-                lineHeight: 22,
+                fontSize: isContained ? (isTablet ? 22 : 18) : 17,
+                lineHeight: isContained ? (isTablet ? 30 : 24) : 24,
                 paddingHorizontal: 0,
-                paddingVertical: 4,
+                paddingVertical: 6,
               }}
             />
 
@@ -970,7 +911,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                       style={{
                         width: thumbSize,
                         height: thumbSize,
-                        borderRadius: 16,
+                        borderRadius: 18,
                         overflow: "hidden",
                         borderWidth: 1,
                         borderColor: BORDER,
@@ -996,7 +937,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                           borderRadius: 12,
                           alignItems: "center",
                           justifyContent: "center",
-                          backgroundColor: "rgba(2,6,23,0.72)",
+                          backgroundColor: "rgba(0,0,0,0.72)",
                         }}
                       >
                         <Ionicons name="close" size={14} color={TEXT} />
@@ -1013,33 +954,94 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 paddingTop: 12,
                 borderTopWidth: 1,
                 borderTopColor: BORDER_SOFT,
-                flexDirection: "row",
-                alignItems: "center",
+                flexDirection: isTablet ? "row" : "column",
+                alignItems: isTablet ? "center" : "stretch",
                 justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                <Pressable onPress={chooseMedia} style={{ padding: 4 }}>
-                  <Ionicons name="image-outline" size={19} color={ACCENT} />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Pressable
+                  onPress={chooseMedia}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: ACCENT_BG,
+                  }}
+                >
+                  <Ionicons name="image-outline" size={18} color={ACCENT} />
                 </Pressable>
-                <Text style={{ color: MUTED, fontSize: 12 }}>{assets.length}/4</Text>
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Ionicons name="sparkles-outline" size={18} color={ACCENT} />
+                </View>
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Ionicons name="location-outline" size={18} color={ACCENT} />
+                </View>
+                <Text style={{ color: MUTED, fontSize: 12 }}>
+                  {assets.length ? `${assets.length}/4 attached` : "Photo or video"}
+                </Text>
               </View>
 
-              <Pressable
-                disabled={posting || (!body.trim() && assets.length === 0)}
-                onPress={submitPost}
+              <View
                 style={{
-                  minWidth: 88,
-                  height: 38,
-                  borderRadius: 19,
+                  flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor:
-                    posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : ACCENT,
+                  justifyContent: isTablet ? "flex-end" : "space-between",
+                  gap: 12,
                 }}
               >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>{posting ? "Posting..." : "Post"}</Text>
-              </Pressable>
+                <View
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: "rgba(29,155,240,0.26)",
+                    backgroundColor: "rgba(29,155,240,0.10)",
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>
+                    {profileUserId ? "Profile feed" : "Followers feed"}
+                  </Text>
+                </View>
+
+                <Pressable
+                  disabled={posting || (!body.trim() && assets.length === 0)}
+                  onPress={submitPost}
+                  style={{
+                    minWidth: 96,
+                    height: 40,
+                    borderRadius: 20,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor:
+                      posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : "#FFFFFF",
+                  }}
+                >
+                  <Text style={{ color: "#000", fontWeight: "900" }}>{posting ? "Posting..." : "Post"}</Text>
+                </Pressable>
+              </View>
             </View>
 
             {error ? <Text style={{ marginTop: 10, color: "#FCA5A5", fontSize: 12 }}>{error}</Text> : null}
@@ -1053,6 +1055,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const author = profileMap[post.author_id];
     const authorName = getDisplayName(author);
     const authorHandle = getHandle(author);
+    const isOwnedByMe = !!meId && post.author_id === meId;
     const authorAvatar = author?.logo_path
       ? supabase.storage.from("market-sellers").getPublicUrl(author.logo_path).data.publicUrl
       : null;
@@ -1061,32 +1064,31 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     return (
       <View
         style={{
-          paddingHorizontal: isContained ? 18 : 16,
-          paddingTop: isContained ? 18 : 16,
-          paddingBottom: isContained ? 14 : 16,
-          borderBottomWidth: isContained ? 1 : 0,
+          paddingHorizontal: 16,
+          paddingTop: 14,
+          paddingBottom: 14,
+          borderBottomWidth: 1,
           borderBottomColor: BORDER_SOFT,
-          borderRadius: isContained ? 0 : 26,
-          borderWidth: isContained ? 0 : 1,
-          borderColor: isContained ? "transparent" : BORDER,
-          backgroundColor: isContained ? "transparent" : SURFACE_ALT,
-          marginTop: isContained ? 0 : 12,
+          backgroundColor: "#000",
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
           <View
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 23,
+              width: isContained ? 48 : 46,
+              height: isContained ? 48 : 46,
+              borderRadius: isContained ? 24 : 23,
               overflow: "hidden",
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(30,41,59,0.92)",
+              backgroundColor: "rgba(255,255,255,0.08)",
             }}
           >
             {authorAvatar ? (
-              <Image source={{ uri: authorAvatar }} style={{ width: 46, height: 46 }} />
+              <Image
+                source={{ uri: authorAvatar }}
+                style={{ width: isContained ? 48 : 46, height: isContained ? 48 : 46 }}
+              />
             ) : (
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{getInitial(authorName)}</Text>
             )}
@@ -1105,13 +1107,50 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 <SellerBadge verified={author?.is_verified} />
               </Pressable>
 
+              {isOwnedByMe ? (
+                <View
+                  style={{
+                    borderRadius: 999,
+                    backgroundColor: GOLD_BG,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: GOLD, fontWeight: "800", fontSize: 11 }}>Your post</Text>
+                </View>
+              ) : null}
+
+              {media.length ? (
+                <View
+                  style={{
+                    borderRadius: 999,
+                    backgroundColor: ACCENT_BG,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: ACCENT, fontWeight: "800", fontSize: 11 }}>
+                    {media.length > 1 ? `${media.length} media` : "Media drop"}
+                  </Text>
+                </View>
+              ) : null}
+
               <Text numberOfLines={1} style={{ color: MUTED, fontSize: 13 }}>
-                @{authorHandle} · {formatRelativeTime(post.created_at)}
+                @{authorHandle} - {formatRelativeTime(post.created_at)}
               </Text>
             </View>
 
             {post.body ? (
-              <Text style={{ marginTop: 8, color: TEXT, fontSize: 15, lineHeight: 22 }}>{post.body}</Text>
+              <Text
+                style={{
+                  marginTop: 8,
+                  color: TEXT,
+                  fontSize: isContained ? 16 : 15,
+                  lineHeight: isContained ? 24 : 22,
+                }}
+              >
+                {post.body}
+              </Text>
             ) : null}
 
             {media.length ? <View style={{ marginTop: 12 }}>{renderMediaGrid(media)}</View> : null}
@@ -1161,12 +1200,12 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderEmptyState() {
     return (
-      <View style={{ paddingHorizontal: isContained ? 18 : 0, paddingBottom: 8 }}>
+      <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
         <View
           style={{
-            borderRadius: 26,
+            borderRadius: 24,
             borderWidth: 1,
-            borderColor: BORDER,
+            borderColor: BORDER_SOFT,
             backgroundColor: SURFACE_ALT,
             padding: 18,
           }}
@@ -1186,7 +1225,16 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderInlineContent() {
     return (
-      <View>
+      <View
+        style={{
+          marginTop: 12,
+          borderRadius: 28,
+          borderWidth: 1,
+          borderColor: BORDER_SOFT,
+          backgroundColor: "#000",
+          overflow: "hidden",
+        }}
+      >
         {!hideComposer ? renderComposer() : null}
         {loading
           ? renderLoadingState()
@@ -1258,12 +1306,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     if (!showRightRail) return null;
 
     return (
-      <View style={{ width: 360, paddingHorizontal: 18, paddingTop: 12, gap: 16 }}>
+      <View style={{ width: 360, paddingHorizontal: 20, paddingTop: Math.max(12, insets.top + 10), gap: 16 }}>
         <View
           style={{
             height: 46,
             borderRadius: 23,
-            backgroundColor: "#16181C",
+            borderWidth: 1,
+            borderColor: BORDER_SOFT,
+            backgroundColor: SURFACE_ALT,
             paddingHorizontal: 14,
             flexDirection: "row",
             alignItems: "center",
@@ -1274,25 +1324,62 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           <Text style={{ color: MUTED }}>Search updates</Text>
         </View>
 
-        <View style={{ borderRadius: 24, backgroundColor: "#16181C", padding: 18, gap: 14 }}>
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Feed snapshot</Text>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            {[
-              { label: "Posts", value: formatCount(posts.length) },
-              { label: "Media", value: formatCount(totalMedia) },
-            ].map((item) => (
-              <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: "#0F1115", padding: 14 }}>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{item.value}</Text>
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{item.label}</Text>
-              </View>
-            ))}
+        <View
+          style={{
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: BORDER_SOFT,
+            backgroundColor: SURFACE_ALT,
+            overflow: "hidden",
+          }}
+        >
+          <View style={{ height: 5, backgroundColor: ACCENT }} />
+          <View style={{ padding: 18, gap: 14 }}>
+            <View>
+              <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 11, letterSpacing: 1 }}>MARKET PULSE</Text>
+              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 22 }}>Feed snapshot</Text>
+              <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
+                Keep your storefront alive with short updates, media drops, and fast replies.
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {[
+                { label: "Posts", value: formatCount(posts.length) },
+                { label: "Media", value: formatCount(totalMedia) },
+              ].map((item) => (
+                <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: "#0A0E13", padding: 14 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{item.value}</Text>
+                  <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View
+              style={{
+                borderRadius: 18,
+                backgroundColor: "rgba(255,255,255,0.04)",
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+              }}
+            >
+              <Text style={{ color: MUTED, lineHeight: 20 }}>
+                {posts[0] ? `Latest post landed ${formatRelativeTime(posts[0].created_at)} ago.` : "No posts loaded yet."}
+              </Text>
+            </View>
           </View>
-          <Text style={{ color: MUTED, lineHeight: 20 }}>
-            {posts[0] ? `Latest post: ${formatRelativeTime(posts[0].created_at)} ago.` : "No posts loaded yet."}
-          </Text>
         </View>
 
-        <View style={{ borderRadius: 24, backgroundColor: "#16181C", padding: 18, gap: 12 }}>
+        <View
+          style={{
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: BORDER_SOFT,
+            backgroundColor: SURFACE_ALT,
+            padding: 18,
+            gap: 12,
+          }}
+        >
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Active sellers</Text>
           {activeProfiles.length ? (
             activeProfiles.map((profile) => {
@@ -1311,17 +1398,17 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 >
                   <View
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
                       overflow: "hidden",
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: "#0F1115",
+                      backgroundColor: "#0A0E13",
                     }}
                   >
                     {avatar ? (
-                      <Image source={{ uri: avatar }} style={{ width: 40, height: 40 }} />
+                      <Image source={{ uri: avatar }} style={{ width: 42, height: 42 }} />
                     ) : (
                       <Text style={{ color: TEXT, fontWeight: "900" }}>{getInitial(name)}</Text>
                     )}
@@ -1344,61 +1431,114 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             <Text style={{ color: MUTED, lineHeight: 20 }}>Follow sellers to populate this side column.</Text>
           )}
         </View>
+
+        <View
+          style={{
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: BORDER_SOFT,
+            backgroundColor: SURFACE_ALT,
+            padding: 18,
+            gap: 10,
+          }}
+        >
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Post ideas</Text>
+          {[
+            "Share one clean product shot or a short demo clip.",
+            "Drop quick updates when price or inventory changes.",
+            "Reply to comments fast to keep momentum on your posts.",
+          ].map((tip) => (
+            <View key={tip} style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+              <View
+                style={{
+                  marginTop: 6,
+                  width: 7,
+                  height: 7,
+                  borderRadius: 3.5,
+                  backgroundColor: ACCENT,
+                }}
+              />
+              <Text style={{ flex: 1, color: MUTED, lineHeight: 20 }}>{tip}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     );
   }
 
   function renderContainedTimeline() {
+    const railWidth = showRailLabels ? 232 : 88;
+    const timelineWidth = showRightRail ? 760 : showLeftRail ? 860 : width;
+    const navItems: Array<{ icon: IconName; label: string; active?: boolean }> = [
+      { icon: "home", label: "Home", active: true },
+      { icon: "search", label: "Explore" },
+      { icon: "notifications-outline", label: "Alerts" },
+      { icon: "mail-outline", label: "Messages" },
+      { icon: "person-outline", label: "Profile" },
+    ];
+
     return (
-      <View style={{ flex: 1, width: "100%", flexDirection: "row", backgroundColor: "#000" }}>
+      <View style={{ flex: 1, width: "100%", flexDirection: "row", backgroundColor: TIMELINE_BG }}>
         {showLeftRail ? (
           <View
             style={{
-              width: 88,
+              width: railWidth,
               borderRightWidth: 1,
               borderRightColor: BORDER_SOFT,
-              alignItems: "center",
-              paddingTop: 10,
+              paddingTop: Math.max(8, insets.top),
+              paddingHorizontal: showRailLabels ? 14 : 0,
+              alignItems: showRailLabels ? "stretch" : "center",
               gap: 10,
             }}
           >
             <View
               style={{
-                width: 52,
-                height: 52,
-                borderRadius: 26,
+                alignSelf: showRailLabels ? "flex-start" : "center",
+                marginLeft: showRailLabels ? 8 : 0,
+                width: 56,
+                height: 56,
+                borderRadius: 28,
                 alignItems: "center",
                 justifyContent: "center",
+                backgroundColor: "rgba(29,155,240,0.12)",
               }}
             >
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 30 }}>M</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>M</Text>
             </View>
 
-            {[
-              "home",
-              "search",
-              "notifications-outline",
-              "mail-outline",
-              "person-outline",
-            ].map((icon) => (
+            {navItems.map((item) => (
               <View
-                key={icon}
+                key={item.label}
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 26,
-                  alignItems: "center",
-                  justifyContent: "center",
+                  alignSelf: showRailLabels ? "stretch" : "center",
                 }}
               >
-                <Ionicons name={icon as IconName} size={26} color={TEXT} />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: showRailLabels ? "flex-start" : "center",
+                    gap: 14,
+                    height: 52,
+                    borderRadius: 26,
+                    paddingHorizontal: showRailLabels ? 18 : 0,
+                    backgroundColor: item.active ? "rgba(255,255,255,0.08)" : "transparent",
+                  }}
+                >
+                  <Ionicons name={item.icon} size={26} color={TEXT} />
+                  {showRailLabels ? (
+                    <Text style={{ color: TEXT, fontWeight: item.active ? "900" : "700", fontSize: 18 }}>
+                      {item.label}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ))}
 
             <View
               style={{
                 marginTop: 6,
-                width: 54,
+                width: showRailLabels ? "100%" : 54,
                 height: 54,
                 borderRadius: 27,
                 alignItems: "center",
@@ -1406,7 +1546,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 backgroundColor: "#FFFFFF",
               }}
             >
-              <Ionicons name="add" size={26} color="#000" />
+              {showRailLabels ? (
+                <Text style={{ color: "#000", fontWeight: "900", fontSize: 17 }}>Post</Text>
+              ) : (
+                <Ionicons name="add" size={26} color="#000" />
+              )}
             </View>
           </View>
         ) : null}
@@ -1426,7 +1570,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 flex: 1,
                 minHeight: 0,
                 width: "100%",
-                maxWidth: showLeftRail ? 700 : 760,
+                maxWidth: timelineWidth,
                 borderLeftWidth: showLeftRail ? 0 : isTablet ? 1 : 0,
                 borderRightWidth: 1,
                 borderColor: BORDER_SOFT,
@@ -1436,10 +1580,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             >
               <View
                 style={{
-                  height: 54,
+                  height: 56 + insets.top,
+                  paddingTop: insets.top,
                   borderBottomWidth: 1,
                   borderBottomColor: BORDER_SOFT,
-                  backgroundColor: "#000",
+                  backgroundColor: "rgba(0,0,0,0.94)",
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -1451,7 +1596,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                       flex: 1,
                       alignItems: "center",
                       justifyContent: "center",
-                      borderBottomWidth: 4,
+                      borderBottomWidth: 3,
                       borderBottomColor: "transparent",
                     }}
                   >
@@ -1462,7 +1607,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                       flex: 1,
                       alignItems: "center",
                       justifyContent: "center",
-                      borderBottomWidth: 4,
+                      borderBottomWidth: 3,
                       borderBottomColor: ACCENT,
                     }}
                   >
@@ -1481,11 +1626,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 renderItem={({ item }) => renderPost(item)}
                 ListHeaderComponent={renderTimelineHeader()}
                 ListEmptyComponent={!loading ? renderEmptyState() : null}
-                ListFooterComponent={loading && posts.length > 0 ? renderLoadingState() : <View style={{ height: 18 }} />}
+                ListFooterComponent={
+                  loading && posts.length > 0 ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 8) }} />
+                }
                 keyboardShouldPersistTaps="handled"
                 refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={ACCENT} />}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 24 }}
+                contentContainerStyle={{ paddingBottom: Math.max(24, insets.bottom + 18) }}
               />
             </View>
           </View>
