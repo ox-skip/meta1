@@ -3,15 +3,12 @@ import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supab
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
 import {
   bucketStartIso,
-  buildQuote,
-  isLaunchGuardActive,
   isTradingPaused,
   parseSide,
-  resolveLiquidityUsdc,
-  resolveSpotPriceUsdc,
   resolveStockIdentity,
   toNum,
 } from "../_shared/market/stock.ts";
+import { deriveActualTradeFromSwap, isSupportedEvmStockChain, parseInt256Word, readPoolSnapshot } from "../_shared/market/stockEvm.ts";
 
 const SWAP_EVENT_TOPIC0 = `0x${
   Array.from(keccak_256(new TextEncoder().encode("Swap(address,address,int256,int256,uint160,uint128,int24)")))
@@ -73,6 +70,21 @@ async function resolveUserOpSender(rpcUrl: string, userOpHash: string) {
   return null;
 }
 
+async function resolveBlockTimeIso(rpcUrl: string, blockNumberHex: string) {
+  if (!blockNumberHex) return new Date().toISOString();
+  try {
+    const block: any = await rpcCall(rpcUrl, "eth_getBlockByNumber", [blockNumberHex, false]);
+    const tsHex = String(block?.timestamp || "0x0");
+    const ts = Number.parseInt(tsHex, 16);
+    if (Number.isFinite(ts) && ts > 0) {
+      return new Date(ts * 1000).toISOString();
+    }
+  } catch {
+    // ignore timestamp lookup failures and fall back to current time
+  }
+  return new Date().toISOString();
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -86,10 +98,7 @@ Deno.serve(async (req) => {
   const stockId = String(body?.stock_id ?? body?.identity_id ?? "").trim();
   const slug = String(body?.slug ?? "").trim().toLowerCase();
   const side = parseSide(body?.side);
-  const amountUsdcInput = toNum(body?.amount_usdc, 0);
-  const quantityInput = toNum(body?.quantity, 0);
   const maxSlippageBps = toNum(body?.max_slippage_bps, 1200);
-  const feeBps = toNum(body?.fee_bps, 50);
   const executionMode = String(body?.execution_mode ?? "onchain").trim().toLowerCase();
   const txHash = String(body?.tx_hash ?? "").trim();
   const userOpHash = String(body?.user_op_hash ?? "").trim();
@@ -104,6 +113,9 @@ Deno.serve(async (req) => {
   if (!identity) return bad("Stock identity not found");
   if (identity.chain === "pi_testnet") {
     return bad("This is a Pi-native stock. Use the Pi stock market flow.");
+  }
+  if (!isSupportedEvmStockChain(identity.chain)) {
+    return bad("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
   }
   if (!isAddress(String(identity.pool_address || ""))) return bad("Stock pool address is missing");
   if (!isAddress(String(identity.token_address || ""))) return bad("Stock token address is missing");
@@ -170,56 +182,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  const [spotPrice, liquidityUsdc] = await Promise.all([
-    resolveSpotPriceUsdc(admin as any, identity.id, 0.01),
-    resolveLiquidityUsdc(admin as any, identity),
-  ]);
-
-  let quote: ReturnType<typeof buildQuote>;
-  try {
-    if (quoteSnapshot && typeof quoteSnapshot === "object") {
-      quote = {
-        side,
-        price_spot_usdc: toNum((quoteSnapshot as any)?.price_spot_usdc, spotPrice),
-        price_execution_usdc: toNum((quoteSnapshot as any)?.price_execution_usdc, spotPrice),
-        quantity: toNum((quoteSnapshot as any)?.quantity, side === "buy" ? 0 : quantityInput),
-        notional_usdc: toNum((quoteSnapshot as any)?.notional_usdc, side === "buy" ? amountUsdcInput : quantityInput * spotPrice),
-        fee_usdc: toNum((quoteSnapshot as any)?.fee_usdc, 0),
-        price_impact_bps: toNum((quoteSnapshot as any)?.price_impact_bps, 0),
-        slippage_bps: toNum((quoteSnapshot as any)?.slippage_bps, 0),
-        max_trade_usdc: toNum((quoteSnapshot as any)?.max_trade_usdc, liquidityUsdc * 0.2),
-        cooldown_seconds: toNum((quoteSnapshot as any)?.cooldown_seconds, 10),
-        liquidity_usdc: toNum((quoteSnapshot as any)?.liquidity_usdc, liquidityUsdc),
-        launch_guard_active: Boolean((quoteSnapshot as any)?.launch_guard_active),
-      };
-    } else {
-      quote = buildQuote({
-        side,
-        spotPriceUsdc: spotPrice,
-        liquidityUsdc,
-        amountUsdc: amountUsdcInput,
-        quantity: quantityInput,
-        feeBps,
-        maxSlippageBps,
-        launchGuardActive: isLaunchGuardActive(identity),
-      });
-    }
-  } catch (e: any) {
-    return bad(String(e?.message ?? e));
-  }
-
-  if (side === "sell") {
-    const { data: pos, error: posErr } = await admin
-      .from("market_stock_positions")
-      .select("balance_qty")
-      .eq("stock_id", identity.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (posErr) return bad(posErr.message);
-    const balance = toNum(pos?.balance_qty, 0);
-    if (balance < quote.quantity) return bad(`Insufficient balance (${balance.toFixed(6)} ${identity.symbol})`);
-  }
-
   const { data: cfg, error: cfgErr } = await admin
     .from("market_chain_config")
     .select("rpc_url,confirmations_required,active,identity_stable_address,usdc_address")
@@ -248,11 +210,11 @@ Deno.serve(async (req) => {
   const poolNorm = norm(String(identity.pool_address));
   const tokenNorm = norm(String(identity.token_address));
   const stableNorm = norm(stableAddress);
-  const hasPoolSwapLog = logs.some((log: any) =>
+  const poolSwapLog = logs.find((log: any) =>
     norm(String(log?.address || "")) === poolNorm &&
     norm(String(log?.topics?.[0] || "")) === norm(SWAP_EVENT_TOPIC0)
   );
-  if (!hasPoolSwapLog) return bad("Transaction does not contain a swap for this stock pool");
+  if (!poolSwapLog) return bad("Transaction does not contain a swap for this stock pool");
 
   const transferLogs = logs.filter((log: any) => norm(String(log?.topics?.[0] || "")) === norm(TRANSFER_EVENT_TOPIC0));
   const hasWalletTransferOnKnownAssets = transferLogs.some((log: any) => {
@@ -290,17 +252,54 @@ Deno.serve(async (req) => {
     return bad("Transaction is not tied to this wallet's stock trade");
   }
 
+  let actualTrade: { price_execution_usdc: number; quantity: number; notional_usdc: number };
+  let latestPoolSnapshot: Awaited<ReturnType<typeof readPoolSnapshot>> | null = null;
+  try {
+    latestPoolSnapshot = await readPoolSnapshot({
+      rpcUrl: String(cfg.rpc_url),
+      poolAddress: String(identity.pool_address),
+      stableToken: stableAddress,
+      identityToken: String(identity.token_address),
+    });
+    const swapData = String((poolSwapLog as any)?.data || "").replace(/^0x/i, "");
+    actualTrade = deriveActualTradeFromSwap({
+      side,
+      amount0: parseInt256Word(swapData.slice(0, 64)),
+      amount1: parseInt256Word(swapData.slice(64, 128)),
+      token0: latestPoolSnapshot.token0,
+      stableToken: stableAddress,
+      identityToken: String(identity.token_address),
+    });
+  } catch (e: any) {
+    return bad(String(e?.message || e || "Could not decode executed trade from on-chain swap log"));
+  }
+
+  const actualQuote = {
+    side,
+    price_spot_usdc: toNum(latestPoolSnapshot?.spot_price_usdc, toNum((quoteSnapshot as any)?.price_spot_usdc, actualTrade.price_execution_usdc)),
+    price_execution_usdc: actualTrade.price_execution_usdc,
+    quantity: actualTrade.quantity,
+    notional_usdc: actualTrade.notional_usdc,
+    fee_usdc: 0,
+    price_impact_bps: toNum((quoteSnapshot as any)?.price_impact_bps, 0),
+    slippage_bps: toNum((quoteSnapshot as any)?.slippage_bps, 0),
+    max_trade_usdc: toNum((quoteSnapshot as any)?.max_trade_usdc, 0),
+    cooldown_seconds: toNum((quoteSnapshot as any)?.cooldown_seconds, 0),
+    liquidity_usdc: toNum((quoteSnapshot as any)?.liquidity_usdc, 0),
+    launch_guard_active: Boolean((quoteSnapshot as any)?.launch_guard_active),
+  };
+
   const { data: order, error: orderErr } = await admin
     .from("market_stock_orders")
     .insert({
       stock_id: identity.id,
       user_id: user.id,
       side,
-      quote_price_usdc: round8(quote.price_execution_usdc),
-      amount_usdc: side === "buy" ? round8(quote.notional_usdc) : null,
-      quantity: side === "sell" ? round8(quote.quantity) : null,
+      quote_price_usdc: round8(actualTrade.price_execution_usdc),
+      amount_usdc: side === "buy" ? round8(actualTrade.notional_usdc) : null,
+      quantity: side === "sell" ? round8(actualTrade.quantity) : null,
       slippage_bps: Math.round(maxSlippageBps),
-      max_price_impact_bps: Math.round(quote.price_impact_bps),
+      max_price_impact_bps: Math.round(actualQuote.price_impact_bps),
       status: "submitted",
       submitted_tx_hash: txHash,
     })
@@ -309,18 +308,22 @@ Deno.serve(async (req) => {
   if (orderErr || !order) return bad(orderErr?.message ?? "Failed to create order");
 
   try {
-    const nowIso = new Date().toISOString();
+    const nowIso = await resolveBlockTimeIso(String(cfg.rpc_url), String(receipt.blockNumber || ""));
+    const chainBlock = Number.parseInt(String(receipt.blockNumber || "0x0"), 16);
+    const chainLogIndex = Number.parseInt(String((poolSwapLog as any)?.logIndex || (poolSwapLog as any)?.index || "0x0"), 16);
     const { data: trade, error: tradeErr } = await admin
       .from("market_stock_trades")
       .insert({
         stock_id: identity.id,
         user_id: user.id,
         side,
-        price_usdc: round8(quote.price_execution_usdc),
-        quantity: round8(quote.quantity),
-        notional_usdc: round8(quote.notional_usdc),
-        fee_usdc: round8(quote.fee_usdc),
+        price_usdc: round8(actualTrade.price_execution_usdc),
+        quantity: round8(actualTrade.quantity),
+        notional_usdc: round8(actualTrade.notional_usdc),
+        fee_usdc: 0,
         chain_tx_hash: txHash,
+        chain_block: Number.isFinite(chainBlock) ? chainBlock : null,
+        chain_log_index: Number.isFinite(chainLogIndex) ? chainLogIndex : null,
         traded_at: nowIso,
       })
       .select("*")
@@ -342,12 +345,12 @@ Deno.serve(async (req) => {
         .insert({
           stock_id: identity.id,
           bucket_start: bucketStart,
-          open_price_usdc: round8(quote.price_execution_usdc),
-          high_price_usdc: round8(quote.price_execution_usdc),
-          low_price_usdc: round8(quote.price_execution_usdc),
-          close_price_usdc: round8(quote.price_execution_usdc),
-          volume_qty: round8(quote.quantity),
-          volume_usdc: round8(quote.notional_usdc),
+          open_price_usdc: round8(actualTrade.price_execution_usdc),
+          high_price_usdc: round8(actualTrade.price_execution_usdc),
+          low_price_usdc: round8(actualTrade.price_execution_usdc),
+          close_price_usdc: round8(actualTrade.price_execution_usdc),
+          volume_qty: round8(actualTrade.quantity),
+          volume_usdc: round8(actualTrade.notional_usdc),
           trades_count: 1,
         });
       if (insCandleErr) throw new Error(insCandleErr.message);
@@ -355,11 +358,11 @@ Deno.serve(async (req) => {
       const { error: updCandleErr } = await admin
         .from("market_stock_candles_1m")
         .update({
-          high_price_usdc: Math.max(toNum(candle.high_price_usdc, 0), quote.price_execution_usdc),
-          low_price_usdc: Math.min(toNum(candle.low_price_usdc, quote.price_execution_usdc), quote.price_execution_usdc),
-          close_price_usdc: round8(quote.price_execution_usdc),
-          volume_qty: round8(toNum(candle.volume_qty, 0) + quote.quantity),
-          volume_usdc: round8(toNum(candle.volume_usdc, 0) + quote.notional_usdc),
+          high_price_usdc: Math.max(toNum(candle.high_price_usdc, 0), actualTrade.price_execution_usdc),
+          low_price_usdc: Math.min(toNum(candle.low_price_usdc, actualTrade.price_execution_usdc), actualTrade.price_execution_usdc),
+          close_price_usdc: round8(actualTrade.price_execution_usdc),
+          volume_qty: round8(toNum(candle.volume_qty, 0) + actualTrade.quantity),
+          volume_usdc: round8(toNum(candle.volume_usdc, 0) + actualTrade.notional_usdc),
           trades_count: Number(candle.trades_count ?? 0) + 1,
           updated_at: nowIso,
         })
@@ -368,12 +371,13 @@ Deno.serve(async (req) => {
       if (updCandleErr) throw new Error(updCandleErr.message);
     }
 
-    const marketCap = quote.price_execution_usdc * toNum(identity.total_supply, 10_000_000);
+    const liveSpotPriceUsdc = toNum(latestPoolSnapshot?.spot_price_usdc, actualTrade.price_execution_usdc);
+    const marketCap = liveSpotPriceUsdc * toNum(identity.total_supply, 100_000_000);
     const { error: pointErr } = await admin
       .from("market_stock_price_points")
       .upsert({
         stock_id: identity.id,
-        last_price_usdc: round8(quote.price_execution_usdc),
+        last_price_usdc: round8(liveSpotPriceUsdc),
         market_cap_usdc: round8(marketCap),
         updated_at: nowIso,
       });
@@ -395,17 +399,17 @@ Deno.serve(async (req) => {
     let nextAvg = oldAvg;
     let nextRealized = oldRealized;
     if (side === "buy") {
-      nextBalance = oldBalance + quote.quantity;
+      nextBalance = oldBalance + actualTrade.quantity;
       nextAvg = nextBalance <= 0
         ? 0
         : oldBalance <= 0
-        ? quote.price_execution_usdc
-        : ((oldBalance * oldAvg) + (quote.quantity * quote.price_execution_usdc)) / nextBalance;
+        ? actualTrade.price_execution_usdc
+        : ((oldBalance * oldAvg) + (actualTrade.quantity * actualTrade.price_execution_usdc)) / nextBalance;
     } else {
-      if (oldBalance < quote.quantity) throw new Error("Insufficient position balance during execution");
-      nextBalance = oldBalance - quote.quantity;
+      const trackedSellQty = Math.min(oldBalance, actualTrade.quantity);
+      nextBalance = Math.max(0, oldBalance - actualTrade.quantity);
       nextAvg = nextBalance <= 0 ? 0 : oldAvg;
-      nextRealized = oldRealized + ((quote.price_execution_usdc - oldAvg) * quote.quantity);
+      nextRealized = oldRealized + ((actualTrade.price_execution_usdc - oldAvg) * trackedSellQty);
     }
 
     const { error: upsertPosErr } = await admin
@@ -434,7 +438,7 @@ Deno.serve(async (req) => {
       ok: true,
       order_id: order.id,
       trade,
-      quote,
+      quote: actualQuote,
       identity: {
         id: identity.id,
         slug: identity.slug,

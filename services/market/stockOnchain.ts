@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 
 import { createStockIdentity, getStockQuote, submitStockOrder } from "@/services/market/stocks";
 import { fetchMarketChains, MarketChainConfig } from "@/services/market/chainConfig";
+import { isSupportedEvmStockChain } from "@/services/market/stockChains";
 import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { getSmartAccount } from "@/utils/aaWallet";
@@ -73,6 +74,20 @@ const IDENTITY_FACTORY_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "address" }],
   },
+  {
+    type: "function",
+    name: "creationLiquidityAmount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "creationReserveAmount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 const NAME_REGISTRY_ABI = [
@@ -90,6 +105,13 @@ const NAME_REGISTRY_ABI = [
 ] as const;
 
 const IDENTITY_ROUTER_ABI = [
+  {
+    type: "function",
+    name: "liquidityGuardBps",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
   {
     type: "function",
     name: "tradeConfigs",
@@ -196,6 +218,27 @@ function formatToken18(raw: bigint) {
   const frac = raw % 1_000_000_000_000_000_000n;
   const fracText = frac.toString().padStart(18, "0").replace(/0+$/, "");
   return fracText ? `${whole.toString()}.${fracText}` : whole.toString();
+}
+
+async function readFactoryCreationSettings(publicClient: any, factoryAddress: `0x${string}`) {
+  const [liquidityRaw, reserveRaw] = await Promise.all([
+    publicClient.readContract({
+      abi: IDENTITY_FACTORY_ABI,
+      address: factoryAddress,
+      functionName: "creationLiquidityAmount",
+    }) as Promise<bigint>,
+    publicClient.readContract({
+      abi: IDENTITY_FACTORY_ABI,
+      address: factoryAddress,
+      functionName: "creationReserveAmount",
+    }) as Promise<bigint>,
+  ]);
+
+  return {
+    liquidityRaw,
+    reserveRaw,
+    totalRaw: liquidityRaw + reserveRaw,
+  };
 }
 
 function sleep(ms: number) {
@@ -371,7 +414,7 @@ async function resolveBootstrapMaxTrade(
   },
 ) {
   try {
-    const [bootstrapCfg, tradeCfg] = await Promise.all([
+    const [bootstrapCfg, tradeCfg, liquidityGuardBpsRaw] = await Promise.all([
       publicClient.readContract({
         abi: IDENTITY_ROUTER_ABI,
         address: args.routerAddress,
@@ -384,15 +427,28 @@ async function resolveBootstrapMaxTrade(
         functionName: "tradeConfigs",
         args: [args.storeKey],
       }),
+      publicClient.readContract({
+        abi: IDENTITY_ROUTER_ABI,
+        address: args.routerAddress,
+        functionName: "liquidityGuardBps",
+      }),
     ]);
 
-    const maxTradeBps = BigInt((bootstrapCfg as any)?.maxTradeBps ?? (bootstrapCfg as any)?.[0] ?? 0n);
+    const bootstrapMaxTradeBps = BigInt((bootstrapCfg as any)?.maxTradeBps ?? (bootstrapCfg as any)?.[0] ?? 0n);
     const endTime = BigInt((bootstrapCfg as any)?.endTime ?? (bootstrapCfg as any)?.[2] ?? 0n);
     const enabled = Boolean((tradeCfg as any)?.enabled ?? (tradeCfg as any)?.[0] ?? true);
-    if (!enabled || maxTradeBps <= 0n) return null;
+    if (!enabled) return null;
 
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
-    if (endTime > 0n && nowSec > endTime) return null;
+    const bootstrapActive = endTime > 0n && nowSec <= endTime;
+    const liquidityGuardBps = toBigIntSafe(liquidityGuardBpsRaw);
+    let effectiveBps = liquidityGuardBps > 0n ? liquidityGuardBps : 0n;
+    if (bootstrapActive && bootstrapMaxTradeBps > 0n) {
+      effectiveBps = effectiveBps > 0n
+        ? (bootstrapMaxTradeBps < effectiveBps ? bootstrapMaxTradeBps : effectiveBps)
+        : bootstrapMaxTradeBps;
+    }
+    if (effectiveBps <= 0n) return null;
 
     const configuredPool = normalizeHex(String((tradeCfg as any)?.pool ?? (tradeCfg as any)?.[2] ?? ""));
     const poolAddress = configuredPool || args.fallbackPool || null;
@@ -405,10 +461,13 @@ async function resolveBootstrapMaxTrade(
       args: [poolAddress],
     }) as bigint;
 
-    const maxTradeRaw = (poolBalanceRaw * maxTradeBps) / 10_000n;
+    const maxTradeRaw = (poolBalanceRaw * effectiveBps) / 10_000n;
     return {
       poolAddress,
-      maxTradeBps,
+      maxTradeBps: effectiveBps,
+      bootstrapMaxTradeBps,
+      liquidityGuardBps,
+      bootstrapActive,
       poolBalanceRaw,
       maxTradeRaw,
       tradeCfg,
@@ -566,6 +625,9 @@ async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
 }
 
 async function resolveStockChain(chainName: string) {
+  if (!isSupportedEvmStockChain(chainName)) {
+    throw new Error("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+  }
   const chains = await fetchMarketChains();
   const chain = (chains ?? []).find((c) => c.chain === chainName && c.active);
   if (!chain) throw new Error(`Active chain config not found for ${chainName}`);
@@ -714,8 +776,8 @@ async function diagnoseCreateRevert(
       functionName: "allowance",
       args: [args.wallet, args.factoryAddress],
     }) as bigint;
-    if (allowance < args.creationFeeRaw) {
-      notes.push(`allowance too low (${formatUsdc6(allowance)} < 50 USDC)`);
+    if (args.creationFeeRaw > 0n && allowance < args.creationFeeRaw) {
+      notes.push(`allowance too low (${formatUsdc6(allowance)} < ${formatUsdc6(args.creationFeeRaw)} USDC)`);
     }
   } catch {
     // ignore diagnostic read failure
@@ -728,8 +790,8 @@ async function diagnoseCreateRevert(
       functionName: "balanceOf",
       args: [args.wallet],
     }) as bigint;
-    if (balance < args.creationFeeRaw) {
-      notes.push(`stable balance too low (${formatUsdc6(balance)} < 50 USDC)`);
+    if (args.creationFeeRaw > 0n && balance < args.creationFeeRaw) {
+      notes.push(`stable balance too low (${formatUsdc6(balance)} < ${formatUsdc6(args.creationFeeRaw)} USDC)`);
     }
   } catch {
     // ignore diagnostic read failure
@@ -873,7 +935,6 @@ export async function createStockIdentityOnchain(input: {
     const storeKey = storeKeyFromStoreId(user.id);
     const stableAddress = (chain.identity_stable_address || chain.usdc_address) as `0x${string}`;
     const factoryAddress = chain.identity_factory as `0x${string}`;
-    const creationFeeRaw = 50_000_000n; // 50 USDC (6 decimals)
 
     const [factoryCode, stableCode] = await Promise.all([
       publicClient.getCode({ address: factoryAddress as `0x${string}` }),
@@ -890,6 +951,17 @@ export async function createStockIdentityOnchain(input: {
     if (nativeBalance <= 0n) {
       throw new Error(`Insufficient ${String(chain.chain || "native")} gas token. Fund this wallet with native gas token first.`);
     }
+
+    const creationSettings = await readFactoryCreationSettings(publicClient, factoryAddress);
+    const creationFeeRaw = creationSettings.totalRaw;
+    logCreate("factory_creation_settings", {
+      liquidity_raw: creationSettings.liquidityRaw.toString(),
+      reserve_raw: creationSettings.reserveRaw.toString(),
+      total_raw: creationFeeRaw.toString(),
+      liquidity_usdc: formatUsdc6(creationSettings.liquidityRaw),
+      reserve_usdc: formatUsdc6(creationSettings.reserveRaw),
+      creation_fee_usdc: formatUsdc6(creationFeeRaw),
+    });
 
     // If previous create succeeded on-chain but DB write failed, sync instead of creating again.
     const preInfo = await publicClient.readContract({
@@ -945,18 +1017,20 @@ export async function createStockIdentityOnchain(input: {
       balance_raw: stableBalance.toString(),
       balance_usdc: formatUsdc6(stableBalance),
     });
-    if (stableBalance < creationFeeRaw) {
+    if (creationFeeRaw > 0n && stableBalance < creationFeeRaw) {
       throw new Error(
-        `Insufficient USDC for stock creation. Need 50 USDC, wallet has ${formatUsdc6(stableBalance)} USDC.`,
+        `Insufficient USDC for stock creation. Need ${formatUsdc6(creationFeeRaw)} USDC, wallet has ${formatUsdc6(stableBalance)} USDC.`,
       );
     }
 
-    const currentAllowance = await publicClient.readContract({
-      abi: ERC20_ABI,
-      address: stableAddress,
-      functionName: "allowance",
-      args: [address as `0x${string}`, factoryAddress],
-    }) as bigint;
+    const currentAllowance = creationFeeRaw > 0n
+      ? await publicClient.readContract({
+        abi: ERC20_ABI,
+        address: stableAddress,
+        functionName: "allowance",
+        args: [address as `0x${string}`, factoryAddress],
+      }) as bigint
+      : 0n;
     logCreate("allowance_current", {
       owner: address,
       spender: factoryAddress,
@@ -964,7 +1038,7 @@ export async function createStockIdentityOnchain(input: {
       allowance_usdc: formatUsdc6(currentAllowance),
     });
 
-    if (currentAllowance < creationFeeRaw) {
+    if (creationFeeRaw > 0n && currentAllowance < creationFeeRaw) {
       const approveData = encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "approve",
@@ -994,7 +1068,7 @@ export async function createStockIdentityOnchain(input: {
       });
       if (allowanceReady < creationFeeRaw) {
         throw new Error(
-          `Approve transaction did not set required allowance in time. Need 50 USDC allowance, current ${formatUsdc6(allowanceReady)}.`,
+          `Approve transaction did not set required allowance in time. Need ${formatUsdc6(creationFeeRaw)} USDC allowance, current ${formatUsdc6(allowanceReady)}.`,
         );
       }
     } else {
@@ -1380,7 +1454,7 @@ export async function submitStockTradeOnchain(input: {
         throw new Error("Price moved too far from TWAP. Wait briefly and retry.");
       }
       if (!(approvalSubmitted && isAllowanceSimulationReason(reason))) {
-        // Quote endpoint is off-chain and can lag. If preview fails for unknown reason, keep adaptive slippage fallback.
+        // Quote can age between fetch and submit. If preview fails for unknown reason, keep adaptive slippage fallback.
       }
     }
 
@@ -1552,7 +1626,7 @@ export async function submitStockTradeOnchain(input: {
         throw new Error("Price moved too far from TWAP. Wait briefly and retry.");
       }
       if (!(approvalSubmitted && isAllowanceSimulationReason(reason))) {
-        // Quote endpoint is off-chain and can lag. If preview fails for unknown reason, keep adaptive slippage fallback.
+        // Quote can age between fetch and submit. If preview fails for unknown reason, keep adaptive slippage fallback.
       }
     }
 

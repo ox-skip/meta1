@@ -16,6 +16,7 @@ import {
 
 import AppHeader from "@/components/common/AppHeader";
 import { fetchMarketChains } from "@/services/market/chainConfig";
+import { isSupportedEvmStockChain } from "@/services/market/stockChains";
 import { createStockIdentityOnchain } from "@/services/market/stockOnchain";
 import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
@@ -27,6 +28,32 @@ const CARD = "rgba(255,255,255,0.06)";
 const BORDER = "rgba(255,255,255,0.12)";
 const MINT = "#2DD4BF";
 const MUTED = "rgba(255,255,255,0.68)";
+const CHAIN_ORDER: Record<string, number> = {
+  base: 0,
+  ethereum: 1,
+  arbitrum: 2,
+  optimism: 3,
+  polygon: 4,
+};
+
+function formatMoney(value: number) {
+  return Number(value || 0).toFixed(6).replace(/\.?0+$/, "");
+}
+
+function formatCreationMessage(economics?: {
+  creation_fee_usdc?: number;
+  liquidity_usdc?: number;
+  reserve_usdc?: number;
+  platform_usdc?: number;
+} | null) {
+  const fee = Number(economics?.creation_fee_usdc ?? 0);
+  const liquidity = Number(economics?.liquidity_usdc ?? 0);
+  const reserve = Number(economics?.reserve_usdc ?? economics?.platform_usdc ?? 0);
+  if (fee <= 0) {
+    return "EVM stock identity created on-chain. Current factory creation fee is $0.";
+  }
+  return `EVM stock identity created on-chain. Creation fee $${formatMoney(fee)} split into $${formatMoney(liquidity)} liquidity and $${formatMoney(reserve)} reserve.`;
+}
 
 export default function CreateStockIdentityScreen() {
   const [loading, setLoading] = useState(true);
@@ -51,8 +78,19 @@ export default function CreateStockIdentityScreen() {
   const chainRows = useMemo(
     () =>
       (chains ?? [])
-        .filter((c: any) => c?.active && c?.identity_factory && c?.identity_router && (c?.identity_stable_address || c?.usdc_address))
-        .sort((a: any, b: any) => Number(b.chain_id || 0) - Number(a.chain_id || 0)),
+        .filter((c: any) =>
+          c?.active &&
+          isSupportedEvmStockChain(String(c?.chain || "")) &&
+          c?.identity_factory &&
+          c?.identity_router &&
+          (c?.identity_stable_address || c?.usdc_address)
+        )
+        .sort((a: any, b: any) => {
+          const left = CHAIN_ORDER[String(a?.chain || "").toLowerCase()] ?? 999;
+          const right = CHAIN_ORDER[String(b?.chain || "").toLowerCase()] ?? 999;
+          if (left !== right) return left - right;
+          return String(a?.chain || "").localeCompare(String(b?.chain || ""));
+        }),
     [chains],
   );
 
@@ -78,9 +116,15 @@ export default function CreateStockIdentityScreen() {
         if (sellerErr) throw sellerErr;
 
         if (!mounted) return;
-        const chainRows = (chainData ?? []).filter((c: any) => c.active && c.identity_factory && c.identity_router && (c.identity_stable_address || c.usdc_address));
+        const chainRows = (chainData ?? []).filter((c: any) =>
+          c.active &&
+          isSupportedEvmStockChain(String(c.chain || "")) &&
+          c.identity_factory &&
+          c.identity_router &&
+          (c.identity_stable_address || c.usdc_address)
+        );
         const defaultChain =
-          chainRows.find((c: any) => String(c.chain || "").toLowerCase() === "base_sepolia")?.chain ||
+          chainRows.find((c: any) => String(c.chain || "").toLowerCase() === "base")?.chain ||
           chainRows[0]?.chain ||
           "";
         setChains(chainData ?? []);
@@ -129,7 +173,7 @@ export default function CreateStockIdentityScreen() {
       } else if (res?.created === false) {
         setOkMsg("Stock identity already exists and is ready for trading.");
       } else {
-        setOkMsg("EVM stock identity created on-chain. Fees split: $45 liquidity / $5 fee receiver.");
+        setOkMsg(formatCreationMessage(res?.economics ?? null));
       }
       setSuccessVisible(true);
       if (createdSlug) {
@@ -170,7 +214,7 @@ export default function CreateStockIdentityScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Digital Stock" subtitle="One EVM stock per verified store. Fixed supply: 10,000,000." />
+      <AppHeader title="Create Digital Stock" subtitle="One EVM stock per verified store. Fixed supply: 100,000,000." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
         {loading ? (
           <View style={{ marginTop: 30, alignItems: "center" }}>
@@ -268,9 +312,15 @@ export default function CreateStockIdentityScreen() {
 
         <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Creation Economics</Text>
-          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Creation fee: $50 USDC</Text>
-          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>$45 {"->"} initial liquidity</Text>
-          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>$5 {"->"} platform fee receiver wallet</Text>
+          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
+            Creation fee is read from the on-chain factory when you submit.
+          </Text>
+          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+            New deployments default to $0 unless the contract admin updates the fee onchain.
+          </Text>
+          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+            Launch price is fixed onchain for a 100,000,000 supply stock to start below $5,000 market cap.
+          </Text>
           <View style={{ marginTop: 8, flexDirection: "row", gap: 6, alignItems: "center" }}>
             <Ionicons name="shield-checkmark-outline" size={15} color={MINT} />
             <Text style={{ color: MUTED, fontSize: 11 }}>
@@ -332,9 +382,11 @@ export default function CreateStockIdentityScreen() {
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Symbol: {symbol.trim().toUpperCase()}</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Chain: {chain.toUpperCase().replace("_", " ")}</Text>
             <Text style={{ marginTop: 8, color: "#E2E8F0", fontWeight: "800", fontSize: 12 }}>
-              This will execute on-chain and charge $50 USDC from your wallet.
+              This will execute on-chain and read the current creation fee from the factory before your wallet signs.
             </Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>$45 {"->"} liquidity, $5 {"->"} platform fee receiver</Text>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+              The stock supply is fixed at 100,000,000 and the launch valuation is set onchain below $5,000 market cap.
+            </Text>
 
             <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
               <Pressable

@@ -1,6 +1,5 @@
 import { callFn } from "@/services/functions";
 import { supabase } from "@/services/supabase";
-import { Platform } from "react-native";
 
 function isMissingFunctionError(err: unknown) {
   const msg = String((err as any)?.message ?? err ?? "");
@@ -533,15 +532,6 @@ async function fetchStocksOverviewFallback(limit = 30, offset = 0, market: Stock
 }
 
 export async function fetchStocksOverview(limit = 30, offset = 0, market: StockMarketKind = "evm") {
-  // Web builds can hit CORS/preflight failures for Edge functions; prefer direct table reads first.
-  if (Platform.OS === "web") {
-    try {
-      return await fetchStocksOverviewFallback(limit, offset, market);
-    } catch {
-      // Fall through to Edge function path as a secondary attempt.
-    }
-  }
-
   try {
     return await callStockFn<{
       ok: boolean;
@@ -571,14 +561,6 @@ export async function fetchStockDetail(params: {
     candle_limit: params.candle_limit ?? 180,
     trade_limit: params.trade_limit ?? 80,
   };
-
-  if (Platform.OS === "web") {
-    try {
-      return await fetchStockDetailFallback(params);
-    } catch {
-      // Fall through to the edge function path.
-    }
-  }
 
   try {
     return await callStockFn<{

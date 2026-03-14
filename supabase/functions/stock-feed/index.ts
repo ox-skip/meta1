@@ -9,6 +9,15 @@ import {
   timeframeMinutes,
   toNum,
 } from "../_shared/market/stock.ts";
+import {
+  isAddress,
+  isSupportedEvmStockChain,
+  readErc20Balance,
+  readPoolSnapshot,
+  readRouterTradeState,
+  round8,
+  storeKeyForStoreId,
+} from "../_shared/market/stockEvm.ts";
 
 function toInt(input: unknown, fallback: number, min: number, max: number) {
   const n = Number(input);
@@ -47,7 +56,7 @@ Deno.serve(async (req) => {
 
     let listQuery = admin
       .from("market_stock_identities")
-      .select("id,store_id,slug,name,symbol,chain,active,launch_guard_until,trading_paused_until,launched_at,created_at")
+      .select("id,store_id,slug,name,symbol,chain,token_address,pool_address,total_supply,active,launch_guard_until,trading_paused_until,launched_at,created_at")
       .neq("active", false)
       .order("created_at", { ascending: false });
     if (market === "pi") listQuery = listQuery.eq("chain", "pi_testnet");
@@ -83,7 +92,7 @@ Deno.serve(async (req) => {
         : Promise.resolve({ data: [] as any[], error: null } as any),
       admin
         .from("market_chain_config")
-        .select("chain,chain_id,active,identity_factory,identity_router,identity_name_registry,identity_stable_address")
+        .select("chain,chain_id,active,rpc_url,identity_factory,identity_router,identity_name_registry,identity_stable_address,usdc_address")
         .eq("active", true)
         .order("created_at", { ascending: false }),
     ]);
@@ -93,8 +102,10 @@ Deno.serve(async (req) => {
     if (tradesRes.error) return bad(tradesRes.error.message);
     if (chainsRes.error) return bad(chainsRes.error.message);
 
+    const chainMap = new Map<string, any>((chainsRes.data ?? []).map((row: any) => [String(row.chain || ""), row]));
     const sellerMap = new Map<string, any>((sellerRes.data ?? []).map((s: any) => [String(s.user_id), s]));
     const pointMap = new Map<string, any>((pointRes.data ?? []).map((p: any) => [String(p.stock_id), p]));
+    const onchainMap = new Map<string, { price: number; marketCap: number; bootstrapActive: boolean }>();
     const tradeAgg = new Map<
       string,
       {
@@ -106,6 +117,46 @@ Deno.serve(async (req) => {
         sparkline: number[];
       }
     >();
+
+    await Promise.all((rows ?? []).map(async (row: any) => {
+      if (String(row?.chain || "").toLowerCase() === "pi_testnet") return;
+      if (!isSupportedEvmStockChain(String(row?.chain || ""))) return;
+      if (!isAddress(String(row?.token_address || "")) || !isAddress(String(row?.pool_address || ""))) return;
+
+      const cfg = chainMap.get(String(row.chain || ""));
+      const stableAddress = String(cfg?.identity_stable_address || cfg?.usdc_address || "").trim();
+      const routerAddress = String(cfg?.identity_router || "").trim();
+      if (!cfg?.rpc_url || !isAddress(stableAddress) || !isAddress(routerAddress)) return;
+
+      try {
+        const [poolSnapshot, routerState] = await Promise.all([
+          readPoolSnapshot({
+            rpcUrl: String(cfg.rpc_url),
+            poolAddress: String(row.pool_address),
+            stableToken: stableAddress,
+            identityToken: String(row.token_address),
+          }),
+          readRouterTradeState({
+            rpcUrl: String(cfg.rpc_url),
+            routerAddress,
+            storeKey: storeKeyForStoreId(String(row.store_id || "")),
+          }),
+        ]);
+        onchainMap.set(String(row.id), {
+          price: round8(poolSnapshot.spot_price_usdc),
+          marketCap: round8(poolSnapshot.spot_price_usdc * toNum(row.total_supply, 100_000_000)),
+          bootstrapActive: routerState.bootstrap_active,
+        });
+      } catch {
+        // fall back to indexed data when RPC reads fail
+      }
+    }));
+
+    const filteredRows = rows.filter((row: any) => {
+      const chain = String(row?.chain || "").toLowerCase();
+      return chain === "pi_testnet" || isSupportedEvmStockChain(chain);
+    });
+
     for (const row of (tradesRes.data ?? [])) {
       const key = String((row as any).stock_id);
       const cur = tradeAgg.get(key) ?? {
@@ -127,10 +178,11 @@ Deno.serve(async (req) => {
       tradeAgg.set(key, cur);
     }
 
-    const items = rows.map((r: any) => {
+    const items = filteredRows.map((r: any) => {
       const stockId = String(r.id);
       const point = pointMap.get(stockId);
       const seller = sellerMap.get(String(r.store_id));
+      const onchain = onchainMap.get(stockId);
       const agg = tradeAgg.get(stockId) ?? {
         volume: 0,
         trades: 0,
@@ -142,17 +194,17 @@ Deno.serve(async (req) => {
       const paused = isTradingPaused({
         ...r,
         chain_id: 0,
-        total_supply: 10_000_000,
-        creation_lp_usdc: 45,
+        total_supply: toNum(r.total_supply, 100_000_000),
+        creation_lp_usdc: 0,
       } as any);
-      const guard = isLaunchGuardActive({
+      const guard = onchain?.bootstrapActive ?? isLaunchGuardActive({
         ...r,
         chain_id: 0,
-        total_supply: 10_000_000,
-        creation_lp_usdc: 45,
+        total_supply: toNum(r.total_supply, 100_000_000),
+        creation_lp_usdc: 0,
       } as any);
       const status = paused ? "PAUSED" : guard ? "BOOTSTRAP" : "ACTIVE";
-      const lastPrice = toNum(point?.last_price_usdc, 0.01);
+      const lastPrice = toNum(onchain?.price, toNum(point?.last_price_usdc, 0.00004));
       const oldPrice = toNum(agg.oldestPrice, lastPrice);
       const changePct = oldPrice > 0 ? ((lastPrice - oldPrice) / oldPrice) * 100 : 0;
       return {
@@ -169,7 +221,7 @@ Deno.serve(async (req) => {
         is_verified: Boolean(seller?.is_verified),
         logo_path: seller?.logo_path ?? null,
         price: lastPrice,
-        market_cap: toNum(point?.market_cap_usdc, 0),
+        market_cap: toNum(onchain?.marketCap, toNum(point?.market_cap_usdc, 0)),
         volume_24h_quote: agg.volume,
         trades_24h: agg.trades,
         last_trade_at: agg.last,
@@ -199,8 +251,11 @@ Deno.serve(async (req) => {
 
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
+  if (identity.chain !== "pi_testnet" && !isSupportedEvmStockChain(identity.chain)) {
+    return bad("EVM stock market data is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+  }
 
-  const [sellerRes, pointRes, reserveRes, reinvestRes] = await Promise.all([
+  const [sellerRes, pointRes, reserveRes, reinvestRes, chainRes] = await Promise.all([
     admin
       .from("market_seller_profiles")
       .select("user_id,market_username,display_name,business_name,is_verified,logo_path,banner_path")
@@ -222,12 +277,21 @@ Deno.serve(async (req) => {
       .eq("stock_id", identity.id)
       .order("created_at", { ascending: false })
       .limit(30),
+    identity.chain === "pi_testnet"
+      ? Promise.resolve({ data: null, error: null } as any)
+      : admin
+        .from("market_chain_config")
+        .select("chain,rpc_url,identity_router,identity_stable_address,usdc_address")
+        .eq("chain", identity.chain)
+        .eq("active", true)
+        .maybeSingle(),
   ]);
 
   if (sellerRes.error) return bad(sellerRes.error.message);
   if (pointRes.error) return bad(pointRes.error.message);
   if (reserveRes.error) return bad(reserveRes.error.message);
   if (reinvestRes.error) return bad(reinvestRes.error.message);
+  if (chainRes.error) return bad(chainRes.error.message);
 
   let trades: any[] = [];
   {
@@ -363,6 +427,67 @@ Deno.serve(async (req) => {
     trades24h = trades.length;
   }
 
+  let onchainPrice = toNum(pointRes.data?.last_price_usdc, 0.00004);
+  let onchainMarketCap = toNum(pointRes.data?.market_cap_usdc, 0);
+  let onchainBootstrapActive = isLaunchGuardActive(identity);
+  let onchainPricePointAt = pointRes.data?.updated_at ?? null;
+
+  if (identity.chain !== "pi_testnet") {
+    const stableAddress = String(chainRes.data?.identity_stable_address || chainRes.data?.usdc_address || "").trim();
+    const routerAddress = String(chainRes.data?.identity_router || "").trim();
+    if (!chainRes.data?.rpc_url || !isAddress(stableAddress) || !isAddress(routerAddress)) {
+      return bad(`Chain config missing rpc/router/stable token for ${identity.chain}`);
+    }
+    if (!isAddress(String(identity.token_address || "")) || !isAddress(String(identity.pool_address || ""))) {
+      return bad("Stock token or pool address is missing");
+    }
+
+    try {
+      const poolSnapshot = await readPoolSnapshot({
+        rpcUrl: String(chainRes.data.rpc_url),
+        poolAddress: String(identity.pool_address),
+        stableToken: stableAddress,
+        identityToken: String(identity.token_address),
+      });
+      const routerState = await readRouterTradeState({
+        rpcUrl: String(chainRes.data.rpc_url),
+        routerAddress,
+        storeKey: storeKeyForStoreId(identity.store_id),
+      });
+      onchainPrice = round8(poolSnapshot.spot_price_usdc);
+      onchainMarketCap = round8(poolSnapshot.spot_price_usdc * toNum(identity.total_supply, 100_000_000));
+      onchainBootstrapActive = routerState.bootstrap_active || isLaunchGuardActive(identity);
+      onchainPricePointAt = new Date().toISOString();
+
+      if (uid) {
+        const { data: wallet, error: walletErr } = await admin
+          .from("crypto_wallets")
+          .select("address")
+          .eq("user_id", uid)
+          .eq("chain", identity.chain)
+          .maybeSingle();
+        if (walletErr) return bad(walletErr.message);
+        if (isAddress(String(wallet?.address || ""))) {
+          const walletAddress = String(wallet?.address || "");
+          const onchainBalance = await readErc20Balance({
+            rpcUrl: String(chainRes.data.rpc_url),
+            tokenAddress: String(identity.token_address),
+            owner: walletAddress,
+            decimals: 18,
+          });
+          myPosition = {
+            ...(myPosition || {}),
+            tracked_balance_qty: Number(myPosition?.balance_qty ?? 0),
+            balance_qty: round8(onchainBalance.value),
+            wallet_balance_qty: round8(onchainBalance.value),
+          };
+        }
+      }
+    } catch {
+      // fall back to indexed values when RPC reads fail
+    }
+  }
+
   return ok({
     ok: true,
     mode: "detail",
@@ -370,12 +495,12 @@ Deno.serve(async (req) => {
     identity,
     seller: sellerRes.data ?? null,
     stats: {
-      price: toNum(pointRes.data?.last_price_usdc, 0.01),
-      market_cap: toNum(pointRes.data?.market_cap_usdc, 0),
+      price: onchainPrice,
+      market_cap: onchainMarketCap,
       volume_24h_quote: volume24h,
       trades_24h: trades24h,
-      price_point_at: pointRes.data?.updated_at ?? null,
-      launch_guard_active: isLaunchGuardActive(identity),
+      price_point_at: onchainPricePointAt,
+      launch_guard_active: onchainBootstrapActive,
       trading_paused: isTradingPaused(identity),
     },
     reserve: reserveRes.data ?? null,

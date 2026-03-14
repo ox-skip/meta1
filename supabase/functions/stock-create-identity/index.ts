@@ -1,6 +1,12 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
+import {
+  isSupportedEvmStockChain,
+  readErc20TotalSupply,
+  readFactoryCreationSettings,
+  readPoolSnapshot,
+} from "../_shared/market/stockEvm.ts";
 
 const IDENTITY_CREATED_SIG =
   "IdentityCreated(bytes32,address,address,address,address,address,uint24,string,string)";
@@ -151,7 +157,6 @@ Deno.serve(async (req) => {
   const name = normalizeName(String(body?.name ?? body?.token_name ?? ""));
   const symbol = normalizeSymbol(String(body?.symbol ?? body?.token_symbol ?? ""));
   const slugInput = String(body?.slug ?? `${name}-${symbol}`);
-  const initialPrice = Number(body?.initial_price_usdc ?? body?.initial_price ?? 0.01);
   const txHash = String(body?.tx_hash ?? "").trim();
   const userOpHash = String(body?.user_op_hash ?? "").trim();
   const forceSyncExisting = body?.force_sync_existing === true || String(body?.force_sync_existing ?? "").toLowerCase() === "true";
@@ -165,7 +170,6 @@ Deno.serve(async (req) => {
 
   if (!name || name.length < 3) return bad("name must be at least 3 characters");
   if (!symbol || symbol.length < 2) return bad("symbol must be at least 2 characters");
-  if (!Number.isFinite(initialPrice) || initialPrice <= 0) return bad("initial_price_usdc must be > 0");
   if (txHash && !hasTxHash) return bad("tx_hash must be a valid on-chain transaction hash");
   if (tokenAddress && !isAddress(tokenAddress)) return bad("token_address must be a valid address");
   if (poolAddress && !isAddress(poolAddress)) return bad("pool_address must be a valid address");
@@ -211,13 +215,16 @@ Deno.serve(async (req) => {
   const hadExistingIdentity = !!existingByStore?.id;
 
   if (preferredChain === "pi_testnet") return bad("Use the Pi stock creation flow for pi_testnet identities");
+  if (preferredChain && !isSupportedEvmStockChain(preferredChain)) {
+    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+  }
 
   let chainConfig: any = null;
   if (preferredChain) {
     const { data, error } = await admin
       .from("market_chain_config")
       .select(
-        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address",
+        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address,usdc_address",
       )
       .eq("chain", preferredChain)
       .eq("active", true)
@@ -228,19 +235,45 @@ Deno.serve(async (req) => {
     const { data, error } = await admin
       .from("market_chain_config")
       .select(
-        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address,created_at",
+        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address,usdc_address,created_at",
       )
       .eq("active", true)
       .order("created_at", { ascending: false });
     if (error) return bad(error.message);
     const rows = data ?? [];
-    chainConfig = rows.find((row: any) => row.identity_factory && row.identity_router) ?? rows[0] ?? null;
+    const preferredOrder = ["base", "ethereum", "arbitrum", "optimism", "polygon"];
+    chainConfig = preferredOrder
+      .map((chain) => rows.find((row: any) =>
+        String(row?.chain || "").toLowerCase() === chain &&
+        row.identity_factory &&
+        row.identity_router
+      ))
+      .find(Boolean) ??
+      rows.find((row: any) => isSupportedEvmStockChain(row?.chain) && row.identity_factory && row.identity_router) ??
+      null;
   }
 
   if (!chainConfig?.chain) return bad("No active chain config available");
+  if (!isSupportedEvmStockChain(String(chainConfig.chain))) {
+    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+  }
   if (!chainConfig.rpc_url) return bad(`rpc_url missing for ${chainConfig.chain}`);
   if (!isAddress(String(chainConfig.identity_factory || ""))) {
     return bad(`identity_factory missing for ${chainConfig.chain}`);
+  }
+
+  let creationSettings: {
+    liquidity_usdc: number;
+    reserve_usdc: number;
+    creation_fee_usdc: number;
+  };
+  try {
+    creationSettings = await readFactoryCreationSettings({
+      rpcUrl: String(chainConfig.rpc_url),
+      factoryAddress: String(chainConfig.identity_factory),
+    });
+  } catch (e: any) {
+    return bad(String(e?.message || e || "Could not read factory creation settings"));
   }
 
   const expectedStoreKey = storeKeyForStoreId(user.id);
@@ -359,6 +392,31 @@ Deno.serve(async (req) => {
     return bad("staking_address does not match on-chain identity");
   }
 
+  const stableAddress = String(decoded.stable || chainConfig.identity_stable_address || chainConfig.usdc_address || "").trim();
+  if (!isAddress(stableAddress)) return bad(`identity_stable_address missing for ${chainConfig.chain}`);
+
+  let onchainTotalSupply = 100_000_000;
+  let onchainInitialPrice = 0.00004;
+  try {
+    const [supply, poolSnapshot] = await Promise.all([
+      readErc20TotalSupply({
+        rpcUrl: String(chainConfig.rpc_url),
+        tokenAddress: decoded.token,
+        decimals: 18,
+      }),
+      readPoolSnapshot({
+        rpcUrl: String(chainConfig.rpc_url),
+        poolAddress: decoded.pool,
+        stableToken: stableAddress,
+        identityToken: decoded.token,
+      }),
+    ]);
+    onchainTotalSupply = Math.max(0, Math.round(Number(supply.value || 0))) || 100_000_000;
+    onchainInitialPrice = Math.max(0.00000001, Number(poolSnapshot.spot_price_usdc || 0.00004));
+  } catch (e: any) {
+    return bad(String(e?.message || e || "Could not read on-chain stock supply or pool price"));
+  }
+
   const slug = await resolveUniqueSlug(
     admin,
     slugInput || seller.market_username || seller.business_name || `${name}-${symbol}`,
@@ -378,8 +436,12 @@ Deno.serve(async (req) => {
         slug: resolvedSlug,
         name,
         symbol,
+        total_supply: onchainTotalSupply,
         token_address: decoded.token,
         pool_address: decoded.pool,
+        creation_fee_usdc: creationSettings.creation_fee_usdc,
+        creation_lp_usdc: creationSettings.liquidity_usdc,
+        creation_reserve_usdc: creationSettings.reserve_usdc,
         active: true,
         trading_paused_until: null,
         launch_guard_until: launchGuardUntil,
@@ -401,8 +463,12 @@ Deno.serve(async (req) => {
         slug,
         name,
         symbol,
+        total_supply: onchainTotalSupply,
         token_address: decoded.token,
         pool_address: decoded.pool,
+        creation_fee_usdc: creationSettings.creation_fee_usdc,
+        creation_lp_usdc: creationSettings.liquidity_usdc,
+        creation_reserve_usdc: creationSettings.reserve_usdc,
         active: true,
         trading_paused_until: null,
         launch_guard_until: launchGuardUntil,
@@ -426,8 +492,9 @@ Deno.serve(async (req) => {
   if (lockPermErr) return bad(lockPermErr.message);
 
   const reserveUsdc = 0;
-  const platformUsdc = Number(identity.creation_reserve_usdc ?? 5);
-  const creationLp = Number(identity.creation_lp_usdc ?? 45);
+  const platformUsdc = Number(identity.creation_reserve_usdc ?? creationSettings.reserve_usdc ?? 0);
+  const creationLp = Number(identity.creation_lp_usdc ?? creationSettings.liquidity_usdc ?? 0);
+  const creationFeeUsdc = Number(identity.creation_fee_usdc ?? creationSettings.creation_fee_usdc ?? (creationLp + platformUsdc));
 
   const { error: reserveErr2 } = await admin
     .from("market_stock_reserve_balance")
@@ -447,7 +514,7 @@ Deno.serve(async (req) => {
       stock_id: identity.id,
       store_id: user.id,
       source_type: "creation_fee",
-      gross_usdc: creationLp + platformUsdc,
+      gross_usdc: creationFeeUsdc,
       platform_usdc: platformUsdc,
       liquidity_usdc: creationLp,
       staking_usdc: 0,
@@ -458,12 +525,12 @@ Deno.serve(async (req) => {
     }, { onConflict: "idempotency_key" });
   if (reinvestErr) return bad(reinvestErr.message);
 
-  const marketCap = Number(identity.total_supply ?? 10_000_000) * initialPrice;
+  const marketCap = Number(identity.total_supply ?? onchainTotalSupply ?? 100_000_000) * onchainInitialPrice;
   const { error: pointErr } = await admin
     .from("market_stock_price_points")
     .upsert({
       stock_id: identity.id,
-      last_price_usdc: initialPrice,
+      last_price_usdc: onchainInitialPrice,
       market_cap_usdc: marketCap,
       updated_at: now.toISOString(),
     });
@@ -476,9 +543,11 @@ Deno.serve(async (req) => {
     identity,
     chain_config: chainConfig,
     economics: {
-      creation_fee_usdc: 50,
+      creation_fee_usdc: creationFeeUsdc,
       liquidity_usdc: creationLp,
-      reserve_usdc: reserveUsdc,
+      reserve_usdc: platformUsdc,
+      platform_usdc: platformUsdc,
+      reserve_balance_usdc: reserveUsdc,
     },
     onchain: {
       tx_hash: acceptedTxHash || null,
