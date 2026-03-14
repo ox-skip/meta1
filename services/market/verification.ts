@@ -59,9 +59,14 @@ function normalizeVerificationError(error: unknown) {
 
   if (
     lower === "invalid jwt" ||
-    lower.includes("verification provider credentials") ||
-    lower.includes("provider rejected server credentials")
+    lower.includes("session expired") ||
+    lower.includes("no session") ||
+    lower.includes("auth token")
   ) {
+    return "Your login session is invalid. Sign out, sign in again, then retry verification.";
+  }
+
+  if (lower.includes("verification provider credentials") || lower.includes("provider rejected server credentials")) {
     return "Verification provider credentials are invalid on the server. Update the verification secrets and redeploy the verification functions.";
   }
 
