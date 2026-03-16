@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { addRaw, feeFromRaw, getFeeBps, getFeeRecipient, orderKeyKeccak, toUsdcRaw } from "../_shared/market/crypto.ts";
 
 function pickToken(body: any) {
@@ -59,7 +60,7 @@ Deno.serve(async (req) => {
 
   const { data: cfg, error: cfgErr } = await admin
     .from("market_chain_config")
-    .select("chain,chain_id,usdc_address,usdt_address,escrow_address,confirmations_required,rpc_url,active")
+    .select("chain,chain_id,usdc_address,usdt_address,escrow_address,confirmations_required,rpc_url,active,fee_bps")
     .eq("chain", chain)
     .eq("active", true)
     .maybeSingle();
@@ -70,6 +71,7 @@ Deno.serve(async (req) => {
   const tokenAddress = token === "USDT" ? cfg.usdt_address : cfg.usdc_address;
   if (!tokenAddress) return bad(`${token} address missing for chain config`);
   if (!cfg.escrow_address) return bad("Escrow address missing for chain config");
+  const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
 
   const { data: buyerWallet } = await admin
     .from("crypto_wallets")
@@ -125,7 +127,11 @@ Deno.serve(async (req) => {
     if (updateOrderErr) return bad(updateOrderErr.message);
   }
 
-  const feeBps = getFeeBps();
+  const configFeeBps = Number((cfg as any)?.fee_bps ?? NaN);
+  const feeBps =
+    Number.isFinite(configFeeBps) && configFeeBps >= 0 && configFeeBps <= 200
+      ? Math.round(configFeeBps)
+      : getFeeBps();
   const buyerFeeRaw = feeFromRaw(amountRaw, feeBps);
   const buyerTotalRaw = addRaw(amountRaw, buyerFeeRaw);
 
@@ -148,7 +154,7 @@ Deno.serve(async (req) => {
     chain: cfg.chain,
     chain_id: cfg.chain_id,
     confirmations_required: cfg.confirmations_required,
-    rpc_url: cfg.rpc_url,
+    rpc_url: rpcUrl || cfg.rpc_url,
     escrow_address: cfg.escrow_address,
     token_symbol: token,
     token_address: tokenAddress,

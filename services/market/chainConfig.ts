@@ -37,32 +37,64 @@ function parseNumber(input: unknown, fallback: number) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function cleanAlchemyApiKey(raw?: string | null) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  return value.replace(/^https?:\/\/[^/]+\/v2\//i, "");
+}
+
+function alchemyUrlForChainId(chainId: number) {
+  const apiKey = cleanAlchemyApiKey(process.env.EXPO_PUBLIC_ALCHEMY_API_KEY);
+  if (!apiKey) return null;
+
+  const urls: Record<number, string> = {
+    1: `https://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
+    10: `https://opt-mainnet.g.alchemy.com/v2/${apiKey}`,
+    56: `https://bnb-mainnet.g.alchemy.com/v2/${apiKey}`,
+    97: `https://bnb-testnet.g.alchemy.com/v2/${apiKey}`,
+    137: `https://polygon-mainnet.g.alchemy.com/v2/${apiKey}`,
+    8453: `https://base-mainnet.g.alchemy.com/v2/${apiKey}`,
+    84532: `https://base-sepolia.g.alchemy.com/v2/${apiKey}`,
+    42161: `https://arb-mainnet.g.alchemy.com/v2/${apiKey}`,
+    421614: `https://arb-sepolia.g.alchemy.com/v2/${apiKey}`,
+    80002: `https://polygon-amoy.g.alchemy.com/v2/${apiKey}`,
+    11155420: `https://opt-sepolia.g.alchemy.com/v2/${apiKey}`,
+  };
+
+  return urls[chainId] ?? null;
+}
+
 export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
-  const normalize = (input: any): MarketChainConfig => ({
-    chain: String(input?.chain ?? ""),
-    chain_id: parseNumber(input?.chain_id, 0),
-    rpc_url: input?.rpc_url ? String(input.rpc_url) : null,
-    usdc_address: String(input?.usdc_address ?? ""),
-    usdt_address: input?.usdt_address ? String(input.usdt_address) : null,
-    escrow_address: String(input?.escrow_address ?? ""),
-    faucet_address: input?.faucet_address ? String(input.faucet_address) : null,
-    faucet_active: Boolean(input?.faucet_active),
-    faucet_cooldown_seconds: parseNumber(input?.faucet_cooldown_seconds, 0),
-    faucet_usdc_amount_raw:
-      input?.faucet_usdc_amount_raw === null || input?.faucet_usdc_amount_raw === undefined
-        ? null
-        : String(input?.faucet_usdc_amount_raw),
-    faucet_usdt_amount_raw:
-      input?.faucet_usdt_amount_raw === null || input?.faucet_usdt_amount_raw === undefined
-        ? null
-        : String(input?.faucet_usdt_amount_raw),
-    identity_factory: input?.identity_factory ? String(input.identity_factory) : null,
-    identity_router: input?.identity_router ? String(input.identity_router) : null,
-    identity_name_registry: input?.identity_name_registry ? String(input.identity_name_registry) : null,
-    identity_stable_address: input?.identity_stable_address ? String(input.identity_stable_address) : null,
-    confirmations_required: parseNumber(input?.confirmations_required, 3),
-    active: Boolean(input?.active),
-  });
+  const normalize = (input: any): MarketChainConfig => {
+    const chainId = parseNumber(input?.chain_id, 0);
+    const rpcUrl = input?.rpc_url ? String(input.rpc_url) : alchemyUrlForChainId(chainId);
+
+    return {
+      chain: String(input?.chain ?? ""),
+      chain_id: chainId,
+      rpc_url: rpcUrl,
+      usdc_address: String(input?.usdc_address ?? ""),
+      usdt_address: input?.usdt_address ? String(input.usdt_address) : null,
+      escrow_address: String(input?.escrow_address ?? ""),
+      faucet_address: input?.faucet_address ? String(input.faucet_address) : null,
+      faucet_active: Boolean(input?.faucet_active),
+      faucet_cooldown_seconds: parseNumber(input?.faucet_cooldown_seconds, 0),
+      faucet_usdc_amount_raw:
+        input?.faucet_usdc_amount_raw === null || input?.faucet_usdc_amount_raw === undefined
+          ? null
+          : String(input?.faucet_usdc_amount_raw),
+      faucet_usdt_amount_raw:
+        input?.faucet_usdt_amount_raw === null || input?.faucet_usdt_amount_raw === undefined
+          ? null
+          : String(input?.faucet_usdt_amount_raw),
+      identity_factory: input?.identity_factory ? String(input.identity_factory) : null,
+      identity_router: input?.identity_router ? String(input.identity_router) : null,
+      identity_name_registry: input?.identity_name_registry ? String(input.identity_name_registry) : null,
+      identity_stable_address: input?.identity_stable_address ? String(input.identity_stable_address) : null,
+      confirmations_required: parseNumber(input?.confirmations_required, 3),
+      active: Boolean(input?.active),
+    };
+  };
 
   try {
     // Prefer direct DB query to avoid stale/misconfigured edge function responses.

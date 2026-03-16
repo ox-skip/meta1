@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { keccak256, stringToHex } from "https://esm.sh/viem@2.45.1";
 import { envAny } from "../_shared/market/env.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 
 type RpcLog = {
   address?: string;
@@ -141,14 +142,15 @@ serve(async (req) => {
       .eq("chain", esc.chain)
       .eq("active", true)
       .maybeSingle();
-    if (cfgErr || !cfg?.rpc_url || !cfg?.escrow_address) {
+    const rpcUrl = resolveRpcUrlForChain(esc.chain, cfg?.rpc_url);
+    if (cfgErr || !rpcUrl || !cfg?.escrow_address) {
       return json(400, { ok: false, message: "Chain config missing" });
     }
 
     const wantKey = normalizeOrderKey(esc.order_key);
     const escrowAddr = String(cfg.escrow_address).toLowerCase();
     const required = Math.max(1, Number(cfg.confirmations_required ?? 1));
-    const latestHex = await rpcCall(cfg.rpc_url, "eth_blockNumber", []);
+    const latestHex = await rpcCall(rpcUrl, "eth_blockNumber", []);
     const latest = toNum(latestHex);
 
     let hit: RpcLog | null = null;
@@ -157,7 +159,7 @@ serve(async (req) => {
     let confirmations = 0;
 
     if (txHashInput.startsWith("0x")) {
-      const receipt = await rpcCall(cfg.rpc_url, "eth_getTransactionReceipt", [txHashInput]);
+      const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHashInput]);
       const receiptBlock = toNum(receipt?.blockNumber ?? 0);
       if (!receiptBlock) {
         return json(200, { ok: true, applied: false, pending: "receipt" });
@@ -192,7 +194,7 @@ serve(async (req) => {
     } else {
       // No tx hash yet (AA path): find deposit by order key directly from chain logs.
       const fromBlock = Math.max(0, latest - 8000);
-      const logs = (await rpcCall(cfg.rpc_url, "eth_getLogs", [
+      const logs = (await rpcCall(rpcUrl, "eth_getLogs", [
         {
           address: cfg.escrow_address,
           fromBlock: `0x${fromBlock.toString(16)}`,

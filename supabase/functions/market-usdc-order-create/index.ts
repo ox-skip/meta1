@@ -207,9 +207,23 @@ Deno.serve(async (req) => {
     .select("chain,usdc_address,escrow_address,chain_id,confirmations_required,active")
     .eq("active", true);
 
-  const { data: cfg, error: cfgErr } = chain
-    ? await cfgQuery.eq("chain", chain).maybeSingle()
-    : await cfgQuery.maybeSingle();
+  let cfg: any = null;
+  let cfgErr: any = null;
+  if (chain) {
+    const out = await cfgQuery.eq("chain", chain).maybeSingle();
+    cfg = out.data;
+    cfgErr = out.error;
+  } else {
+    const out = await cfgQuery;
+    cfgErr = out.error;
+    const rows = out.data ?? [];
+    if (rows.length === 1) {
+      cfg = rows[0];
+    } else if (rows.length > 1) {
+      await restoreReservedStock();
+      return bad("chain required when multiple active chains are configured");
+    }
+  }
 
   if (cfgErr || !cfg) {
     await restoreReservedStock();

@@ -37,8 +37,9 @@ Deno.serve(async (req) => {
       .limit(1);
     const isPiOrder = Array.isArray(piRows) && piRows.length > 0;
 
-    if (order.currency !== "NGN" && !isPiOrder) {
-      return bad("Admin resolver supports NGN wallet and PI testnet orders only");
+    const stableOrder = ["USDC", "USDT"].includes(String(order.currency || "").toUpperCase());
+    if (order.currency !== "NGN" && !isPiOrder && !stableOrder) {
+      return bad("Admin resolver supports NGN wallet, stable escrow, and PI testnet orders only");
     }
 
     const { data: dispute } = await admin
@@ -54,9 +55,22 @@ Deno.serve(async (req) => {
     let curVersion = Number(order.version);
     let curStatus = String(order.status);
     const adminToken = String(Deno.env.get("MARKET_ADMIN_TOKEN") || "").trim();
-    if (isPiOrder && !adminToken) return bad("MARKET_ADMIN_TOKEN env var not set");
+    if ((isPiOrder || stableOrder) && !adminToken) return bad("MARKET_ADMIN_TOKEN env var not set");
 
     if (decision === "RELEASE") {
+      if (stableOrder) {
+        const { data: releaseOut, error: releaseErr } = await admin.functions.invoke("market-stable-admin-settle", {
+          body: { order_id, decision, note },
+          headers: { "x-admin-token": adminToken },
+        });
+        if (releaseErr) return bad(releaseErr.message);
+        if (!(releaseOut as any)?.ok) {
+          return bad(String((releaseOut as any)?.error || "Stable release function failed"));
+        }
+
+        return ok({ order: releaseOut, dispute_resolution: "RELEASE_TO_SELLER" });
+      }
+
       if (isPiOrder) {
         const { data: releasedOut, error: releasedErr } = await admin.functions.invoke("market-pi-release-intent", {
           body: { order_id, note },
@@ -112,6 +126,19 @@ Deno.serve(async (req) => {
 
     // decision === REFUND
     // refund allowed from IN_ESCROW/DELIVERED/DISPUTED (your SQL function enforces)
+    if (stableOrder) {
+      const { data: refundOut, error: refundErr } = await admin.functions.invoke("market-stable-admin-settle", {
+        body: { order_id, decision, note },
+        headers: { "x-admin-token": adminToken },
+      });
+      if (refundErr) return bad(refundErr.message);
+      if (!(refundOut as any)?.ok) {
+        return bad(String((refundOut as any)?.error || "Stable refund function failed"));
+      }
+
+      return ok({ order: refundOut, dispute_resolution: "REFUND_TO_BUYER" });
+    }
+
     if (isPiOrder) {
       const { data: refundedOut, error: refundedErr } = await admin.functions.invoke("market-pi-refund-intent", {
         body: { order_id, note },

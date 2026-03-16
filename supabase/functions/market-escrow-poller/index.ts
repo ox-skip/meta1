@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { keccak256, stringToHex } from "https://esm.sh/viem@2.45.1";
 import { envAny } from "../_shared/market/env.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 
 type ChainConfig = {
   chain: string;
@@ -25,9 +26,11 @@ type RpcLog = {
 
 const TOPIC_DEPOSIT_MULTI = keccak256(stringToHex("EscrowDeposited(bytes32,address,address,address,uint256)"));
 const TOPIC_RELEASE_MULTI = keccak256(stringToHex("EscrowReleased(bytes32,address,address,address,uint256)"));
+const TOPIC_ARB_RELEASE_MULTI = keccak256(stringToHex("EscrowReleasedByArbiter(bytes32,address,address,address,uint256)"));
 const TOPIC_REFUND_MULTI = keccak256(stringToHex("EscrowRefunded(bytes32,address,address,address,uint256)"));
 const TOPIC_DEPOSIT_SINGLE = keccak256(stringToHex("EscrowDeposited(bytes32,address,address,uint256)"));
 const TOPIC_RELEASE_SINGLE = keccak256(stringToHex("EscrowReleased(bytes32,address,address,uint256)"));
+const TOPIC_ARB_RELEASE_SINGLE = keccak256(stringToHex("EscrowReleasedByArbiter(bytes32,address,address,uint256)"));
 const TOPIC_REFUND_SINGLE = keccak256(stringToHex("EscrowRefunded(bytes32,address,address,uint256)"));
 
 function json(status: number, body: unknown) {
@@ -93,10 +96,18 @@ async function processLogs(
   cfg: ChainConfig,
   logs: RpcLog[],
 ) {
+  const expectedEscrow = String(cfg.escrow_address || "").toLowerCase();
   for (const log of logs) {
+    const logAddress = String(log.address ?? "").toLowerCase();
+    if (!expectedEscrow || logAddress !== expectedEscrow) continue;
+
     const topic0 = String(log.topics?.[0] ?? "").toLowerCase();
     const isDeposit = topic0 === TOPIC_DEPOSIT_MULTI || topic0 === TOPIC_DEPOSIT_SINGLE;
-    const isRelease = topic0 === TOPIC_RELEASE_MULTI || topic0 === TOPIC_RELEASE_SINGLE;
+    const isRelease =
+      topic0 === TOPIC_RELEASE_MULTI ||
+      topic0 === TOPIC_ARB_RELEASE_MULTI ||
+      topic0 === TOPIC_RELEASE_SINGLE ||
+      topic0 === TOPIC_ARB_RELEASE_SINGLE;
     const isRefund = topic0 === TOPIC_REFUND_MULTI || topic0 === TOPIC_REFUND_SINGLE;
     if (!isDeposit && !isRelease && !isRefund) continue;
 
@@ -226,7 +237,8 @@ serve(async () => {
     const results: Record<string, unknown> = {};
 
     for (const cfg of chains as ChainConfig[]) {
-      if (!cfg.rpc_url || !cfg.escrow_address) {
+      const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
+      if (!rpcUrl || !cfg.escrow_address) {
         results[cfg.chain] = { ok: false, reason: "rpc_url or escrow_address missing" };
         continue;
       }
@@ -244,7 +256,7 @@ serve(async () => {
       const maxBlocksPerRun = 60;
       let lastBlock = Number((syncRow as ChainSync | null)?.last_block ?? 0);
       const hasSyncedBefore = lastBlock > 0;
-      const latestHex = await rpcCall(cfg.rpc_url, "eth_blockNumber", []);
+      const latestHex = await rpcCall(rpcUrl, "eth_blockNumber", []);
       const latest = toNum(latestHex);
       const required = Math.max(1, Number(cfg.confirmations_required ?? 1));
       const toBlock = Math.max(0, latest - required + 1);
@@ -285,7 +297,7 @@ serve(async () => {
         const end = Math.min(cursor + maxRange - 1, runToBlock);
         let logs: RpcLog[] = [];
         try {
-          logs = (await rpcCall(cfg.rpc_url, "eth_getLogs", [
+          logs = (await rpcCall(rpcUrl, "eth_getLogs", [
             {
               address: cfg.escrow_address,
               fromBlock: `0x${cursor.toString(16)}`,
@@ -293,9 +305,11 @@ serve(async () => {
               topics: [[
                 TOPIC_DEPOSIT_MULTI,
                 TOPIC_RELEASE_MULTI,
+                TOPIC_ARB_RELEASE_MULTI,
                 TOPIC_REFUND_MULTI,
                 TOPIC_DEPOSIT_SINGLE,
                 TOPIC_RELEASE_SINGLE,
+                TOPIC_ARB_RELEASE_SINGLE,
                 TOPIC_REFUND_SINGLE,
               ]],
             },
