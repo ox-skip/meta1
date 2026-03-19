@@ -3,9 +3,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import LazyQrCode from "@/components/common/LazyQrCode";
 import {
   buildPiStockBrowserHandoff,
   parsePiStockIntentFromQuery,
@@ -228,7 +228,7 @@ export default function PublicPiStockCheckout() {
               }}
             >
               <View style={{ padding: 10, borderRadius: 16, backgroundColor: "#fff" }}>
-                <QRCode value={desktopCheckoutUrl} size={176} />
+                <LazyQrCode value={desktopCheckoutUrl} size={176} />
               </View>
               <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.72)", textAlign: "center", lineHeight: 20 }}>
                 Scan with your phone to open this locked stock checkout page, then continue in Pi Browser.
