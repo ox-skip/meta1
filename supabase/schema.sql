@@ -326,6 +326,21 @@ CREATE TABLE public.profiles (
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
   CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
+CREATE TABLE public.app_onboarding_events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  flow_key text NOT NULL,
+  flow_title text NOT NULL,
+  status text NOT NULL,
+  completed_steps integer NOT NULL DEFAULT 0,
+  total_steps integer NOT NULL DEFAULT 1,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT app_onboarding_events_pkey PRIMARY KEY (id),
+  CONSTRAINT app_onboarding_events_steps_check CHECK ((completed_steps >= 0) AND (total_steps > 0) AND (completed_steps <= total_steps)),
+  CONSTRAINT app_onboarding_events_status_check CHECK ((status = ANY (ARRAY['completed'::text, 'skipped'::text]))),
+  CONSTRAINT app_onboarding_events_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE
+);
 CREATE TABLE public.user_virtual_accounts (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL UNIQUE,

@@ -16,9 +16,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { getCachedCountry, isNigeriaCountry, listingMatchesCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -497,6 +499,7 @@ export default function MarketHome() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
         key={section === "social" ? "social" : directoryMode}

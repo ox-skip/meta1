@@ -15,7 +15,9 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { fetchStocksOverview, type StockOverviewItem } from "@/services/market/stocks";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
@@ -133,6 +135,7 @@ export default function StockHomeScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.stockHome} />
       <AppHeader title="Digital Stock" subtitle="Unified market view for EVM and Pi stock identities." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}

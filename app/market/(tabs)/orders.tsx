@@ -16,12 +16,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import {
   fetchJsonWithTimeout,
   getSupabaseAnonKeyOrThrow,
   getSupabaseFunctionsBaseUrl,
   getSupabaseJwtOrThrow,
 } from "@/services/net";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
@@ -648,6 +650,7 @@ export default function MarketOrdersTab() {
         paddingHorizontal: 16,
       }}
     >
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketOrders} />
       <AppHeader title="Orders" subtitle="Buying & selling history" />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}

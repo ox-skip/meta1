@@ -5,7 +5,9 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { fetchMyStockPortfolio } from "@/services/market/stocks";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { friendlyMarketError } from "@/utils/marketUx";
 
 const BG_TOP = "#0D1B2A";
@@ -44,6 +46,7 @@ export default function StockPortfolioScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.stockPortfolio} />
       <AppHeader title="Stock Portfolio" subtitle="Holdings from your digital stock trades." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}

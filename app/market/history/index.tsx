@@ -14,7 +14,9 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { fetchMarketHistory, type MarketHistoryEntry } from "@/services/market/history";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { formatCurrency } from "@/utils/pricing";
 
 const BG0 = "#05040B";
@@ -171,6 +173,7 @@ export default function MarketHistoryScreen() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} style={{ flex: 1 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHistory} />
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}

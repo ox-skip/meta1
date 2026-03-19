@@ -15,6 +15,7 @@ import {
 import "../global.css";
 import { useAuth } from "../hooks/authentication/useAuth";
 import { initMobileAds } from "@/services/ads/initMobileAds";
+import { OnboardingProvider } from "@/components/onboarding/InAppTutorial";
 import { ExternalWalletProvider } from "@/services/wallet/externalWalletProvider";
 
 import * as Application from "expo-application";
@@ -247,8 +248,10 @@ export default function RootLayout() {
 
   return (
     <ExternalWalletProvider>
-      <Slot />
-      <StatusBar style="light" />
+      <OnboardingProvider userId={user?.id ?? null}>
+        <Slot />
+        <StatusBar style="light" />
+      </OnboardingProvider>
     </ExternalWalletProvider>
   );
 }

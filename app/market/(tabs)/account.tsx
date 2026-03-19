@@ -5,8 +5,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import UnifiedWalletPanel from "@/components/market/wallet/UnifiedWalletPanel";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
@@ -211,6 +213,7 @@ export default function MarketAccountTab() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketAccount} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 }}>
         <AppHeader title="Account Hub" subtitle="Command center for your marketplace operations" />
 

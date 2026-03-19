@@ -19,6 +19,7 @@ import {
 import Svg, { Defs, Line, LinearGradient as SvgGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import {
   fetchStockDetail,
   getStockQuote,
@@ -32,6 +33,7 @@ import {
   lockPiStockSellQuote,
   submitPiStockSell,
 } from "@/services/market/piStock";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { repairLastStockTradeIndex, submitStockTradeOnchain } from "@/services/market/stockOnchain";
 import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
@@ -745,6 +747,7 @@ export default function StockDetailScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+      <InAppTutorial enabled={!loading && !!detail} flow={tutorialFlows.stockDetail} />
       <AppHeader title="Stock Detail" subtitle="Realtime market + chat + buy/sell execution." />
       <ScrollView contentContainerStyle={{ paddingBottom: 148 }}>
         {loading ? (

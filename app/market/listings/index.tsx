@@ -18,6 +18,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
@@ -981,6 +983,7 @@ export default function ListingsFeed() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
+      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketListings} />
       {loading ? (
         <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
           <AppHeader title={title} subtitle="Loading…" />
