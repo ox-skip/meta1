@@ -59,9 +59,11 @@ function normalizeVerificationError(error: unknown) {
 
   if (
     lower === "invalid jwt" ||
+    lower === "unauthorized" ||
     lower.includes("session expired") ||
     lower.includes("no session") ||
-    lower.includes("auth token")
+    lower.includes("auth token") ||
+    lower.includes("unauthor")
   ) {
     return "Your login session is invalid. Sign out, sign in again, then retry verification.";
   }

@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.87.1";
 import { getAnonKey, getServiceKey, getSupabaseUrl } from "./env.ts";
 
-function extractBearerToken(req: Request): string | null {
+export function extractBearerToken(req: Request): string | null {
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   return token.length ? token : null;

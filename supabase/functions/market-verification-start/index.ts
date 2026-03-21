@@ -1,5 +1,9 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
-import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import {
+  extractBearerToken,
+  supabaseAdminClient,
+  supabaseUserClient,
+} from "../_shared/market/supabase.ts";
 import {
   buildSellerVerificationExternalUserId,
   diditRequest,
@@ -41,10 +45,15 @@ function isReusableVerificationLink(existing: { verification_url?: string | null
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
+  const token = extractBearerToken(req);
+  if (!token) return unauth();
+
   const supabase = supabaseUserClient(req);
   const admin = supabaseAdminClient();
 
-  const { data: auth, error: authErr } = await supabase.auth.getUser();
+  // This function authenticates the caller inside the handler so it can run
+  // with verify_jwt=false and still reject missing/invalid bearer tokens.
+  const { data: auth, error: authErr } = await supabase.auth.getUser(token);
   const user = auth?.user;
   if (authErr || !user) return unauth();
 
