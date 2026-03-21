@@ -8,7 +8,7 @@ import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, Text, 
 
 import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
-import { createListing, getMySellerProfile, insertListingImages, rollbackListingDraft, uploadToBucket } from "@/services/market/marketService";
+import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
 import { formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -733,7 +733,6 @@ export default function SellTab() {
 
       // If no images (allowed for digital service with website URL), skip images flow
       if (images.length > 0) {
-        const uploadedPaths: string[] = [];
         try {
           console.log("[SellTab] upload images -> start", { count: images.length });
           setStage("Uploading images...");
@@ -757,7 +756,6 @@ export default function SellTab() {
               contentType: img.contentType,
             });
             console.log("[SellTab] upload image -> ok", { index: i, storagePath: up.storagePath });
-            uploadedPaths.push(String(up.storagePath || ""));
 
             inserts.push({
               listing_id: listing.id,
@@ -776,10 +774,17 @@ export default function SellTab() {
           if (!rows?.length) {
             throw new Error("Upload finished but image rows were not saved. Please retry.");
           }
-        } catch (imageErr) {
-          setStage("Reverting draft listing...");
-          await rollbackListingDraft(listing.id, uploadedPaths);
-          throw imageErr;
+        } catch (imageErr: any) {
+          const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
+          setStage("Keeping saved draft...");
+          if (partialRows.length > 0) {
+            throw new Error(
+              `Your listing was saved, but only ${partialRows.length} image${partialRows.length === 1 ? "" : "s"} synced before an error. Open My Listings to review it and re-upload the remaining images.`,
+            );
+          }
+          throw new Error(
+            "Your listing draft was saved, but we couldn't attach the uploaded images. Open My Listings and try the images again.",
+          );
         }
       }
 

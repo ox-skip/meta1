@@ -17,6 +17,7 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { fetchWithTimeout } from "@/services/net";
 import { supabase } from "@/services/supabase";
@@ -280,13 +281,19 @@ export default function CreateMarketProfile() {
 
       // 1) Existing profile?
       setStage("Checking existing profile…");
-      const { data: existing, error: exErr } = await supabase
-        .from("market_seller_profiles")
-        .select("user_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      let existing: { user_id: string } | null = null;
+      try {
+        const { data, error: exErr } = await supabase
+          .from("market_seller_profiles")
+          .select("user_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      if (exErr) throw exErr;
+        if (exErr) throw exErr;
+        existing = data;
+      } catch (e: any) {
+        console.log("[CreateMarketProfile] existing profile check skipped", prettyErr(e));
+      }
 
       if (existing?.user_id) {
         Alert.alert("Profile exists", "You already have a market profile. Redirecting…");
@@ -296,29 +303,26 @@ export default function CreateMarketProfile() {
 
       // 2) Create profile FIRST (so Storage RLS doesn’t block profile creation)
       setStage("Creating profile…");
-      const { error: insErr } = await supabase.from("market_seller_profiles").insert({
-        user_id: user.id,
-        market_username: usernameClean,
-        display_name: displayName.trim() || null,
-        business_name: businessName.trim(),
-        bio: bio.trim() || null,
-        phone: phone.trim() || null,
-        location_text: locationText.trim() || null,
-        address: address || {},
-        social_links: normalizeSocialLinks(socialLinks),
-        offers_remote: offersRemote,
-        offers_in_person: offersInPerson,
-        is_verified: false,
-        payout_tier: "standard",
-        active: true,
-        // logo_path/banner_path set later
-      });
-
-      if (insErr) {
-        if ((insErr as any).code === "23505") {
+      try {
+        await callFn("market-seller-profile-upsert", {
+          market_username: usernameClean,
+          display_name: displayName.trim() || null,
+          business_name: businessName.trim(),
+          bio: bio.trim() || null,
+          phone: phone.trim() || null,
+          location_text: locationText.trim() || null,
+          address: address || {},
+          social_links: normalizeSocialLinks(socialLinks),
+          offers_remote: offersRemote,
+          offers_in_person: offersInPerson,
+          active: true,
+        });
+      } catch (e: any) {
+        const msg = prettyErr(e).toLowerCase();
+        if (msg.includes("duplicate key") || msg.includes("market_username")) {
           throw new Error("Username already taken. Please choose another one.");
         }
-        throw insErr;
+        throw e;
       }
 
       // 3) Upload images AFTER profile (optional)
@@ -348,16 +352,13 @@ export default function CreateMarketProfile() {
       // 4) Update profile with uploaded paths (if any)
       if (logo_path || banner_path) {
         setStage("Saving images…");
-        const { error: upErr } = await supabase
-          .from("market_seller_profiles")
-          .update({
+        try {
+          await callFn("market-seller-profile-upsert", {
             ...(logo_path ? { logo_path } : {}),
             ...(banner_path ? { banner_path } : {}),
-          })
-          .eq("user_id", user.id);
-
-        if (upErr) {
-          uploadFailed = (uploadFailed ? uploadFailed + "\n\n" : "") + "Saving image paths failed.\n" + prettyErr(upErr);
+          });
+        } catch (e: any) {
+          uploadFailed = (uploadFailed ? uploadFailed + "\n\n" : "") + "Saving image paths failed.\n" + prettyErr(e);
         }
       }
 

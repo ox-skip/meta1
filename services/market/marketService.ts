@@ -1,5 +1,4 @@
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
-import { callFn } from "@/services/functions";
 import { supabase } from "@/services/supabase";
 
 export type MarketSellerProfile = {
@@ -42,9 +41,10 @@ export type ListingImageInsert = {
   meta?: any;
 };
 
-function asErrorMessage(error: unknown) {
-  const msg = String((error as any)?.message ?? error ?? "").trim();
-  return msg || "Unknown error";
+function errorWithPartialRows(message: string, rows: any[]) {
+  const error = new Error(message) as Error & { partialRows?: any[] };
+  error.partialRows = rows;
+  return error;
 }
 
 export async function getMySellerProfile() {
@@ -147,72 +147,33 @@ export async function insertListingImages(
 
   const rows: any[] = [];
   for (const img of images) {
-    let row: any | null = null;
-    let edgeError: unknown = null;
-
-    try {
-      const out = await callFn<{ image?: any }>("market-add-listing-image", {
+    const { data, error } = await supabase
+      .from("market_listing_images")
+      .insert({
         listing_id: img.listing_id,
         storage_path: img.storage_path,
-        public_url: img.public_url,
-        sort_order: img.sort_order,
+        public_url: img.public_url ?? null,
+        sort_order: Number.isFinite(Number(img.sort_order)) ? Number(img.sort_order) : 0,
         meta: img.meta ?? {},
-        // first image becomes cover on the backend
-        set_as_cover: Number(img.sort_order ?? 0) === 0,
-        // publish only after at least one image row is persisted
-        activate_listing: options?.activateListing === true && Number(img.sort_order ?? 0) === 0,
-      });
-      row = (out as any)?.image ?? null;
-      if (!row?.id) {
-        throw new Error("Image saved but DB row id was not returned.");
-      }
-    } catch (error) {
-      edgeError = error;
-      console.log("[insertListingImages] market-add-listing-image failed; falling back to direct DB insert.", asErrorMessage(error));
+      })
+      .select("*")
+      .single();
+
+    if (error || !data?.id) {
+      throw errorWithPartialRows(error?.message || "Image row insert failed.", rows);
     }
 
-    if (!row?.id) {
-      const { data, error } = await supabase
-        .from("market_listing_images")
-        .insert({
-          listing_id: img.listing_id,
-          storage_path: img.storage_path,
-          public_url: img.public_url ?? null,
-          sort_order: Number.isFinite(Number(img.sort_order)) ? Number(img.sort_order) : 0,
-          meta: img.meta ?? {},
-        })
-        .select("*")
-        .single();
+    rows.push(data);
 
-      if (error || !data?.id) {
-        const dbMsg = error?.message || "Direct DB image insert failed.";
-        const edgeMsg = edgeError ? asErrorMessage(edgeError) : "";
-        throw new Error(edgeMsg ? `${dbMsg} (edge function: ${edgeMsg})` : dbMsg);
-      }
-
-      row = data;
-
-      // Keep cover/listing state in sync even when edge function fallback is used.
-      if (Number(img.sort_order ?? 0) === 0) {
-        try {
-          await setListingCoverImage(img.listing_id, row.id);
-        } catch (coverError) {
-          console.log("[insertListingImages] cover_image update fallback failed", asErrorMessage(coverError));
-        }
-      }
-
-      if (options?.activateListing === true && Number(img.sort_order ?? 0) === 0) {
-        const { error: activateError } = await supabase
-          .from("market_listings")
-          .update({ is_active: true, updated_at: new Date().toISOString() })
-          .eq("id", img.listing_id);
-        if (activateError) {
-          throw new Error(activateError.message);
-        }
+    if (options?.activateListing === true && Number(img.sort_order ?? 0) === 0) {
+      const { error: activateError } = await supabase
+        .from("market_listings")
+        .update({ is_active: true, updated_at: new Date().toISOString() })
+        .eq("id", img.listing_id);
+      if (activateError) {
+        throw errorWithPartialRows(activateError.message, rows);
       }
     }
-
-    rows.push(row);
   }
 
   return rows;

@@ -18,6 +18,7 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 import { getCurrentLocationWithGeocode, syncManualLocationTextAddress, toProfileLocationAddress } from "@/utils/location";
@@ -137,13 +138,15 @@ export default function EditMarketProfile() {
 
         const { data, error } = await supabase
           .from("market_seller_profiles")
-          .select("market_username,display_name,business_name,bio,logo_path,banner_path,location_text,address,social_links")
+          .select("*")
           .eq("user_id", user.id)
           .maybeSingle();
 
         if (!mounted) return;
 
-        if (error || !data) {
+        if (error) throw error;
+
+        if (!data) {
           Alert.alert("No profile", "Create your market profile first.");
           router.replace("/market/profile/create" as any);
           return;
@@ -325,9 +328,8 @@ export default function EditMarketProfile() {
       }
 
       setStage("Saving profile…");
-      const { error } = await supabase
-        .from("market_seller_profiles")
-        .update({
+      try {
+        await callFn("market-seller-profile-upsert", {
           market_username: usernameClean,
           display_name: displayName.trim() || null,
           business_name: businessName.trim(),
@@ -337,10 +339,14 @@ export default function EditMarketProfile() {
           social_links: normalizeSocialLinks(socialLinks),
           logo_path: nextLogo,
           banner_path: nextBanner,
-        })
-        .eq("user_id", user.id);
-
-      if (error) throw error;
+        });
+      } catch (e: any) {
+        const msg = prettyErr(e).toLowerCase();
+        if (msg.includes("duplicate key") || msg.includes("market_username")) {
+          throw new Error("Username already taken. Please choose another one.");
+        }
+        throw e;
+      }
 
       Alert.alert("Saved ✅", "Profile updated.");
       router.back();
