@@ -84,6 +84,16 @@ function prettyErr(e: any) {
   return `${msg}${code}${details}${hint}`;
 }
 
+function isMissingBaseProfileError(e: any) {
+  const msg = prettyErr(e).toLowerCase();
+  return (
+    msg.includes("failed to initialize account profile") ||
+    msg.includes("failed to read account profile") ||
+    ((msg.includes("foreign key") || msg.includes("market_seller_profiles_user_id_fkey")) &&
+      msg.includes("profiles"))
+  );
+}
+
 function normalizeSocialLinks(input: Partial<SocialLinks> | null | undefined) {
   const next: Partial<SocialLinks> = {};
   SOCIALS.forEach((s) => {
@@ -383,6 +393,9 @@ export default function CreateMarketProfile() {
         if (msg.includes("duplicate key") || msg.includes("market_username")) {
           throw new Error("Username already taken. Please choose another one.");
         }
+        if (isMissingBaseProfileError(e)) {
+          throw new Error("Your account profile could not be initialized. Please sign out, sign back in, and try again.");
+        }
         console.log("[CreateMarketProfile] function create failed, trying direct insert", prettyErr(e));
         try {
           await insertProfileDirect({
@@ -402,6 +415,9 @@ export default function CreateMarketProfile() {
           const fallbackMsg = prettyErr(fallbackErr).toLowerCase();
           if (fallbackMsg.includes("duplicate key") || fallbackMsg.includes("market_username")) {
             throw new Error("Username already taken. Please choose another one.");
+          }
+          if (isMissingBaseProfileError(fallbackErr)) {
+            throw new Error("Your account profile is missing. Please sign out, sign back in, and try again.");
           }
           throw fallbackErr;
         }

@@ -10,6 +10,35 @@ function toTrimmedText(value: unknown) {
   return text.length ? text : null;
 }
 
+async function ensureBaseProfileRow(
+  admin: any,
+  user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+) {
+  const { data: existingProfile, error: profileError } = await admin
+    .from("profiles")
+    .select("id,email")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) throw new Error(`Failed to read account profile: ${profileError.message}`);
+  if (existingProfile?.id) return;
+
+  const insertRow: Record<string, string> = { id: user.id };
+  const email = toTrimmedText(user.email);
+  const fullName = toTrimmedText(user.user_metadata?.full_name ?? user.user_metadata?.name);
+
+  if (email) insertRow.email = email;
+  if (fullName) insertRow.full_name = fullName;
+
+  const { error: insertError } = await admin
+    .from("profiles")
+    .upsert(insertRow, { onConflict: "id" });
+
+  if (insertError) {
+    throw new Error(`Failed to initialize account profile: ${insertError.message}`);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -20,6 +49,12 @@ Deno.serve(async (req) => {
   if (ue || !u.user) return unauth();
 
   const payload = await req.json().catch(() => ({})) as Record<string, unknown>;
+
+  try {
+    await ensureBaseProfileRow(admin, u.user);
+  } catch (e: any) {
+    return bad(e?.message ?? "Failed to initialize account profile");
+  }
 
   const { data: existing, error: existingError } = await admin
     .from("market_seller_profiles")
