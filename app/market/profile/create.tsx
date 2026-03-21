@@ -285,7 +285,8 @@ export default function CreateMarketProfile() {
   const canSubmit =
     !loading &&
     usernameOk &&
-    nameStatus === "available" &&
+    nameStatus !== "taken" &&
+    nameStatus !== "checking" &&
     businessName.trim().length > 0;
 
   function onChangeLocationText(next: string) {
@@ -313,8 +314,12 @@ export default function CreateMarketProfile() {
       Alert.alert("Invalid username", "Use 3–24 chars: lowercase letters, numbers, underscore.");
       return;
     }
-    if (nameStatus !== "available") {
-      Alert.alert("Username not available", "Choose an available username before creating.");
+    if (nameStatus === "taken") {
+      Alert.alert("Username not available", "Choose a different username before creating.");
+      return;
+    }
+    if (nameStatus === "checking") {
+      Alert.alert("Checking username", "Wait a moment for username availability to finish checking.");
       return;
     }
     if (!businessName.trim()) {
@@ -780,7 +785,7 @@ export default function CreateMarketProfile() {
 
           {!canSubmit ? (
             <Text style={{ marginTop: 10, color: MUTED, fontSize: 12, textAlign: "center" }}>
-              Choose an available username and enter your business name to continue.
+              Enter a valid username and business name to continue.
             </Text>
           ) : null}
         </View>
