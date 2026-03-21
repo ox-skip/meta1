@@ -88,21 +88,6 @@ export default function UnifiedWalletPanel({
     }
   };
 
-  const copyWalletSecret = async () => {
-    try {
-      const out = await wallet.exportWalletSecret();
-      await Clipboard.setStringAsync(out.value);
-      Alert.alert(
-        "Copied",
-        out.kind === "seed_phrase"
-          ? "Seed phrase copied. Keep it offline and private."
-          : "Private key copied. Keep it offline and private.",
-      );
-    } catch (e: any) {
-      Alert.alert("Export unavailable", String(e?.message || e || "Wallet secret export is unavailable."));
-    }
-  };
-
   const savePiWallet = async () => {
     try {
       const out = await wallet.savePiAddress(piAddressInput);
@@ -638,41 +623,6 @@ export default function UnifiedWalletPanel({
         >
           <Text style={{ color: "#E0F2FE", fontWeight: "900", fontSize: 12 }}>
             {wallet.sendBusy ? "Sending..." : `Send ${sendToken}`}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View
-        style={{
-          marginTop: 8,
-          borderRadius: 14,
-          padding: 10,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          backgroundColor: "rgba(239,68,68,0.10)",
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>Security Export</Text>
-        <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.7)", fontSize: 11 }}>
-          Seed/private-key export is wallet-dependent. Keep copied secrets offline.
-        </Text>
-        <Pressable
-          onPress={copyWalletSecret}
-          disabled={wallet.securityBusy || !wallet.connectedAddress}
-          style={{
-            marginTop: 8,
-            borderRadius: 12,
-            height: 40,
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1,
-            borderColor: "rgba(239,68,68,0.4)",
-            backgroundColor: "rgba(239,68,68,0.22)",
-            opacity: wallet.securityBusy || !wallet.connectedAddress ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#FECACA", fontWeight: "900", fontSize: 12 }}>
-            {wallet.securityBusy ? "Checking wallet..." : "Copy Seed / Private Key"}
           </Text>
         </Pressable>
       </View>

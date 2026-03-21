@@ -20,8 +20,7 @@ import AppHeader from "@/components/common/AppHeader";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { fetchWithTimeout } from "@/services/net";
 import { supabase } from "@/services/supabase";
-import { getCurrentLocationWithGeocode } from "@/utils/location";
-import { normalizeCountryName } from "@/utils/countryNames";
+import { getCurrentLocationWithGeocode, syncManualLocationTextAddress, toProfileLocationAddress } from "@/utils/location";
 
 const BG0 = "#05040B";
 const BG1 = "#0A0620";
@@ -232,26 +231,17 @@ export default function CreateMarketProfile() {
     nameStatus === "available" &&
     businessName.trim().length > 0;
 
+  function onChangeLocationText(next: string) {
+    setLocationText(next);
+    setAddress((prev: any) => syncManualLocationTextAddress(prev, next));
+  }
+
   async function useCurrentLocation() {
     setLocatingAddress(true);
     try {
       const res = await getCurrentLocationWithGeocode();
-      const country = normalizeCountryName(res.geo.country, res.geo.countryCode);
       setLocationText(res.label);
-      setAddress({
-        label: res.label,
-        city: res.geo.city || res.geo.town || res.geo.locality || "",
-        region: res.geo.region || res.geo.subregion || res.geo.district || "",
-        country,
-        countryCode: res.geo.countryCode || "",
-        postalCode: res.geo.postalCode || "",
-        subregion: res.geo.subregion || "",
-        district: res.geo.district || "",
-        town: res.geo.town || "",
-        locality: res.geo.locality || "",
-        lat: res.coords.lat,
-        lng: res.coords.lng,
-      });
+      setAddress(toProfileLocationAddress({ coords: res.coords, geo: res.geo, label: res.label }));
     } catch (e: any) {
       Alert.alert("Location error", e?.message || "Could not access location.");
     } finally {
@@ -596,7 +586,7 @@ export default function CreateMarketProfile() {
             label="Location (optional)"
             hint="Helps buyers know where you operate"
             value={locationText}
-            onChangeText={setLocationText}
+            onChangeText={onChangeLocationText}
             icon="location-outline"
             placeholder="Lagos, Abuja..."
           />

@@ -23,14 +23,7 @@ export type MarketChainConfig = {
 };
 
 const KEY_CHAIN = "bc_market_chain_pref_v2";
-
-function parseBoolEnv(raw: unknown, fallback = false) {
-  const value = String(raw ?? "").trim().toLowerCase();
-  if (!value) return fallback;
-  if (["1", "true", "yes", "on"].includes(value)) return true;
-  if (["0", "false", "no", "off"].includes(value)) return false;
-  return fallback;
-}
+const MAINNET_CHAINS = new Set(["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb"]);
 
 function parseNumber(input: unknown, fallback: number) {
   const value = Number(input);
@@ -51,17 +44,16 @@ function alchemyUrlForChainId(chainId: number) {
     1: `https://eth-mainnet.g.alchemy.com/v2/${apiKey}`,
     10: `https://opt-mainnet.g.alchemy.com/v2/${apiKey}`,
     56: `https://bnb-mainnet.g.alchemy.com/v2/${apiKey}`,
-    97: `https://bnb-testnet.g.alchemy.com/v2/${apiKey}`,
     137: `https://polygon-mainnet.g.alchemy.com/v2/${apiKey}`,
     8453: `https://base-mainnet.g.alchemy.com/v2/${apiKey}`,
-    84532: `https://base-sepolia.g.alchemy.com/v2/${apiKey}`,
     42161: `https://arb-mainnet.g.alchemy.com/v2/${apiKey}`,
-    421614: `https://arb-sepolia.g.alchemy.com/v2/${apiKey}`,
-    80002: `https://polygon-amoy.g.alchemy.com/v2/${apiKey}`,
-    11155420: `https://opt-sepolia.g.alchemy.com/v2/${apiKey}`,
   };
 
   return urls[chainId] ?? null;
+}
+
+function isSupportedMainnetChain(input: unknown) {
+  return MAINNET_CHAINS.has(String(input || "").trim().toLowerCase());
 }
 
 export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
@@ -105,7 +97,7 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
       )
       .order("active", { ascending: false });
     if (!directErr && direct && direct.length) {
-      const directNorm = direct.map(normalize);
+      const directNorm = direct.filter((row) => isSupportedMainnetChain(row?.chain)).map(normalize);
       const hasValidTokens = directNorm.some((c) => /^0x[a-fA-F0-9]{40}$/.test(c.usdc_address || ""));
       if (hasValidTokens) return directNorm;
     }
@@ -124,66 +116,15 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || json?.error || "Failed to load chains");
-    const fromFn: MarketChainConfig[] = (json?.chains ?? []).map(normalize);
+    const fromFn: MarketChainConfig[] = (json?.chains ?? [])
+      .filter((row: any) => isSupportedMainnetChain(row?.chain))
+      .map(normalize);
     // Guard against stale function deployments returning empty token addresses.
     const hasValidTokens = fromFn.some((c) => /^0x[a-fA-F0-9]{40}$/.test(c.usdc_address || ""));
     if (fromFn.length && hasValidTokens) return fromFn;
     throw new Error("Chain config payload missing token addresses");
   } catch (e: any) {
-    // Last fallback so UI is usable even if policies/functions are misconfigured.
-    const fallback: MarketChainConfig[] = [
-      {
-        chain: "base_sepolia",
-        chain_id: 84532,
-        rpc_url: process.env.EXPO_PUBLIC_BASE_SEPOLIA_RPC_URL ?? null,
-        usdc_address: process.env.EXPO_PUBLIC_USDC_ADDRESS_BASE_SEPOLIA ?? "",
-        usdt_address: process.env.EXPO_PUBLIC_USDT_ADDRESS_BASE_SEPOLIA ?? null,
-        escrow_address: process.env.EXPO_PUBLIC_ESCROW_ADDRESS_BASE_SEPOLIA ?? "",
-        faucet_address: process.env.EXPO_PUBLIC_FAUCET_ADDRESS_BASE_SEPOLIA ?? null,
-        faucet_active: parseBoolEnv(process.env.EXPO_PUBLIC_FAUCET_ACTIVE_BASE_SEPOLIA, Boolean(process.env.EXPO_PUBLIC_FAUCET_ADDRESS_BASE_SEPOLIA)),
-        faucet_cooldown_seconds: parseNumber(process.env.EXPO_PUBLIC_FAUCET_COOLDOWN_SECONDS_BASE_SEPOLIA, 86_400),
-        faucet_usdc_amount_raw: process.env.EXPO_PUBLIC_FAUCET_USDC_AMOUNT_RAW_BASE_SEPOLIA ?? "1000000000",
-        faucet_usdt_amount_raw: process.env.EXPO_PUBLIC_FAUCET_USDT_AMOUNT_RAW_BASE_SEPOLIA ?? "1000000000",
-        identity_factory: process.env.EXPO_PUBLIC_IDENTITY_FACTORY_BASE_SEPOLIA ?? null,
-        identity_router: process.env.EXPO_PUBLIC_IDENTITY_ROUTER_BASE_SEPOLIA ?? null,
-        identity_name_registry: process.env.EXPO_PUBLIC_IDENTITY_NAME_REGISTRY_BASE_SEPOLIA ?? null,
-        identity_stable_address: process.env.EXPO_PUBLIC_IDENTITY_STABLE_BASE_SEPOLIA ?? process.env.EXPO_PUBLIC_USDC_ADDRESS_BASE_SEPOLIA ?? null,
-        confirmations_required: 3,
-        active: true,
-      },
-    ];
-
-    const amoyRpc =
-      process.env.EXPO_PUBLIC_POLYGON_AMOY_RPC_URL ??
-      process.env.EXPO_PUBLIC_RPC_URL_POLYGON_AMOY ??
-      null;
-    const amoyUsdc = process.env.EXPO_PUBLIC_USDC_ADDRESS_POLYGON_AMOY ?? "";
-    const amoyUsdt = process.env.EXPO_PUBLIC_USDT_ADDRESS_POLYGON_AMOY ?? null;
-    const amoyEscrow = process.env.EXPO_PUBLIC_ESCROW_ADDRESS_POLYGON_AMOY ?? "";
-
-    if (amoyRpc || amoyUsdc || amoyUsdt || amoyEscrow) {
-      fallback.push({
-        chain: "polygon_amoy",
-        chain_id: 80002,
-        rpc_url: amoyRpc,
-        usdc_address: amoyUsdc,
-        usdt_address: amoyUsdt,
-        escrow_address: amoyEscrow,
-        faucet_address: process.env.EXPO_PUBLIC_FAUCET_ADDRESS_POLYGON_AMOY ?? null,
-        faucet_active: parseBoolEnv(process.env.EXPO_PUBLIC_FAUCET_ACTIVE_POLYGON_AMOY, Boolean(process.env.EXPO_PUBLIC_FAUCET_ADDRESS_POLYGON_AMOY)),
-        faucet_cooldown_seconds: parseNumber(process.env.EXPO_PUBLIC_FAUCET_COOLDOWN_SECONDS_POLYGON_AMOY, 86_400),
-        faucet_usdc_amount_raw: process.env.EXPO_PUBLIC_FAUCET_USDC_AMOUNT_RAW_POLYGON_AMOY ?? "1000000000",
-        faucet_usdt_amount_raw: process.env.EXPO_PUBLIC_FAUCET_USDT_AMOUNT_RAW_POLYGON_AMOY ?? "1000000000",
-        identity_factory: process.env.EXPO_PUBLIC_IDENTITY_FACTORY_POLYGON_AMOY ?? null,
-        identity_router: process.env.EXPO_PUBLIC_IDENTITY_ROUTER_POLYGON_AMOY ?? null,
-        identity_name_registry: process.env.EXPO_PUBLIC_IDENTITY_NAME_REGISTRY_POLYGON_AMOY ?? null,
-        identity_stable_address: process.env.EXPO_PUBLIC_IDENTITY_STABLE_POLYGON_AMOY ?? amoyUsdc ?? null,
-        confirmations_required: 3,
-        active: true,
-      });
-    }
-
-    return fallback;
+    throw new Error(String(e?.message || "Unable to load mainnet chain configuration."));
   }
 }
 

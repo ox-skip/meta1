@@ -25,7 +25,6 @@ import {
   setPreferredMarketChain,
   type MarketChainConfig,
 } from "@/services/market/chainConfig";
-import { claimFaucet, readFaucetStatus, type FaucetStatus } from "@/services/market/faucet";
 import {
   ensureWalletAddressOnChain,
   getMyPiWallet,
@@ -123,16 +122,6 @@ function statusTone(status?: string | null) {
   return { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.12)", text: "#E5E7EB" };
 }
 
-function formatCountdown(totalSeconds: number) {
-  const safe = Math.max(0, Math.floor(Number(totalSeconds || 0)));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
 export default function MarketWallet() {
   const { width } = useWindowDimensions();
   const wide = width >= 980;
@@ -156,10 +145,6 @@ export default function MarketWallet() {
   const [txs, setTxs] = useState<TxRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [netOpen, setNetOpen] = useState(false);
-  const [faucetLoading, setFaucetLoading] = useState(false);
-  const [faucetBusy, setFaucetBusy] = useState(false);
-  const [faucet, setFaucet] = useState<FaucetStatus | null>(null);
-  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
 
   useEffect(() => {
     let mounted = true;
@@ -192,11 +177,6 @@ export default function MarketWallet() {
   }, []);
 
   useEffect(() => {
-    const id = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
     setPiInput(piWalletAddr);
   }, [piWalletAddr]);
 
@@ -207,25 +187,6 @@ export default function MarketWallet() {
       setPiWalletAddr(next);
     } catch {
       setPiWalletAddr("");
-    }
-  }
-
-  async function loadFaucet(selected?: MarketChainConfig | null, addrInput?: string | null) {
-    const c = selected ?? chain;
-    if (!c) {
-      setFaucet(null);
-      return;
-    }
-
-    const addr = String(addrInput || walletAddr || connectedAddr || "").trim();
-    try {
-      setFaucetLoading(true);
-      const status = await readFaucetStatus(c, isAddress(addr) ? addr : null);
-      setFaucet(status);
-    } catch {
-      setFaucet(null);
-    } finally {
-      setFaucetLoading(false);
     }
   }
 
@@ -243,7 +204,6 @@ export default function MarketWallet() {
     if (!isAddress(addr)) {
       setUsdc("0");
       setUsdt("0");
-      await loadFaucet(c, "");
       return "";
     }
 
@@ -272,8 +232,6 @@ export default function MarketWallet() {
     } catch {
       setUsdt("0");
     }
-
-    await loadFaucet(c, addr);
 
     return addr;
   }
@@ -361,29 +319,6 @@ export default function MarketWallet() {
     }
   }
 
-  async function onClaimFaucet() {
-    if (!chain) return;
-    setErr(null);
-    setFaucetBusy(true);
-    try {
-      if (isPiChain(chain.chain)) {
-        throw new Error("Faucet is only available for EVM testnet wallets.");
-      }
-      await connectActiveWalletEvm(60_000, { forceModal: true });
-      const linked = await ensureWalletAddressOnChain(chain);
-      const out = await claimFaucet(chain);
-      const addr = await refresh(chain, linked.address);
-      await loadTx(addr);
-      await loadFaucet(chain, linked.address);
-      const txRef = out.txHash || out.userOpHash;
-      Alert.alert("Faucet claim sent", txRef ? `Reference: ${txRef}` : "Your faucet claim transaction was submitted.");
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "Unable to claim faucet."));
-    } finally {
-      setFaucetBusy(false);
-    }
-  }
-
   async function onSavePiWallet() {
     setErr(null);
     setPiSaving(true);
@@ -416,15 +351,6 @@ export default function MarketWallet() {
     walletMode === "base_smart"
       ? "Use Base smart account signing and approvals."
       : "Use WalletConnect wallet chooser and session signing.";
-  const faucetSecondsLeft = useMemo(() => {
-    const next = Number(faucet?.nextClaimAt ?? 0);
-    if (!Number.isFinite(next) || next <= 0) return 0;
-    return Math.max(0, next - nowSec);
-  }, [faucet?.nextClaimAt, nowSec]);
-  const faucetUsdcDisplay = useMemo(() => fmt(formatUnits(faucet?.usdcAmountRaw ?? 0n, 6)), [faucet?.usdcAmountRaw]);
-  const faucetUsdtDisplay = useMemo(() => fmt(formatUnits(faucet?.usdtAmountRaw ?? 0n, 6)), [faucet?.usdtAmountRaw]);
-  const faucetReady = Boolean(faucet?.available);
-  const faucetClaimDisabled = Boolean(!chain?.active || faucetBusy || busy || faucetLoading || !faucetReady || faucetSecondsLeft > 0);
 
   return (
     <LinearGradient colors={["#140C36", "#05040B"]} style={{ flex: 1 }}>
@@ -536,41 +462,6 @@ export default function MarketWallet() {
                     <Text style={s.metricLabel}>TOTAL</Text>
                     <Text style={s.metricValue}>{fmt(String(total))}</Text>
                   </View>
-                </View>
-
-                <View style={s.faucetCard}>
-                  <View style={s.rowBetween}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.faucetTitle}>Testnet Faucet</Text>
-                      <Text style={s.faucetSub}>
-                        {faucetReady
-                          ? `Claim ${faucetUsdcDisplay} USDC + ${faucetUsdtDisplay} USDT every ${Math.max(
-                              1,
-                              Math.round(Number(faucet?.cooldownSeconds || 86_400) / 3600)
-                            )}h`
-                          : "Faucet is not active on this selected network."}
-                      </Text>
-                    </View>
-                    <Ionicons name="water-outline" size={17} color="#93C5FD" />
-                  </View>
-                  <Pressable
-                    style={[s.faucetBtn, faucetClaimDisabled && s.dimmed]}
-                    disabled={faucetClaimDisabled}
-                    onPress={onClaimFaucet}
-                  >
-                    <Text style={s.mainText}>
-                      {faucetBusy
-                        ? "Claiming..."
-                        : faucetLoading
-                        ? "Checking faucet..."
-                        : faucetSecondsLeft > 0
-                        ? `Next claim in ${formatCountdown(faucetSecondsLeft)}`
-                        : "Claim Faucet"}
-                    </Text>
-                  </Pressable>
-                  {!faucetReady ? (
-                    <Text style={s.dim}>Switch to an active faucet network to claim test tokens.</Text>
-                  ) : null}
                 </View>
 
                 <View style={s.addrCard}>
@@ -842,27 +733,6 @@ const s = StyleSheet.create({
   },
   metricLabel: { color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" },
   metricValue: { marginTop: 4, color: "#fff", fontWeight: "900", fontSize: 14 },
-  faucetCard: {
-    marginTop: 10,
-    borderRadius: 12,
-    padding: 10,
-    backgroundColor: "rgba(59,130,246,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(147,197,253,0.35)",
-    gap: 8,
-  },
-  faucetTitle: { color: "#DBEAFE", fontWeight: "900", fontSize: 12 },
-  faucetSub: { marginTop: 3, color: "rgba(219,234,254,0.82)", fontSize: 11, fontWeight: "700" },
-  faucetBtn: {
-    minHeight: 42,
-    borderRadius: 12,
-    backgroundColor: "#2563EB",
-    borderWidth: 1,
-    borderColor: "rgba(147,197,253,0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 10,
-  },
   addrCard: {
     marginTop: 10,
     borderRadius: 12,

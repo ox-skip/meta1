@@ -577,17 +577,12 @@ export function explorerTxUrl(chain: string, txHash: string) {
   const h = String(txHash || "").trim();
   if (!h.startsWith("0x")) return null;
   const map: Record<string, string> = {
-    sepolia: "https://sepolia.etherscan.io/tx/",
     ethereum: "https://etherscan.io/tx/",
-    base_sepolia: "https://sepolia.basescan.org/tx/",
     base: "https://basescan.org/tx/",
-    arbitrum_sepolia: "https://sepolia.arbiscan.io/tx/",
     arbitrum: "https://arbiscan.io/tx/",
-    polygon_amoy: "https://amoy.polygonscan.com/tx/",
     polygon: "https://polygonscan.com/tx/",
     optimism: "https://optimistic.etherscan.io/tx/",
     bnb: "https://bscscan.com/tx/",
-    bnb_testnet: "https://testnet.bscscan.com/tx/",
   };
   const prefix = map[c];
   return prefix ? `${prefix}${h}` : null;

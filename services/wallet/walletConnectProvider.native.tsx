@@ -4,7 +4,7 @@ import React, { useEffect } from "react";
 
 import { AppKit, AppKitProvider, createAppKit, useAccount, useAppKit, useProvider } from "@reown/appkit-react-native";
 import { EthersAdapter } from "@reown/appkit-ethers-react-native";
-import { arbitrum, base, baseSepolia, mainnet, optimism, polygon, sepolia } from "@reown/appkit/networks";
+import { arbitrum, base, mainnet, optimism, polygon } from "@reown/appkit/networks";
 
 import {
   clearWalletConnectConnection,
@@ -27,7 +27,7 @@ const metadata = {
   },
 };
 
-const networks = [mainnet, sepolia, base, baseSepolia, polygon, arbitrum, optimism] as any;
+const networks = [mainnet, base, polygon, arbitrum, optimism] as any;
 
 let appKitInstance: any = null;
 
@@ -38,7 +38,7 @@ if (projectId) {
     projectId,
     metadata,
     networks,
-    defaultNetwork: baseSepolia,
+    defaultNetwork: base,
     enableCoinbase: false,
     features: {
       analytics: false,

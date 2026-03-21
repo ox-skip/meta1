@@ -72,7 +72,7 @@ function loadRuntime(): RuntimeModules | null {
 
 function getNetworks(rt: RuntimeModules) {
   const n = rt.networks;
-  return [n.mainnet, n.sepolia, n.base, n.baseSepolia, n.polygon, n.arbitrum, n.optimism] as any;
+  return [n.mainnet, n.base, n.polygon, n.arbitrum, n.optimism] as any;
 }
 
 function ensureInitialized() {
@@ -100,7 +100,7 @@ function ensureInitialized() {
     projectId,
     metadata: runtimeMetadata,
     networks,
-    defaultNetwork: rt.networks.baseSepolia,
+    defaultNetwork: rt.networks.base,
     enableCoinbase: false,
     features: {
       analytics: false,

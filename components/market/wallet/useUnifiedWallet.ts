@@ -47,100 +47,6 @@ function isAddress(value?: string | null) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || ""));
 }
 
-function isHexHash(value?: string | null) {
-  return /^0x[a-fA-F0-9]{64}$/.test(String(value || "").trim());
-}
-
-function isLikelySeedPhrase(value: string) {
-  const words = String(value || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return words.length >= 12;
-}
-
-export type WalletSecretExport = {
-  kind: "private_key" | "seed_phrase";
-  value: string;
-  sourceMethod: string;
-};
-
-const WALLET_SECRET_METHODS = [
-  "wallet_getPrivateKey",
-  "wallet_exportPrivateKey",
-  "eth_private_key",
-  "wallet_getSeedPhrase",
-  "wallet_exportSeedPhrase",
-  "wallet_getMnemonic",
-];
-
-function parseWalletSecret(raw: unknown, sourceMethod: string): WalletSecretExport | null {
-  if (raw == null) return null;
-
-  if (typeof raw === "string") {
-    const text = raw.trim();
-    if (!text) return null;
-
-    if (isHexHash(text)) {
-      return { kind: "private_key", value: text, sourceMethod };
-    }
-    if (/^[a-fA-F0-9]{64}$/.test(text)) {
-      return { kind: "private_key", value: `0x${text}`, sourceMethod };
-    }
-    if (isLikelySeedPhrase(text)) {
-      return { kind: "seed_phrase", value: text, sourceMethod };
-    }
-    return null;
-  }
-
-  if (Array.isArray(raw)) {
-    const joined = raw.map((v) => String(v || "").trim()).filter(Boolean).join(" ");
-    if (isLikelySeedPhrase(joined)) {
-      return { kind: "seed_phrase", value: joined, sourceMethod };
-    }
-    if (raw.length > 0) {
-      return parseWalletSecret(raw[0], sourceMethod);
-    }
-    return null;
-  }
-
-  if (typeof raw === "object") {
-    const item = raw as Record<string, unknown>;
-    const keys = [
-      "privateKey",
-      "private_key",
-      "key",
-      "seedPhrase",
-      "seed_phrase",
-      "mnemonic",
-      "phrase",
-      "secret",
-      "result",
-      "data",
-    ] as const;
-
-    for (const key of keys) {
-      if (!(key in item)) continue;
-      const parsed = parseWalletSecret(item[key], sourceMethod);
-      if (parsed) return parsed;
-    }
-  }
-
-  return null;
-}
-
-function isMethodUnsupportedError(err: unknown) {
-  const code = Number((err as any)?.code);
-  const msg = String((err as any)?.message || err || "").toLowerCase();
-  if (code === -32601) return true;
-  return (
-    msg.includes("method not found") ||
-    msg.includes("not supported") ||
-    msg.includes("unsupported") ||
-    msg.includes("does not exist")
-  );
-}
-
 export type UnifiedWalletStockPosition = {
   stock_id: string;
   slug: string;
@@ -169,14 +75,13 @@ export function useUnifiedWallet() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
-  const [securityBusy, setSecurityBusy] = useState(false);
   const [piSaving, setPiSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isNigeria = isNigeriaCountry(country?.code || country?.name);
   const stableTotalUsd = useMemo(() => Number(usdcBalance || 0) + Number(usdtBalance || 0), [usdcBalance, usdtBalance]);
   const overallUsdApprox = useMemo(() => stableTotalUsd + Number(portfolioTotalUsdc || 0), [stableTotalUsd, portfolioTotalUsdc]);
-  const loading = ngnLoading || portfolioLoading || busy || sendBusy || securityBusy || piSaving || country === undefined;
+  const loading = ngnLoading || portfolioLoading || busy || sendBusy || piSaving || country === undefined;
 
   const refreshCountry = useCallback(async () => {
     try {
@@ -501,49 +406,6 @@ export function useUnifiedWallet() {
     [chain, refreshChainBalances],
   );
 
-  const exportWalletSecret = useCallback(async (): Promise<WalletSecretExport> => {
-    setSecurityBusy(true);
-    setError(null);
-    try {
-      const { provider, address } = await getActiveWalletEip155Provider(60_000);
-      if (!provider || typeof provider.request !== "function") {
-        throw new Error("Connected wallet provider is unavailable.");
-      }
-
-      for (const method of WALLET_SECRET_METHODS) {
-        const attempts: Array<any[] | undefined> = [undefined, [address]];
-
-        for (const params of attempts) {
-          try {
-            const raw = await provider.request(
-              params ? { method, params } : { method },
-            );
-            const parsed = parseWalletSecret(raw, method);
-            if (parsed) return parsed;
-          } catch (e: any) {
-            if (isMethodUnsupportedError(e)) continue;
-
-            const msg = String(e?.message || e || "").toLowerCase();
-            if (msg.includes("rejected") || msg.includes("denied")) {
-              throw new Error("Request was rejected in your wallet.");
-            }
-            if (msg.includes("invalid params") || msg.includes("missing value")) {
-              continue;
-            }
-          }
-        }
-      }
-
-      throw new Error("This wallet blocks seed/private-key export to apps. Open your wallet app and export from its security settings.");
-    } catch (e: any) {
-      const msg = friendlyMarketError(e, "Unable to export wallet secret.");
-      setError(msg);
-      throw new Error(msg);
-    } finally {
-      setSecurityBusy(false);
-    }
-  }, []);
-
   useEffect(() => {
     const sync = () => {
       const s = getActiveWalletSession();
@@ -581,7 +443,6 @@ export function useUnifiedWallet() {
     loading,
     busy,
     sendBusy,
-    securityBusy,
     error: error || chainErr || countryErr || ngnError || null,
     ngnBalance: Number(ngnBalance || 0),
     country,
@@ -611,6 +472,5 @@ export function useUnifiedWallet() {
     savePiAddress,
     piSaving,
     sendStableToken,
-    exportWalletSecret,
   };
 }

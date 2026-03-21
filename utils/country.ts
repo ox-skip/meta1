@@ -1,6 +1,6 @@
 import * as SecureStore from "@/utils/secureStore";
 import { supabase } from "@/services/supabase";
-import { getCurrentLocationWithGeocode } from "@/utils/location";
+import { getCurrentLocationWithGeocode, pickLocationCity, pickLocationRegion } from "@/utils/location";
 import { normalizeCountryCode, normalizeCountryName } from "@/utils/countryNames";
 
 const KEY_COUNTRY_CODE = "bc_user_country_code_v1";
@@ -105,8 +105,8 @@ async function resolveCountryFromProfile(): Promise<UserCountry> {
     const addr = (profile as any)?.address ?? {};
     const code = inferCountryCode(addr?.countryCode, addr?.country);
     const name = normalizeCountryName(addr?.country, code);
-    const region = norm(addr?.region || addr?.state);
-    const city = norm(addr?.city || addr?.town || addr?.district || addr?.subregion || addr?.locality);
+    const region = norm(pickLocationRegion(addr));
+    const city = norm(pickLocationCity(addr));
 
     if (!code && !name) return null;
 
@@ -126,8 +126,8 @@ async function resolveCountryFromLocation(opts?: { ipOnly?: boolean }): Promise<
     });
     const code = inferCountryCode(loc?.geo?.countryCode, loc?.geo?.country);
     const name = normalizeCountryName(loc?.geo?.country, code);
-    const region = norm(loc?.geo?.region || loc?.geo?.subregion || loc?.geo?.district);
-    const city = norm(loc?.geo?.city || loc?.geo?.town || loc?.geo?.locality || loc?.geo?.district);
+    const region = norm(pickLocationRegion(loc?.geo));
+    const city = norm(pickLocationCity(loc?.geo));
     const lat = Number(loc?.coords?.lat);
     const lng = Number(loc?.coords?.lng);
 

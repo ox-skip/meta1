@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { createPublicClient, formatUnits, http } from "viem";
@@ -12,14 +12,8 @@ import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
 import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
-import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
-import { getMyPiWallet, getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
-import {
-  buildNativeOrderReturnUrl,
-  buildPiReturnUrl,
-  payPiForOrder,
-  type PiPaymentHandoffResult,
-} from "@/services/market/piCheckout";
+import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode, toDeliveryGeo } from "@/utils/location";
+import { getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -56,16 +50,6 @@ function isHexHash(v?: string | null) {
   return /^0x[a-fA-F0-9]{64}$/.test(String(v || "").trim());
 }
 
-function isPiHandoffResult(value: any): value is PiPaymentHandoffResult {
-  return value?.handoff_required === true && typeof value?.pi_browser_url === "string";
-}
-
-function isDesktopWebEnvironment() {
-  if (Platform.OS !== "web") return false;
-  const ua = String((globalThis as any)?.navigator?.userAgent || "").toLowerCase();
-  return !/(android|iphone|ipad|ipod|mobile|pibrowser|minepi)/i.test(ua);
-}
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const id = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -79,28 +63,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
         reject(error);
       });
   });
-}
-
-function delayResult<T>(timeoutMs: number, value: T) {
-  return new Promise<T>((resolve) => {
-    setTimeout(() => resolve(value), timeoutMs);
-  });
-}
-
-async function tryOpenExternalUrl(url?: string | null, settleAfterMs = 1200) {
-  const target = String(url || "").trim();
-  if (!target) return false;
-
-  try {
-    return await Promise.race([
-      Linking.openURL(target)
-        .then(() => true)
-        .catch(() => false),
-      delayResult(settleAfterMs, true),
-    ]);
-  } catch {
-    return false;
-  }
 }
 
 function parseJsonObject(value: unknown) {
@@ -122,17 +84,21 @@ function normalizeDeliveryGeo(value: unknown): DeliveryGeo | null {
   const raw = parseJsonObject(value) as any;
   if (!raw) return null;
 
-  const lat = Number(raw?.lat ?? raw?.latitude);
-  const lng = Number(raw?.lng ?? raw?.longitude);
-  const next: DeliveryGeo = {
-    lat: Number.isFinite(lat) ? lat : Number.NaN,
-    lng: Number.isFinite(lng) ? lng : Number.NaN,
-    city: String(raw?.city ?? "").trim(),
-    region: String(raw?.region ?? "").trim(),
-    country: String(raw?.country ?? "").trim(),
-    countryCode: String(raw?.countryCode ?? raw?.country_code ?? "").trim(),
-    label: String(raw?.label ?? "").trim(),
-  };
+  const next = toDeliveryGeo({
+    coords: { lat: raw?.lat ?? raw?.latitude, lng: raw?.lng ?? raw?.longitude },
+    geo: {
+      city: raw?.city,
+      region: raw?.region ?? raw?.state,
+      country: raw?.country,
+      countryCode: raw?.countryCode ?? raw?.country_code,
+      subregion: raw?.subregion,
+      district: raw?.district,
+      town: raw?.town,
+      locality: raw?.locality,
+    },
+    label: raw?.label,
+    continent: raw?.continent,
+  });
 
   const hasContent =
     Number.isFinite(next.lat) ||
@@ -276,7 +242,6 @@ export default function Checkout() {
   const [chains, setChains] = useState<MarketChainConfig[]>([]);
   const [chain, setChain] = useState<MarketChainConfig | null>(null);
   const [walletAddress, setWalletAddress] = useState("");
-  const [piWalletAddress, setPiWalletAddress] = useState("");
   const [ngnBalance, setNgnBalance] = useState(0);
   const [usdcBalance, setUsdcBalance] = useState(0);
   const [usdtBalance, setUsdtBalance] = useState(0);
@@ -314,14 +279,10 @@ export default function Checkout() {
   const allowUsdt = hasExplicitRoutes
     ? paymentOptions?.allow_usdt === true
     : listingCurrency === "USDT";
-  const allowPi = hasExplicitRoutes
-    ? paymentOptions?.allow_pi === true
-    : false;
   const enabledRoutes = [
     allowNgn ? "NGN" : null,
     allowUsdc ? "USDC" : null,
     allowUsdt ? "USDT" : null,
-    allowPi ? "PI" : null,
   ].filter(Boolean) as string[];
   const ngnRequired = orderCurrency === "NGN" ? orderAmount : 0;
   const ngnShortfall = allowNgn && ngnRequired > 0 ? Math.max(0, ngnRequired - ngnBalance) : 0;
@@ -354,7 +315,6 @@ export default function Checkout() {
         setUsdcBalance(0);
         setUsdtBalance(0);
         setWalletAddress("");
-        setPiWalletAddress("");
         return;
       }
 
@@ -364,8 +324,6 @@ export default function Checkout() {
         .eq("user_id", user.id)
         .maybeSingle();
       setNgnBalance(Number((ngnWallet as any)?.balance ?? 0));
-      const piWallet = await getMyPiWallet().catch(() => null);
-      setPiWalletAddress(String((piWallet as any)?.address || "").trim());
 
       if (!active) {
         setUsdcBalance(0);
@@ -577,15 +535,12 @@ export default function Checkout() {
     setSavingGeo(true);
     try {
       const res = await getCurrentLocationWithGeocode();
-      const geo: DeliveryGeo = {
-        lat: res.coords.lat,
-        lng: res.coords.lng,
-        city: res.geo.city || "",
-        region: res.geo.region || "",
-        country: res.geo.country || "",
-        countryCode: res.geo.countryCode || "",
+      const geo: DeliveryGeo = toDeliveryGeo({
+        coords: res.coords,
+        geo: res.geo,
         label: res.label,
-      };
+        continent: userCountry?.continent,
+      });
       await saveDeliveryGeo(geo);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't access your location."));
@@ -831,120 +786,6 @@ export default function Checkout() {
     router.replace(`/market/order/${oid}` as any);
   }
 
-  async function payWithPi() {
-    if (busy) return;
-    setErr(null);
-    if (!oid) return setErr("Missing orderId");
-    if (!allowPi) return setErr("This listing does not accept Pi payments.");
-    const user = await requireAuth();
-    if (!user) return;
-
-    console.log("[Checkout] payWithPi start", { orderId: oid });
-    setBusy(true);
-    try {
-      const returnUrl = Platform.OS === "web" ? buildPiReturnUrl(oid) : buildNativeOrderReturnUrl(oid);
-      const res: any = await withTimeout(
-        payPiForOrder(oid, { returnUrl }),
-        25_000,
-        "Pi checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
-      );
-      await showPiDepositResult(res);
-    } catch (e: any) {
-      console.log("[Checkout] payWithPi error", { message: String(e?.message || e) });
-      setErr(friendlyMarketError(e, "We couldn't complete Pi checkout."));
-    } finally {
-      setBusy(false);
-      console.log("[Checkout] payWithPi end");
-    }
-  }
-
-  async function openPiHandoff(res: PiPaymentHandoffResult) {
-    if (isDesktopWebEnvironment()) {
-      const opened = await tryOpenExternalUrl(res.checkout_url);
-      if (!opened) {
-        setErr("We couldn't open the Pi checkout handoff page. Open this checkout on your phone and retry.");
-      }
-      return opened;
-    }
-
-    const opened =
-      (await tryOpenExternalUrl(res.pi_browser_url)) ||
-      (res.pi_browser_url !== res.checkout_url && (await tryOpenExternalUrl(res.checkout_url)));
-
-    if (!opened) {
-      setErr("We couldn't open Pi Browser. Open Pi Browser manually and retry this payment.");
-    }
-    return opened;
-  }
-
-  async function showPiDepositResult(res: any) {
-    if (isPiHandoffResult(res)) {
-      const opened = await openPiHandoff(res);
-      const desktopWeb = isDesktopWebEnvironment();
-      Alert.alert(
-        desktopWeb ? "Open on your phone" : "Continue in Pi Browser",
-        opened
-          ? (
-            desktopWeb
-              ? "A Pi checkout page was opened for this order. Scan the QR code there or copy the link to your phone, then continue in Pi Browser."
-              : "Pi checkout was opened in Pi Browser. Complete the payment there and then return to BestCity."
-          )
-          : (
-            desktopWeb
-              ? "Pi payment must continue on a mobile phone. Open the handoff page and move the link to Pi Browser on your phone."
-              : "Pi checkout must continue in Pi Browser. Use the Pi Browser app to open the payment link."
-          ),
-        [
-          opened
-            ? {
-              text: "Open order",
-              onPress: () => router.replace(`/market/order/${oid}` as any),
-            }
-            : {
-              text: "Retry",
-              onPress: () => void openPiHandoff(res),
-            },
-        ],
-      );
-      return;
-    }
-
-    const underpaid = res?.underpaid === true || res?.settled === false;
-    const paymentId = String(res?.payment_id || "").trim();
-    const txid = String(res?.txid || "").trim();
-
-    if (underpaid) {
-      const shortfallUsd = Number(res?.shortfall_usd ?? 0);
-      const topupPi = Number(res?.topup_pi_required ?? 0);
-      Alert.alert(
-        "Pi value moved, top-up required",
-        `Your payment was received but is below required USD value.\n\nShortfall: $${shortfallUsd.toFixed(4)}\nTop-up needed: ${topupPi.toFixed(8)} PI`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Pay top-up", onPress: () => void payWithPi() },
-        ],
-      );
-      return;
-    }
-
-    Alert.alert(
-      "Pi payment confirmed",
-      `Your Pi payment is confirmed and order moved to escrow.\n\nPayment ID:\n${paymentId || "n/a"}\n\nTxid:\n${txid || "n/a"}`,
-      [
-        {
-          text: "Copy payment ID",
-          onPress: () => {
-            if (paymentId) void Clipboard.setStringAsync(paymentId);
-          },
-        },
-        {
-          text: "Continue",
-          onPress: () => router.replace(`/market/order/${oid}` as any),
-        },
-      ],
-    );
-  }
-
   return (
     <LinearGradient
       colors={[BG1, BG0]}
@@ -1027,7 +868,11 @@ export default function Checkout() {
             {formatAvailabilitySummary(listing?.availability)}
           </Text>
 
-          {deliveryGeo && !availabilityMayMatch(listing?.availability, deliveryGeo) ? (
+          {deliveryGeo &&
+          !availabilityMayMatch(listing?.availability, {
+            ...deliveryGeo,
+            continent: deliveryGeo.continent || userCountry?.continent,
+          }) ? (
             <View
               style={{
                 marginTop: 10,
@@ -1093,7 +938,6 @@ export default function Checkout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
             {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
-            {"\n"}- PI (testnet): strict seller protection with automatic underpayment top-up requirement.
           </Text>
 
           <View
@@ -1207,11 +1051,10 @@ export default function Checkout() {
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
             {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
-            {"\n"}- PI (testnet): strict seller protection with automatic underpayment top-up requirement.
           </Text>
           {!isNigeria && allowNgnRaw ? (
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-              NGN payments are available only to Nigeria users. Please use USDC/USDT/PI.
+              NGN payments are available only to Nigeria users. Please use USDC or USDT.
             </Text>
           ) : null}
 
@@ -1252,17 +1095,9 @@ export default function Checkout() {
             <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
               USDT {usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
             </Text>
-            <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
-              PI Wallet {piWalletAddress || "Not set"}
-            </Text>
             {walletAddress ? (
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
                 Saved wallet: {walletAddress}
-              </Text>
-            ) : null}
-            {piWalletAddress ? (
-              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-                Saved PI wallet: {piWalletAddress}
               </Text>
             ) : null}
             {fundingLoading ? (
@@ -1439,15 +1274,7 @@ export default function Checkout() {
             disabled={busy || fundingLoading || !allowUsdt || usdtShortfall > 0}
           />
 
-          <Pill
-            icon="planet-outline"
-            title="Pay with PI (testnet)"
-            subtitle="Starts here and continues in Pi Browser when required"
-            onPress={payWithPi}
-            disabled={busy || fundingLoading || !allowPi}
-          />
-
-          {enabledRoutes.length < 4 ? (
+          {enabledRoutes.length < 3 ? (
             <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
               Seller payment setting: {enabledRoutes.length ? enabledRoutes.join(" + ") : "No payment route enabled"}.
             </Text>

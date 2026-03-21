@@ -1,5 +1,5 @@
 import { createWalletClient, custom } from "viem";
-import { arbitrum, base, baseSepolia, mainnet, optimism, polygon, sepolia } from "viem/chains";
+import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession } from "@/services/wallet/activeWalletSession";
 
@@ -36,9 +36,7 @@ function cleanAlchemyApiKey(raw?: string) {
 
 function getFallbackChainById(chainId: number) {
   const map: Record<number, any> = {
-    84532: baseSepolia,
     8453: base,
-    11155111: sepolia,
     1: mainnet,
     137: polygon,
     42161: arbitrum,
@@ -51,9 +49,7 @@ function alchemyUrlForChainId(chainId: number, apiKey?: string) {
   const safeApiKey = cleanAlchemyApiKey(apiKey);
   if (!safeApiKey) return "";
   const map: Record<number, string> = {
-    84532: `https://base-sepolia.g.alchemy.com/v2/${safeApiKey}`,
     8453: `https://base-mainnet.g.alchemy.com/v2/${safeApiKey}`,
-    11155111: `https://eth-sepolia.g.alchemy.com/v2/${safeApiKey}`,
     1: `https://eth-mainnet.g.alchemy.com/v2/${safeApiKey}`,
     137: `https://polygon-mainnet.g.alchemy.com/v2/${safeApiKey}`,
     42161: `https://arb-mainnet.g.alchemy.com/v2/${safeApiKey}`,

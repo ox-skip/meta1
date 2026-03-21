@@ -21,18 +21,10 @@ function json(status: number, body: unknown) {
   });
 }
 
-function normalizeChain(input: unknown): string {
+function normalizeChain(input: unknown): string | null {
   const raw = String(input ?? "").toLowerCase().trim();
-  if (!raw) return "base_sepolia";
+  if (!raw) return null;
 
-  if (raw.includes("80002") || raw.includes("polygon-amoy") || raw.includes("polygon_amoy") || raw.includes("amoy")) {
-    return "polygon_amoy";
-  }
-  if (raw.includes("84532") || raw.includes("base-sepolia") || raw.includes("base_sepolia")) return "base_sepolia";
-  if (raw.includes("421614") || raw.includes("arbitrum-sepolia") || raw.includes("arbitrum_sepolia")) {
-    return "arbitrum_sepolia";
-  }
-  if (raw.includes("97") || raw.includes("bnb-testnet") || raw.includes("bnb_testnet")) return "bnb_testnet";
   if (raw.includes("8453") || raw === "base") return "base";
   if (raw.includes("42161") || raw === "arbitrum") return "arbitrum";
   if (raw.includes("137") || raw === "polygon") return "polygon";
@@ -40,7 +32,7 @@ function normalizeChain(input: unknown): string {
   if (raw.includes("10") || raw === "optimism") return "optimism";
   if (raw.includes("1") || raw === "ethereum") return "ethereum";
 
-  return "base_sepolia";
+  return null;
 }
 
 function toIsoOrNull(input: unknown): string | null {
@@ -155,6 +147,7 @@ serve(async (req) => {
 
     const admin = createClient(SB_URL, SB_SERVICE);
     const chain = normalizeChain(payload?.event?.network ?? payload?.network ?? payload?.event?.chainId);
+    if (!chain) return json(200, { ok: true, message: "Unsupported or missing chain" });
 
     const logs = extractLogs(payload);
     if (!logs.length) return json(200, { ok: true, message: "No logs" });
@@ -186,7 +179,7 @@ serve(async (req) => {
       const buyer = hexToAddress(log.topics?.[2]);
       const seller = hexToAddress(log.topics?.[3]);
       const { token, amountRaw } = decodeEscrowData(log.data);
-      const decimals = 6n; // USDC/USDT mocks on Base Sepolia use 6 decimals
+      const decimals = 6n; // USDC/USDT use 6 decimals on supported mainnet chains
       const amountUnits = Number(amountRaw) / Number(10n ** decimals);
 
       const { data: esc } = await admin

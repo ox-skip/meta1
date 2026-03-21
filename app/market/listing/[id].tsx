@@ -22,7 +22,7 @@ import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { callFn } from "@/services/functions";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
-import { DeliveryGeo, formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
+import { DeliveryGeo, formatAvailabilitySummary, getCurrentLocationWithGeocode, toDeliveryGeo } from "@/utils/location";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
@@ -514,15 +514,12 @@ export default function ListingDetails() {
     setLocatingDelivery(true);
     try {
       const res = await getCurrentLocationWithGeocode();
-      const geo: DeliveryGeo = {
-        lat: res.coords.lat,
-        lng: res.coords.lng,
-        city: res.geo.city || "",
-        region: res.geo.region || "",
-        country: res.geo.country || "",
-        countryCode: res.geo.countryCode || "",
+      const geo: DeliveryGeo = toDeliveryGeo({
+        coords: res.coords,
+        geo: res.geo,
         label: res.label,
-      };
+        continent: userCountry?.continent,
+      });
       setDeliveryGeo(geo);
       setDeliveryLabel(res.label);
     } catch (e: any) {
