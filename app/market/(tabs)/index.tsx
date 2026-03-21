@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
@@ -153,6 +152,51 @@ function SectionPill({
   );
 }
 
+function QuickAction({
+  label,
+  subtitle,
+  icon,
+  onPress,
+  accent = PURPLE,
+}: {
+  label: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  accent?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        borderRadius: 18,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: `${accent}66`,
+        backgroundColor: `${accent}22`,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 13,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${accent}33`,
+          borderWidth: 1,
+          borderColor: `${accent}66`,
+        }}
+      >
+        <Ionicons name={icon} size={17} color="#fff" />
+      </View>
+      <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 13 }}>{label}</Text>
+      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.68)", fontSize: 11 }}>{subtitle}</Text>
+    </Pressable>
+  );
+}
+
 function SellerMini({ seller }: { seller?: SellerCard | null }) {
   if (!seller) return null;
   const logo = publicSellerLogo(seller.logo_path);
@@ -182,7 +226,6 @@ function SellerMini({ seller }: { seller?: SellerCard | null }) {
 }
 
 export default function MarketHome() {
-  const insets = useSafeAreaInsets();
   const [section, setSection] = useState<FeedSection>("product");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
@@ -397,6 +440,35 @@ export default function MarketHome() {
       return text.includes(query);
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
+  const isListingDirectory = section !== "social" && directoryMode === "listings";
+  const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
+  const feedLabel = section === "service" ? "services" : "products";
+  const searchPlaceholder =
+    directoryMode === "listings"
+      ? `Filter ${feedLabel} in this feed`
+      : "Search stores or @username";
+  const heroTitle =
+    section === "social" ? "Stay close to marketplace activity" : section === "service" ? "Hire trusted services" : "Shop trusted products";
+  const heroSubtitle =
+    section === "social"
+      ? "Follow updates, discover official channels, and jump into the full social feed when you need it."
+      : section === "service"
+      ? "Browse service providers, compare offers, and move into escrow-backed checkout when you're ready."
+      : "Discover local and global listings, compare prices quickly, and buy through escrow-backed checkout.";
+  const resultTitle =
+    directoryMode === "listings"
+      ? `${resultCount} ${feedLabel} in view`
+      : directoryMode === "featured"
+      ? `${resultCount} featured stores`
+      : `${resultCount} verified stores`;
+  const resultSubtitle =
+    directoryMode === "listings"
+      ? feedScope === "country"
+        ? `Showing local-first ${feedLabel} for ${locationLabel}.`
+        : `Showing all available ${feedLabel} across the marketplace.`
+      : directoryMode === "featured"
+      ? "Browse promoted storefronts first."
+      : "Browse stores with verified seller profiles.";
 
   const renderListing = ({ item }: { item: ListingRow }) => {
     const firstImage = (item.images ?? [])
@@ -465,7 +537,7 @@ export default function MarketHome() {
             </Text>
           ) : null}
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.75)", fontSize: 11 }}>
-            Sales {stats.completed} - Cancelled {stats.cancelled} - Failed {stats.failed}
+            {stats.completed > 0 ? `${stats.completed} sold` : "New listing"} • {String(item.delivery_type || "delivery").replace(/_/g, " ")}
           </Text>
           <SellerMini seller={seller} />
         </View>
@@ -527,10 +599,13 @@ export default function MarketHome() {
         }
         renderItem={section === "social" ? undefined : directoryMode === "listings" ? renderListing : (renderSellerCard as any)}
         ListHeaderComponent={
-          <View style={{ paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
-            <AppHeader title="Marketplace" subtitle="Products, services, and social feed" />
+          <View style={{ paddingHorizontal: 16 }}>
+            <AppHeader
+              title="Marketplace"
+              subtitle={section === "social" ? "Community, official channels, and marketplace updates" : "Escrow-protected buying and selling"}
+            />
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
               <SectionPill
                 icon="storefront-outline"
                 label="Products"
@@ -559,88 +634,248 @@ export default function MarketHome() {
               />
             </View>
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-              <Pressable
-                onPress={() => router.push("/market/search" as any)}
-                style={{
-                  flex: 1,
-                  borderRadius: 14,
-                  paddingVertical: 11,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 7,
-                  backgroundColor: "rgba(255,255,255,0.07)",
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                }}
-              >
-                <Ionicons name="search-outline" size={16} color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Search</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => router.push("/market/stock" as any)}
-                style={{
-                  flex: 1,
-                  borderRadius: 14,
-                  paddingVertical: 11,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexDirection: "row",
-                  gap: 7,
-                  backgroundColor: "rgba(45,212,191,0.20)",
-                  borderWidth: 1,
-                  borderColor: "rgba(45,212,191,0.50)",
-                }}
-              >
-                <Ionicons name="trending-up-outline" size={16} color="#ECFEFF" />
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Digital Stock</Text>
-              </Pressable>
-            </View>
-
-            <OfficialMarketSocials />
-
             {section === "social" ? (
-              <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#000", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+              <>
                 <View
                   style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderBottomWidth: 1,
-                    borderBottomColor: "rgba(255,255,255,0.08)",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
+                    marginTop: 12,
+                    borderRadius: 24,
+                    padding: 16,
+                    backgroundColor: CARD,
+                    borderWidth: 1,
+                    borderColor: BORDER,
                   }}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Following timeline</Text>
-                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                      Posts from accounts you follow and your own updates, styled like a real social feed.
-                    </Text>
+                  <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>COMMUNITY</Text>
+                  <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>{heroSubtitle}</Text>
+
+                  <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
+                    <QuickAction
+                      label="Open Full Feed"
+                      subtitle="Jump into the dedicated social surface."
+                      icon="chatbubbles-outline"
+                      onPress={() => router.push("/market/social" as any)}
+                    />
+                    <QuickAction
+                      label="Back To Shopping"
+                      subtitle="Return to listings and categories."
+                      icon="storefront-outline"
+                      accent="#0EA5E9"
+                      onPress={() => {
+                        setSection("product");
+                        setDirectoryMode("listings");
+                        setSelectedSlug(null);
+                      }}
+                    />
                   </View>
-                  <Pressable
-                    onPress={() => router.push("/market/social" as any)}
-                    style={{
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: "rgba(29,155,240,0.35)",
-                      backgroundColor: "rgba(29,155,240,0.16)",
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open full feed</Text>
-                  </Pressable>
                 </View>
 
-                <SocialFeed />
-              </View>
+                <OfficialMarketSocials />
+
+                <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#000", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                  <View
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingVertical: 14,
+                      borderBottomWidth: 1,
+                      borderBottomColor: "rgba(255,255,255,0.08)",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Following timeline</Text>
+                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                        Posts from accounts you follow and your own updates.
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => router.push("/market/social" as any)}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: "rgba(29,155,240,0.35)",
+                        backgroundColor: "rgba(29,155,240,0.16)",
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open full feed</Text>
+                    </Pressable>
+                  </View>
+
+                  <SocialFeed />
+                </View>
+              </>
             ) : (
               <>
-                {directoryMode === "listings" ? (
-                  <>
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 24,
+                    padding: 16,
+                    backgroundColor: CARD,
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                  }}
+                >
+                  <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>
+                    {section === "service" ? "SERVICES" : "PRODUCTS"}
+                  </Text>
+                  <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>{heroSubtitle}</Text>
+
+                  <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
+                    <QuickAction
+                      label="Browse Categories"
+                      subtitle={section === "service" ? "Jump by skill or service type." : "Jump by product type."}
+                      icon="grid-outline"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/market/category" as any,
+                          params: { mode: section === "service" ? "service" : "product" },
+                        })
+                      }
+                    />
+                    <QuickAction
+                      label="Digital Stock"
+                      subtitle="Open the separate stock market."
+                      icon="trending-up-outline"
+                      accent="#14B8A6"
+                      onPress={() => router.push("/market/stock" as any)}
+                    />
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 22,
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    backgroundColor: CARD,
+                  }}
+                >
+                  <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>
+                    {directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY"}
+                  </Text>
+
+                  <View style={{ marginTop: 6, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>{resultTitle}</Text>
+                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{resultSubtitle}</Text>
+                    </View>
+                    <View
+                      style={{
+                        minWidth: 48,
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "rgba(124,58,237,0.18)",
+                        borderWidth: 1,
+                        borderColor: "rgba(124,58,237,0.38)",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{resultCount}</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ marginTop: 12, flexDirection: "row", gap: 10, alignItems: "center", borderRadius: 18, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.04)" }}>
+                    <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.75)" />
+                    <TextInput
+                      value={q}
+                      onChangeText={setQ}
+                      placeholder={searchPlaceholder}
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                      style={{ flex: 1, color: "#fff", fontWeight: "700" }}
+                    />
+                    <Pressable
+                      onPress={() => router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })}
+                      style={{
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        backgroundColor: "rgba(255,255,255,0.08)",
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.12)",
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Open search</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                    <Chip
+                      label="Listings"
+                      icon="grid-outline"
+                      active={directoryMode === "listings"}
+                      onPress={() => setDirectoryMode("listings")}
+                    />
+                    <Chip
+                      label="Featured Stores"
+                      icon="flame"
+                      iconColor="#FDBA74"
+                      active={directoryMode === "featured"}
+                      onPress={() => setDirectoryMode("featured")}
+                    />
+                    <Chip
+                      label="Verified Stores"
+                      icon="checkmark-circle"
+                      iconColor="#60A5FA"
+                      active={directoryMode === "verified"}
+                      onPress={() => setDirectoryMode("verified")}
+                    />
+                  </View>
+                </View>
+
+                {isListingDirectory ? (
+                  <View
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 22,
+                      padding: 14,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      backgroundColor: CARD,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
+                        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                          {feedScope === "country"
+                            ? "Prioritizing listings matched to your current country."
+                            : "Showing every listing currently available in the marketplace."}
+                        </Text>
+                      </View>
+                      <Pressable
+                        disabled={locatingCountry}
+                        onPress={async () => {
+                          const c = await refreshCountry();
+                          if (feedScope === "country") await loadListings(c);
+                        }}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 14,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "rgba(255,255,255,0.08)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255,255,255,0.12)",
+                          opacity: locatingCountry ? 0.6 : 1,
+                        }}
+                      >
+                        {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={16} color="#fff" />}
+                      </Pressable>
+                    </View>
+
                     <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
                       <SectionPill
                         icon="location-outline"
@@ -655,39 +890,21 @@ export default function MarketHome() {
                         onPress={() => setFeedScope("global")}
                       />
                     </View>
-                    <View style={{ marginTop: 10, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, flexDirection: "row", alignItems: "center", gap: 10 }}>
+
+                    <View style={{ marginTop: 10, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.04)", flexDirection: "row", alignItems: "center", gap: 10 }}>
                       <Ionicons name="location-outline" size={18} color="rgba(255,255,255,0.78)" />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
                         <Text style={{ marginTop: 2, color: MUTED, fontSize: 11 }}>
                           {feedScope === "country"
-                            ? "Country feed: local listings only, shown in local currency + USD approx."
-                            : "Global feed: all available listings."}
+                            ? "Local listings show local currency plus USD reference."
+                            : "Global feed ignores country restrictions when listing visibility allows it."}
                         </Text>
                       </View>
-                      <Pressable
-                        disabled={locatingCountry}
-                        onPress={async () => {
-                          const c = await refreshCountry();
-                          if (feedScope === "country") await loadListings(c);
-                        }}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 12,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "rgba(255,255,255,0.08)",
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.12)",
-                          opacity: locatingCountry ? 0.6 : 1,
-                        }}
-                      >
-                        {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={15} color="#fff" />}
-                      </Pressable>
                     </View>
+
                     {feedScope === "country" && !userCountry ? (
-                      <View style={{ marginTop: 10, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
+                      <View style={{ marginTop: 10, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.04)" }}>
                         <Text style={{ color: MUTED }}>
                           Enable location to see listings near you. You can still use the Global feed.
                         </Text>
@@ -696,45 +913,9 @@ export default function MarketHome() {
                         ) : null}
                       </View>
                     ) : null}
-                  </>
-                ) : null}
-                <View style={{ marginTop: 12, flexDirection: "row", gap: 10, alignItems: "center", borderRadius: 20, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
-                  <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.75)" />
-                  <TextInput
-                    value={q}
-                    onChangeText={setQ}
-                    placeholder="Search listings or @username"
-                    placeholderTextColor="rgba(255,255,255,0.45)"
-                    style={{ flex: 1, color: "#fff", fontWeight: "700" }}
-                  />
-                </View>
 
-                <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                  <Chip
-                    label="Listings"
-                    icon="grid-outline"
-                    active={directoryMode === "listings"}
-                    onPress={() => setDirectoryMode("listings")}
-                  />
-                  <Chip
-                    label="🔥 Featured"
-                    icon="flame"
-                    iconColor="#FDBA74"
-                    active={directoryMode === "featured"}
-                    onPress={() => setDirectoryMode("featured")}
-                  />
-                  <Chip
-                    label="Verified"
-                    icon="checkmark-circle"
-                    iconColor="#60A5FA"
-                    active={directoryMode === "verified"}
-                    onPress={() => setDirectoryMode("verified")}
-                  />
-                </View>
-
-                {directoryMode === "listings" ? (
-                  <>
-                    <View style={{ marginTop: 12 }}>
+                    <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Categories</Text>
+                    <View style={{ marginTop: 8 }}>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
                         {categories.map((c) => (
@@ -745,13 +926,30 @@ export default function MarketHome() {
                       </ScrollView>
                     </View>
 
-                    <View style={{ marginTop: 10, flexDirection: "row", gap: 10 }}>
+                    <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Sort</Text>
+                    <View style={{ marginTop: 8, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                       <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
                       <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
                       <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
                     </View>
-                  </>
-                ) : null}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      marginTop: 12,
+                      borderRadius: 18,
+                      padding: 14,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      backgroundColor: CARD,
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
+                      Featured and verified directories help buyers assess a store before opening the full profile.
+                    </Text>
+                  </View>
+                )}
 
                 {loading ? (
                   <View style={{ paddingVertical: 18, alignItems: "center" }}>
