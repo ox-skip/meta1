@@ -139,6 +139,62 @@ async function uploadImageToBucket(params: {
   return path;
 }
 
+async function insertProfileDirect(params: {
+  userId: string;
+  marketUsername: string;
+  displayName: string;
+  businessName: string;
+  bio: string;
+  phone: string;
+  locationText: string;
+  address: any;
+  socialLinks: Partial<SocialLinks>;
+  offersRemote: boolean;
+  offersInPerson: boolean;
+}) {
+  const basePayload = {
+    user_id: params.userId,
+    market_username: params.marketUsername,
+    display_name: params.displayName.trim() || null,
+    business_name: params.businessName.trim(),
+    bio: params.bio.trim() || null,
+    phone: params.phone.trim() || null,
+    location_text: params.locationText.trim() || null,
+    address: params.address || {},
+    offers_remote: params.offersRemote,
+    offers_in_person: params.offersInPerson,
+    is_verified: false,
+    payout_tier: "standard",
+    active: true,
+  };
+
+  const tryInsert = async (payload: Record<string, any>) => {
+    const { error } = await supabase.from("market_seller_profiles").insert(payload);
+    if (error) throw error;
+  };
+
+  try {
+    await tryInsert({
+      ...basePayload,
+      social_links: normalizeSocialLinks(params.socialLinks),
+    });
+  } catch (e: any) {
+    const msg = prettyErr(e).toLowerCase();
+    const missingSocialLinksColumn =
+      msg.includes("social_links") && (msg.includes("column") || msg.includes("schema cache"));
+    if (!missingSocialLinksColumn) throw e;
+    await tryInsert(basePayload);
+  }
+}
+
+async function updateProfileImagePathsDirect(userId: string, input: { logo_path?: string; banner_path?: string }) {
+  const { error } = await supabase
+    .from("market_seller_profiles")
+    .update(input)
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
 type NameStatus = "idle" | "invalid" | "checking" | "available" | "taken" | "error";
 
 export default function CreateMarketProfile() {
@@ -322,7 +378,28 @@ export default function CreateMarketProfile() {
         if (msg.includes("duplicate key") || msg.includes("market_username")) {
           throw new Error("Username already taken. Please choose another one.");
         }
-        throw e;
+        console.log("[CreateMarketProfile] function create failed, trying direct insert", prettyErr(e));
+        try {
+          await insertProfileDirect({
+            userId: user.id,
+            marketUsername: usernameClean,
+            displayName,
+            businessName,
+            bio,
+            phone,
+            locationText,
+            address,
+            socialLinks,
+            offersRemote,
+            offersInPerson,
+          });
+        } catch (fallbackErr: any) {
+          const fallbackMsg = prettyErr(fallbackErr).toLowerCase();
+          if (fallbackMsg.includes("duplicate key") || fallbackMsg.includes("market_username")) {
+            throw new Error("Username already taken. Please choose another one.");
+          }
+          throw fallbackErr;
+        }
       }
 
       // 3) Upload images AFTER profile (optional)
@@ -358,7 +435,18 @@ export default function CreateMarketProfile() {
             ...(banner_path ? { banner_path } : {}),
           });
         } catch (e: any) {
-          uploadFailed = (uploadFailed ? uploadFailed + "\n\n" : "") + "Saving image paths failed.\n" + prettyErr(e);
+          console.log("[CreateMarketProfile] function image save failed, trying direct update", prettyErr(e));
+          try {
+            await updateProfileImagePathsDirect(user.id, {
+              ...(logo_path ? { logo_path } : {}),
+              ...(banner_path ? { banner_path } : {}),
+            });
+          } catch (fallbackErr: any) {
+            uploadFailed =
+              (uploadFailed ? uploadFailed + "\n\n" : "") +
+              "Saving image paths failed.\n" +
+              prettyErr(fallbackErr);
+          }
         }
       }
 

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import { router } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,45 +16,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { createPublicClient, formatUnits, http } from "viem";
 
 import AppHeader from "@/components/common/AppHeader";
-import {
-  fetchMarketChains,
-  getPreferredMarketChain,
-  setPreferredMarketChain,
-  type MarketChainConfig,
-} from "@/services/market/chainConfig";
-import {
-  ensureWalletAddressOnChain,
-  getMyPiWallet,
-  getMyWalletForChain,
-  isPiChain,
-  replaceSavedWalletWithDevice,
-  saveMyPiWallet,
-} from "@/services/market/usdcCheckout";
-import {
-  connectActiveWalletEvm,
-  getActiveWalletSession,
-  subscribeActiveWalletSession,
-} from "@/services/wallet/activeWalletSession";
-import {
-  getWalletModeSync,
-  isBaseSmartSupported,
-  setWalletMode as setPreferredWalletMode,
-  subscribeWalletMode,
-  type WalletMode,
-} from "@/services/wallet/walletMode";
+import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 import { supabase } from "@/services/supabase";
-import { getRpcUrlForChain } from "@/utils/aaWallet";
-import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 import { formatCountryLabel } from "@/utils/countryNames";
-import { friendlyMarketError } from "@/utils/marketUx";
-
-const ABI = [
-  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint8" }] },
-  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
-] as const;
 
 type TxRow = {
   id: string;
@@ -125,119 +91,18 @@ function statusTone(status?: string | null) {
 export default function MarketWallet() {
   const { width } = useWindowDimensions();
   const wide = width >= 980;
-
-  const [country, setCountry] = useState<UserCountry | undefined>(undefined);
-  const isNigeria = isNigeriaCountry(country?.code || country?.name);
-
-  const [chains, setChains] = useState<MarketChainConfig[]>([]);
-  const [chain, setChain] = useState<MarketChainConfig | null>(null);
-  const [chainErr, setChainErr] = useState<string | null>(null);
-  const [walletAddr, setWalletAddr] = useState("");
-  const [piWalletAddr, setPiWalletAddr] = useState("");
+  const wallet = useUnifiedWallet();
   const [piInput, setPiInput] = useState("");
-  const [connectedAddr, setConnectedAddr] = useState("");
-  const [walletMode, setWalletMode] = useState<WalletMode>(getWalletModeSync());
-  const [busy, setBusy] = useState(false);
-  const [piSaving, setPiSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [usdc, setUsdc] = useState("0");
-  const [usdt, setUsdt] = useState("0");
   const [txs, setTxs] = useState<TxRow[]>([]);
   const [txLoading, setTxLoading] = useState(false);
   const [netOpen, setNetOpen] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const c = await resolveUserCountry({ prompt: true, refresh: true });
-        if (mounted) {
-          setCountry((prev) => c ?? prev ?? null);
-        }
-      } catch {
-        if (mounted) {
-          setCountry((prev) => prev ?? null);
-        }
-      }
-    })();
+    setPiInput(wallet.savedPiAddress || "");
+  }, [wallet.savedPiAddress]);
 
-    const sync = () => {
-      const s = getActiveWalletSession();
-      setConnectedAddr(s.connected ? String(s.address || "") : "");
-    };
-    sync();
-
-    const unsub = subscribeActiveWalletSession(sync);
-    const unsubMode = subscribeWalletMode((next) => setWalletMode(next));
-    return () => {
-      mounted = false;
-      unsub();
-      unsubMode();
-    };
-  }, []);
-
-  useEffect(() => {
-    setPiInput(piWalletAddr);
-  }, [piWalletAddr]);
-
-  async function loadPiWallet() {
-    try {
-      const row = await getMyPiWallet();
-      const next = String((row as any)?.address || "").trim();
-      setPiWalletAddr(next);
-    } catch {
-      setPiWalletAddr("");
-    }
-  }
-
-  async function refresh(selected?: MarketChainConfig | null, forced?: string) {
-    const c = selected ?? chain;
-    if (!c) return "";
-
-    let addr = String(forced || "").trim();
-    if (!addr) {
-      const row = await getMyWalletForChain(c.chain);
-      addr = String(row?.address || "").trim();
-    }
-
-    setWalletAddr(addr);
-    if (!isAddress(addr)) {
-      setUsdc("0");
-      setUsdt("0");
-      return "";
-    }
-
-    const rpc = getRpcUrlForChain(c);
-    if (!rpc) return addr;
-    const client = createPublicClient({ transport: http(rpc) });
-
-    try {
-      if (isAddress(c.usdc_address)) {
-        const d = Number(await client.readContract({ address: c.usdc_address as `0x${string}`, abi: ABI, functionName: "decimals" }));
-        const raw = await client.readContract({ address: c.usdc_address as `0x${string}`, abi: ABI, functionName: "balanceOf", args: [addr as `0x${string}`] });
-        setUsdc(formatUnits(raw as bigint, d));
-      }
-    } catch {
-      setUsdc("0");
-    }
-
-    try {
-      if (isAddress(c.usdt_address)) {
-        const d = Number(await client.readContract({ address: c.usdt_address as `0x${string}`, abi: ABI, functionName: "decimals" }));
-        const raw = await client.readContract({ address: c.usdt_address as `0x${string}`, abi: ABI, functionName: "balanceOf", args: [addr as `0x${string}`] });
-        setUsdt(formatUnits(raw as bigint, d));
-      } else {
-        setUsdt("0");
-      }
-    } catch {
-      setUsdt("0");
-    }
-
-    return addr;
-  }
-
-  async function loadTx(addrInput?: string) {
-    const addr = String(addrInput || walletAddr || "").trim();
+  const loadTx = useCallback(async (addrInput?: string) => {
+    const addr = String(addrInput || wallet.savedAddress || wallet.connectedAddress || "").trim();
     if (!isAddress(addr)) {
       setTxs([]);
       return;
@@ -258,97 +123,47 @@ export default function MarketWallet() {
     } finally {
       setTxLoading(false);
     }
-  }
-
-  async function loadChains() {
-    try {
-      setChainErr(null);
-      const all = await fetchMarketChains();
-      setChains(all);
-      const selected = (await getPreferredMarketChain()) ?? all.find((c) => c.active) ?? all[0] ?? null;
-      setChain(selected);
-      const addr = await refresh(selected);
-      await loadTx(addr);
-      await loadPiWallet();
-    } catch (e: any) {
-      setChainErr(String(e?.message || "Unable to load networks."));
-    }
-  }
+  }, [wallet.connectedAddress, wallet.savedAddress]);
 
   useEffect(() => {
-    loadChains();
-  }, []);
-
-  async function onConnect() {
-    if (!chain) return;
-    setErr(null);
-    setBusy(true);
-    try {
-      if (isPiChain(chain.chain)) {
-        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
-      }
-      await connectActiveWalletEvm(60_000, { forceModal: true });
-      const out = await ensureWalletAddressOnChain(chain);
-      const addr = await refresh(chain, out.address);
-      await loadTx(addr);
-      Alert.alert("Wallet connected", "Wallet linked successfully.");
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "Unable to connect wallet."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onUseConnected() {
-    if (!chain) return;
-    setErr(null);
-    setBusy(true);
-    try {
-      if (isPiChain(chain.chain)) {
-        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
-      }
-      await connectActiveWalletEvm(60_000, { forceModal: true });
-      const out = await replaceSavedWalletWithDevice(chain);
-      const addr = await refresh(chain, out.address);
-      await loadTx(addr);
-      Alert.alert("Wallet updated", "Saved address synced to connected wallet.");
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "Could not sync wallet."));
-    } finally {
-      setBusy(false);
-    }
-  }
+    void loadTx();
+  }, [loadTx, wallet.chain?.chain, wallet.connectedAddress, wallet.savedAddress]);
 
   async function onSavePiWallet() {
-    setErr(null);
-    setPiSaving(true);
     try {
-      const out = await saveMyPiWallet(piInput);
+      const out = await wallet.savePiAddress(piInput);
       const next = String((out as any)?.address || "").trim();
-      setPiWalletAddr(next);
       setPiInput(next);
       Alert.alert("Saved", next ? "PI wallet address updated." : "PI wallet address cleared.");
     } catch (e: any) {
-      setErr(friendlyMarketError(e, "Unable to save PI wallet address."));
-    } finally {
-      setPiSaving(false);
+      Alert.alert("Save failed", String(e?.message || e || "Unable to save PI wallet address."));
     }
   }
 
-  const total = useMemo(() => Number(usdc || 0) + Number(usdt || 0), [usdc, usdt]);
-  const copyAddress = useMemo(() => {
-    if (isAddress(walletAddr)) return walletAddr;
-    if (isAddress(connectedAddr)) return connectedAddr;
-    return "";
-  }, [walletAddr, connectedAddr]);
-  const locationText = useMemo(() => {
-    if (!country) return "Location unavailable";
-    return [country.city, country.region, formatCountryLabel(country.name, country.code)].filter(Boolean).join(", ");
-  }, [country]);
+  async function onConnect() {
+    await wallet.connectWallet();
+    await loadTx();
+  }
 
-  const modeTitle = walletMode === "base_smart" ? "Base Smart Account" : "WalletConnect";
+  async function onUseConnected() {
+    await wallet.useConnectedWallet();
+    await loadTx();
+  }
+
+  const total = useMemo(() => Number(wallet.usdcBalance || 0) + Number(wallet.usdtBalance || 0), [wallet.usdcBalance, wallet.usdtBalance]);
+  const copyAddress = useMemo(() => {
+    if (isAddress(wallet.savedAddress)) return wallet.savedAddress;
+    if (isAddress(wallet.connectedAddress)) return wallet.connectedAddress;
+    return "";
+  }, [wallet.connectedAddress, wallet.savedAddress]);
+  const locationText = useMemo(() => {
+    if (!wallet.country) return "Location unavailable";
+    return [wallet.country.city, wallet.country.region, formatCountryLabel(wallet.country.name, wallet.country.code)].filter(Boolean).join(", ");
+  }, [wallet.country]);
+
+  const modeTitle = wallet.walletMode === "base_smart" ? "Base Smart Account" : "WalletConnect";
   const modeSubtitle =
-    walletMode === "base_smart"
+    wallet.walletMode === "base_smart"
       ? "Use Base smart account signing and approvals."
       : "Use WalletConnect wallet chooser and session signing.";
 
@@ -366,11 +181,11 @@ export default function MarketWallet() {
               <Text style={s.heroSub}>{modeSubtitle}</Text>
             </View>
             <View style={s.heroMeta}>
-              <View style={[s.statePill, connectedAddr ? s.okPill : s.idlePill]}>
-                <Text style={s.stateText}>{connectedAddr ? "Connected" : "Not connected"}</Text>
+              <View style={[s.statePill, wallet.connectedAddress ? s.okPill : s.idlePill]}>
+                <Text style={s.stateText}>{wallet.connectedAddress ? "Connected" : "Not connected"}</Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {isNigeria ? (
+                {wallet.isNigeria ? (
                   <Pressable onPress={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}>
                     <Text style={s.link}>Open NGN Wallet</Text>
                   </Pressable>
@@ -386,16 +201,11 @@ export default function MarketWallet() {
           <View style={s.engineRow}>
             <Pressable
               onPress={async () => {
-                try {
-                  setErr(null);
-                  await setPreferredWalletMode("walletconnect");
-                } catch (e: any) {
-                  setErr(friendlyMarketError(e, "Unable to switch wallet mode."));
-                }
+                await wallet.setWalletMode("walletconnect");
               }}
               style={[
                 s.engineBtn,
-                walletMode === "walletconnect" ? s.engineBtnActivePurple : undefined,
+                wallet.walletMode === "walletconnect" ? s.engineBtnActivePurple : undefined,
               ]}
             >
               <View style={s.engineInner}>
@@ -405,18 +215,13 @@ export default function MarketWallet() {
             </Pressable>
             <Pressable
               onPress={async () => {
-                try {
-                  setErr(null);
-                  await setPreferredWalletMode("base_smart");
-                } catch (e: any) {
-                  setErr(friendlyMarketError(e, "Unable to switch wallet mode."));
-                }
+                await wallet.setWalletMode("base_smart");
               }}
-              disabled={!isBaseSmartSupported()}
+              disabled={!wallet.baseSmartSupported}
               style={[
                 s.engineBtn,
-                walletMode === "base_smart" ? s.engineBtnActiveGreen : undefined,
-                !isBaseSmartSupported() ? s.dimmed : undefined,
+                wallet.walletMode === "base_smart" ? s.engineBtnActiveGreen : undefined,
+                !wallet.baseSmartSupported ? s.dimmed : undefined,
               ]}
             >
               <View style={s.engineInner}>
@@ -425,38 +230,44 @@ export default function MarketWallet() {
               </View>
             </Pressable>
           </View>
-          {!isBaseSmartSupported() ? (
+          {!wallet.baseSmartSupported ? (
             <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.58)", fontSize: 11 }}>
               Base Smart is currently available on web.
             </Text>
           ) : null}
 
-          {!!err ? <Text style={s.err}>{err}</Text> : null}
-          {!!chainErr ? <Text style={s.err}>{chainErr}</Text> : null}
+          {!!wallet.error ? <Text style={s.err}>{wallet.error}</Text> : null}
 
           <View style={[s.grid, wide && s.gridWide]}>
             <View style={s.col}>
               <View style={s.card}>
                 <View style={s.rowBetween}>
                   <Text style={s.h}>Network</Text>
-                  <Pressable style={s.iconBtn} disabled={busy} onPress={loadChains}>
+                  <Pressable
+                    style={s.iconBtn}
+                    disabled={wallet.busy}
+                    onPress={async () => {
+                      await wallet.refreshAll();
+                      await loadTx();
+                    }}
+                  >
                     <Ionicons name="refresh" size={15} color="#fff" />
                   </Pressable>
                 </View>
 
                 <Pressable style={s.selector} onPress={() => setNetOpen(true)}>
-                  <Text style={s.selectorText}>{chain ? chainLabel(chain.chain) : "Select network"}</Text>
+                  <Text style={s.selectorText}>{wallet.chain ? chainLabel(wallet.chain.chain) : "Select network"}</Text>
                   <Ionicons name="chevron-down" size={16} color="#fff" />
                 </Pressable>
 
                 <View style={s.metricsRow}>
                   <View style={s.metric}>
                     <Text style={s.metricLabel}>USDC</Text>
-                    <Text style={s.metricValue}>{fmt(usdc)}</Text>
+                    <Text style={s.metricValue}>{fmt(String(wallet.usdcBalance))}</Text>
                   </View>
                   <View style={s.metric}>
                     <Text style={s.metricLabel}>USDT</Text>
-                    <Text style={s.metricValue}>{fmt(usdt)}</Text>
+                    <Text style={s.metricValue}>{fmt(String(wallet.usdtBalance))}</Text>
                   </View>
                   <View style={[s.metric, s.metricAccent]}>
                     <Text style={s.metricLabel}>TOTAL</Text>
@@ -467,15 +278,15 @@ export default function MarketWallet() {
                 <View style={s.addrCard}>
                   <View style={s.addrRow}>
                     <Text style={s.addrLabel}>Saved</Text>
-                    <Text style={s.addrValue}>{shortAddr(walletAddr)}</Text>
+                    <Text style={s.addrValue}>{shortAddr(wallet.savedAddress)}</Text>
                   </View>
                   <View style={s.addrRow}>
                     <Text style={s.addrLabel}>Session</Text>
-                    <Text style={s.addrValue}>{shortAddr(connectedAddr)}</Text>
+                    <Text style={s.addrValue}>{shortAddr(wallet.connectedAddress)}</Text>
                   </View>
                   <View style={s.addrRow}>
                     <Text style={s.addrLabel}>PI wallet</Text>
-                    <Text style={s.addrValue}>{shortValue(piWalletAddr)}</Text>
+                    <Text style={s.addrValue}>{shortValue(wallet.savedPiAddress)}</Text>
                   </View>
                 </View>
 
@@ -504,18 +315,18 @@ export default function MarketWallet() {
                   <View style={s.row}>
                     <Pressable
                       style={s.btnSmall}
-                      disabled={piSaving || piInput.trim() === String(piWalletAddr || "").trim()}
+                      disabled={wallet.piSaving || piInput.trim() === String(wallet.savedPiAddress || "").trim()}
                       onPress={onSavePiWallet}
                     >
-                      <Text style={s.btnText}>{piSaving ? "Saving..." : "Save PI Wallet"}</Text>
+                      <Text style={s.btnText}>{wallet.piSaving ? "Saving..." : "Save PI Wallet"}</Text>
                     </Pressable>
                     <Pressable
                       style={s.btnSmall}
-                      disabled={!piWalletAddr}
+                      disabled={!wallet.savedPiAddress}
                       onPress={async () => {
-                        if (!piWalletAddr) return;
+                        if (!wallet.savedPiAddress) return;
                         try {
-                          await Clipboard.setStringAsync(piWalletAddr);
+                          await Clipboard.setStringAsync(wallet.savedPiAddress);
                           Alert.alert("Copied", "PI wallet address copied.");
                         } catch {
                           Alert.alert("Copy failed", "Unable to copy PI wallet address right now.");
@@ -543,15 +354,15 @@ export default function MarketWallet() {
                   >
                     <Text style={s.btnText}>Copy Address</Text>
                   </Pressable>
-                  <Pressable style={s.btnSmall} disabled={txLoading || busy} onPress={() => loadTx()}>
+                  <Pressable style={s.btnSmall} disabled={txLoading || wallet.busy} onPress={() => loadTx()}>
                     <Text style={s.btnText}>{txLoading ? "Loading..." : "Refresh Activity"}</Text>
                   </Pressable>
                 </View>
 
-                <Pressable style={[s.main, (!chain?.active || busy) && s.dimmed]} disabled={!chain?.active || busy} onPress={onConnect}>
-                  <Text style={s.mainText}>{busy ? "Connecting..." : "Connect Wallet"}</Text>
+                <Pressable style={[s.main, (!wallet.chain?.active || wallet.busy) && s.dimmed]} disabled={!wallet.chain?.active || wallet.busy} onPress={onConnect}>
+                  <Text style={s.mainText}>{wallet.busy ? "Connecting..." : "Connect Wallet"}</Text>
                 </Pressable>
-                <Pressable style={[s.altBtn, (!chain?.active || busy || !connectedAddr) && s.dimmed]} disabled={!chain?.active || busy || !connectedAddr} onPress={onUseConnected}>
+                <Pressable style={[s.altBtn, (!wallet.chain?.active || wallet.busy || !wallet.connectedAddress) && s.dimmed]} disabled={!wallet.chain?.active || wallet.busy || !wallet.connectedAddress} onPress={onUseConnected}>
                   <Text style={s.btnText}>Use Connected Wallet</Text>
                 </Pressable>
               </View>
@@ -611,21 +422,19 @@ export default function MarketWallet() {
                 <Ionicons name="close" size={18} color="#fff" />
               </Pressable>
             </View>
-            {chains.map((c) => (
+            {wallet.chains.map((c) => (
               <Pressable
                 key={c.chain}
                 style={[s.selector, !c.active && s.dimmed]}
                 disabled={!c.active}
                 onPress={async () => {
                   setNetOpen(false);
-                  setChain(c);
-                  await setPreferredMarketChain(c.chain);
-                  const addr = await refresh(c);
-                  await loadTx(addr);
+                  await wallet.selectChain(c);
+                  await loadTx();
                 }}
               >
                 <Text style={s.selectorText}>{chainLabel(c.chain)}</Text>
-                {chain?.chain === c.chain ? <Ionicons name="checkmark-circle" size={16} color="#A78BFA" /> : null}
+                {wallet.chain?.chain === c.chain ? <Ionicons name="checkmark-circle" size={16} color="#A78BFA" /> : null}
               </Pressable>
             ))}
           </View>
