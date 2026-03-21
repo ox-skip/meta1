@@ -21,6 +21,15 @@ export type AvailabilityJson = {
   country: { name: string; code: string };
   state: string;
   city: string;
+  stateAliases?: string[];
+  cityAliases?: string[];
+  geo?: Partial<LocationGeo> & {
+    state?: string;
+    county?: string;
+    province?: string;
+    municipality?: string;
+    village?: string;
+  };
   radiusKm: number;
   center: { lat: number; lng: number; label: string };
   note: string;
@@ -35,6 +44,10 @@ export type DeliveryGeo = {
   countryCode: string;
   label: string;
   continent?: string;
+  subregion?: string;
+  district?: string;
+  town?: string;
+  locality?: string;
 };
 
 export type ProfileLocationAddress = {
@@ -121,12 +134,26 @@ function toNum(v: unknown) {
 }
 
 export function pickLocationRegion(input: Partial<LocationGeo> | DeliveryGeo | null | undefined) {
-  return cleanText((input as any)?.region || (input as any)?.subregion || (input as any)?.district || (input as any)?.state);
+  return cleanText(
+    (input as any)?.region ||
+      (input as any)?.state ||
+      (input as any)?.province ||
+      (input as any)?.county ||
+      (input as any)?.subregion ||
+      (input as any)?.district ||
+      (input as any)?.municipality
+  );
 }
 
 export function pickLocationCity(input: Partial<LocationGeo> | DeliveryGeo | null | undefined) {
   return cleanText(
-    (input as any)?.city || (input as any)?.town || (input as any)?.locality || (input as any)?.district || (input as any)?.subregion
+    (input as any)?.city ||
+      (input as any)?.town ||
+      (input as any)?.locality ||
+      (input as any)?.village ||
+      (input as any)?.municipality ||
+      (input as any)?.district ||
+      (input as any)?.subregion
   );
 }
 
@@ -150,6 +177,10 @@ export function toDeliveryGeo(input: {
     countryCode,
     label: cleanText(input.label) || fallbackLabel({ lat, lng }),
     continent: cleanText(input.continent) || undefined,
+    subregion: cleanText((input.geo as any)?.subregion) || undefined,
+    district: cleanText((input.geo as any)?.district) || undefined,
+    town: cleanText((input.geo as any)?.town) || undefined,
+    locality: cleanText((input.geo as any)?.locality) || undefined,
   };
 }
 
@@ -441,6 +472,15 @@ export function formatAvailabilitySummary(availability: AvailabilityJson | null 
   if (!availability || !availability.scope) return "Worldwide";
 
   const note = availability.note ? ` - ${availability.note}` : "";
+  const stateParts = [
+    availability.state || getAvailabilityAreaCandidates(availability, "state")[0] || "",
+    normalizeCountryName(availability.country?.name, availability.country?.code) || availability.country?.code,
+  ].filter(Boolean);
+  const cityParts = [
+    availability.city || getAvailabilityAreaCandidates(availability, "city")[0] || "",
+    availability.state || getAvailabilityAreaCandidates(availability, "state")[0] || "",
+    normalizeCountryName(availability.country?.name, availability.country?.code) || availability.country?.code,
+  ].filter(Boolean);
 
   switch (availability.scope) {
     case "global":
@@ -457,14 +497,10 @@ export function formatAvailabilitySummary(availability: AvailabilityJson | null 
       return `Country: ${country}${note}`;
     }
     case "state": {
-      const country = normalizeCountryName(availability.country?.name, availability.country?.code) || availability.country?.code;
-      const parts = [availability.state, country].filter(Boolean);
-      return `State: ${parts.join(", ") || "Selected state"}${note}`;
+      return `Area: ${stateParts.join(", ") || "Selected area"}${note}`;
     }
     case "city": {
-      const country = normalizeCountryName(availability.country?.name, availability.country?.code) || availability.country?.code;
-      const parts = [availability.city, availability.state, country].filter(Boolean);
-      return `City: ${parts.join(", ") || "Selected city"}${note}`;
+      return `Local area: ${cityParts.join(", ") || "Selected place"}${note}`;
     }
     case "radius": {
       const km = availability.radiusKm ? `${availability.radiusKm} km` : "radius";
@@ -480,9 +516,97 @@ function toNorm(value: string | null | undefined) {
   return String(value || "").trim().toLowerCase();
 }
 
-function continentMatches(continentList: string[] | null | undefined, buyerContinentRaw?: string | null) {
+function uniqueTextList(values: unknown[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const next = cleanText(value);
+    const key = toNorm(next);
+    if (!next || seen.has(key)) continue;
+    seen.add(key);
+    out.push(next);
+  }
+  return out;
+}
+
+function listFromUnknown(value: unknown) {
+  return Array.isArray(value) ? uniqueTextList(value) : uniqueTextList([value]);
+}
+
+type AvailabilityBuyerGeo = Partial<LocationGeo> &
+  Partial<DeliveryGeo> & {
+    continent?: string | null;
+  };
+
+function getGeoAreaCandidates(input: AvailabilityBuyerGeo | null | undefined) {
+  return {
+    broad: uniqueTextList([
+      (input as any)?.region,
+      (input as any)?.state,
+      (input as any)?.province,
+      (input as any)?.county,
+      (input as any)?.subregion,
+      (input as any)?.district,
+      (input as any)?.municipality,
+    ]),
+    local: uniqueTextList([
+      (input as any)?.city,
+      (input as any)?.town,
+      (input as any)?.locality,
+      (input as any)?.village,
+      (input as any)?.municipality,
+      (input as any)?.district,
+      (input as any)?.subregion,
+    ]),
+  };
+}
+
+function getAvailabilityAreaCandidates(availability: AvailabilityJson | null | undefined, key: "state" | "city") {
+  const geo = ((availability as any)?.geo ?? {}) as Record<string, unknown>;
+  if (key === "state") {
+    return uniqueTextList([
+      availability?.state,
+      ...listFromUnknown((availability as any)?.stateAliases),
+      ...listFromUnknown((availability as any)?.state_aliases),
+      geo.region,
+      geo.state,
+      geo.province,
+      geo.county,
+      geo.subregion,
+      geo.district,
+      geo.municipality,
+    ]);
+  }
+
+  return uniqueTextList([
+    availability?.city,
+    ...listFromUnknown((availability as any)?.cityAliases),
+    ...listFromUnknown((availability as any)?.city_aliases),
+    geo.city,
+    geo.town,
+    geo.locality,
+    geo.village,
+    geo.municipality,
+    geo.district,
+    geo.subregion,
+  ]);
+}
+
+function areaCandidatesMatch(targets: string[], candidates: string[]) {
+  if (!targets.length) return true;
+  if (!candidates.length) return false;
+
+  const buyerSet = new Set(candidates.map((value) => toNorm(value)).filter(Boolean));
+  return targets.some((value) => buyerSet.has(toNorm(value)));
+}
+
+function continentMatches(
+  continentList: string[] | null | undefined,
+  buyerContinentRaw?: string | null,
+  opts?: { allowUnknownBuyerContinent?: boolean }
+) {
   const buyerContinent = toNorm(buyerContinentRaw);
-  if (!buyerContinent) return true;
+  if (!buyerContinent) return Boolean(opts?.allowUnknownBuyerContinent);
 
   const list = (continentList || []).map((v) => toNorm(v)).filter(Boolean);
   if (!list.length) return true;
@@ -497,7 +621,7 @@ function continentMatches(continentList: string[] | null | undefined, buyerConti
 }
 
 function countryMatches(
-  buyerGeo: DeliveryGeo,
+  buyerGeo: AvailabilityBuyerGeo,
   availabilityCountry: AvailabilityJson["country"] | null | undefined
 ) {
   const buyerCountryCode = toNorm(normalizeCountryCode(buyerGeo.countryCode));
@@ -525,6 +649,55 @@ function kmBetween(a: LocationCoords, b: LocationCoords) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+export function availabilityMatchesGeo(
+  availability: AvailabilityJson | null | undefined,
+  buyerGeo: AvailabilityBuyerGeo | null | undefined,
+  includeGlobal = true
+) {
+  if (!availability || !availability.scope) return includeGlobal;
+  if (!buyerGeo) return false;
+
+  const scope = availability.scope;
+  const { broad: buyerBroadAreas, local: buyerLocalAreas } = getGeoAreaCandidates(buyerGeo);
+
+  if (scope === "global") return includeGlobal;
+
+  if (scope === "continent") {
+    return continentMatches(availability.continents, buyerGeo.continent, { allowUnknownBuyerContinent: false });
+  }
+
+  if (scope === "country") {
+    return countryMatches(buyerGeo, availability.country);
+  }
+
+  if (scope === "state") {
+    const stateTargets = getAvailabilityAreaCandidates(availability, "state");
+    const countryOk = countryMatches(buyerGeo, availability.country);
+    return countryOk && areaCandidatesMatch(stateTargets, buyerBroadAreas);
+  }
+
+  if (scope === "city") {
+    const stateTargets = getAvailabilityAreaCandidates(availability, "state");
+    const cityTargets = getAvailabilityAreaCandidates(availability, "city");
+    const countryOk = countryMatches(buyerGeo, availability.country);
+    const stateOk = !stateTargets.length || areaCandidatesMatch(stateTargets, buyerBroadAreas);
+    return countryOk && stateOk && areaCandidatesMatch(cityTargets, buyerLocalAreas);
+  }
+
+  if (scope === "radius") {
+    const center = availability.center;
+    const radius = Number(availability.radiusKm || 0);
+    if (!center || !Number.isFinite(center.lat) || !Number.isFinite(center.lng) || !Number.isFinite(radius) || radius <= 0) {
+      return countryMatches(buyerGeo, availability.country);
+    }
+    if (!Number.isFinite(buyerGeo.lat) || !Number.isFinite(buyerGeo.lng)) return false;
+    const distance = kmBetween({ lat: center.lat, lng: center.lng }, { lat: Number(buyerGeo.lat), lng: Number(buyerGeo.lng) });
+    return distance <= radius;
+  }
+
+  return includeGlobal;
+}
+
 export function availabilityMayMatch(
   availability: AvailabilityJson | null | undefined,
   buyerGeo: DeliveryGeo | null | undefined
@@ -533,31 +706,11 @@ export function availabilityMayMatch(
   if (!buyerGeo) return true;
 
   const scope = availability.scope;
-  const buyerRegion = toNorm(pickLocationRegion(buyerGeo));
-  const buyerCity = toNorm(pickLocationCity(buyerGeo));
 
   if (scope === "global") return true;
 
   if (scope === "continent") {
-    return continentMatches(availability.continents, buyerGeo.continent);
-  }
-
-  if (scope === "country") {
-    return countryMatches(buyerGeo, availability.country);
-  }
-
-  if (scope === "state") {
-    const state = toNorm(availability.state);
-    const countryOk = countryMatches(buyerGeo, availability.country);
-    return countryOk && !!buyerRegion && !!state && buyerRegion === state;
-  }
-
-  if (scope === "city") {
-    const state = toNorm(availability.state);
-    const city = toNorm(availability.city);
-    const countryOk = countryMatches(buyerGeo, availability.country);
-    const stateOk = !state || (!!buyerRegion && buyerRegion === state);
-    return countryOk && stateOk && !!buyerCity && !!city && buyerCity === city;
+    return continentMatches(availability.continents, buyerGeo.continent, { allowUnknownBuyerContinent: true });
   }
 
   if (scope === "radius") {
@@ -571,6 +724,6 @@ export function availabilityMayMatch(
     return distance <= radius;
   }
 
-  return true;
+  return availabilityMatchesGeo(availability, buyerGeo, true);
 }
 

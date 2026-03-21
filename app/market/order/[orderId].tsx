@@ -1783,7 +1783,7 @@ async function pickAndUpload(access: "preview" | "final") {
                   <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
                     {isPiRailOrder
                       ? "Open the current Pi payment flow for this order"
-                      : "Choose NGN wallet, USDC/USDT, or PI"}
+                      : "Choose USDC, USDT, or PI"}
                   </Text>
                 </Pressable>
               </>

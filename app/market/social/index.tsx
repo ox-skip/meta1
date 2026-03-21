@@ -5,7 +5,7 @@ import SocialFeed from "@/components/market/SocialFeed";
 
 export default function SocialFeedScreen() {
   return (
-    <View style={{ flex: 1, backgroundColor: "#000" }}>
+    <View style={{ flex: 1, backgroundColor: "#120E0C" }}>
       <SocialFeed mode="contained" />
     </View>
   );

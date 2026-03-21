@@ -646,14 +646,14 @@ export default function MarketHome() {
                     borderColor: BORDER,
                   }}
                 >
-                  <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>COMMUNITY</Text>
+                  <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>SELLER BOARD</Text>
                   <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
                   <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>{heroSubtitle}</Text>
 
                   <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
                     <QuickAction
-                      label="Open Full Feed"
-                      subtitle="Jump into the dedicated social surface."
+                      label="Open Seller Board"
+                      subtitle="Open the dedicated seller updates view."
                       icon="chatbubbles-outline"
                       onPress={() => router.push("/market/social" as any)}
                     />
@@ -673,7 +673,7 @@ export default function MarketHome() {
 
                 <OfficialMarketSocials />
 
-                <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#000", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#120E0C", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
                   <View
                     style={{
                       paddingHorizontal: 16,
@@ -687,9 +687,9 @@ export default function MarketHome() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Following timeline</Text>
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Seller board</Text>
                       <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                        Posts from accounts you follow and your own updates.
+                        Storefront updates, launches, and media from sellers you follow.
                       </Text>
                     </View>
                     <Pressable
@@ -697,13 +697,13 @@ export default function MarketHome() {
                       style={{
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: "rgba(29,155,240,0.35)",
-                        backgroundColor: "rgba(29,155,240,0.16)",
+                        borderColor: "rgba(245,158,11,0.35)",
+                        backgroundColor: "rgba(245,158,11,0.16)",
                         paddingHorizontal: 14,
                         paddingVertical: 10,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open full feed</Text>
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open seller board</Text>
                     </Pressable>
                   </View>
 

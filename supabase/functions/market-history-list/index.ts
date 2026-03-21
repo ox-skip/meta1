@@ -84,36 +84,6 @@ function orderStatusToHistory(status: unknown) {
   return "PENDING";
 }
 
-function withdrawalStatusToHistory(status: unknown) {
-  const s = String(status || "").toLowerCase();
-  if (s === "successful") return "SUCCESS";
-  if (s === "processing" || s === "pending") return "PENDING";
-  if (s === "failed" || s === "reversed") return "FAILED";
-  if (s === "refunded") return "REFUNDED";
-  return "PENDING";
-}
-
-function walletTypeToKind(input: unknown): HistoryKind {
-  const t = String(input || "").toLowerCase();
-  if (t === "deposit") return "deposit";
-  if (t === "withdrawal") return "withdrawal";
-  if (t === "transfer_in") return "transfer_in";
-  if (t === "transfer_out") return "transfer_out";
-  if (t === "fee" || t === "bill") return "fee";
-  return "fee";
-}
-
-function walletTypeTitle(input: unknown) {
-  const t = String(input || "").toLowerCase();
-  if (t === "deposit") return "NGN wallet deposit";
-  if (t === "withdrawal") return "NGN wallet withdrawal";
-  if (t === "transfer_in") return "Wallet transfer received";
-  if (t === "transfer_out") return "Wallet transfer sent";
-  if (t === "bill") return "Wallet bill payment";
-  if (t === "fee") return "Wallet fee";
-  return "Wallet transaction";
-}
-
 async function safeListQuery<T>(_label: string, run: () => Promise<{ data: T[] | null; error: any }>) {
   try {
     const res = await run();
@@ -126,33 +96,7 @@ async function safeListQuery<T>(_label: string, run: () => Promise<{ data: T[] |
 
 async function fetchLegacyHistory(admin: ReturnType<typeof supabaseAdminClient>, userId: string, limit: number) {
   const maxRows = Math.min(limit, 250);
-  const [walletRows, withdrawalRows, paystackRows, orderRows, stockTradeRows, stockPositionRows] = await Promise.all([
-    safeListQuery("app_wallet_tx_simple", () =>
-      admin
-        .from("app_wallet_tx_simple")
-        .select("id,type,amount,reference,meta,created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(maxRows),
-    ) as Promise<any[]>,
-    safeListQuery("withdrawals_simple", () =>
-      admin
-        .from("withdrawals_simple")
-        .select(
-          "id,amount,fee,total_debit,bank_name,account_number,account_name,paystack_reference,paystack_transfer_code,status,meta,created_at,updated_at",
-        )
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(maxRows),
-    ) as Promise<any[]>,
-    safeListQuery("paystack_events_simple", () =>
-      admin
-        .from("paystack_events_simple")
-        .select("reference,amount,fee,raw,created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(maxRows),
-    ) as Promise<any[]>,
+  const [orderRows, stockTradeRows, stockPositionRows] = await Promise.all([
     safeListQuery("market_orders", () =>
       admin
         .from("market_orders")
@@ -226,79 +170,6 @@ async function fetchLegacyHistory(admin: ReturnType<typeof supabaseAdminClient>,
   const stockMap = new Map<string, any>((stockRows ?? []).map((s: any) => [String(s.id), s]));
 
   const out: HistoryRow[] = [];
-
-  for (const tx of walletRows ?? []) {
-    const kind = walletTypeToKind((tx as any).type);
-    out.push({
-      id: `wallet:${String((tx as any).id)}`,
-      source_table: "app_wallet_tx_simple",
-      source_id: String((tx as any).id),
-      kind,
-      title: walletTypeTitle((tx as any).type),
-      amount: toNum((tx as any).amount, 0),
-      currency: String((tx as any)?.meta?.currency || "NGN").toUpperCase(),
-      status: "SUCCESS",
-      tx_hash: null,
-      order_id: null,
-      stock_id: null,
-      details: {
-        reference: (tx as any).reference ?? null,
-        meta: (tx as any).meta ?? {},
-      },
-      occurred_at: toIso((tx as any).created_at),
-      created_at: toIso((tx as any).created_at),
-    });
-  }
-
-  for (const wd of withdrawalRows ?? []) {
-    out.push({
-      id: `wd:${String((wd as any).id)}`,
-      source_table: "withdrawals_simple",
-      source_id: String((wd as any).id),
-      kind: "withdrawal",
-      title: "Bank withdrawal",
-      amount: toNum((wd as any).total_debit, toNum((wd as any).amount, 0) + toNum((wd as any).fee, 0)),
-      currency: String((wd as any)?.meta?.currency || "NGN").toUpperCase(),
-      status: withdrawalStatusToHistory((wd as any).status),
-      tx_hash: null,
-      order_id: null,
-      stock_id: null,
-      details: {
-        status: (wd as any).status ?? null,
-        bank_name: (wd as any).bank_name ?? null,
-        account_number: (wd as any).account_number ?? null,
-        account_name: (wd as any).account_name ?? null,
-        paystack_reference: (wd as any).paystack_reference ?? null,
-        paystack_transfer_code: (wd as any).paystack_transfer_code ?? null,
-        meta: (wd as any).meta ?? {},
-      },
-      occurred_at: toIso((wd as any).updated_at || (wd as any).created_at),
-      created_at: toIso((wd as any).created_at),
-    });
-  }
-
-  for (const row of paystackRows ?? []) {
-    out.push({
-      id: `paystack:${String((row as any).reference)}`,
-      source_table: "paystack_events_simple",
-      source_id: String((row as any).reference),
-      kind: "deposit",
-      title: "Paystack deposit received",
-      amount: toNum((row as any).amount, 0),
-      currency: "NGN",
-      status: "SUCCESS",
-      tx_hash: null,
-      order_id: null,
-      stock_id: null,
-      details: {
-        reference: (row as any).reference ?? null,
-        fee: (row as any).fee ?? null,
-        raw: (row as any).raw ?? {},
-      },
-      occurred_at: toIso((row as any).created_at),
-      created_at: toIso((row as any).created_at),
-    });
-  }
 
   for (const order of orders) {
     const isBuyer = String(order.buyer_id) === userId;

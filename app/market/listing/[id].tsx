@@ -26,7 +26,7 @@ import { DeliveryGeo, formatAvailabilitySummary, getCurrentLocationWithGeocode, 
 import { friendlyMarketError } from "@/utils/marketUx";
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
-import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
+import { resolveUserCountry, type UserCountry } from "@/utils/country";
 
 const BG0 = "#05040B";
 const BG1 = "#0A0620";
@@ -432,11 +432,6 @@ export default function ListingDetails() {
         else Alert.alert("Out of stock", msg);
         return;
       }
-      const effectiveCountry = userCountry === undefined ? null : userCountry;
-      const shouldApplyRegionRestriction = effectiveCountry !== null;
-      const effectiveIsNigeria = shouldApplyRegionRestriction
-        ? isNigeriaCountry(effectiveCountry?.code || effectiveCountry?.name)
-        : true;
       const paymentOptions = (listing.payment_options ?? {}) as any;
       const hasExplicitRoutes =
         typeof paymentOptions?.allow_ngn === "boolean" ||
@@ -453,10 +448,11 @@ export default function ListingDetails() {
       const allowPi = hasExplicitRoutes
         ? paymentOptions?.allow_pi === true
         : false;
-      if (shouldApplyRegionRestriction && !effectiveIsNigeria && !allowUsdc && !allowUsdt && !allowPi) {
-        const msg = "This listing does not support USDC/USDT/PI checkout for your region.";
+      const hasStableCheckout = allowUsdc || allowUsdt;
+      if (!hasStableCheckout && !allowPi) {
+        const msg = "This listing does not have an active crypto checkout route right now.";
         if (Platform.OS === "web" && typeof window !== "undefined") window.alert(msg);
-        else Alert.alert("Crypto only", msg);
+        else Alert.alert("Checkout unavailable", msg);
         return;
       }
 
@@ -490,7 +486,11 @@ export default function ListingDetails() {
       const nextOrderId = String((out as any)?.order?.id || "").trim();
       if (!nextOrderId) throw new Error("Order creation did not return an order id.");
 
-      router.push(`/market/checkout/${nextOrderId}` as any);
+      if (allowPi && !hasStableCheckout) {
+        router.push(`/market/order/${nextOrderId}` as any);
+      } else {
+        router.push(`/market/checkout/${nextOrderId}` as any);
+      }
     } catch (e: any) {
       const message = friendlyMarketError(e, "We couldn't start checkout for this listing.");
       setErr(message);
@@ -1277,7 +1277,7 @@ export default function ListingDetails() {
                   ? "Seller must restock before new orders."
                   : hasStockCap
                   ? `Total ${formatCurrency(displayPrice.localCurrency, totalLocal)} (USD ${formatCurrency("USD", totalUsd)}) - escrow protected`
-                  : "Escrow protected - choose NGN or USDC next"}
+                  : "Escrow protected - continue to payment"}
               </Text>
             </>
           )}

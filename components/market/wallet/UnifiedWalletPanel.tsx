@@ -48,7 +48,6 @@ function firstValidAddress(...values: Array<string | null | undefined>) {
 export default function UnifiedWalletPanel({
   wallet,
   compact = false,
-  onOpenNgnWallet,
   onOpenCryptoWallet,
   onOpenHistory,
 }: Props) {
@@ -112,7 +111,7 @@ export default function UnifiedWalletPanel({
         <View>
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 17 }}>Unified Wallet</Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-            NGN, crypto, PI, and stock portfolio in one place.
+            Crypto, PI, and stock portfolio in one place.
           </Text>
         </View>
         <Pressable
@@ -183,12 +182,6 @@ export default function UnifiedWalletPanel({
       </View>
 
       <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>NGN</Text>
-          <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
-            NGN {wallet.ngnBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-          </Text>
-        </View>
         <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
           <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>USDC</Text>
           <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
@@ -474,39 +467,21 @@ export default function UnifiedWalletPanel({
         >
           <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>Copy Address</Text>
         </Pressable>
-        {wallet.isNigeria ? (
-          <Pressable
-            onPress={onOpenNgnWallet}
-            style={{
-              flex: 1,
-              borderRadius: 12,
-              height: 40,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(45,212,191,0.18)",
-              borderWidth: 1,
-              borderColor: "rgba(45,212,191,0.4)",
-            }}
-          >
-            <Text style={{ color: "#ECFEFF", fontWeight: "800", fontSize: 12 }}>Open NGN Wallet</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={onOpenCryptoWallet}
-            style={{
-              flex: 1,
-              borderRadius: 12,
-              height: 40,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.1)",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>Open Crypto Wallet</Text>
-          </Pressable>
-        )}
+        <Pressable
+          onPress={onOpenCryptoWallet}
+          style={{
+            flex: 1,
+            borderRadius: 12,
+            height: 40,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(255,255,255,0.06)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.1)",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>Open Crypto Wallet</Text>
+        </Pressable>
       </View>
 
       <View

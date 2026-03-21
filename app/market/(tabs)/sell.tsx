@@ -10,9 +10,9 @@ import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
-import { formatAvailabilitySummary, getCurrentLocationWithGeocode } from "@/utils/location";
+import { formatAvailabilitySummary, getCurrentLocationWithGeocode, type LocationGeo } from "@/utils/location";
 import { friendlyMarketError } from "@/utils/marketUx";
-import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
+import { resolveUserCountry, type UserCountry } from "@/utils/country";
 import { normalizeCountryName } from "@/utils/countryNames";
 import { getCountryFx } from "@/utils/fx";
 import { formatCurrency } from "@/utils/pricing";
@@ -27,10 +27,17 @@ const MUTED = "rgba(255,255,255,0.62)";
 type Img = { uri: string; contentType: string };
 
 type DeliveryType = "physical" | "digital" | "in_person";
-type Currency = "NGN" | "USDC";
+type Currency = "USDC";
 type MainCategory = "product" | "service";
 type AvailabilityScope = "global" | "continent" | "country" | "state" | "city" | "radius";
 type DurationPreset = "none" | "24h" | "3d" | "7d" | "30d" | "90d" | "custom";
+type AvailabilityGeoHints = Partial<LocationGeo> & {
+  state?: string;
+  county?: string;
+  province?: string;
+  municipality?: string;
+  village?: string;
+};
 
 function safeNumber(input: string) {
   const n = Number(String(input).replace(/,/g, "").trim());
@@ -85,6 +92,30 @@ function isoFromPreset(preset: DurationPreset) {
   if (preset === "30d") return new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString();
   if (preset === "90d") return new Date(now + 90 * 24 * 60 * 60 * 1000).toISOString();
   return "";
+}
+
+function uniqueLocationParts(parts: Array<string | null | undefined>) {
+  return Array.from(new Set(parts.map((part) => String(part || "").trim()).filter(Boolean)));
+}
+
+function trimAvailabilityGeo(geo: AvailabilityGeoHints | null) {
+  if (!geo) return undefined;
+  const next: AvailabilityGeoHints = {
+    country: String(geo.country || "").trim(),
+    countryCode: String(geo.countryCode || "").trim(),
+    region: String(geo.region || "").trim(),
+    city: String(geo.city || "").trim(),
+    subregion: String(geo.subregion || "").trim(),
+    district: String(geo.district || "").trim(),
+    town: String(geo.town || "").trim(),
+    locality: String(geo.locality || "").trim(),
+    state: String(geo.state || "").trim(),
+    county: String(geo.county || "").trim(),
+    province: String(geo.province || "").trim(),
+    municipality: String(geo.municipality || "").trim(),
+    village: String(geo.village || "").trim(),
+  };
+  return Object.values(next).some(Boolean) ? next : undefined;
 }
 
 function CardBox({ children }: any) {
@@ -198,7 +229,6 @@ export default function SellTab() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [payMode, setPayMode] = useState<"ngn" | "crypto" | "all">("ngn");
   const [cryptoCoinMode, setCryptoCoinMode] = useState<"all" | "usdc" | "usdt">("all");
   const [cryptoNetworkMode, setCryptoNetworkMode] = useState<"all" | "base" | "arbitrum">("all");
   const [price, setPrice] = useState("");
@@ -222,11 +252,11 @@ export default function SellTab() {
   const [availabilityCountryCode, setAvailabilityCountryCode] = useState("");
   const [availabilityState, setAvailabilityState] = useState("");
   const [availabilityCity, setAvailabilityCity] = useState("");
+  const [availabilityGeoHints, setAvailabilityGeoHints] = useState<AvailabilityGeoHints | null>(null);
   const [availabilityRadiusKm, setAvailabilityRadiusKm] = useState("");
   const [availabilityCenter, setAvailabilityCenter] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [availabilityNote, setAvailabilityNote] = useState("");
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
-  const isNigeria = isNigeriaCountry(userCountry?.code || userCountry?.name);
   const [locatingAvailability, setLocatingAvailability] = useState(false);
 
   const [images, setImages] = useState<Img[]>([]);
@@ -416,16 +446,51 @@ export default function SellTab() {
     return subCategory;
   }
 
+  function clearAvailabilityGeoHints() {
+    setAvailabilityGeoHints(null);
+  }
+
+  function onAvailabilityCountryNameChange(value: string) {
+    clearAvailabilityGeoHints();
+    setAvailabilityCountryName(value);
+  }
+
+  function onAvailabilityCountryCodeChange(value: string) {
+    clearAvailabilityGeoHints();
+    setAvailabilityCountryCode(value);
+  }
+
+  function onAvailabilityStateChange(value: string) {
+    clearAvailabilityGeoHints();
+    setAvailabilityState(value);
+  }
+
+  function onAvailabilityCityChange(value: string) {
+    clearAvailabilityGeoHints();
+    setAvailabilityCity(value);
+  }
+
   async function fillAvailabilityFromLocation() {
     setLocatingAvailability(true);
     try {
       const res = await getCurrentLocationWithGeocode();
       const normalizedCountryName = normalizeCountryName(res.geo.country || "", res.geo.countryCode || "");
+      const nextGeo: AvailabilityGeoHints = {
+        country: normalizedCountryName,
+        countryCode: res.geo.countryCode || "",
+        region: res.geo.region || "",
+        city: res.geo.city || "",
+        subregion: res.geo.subregion || "",
+        district: res.geo.district || "",
+        town: res.geo.town || "",
+        locality: res.geo.locality || "",
+      };
       setAvailabilityCenter({ lat: res.coords.lat, lng: res.coords.lng, label: res.label });
       setAvailabilityCountryName(normalizedCountryName);
       setAvailabilityCountryCode(res.geo.countryCode || "");
-      setAvailabilityState(res.geo.region || res.geo.subregion || res.geo.district || "");
-      setAvailabilityCity(res.geo.city || res.geo.town || res.geo.locality || res.geo.district || "");
+      setAvailabilityState(nextGeo.region || nextGeo.subregion || nextGeo.district || "");
+      setAvailabilityCity(nextGeo.city || nextGeo.town || nextGeo.locality || nextGeo.district || nextGeo.subregion || "");
+      setAvailabilityGeoHints(nextGeo);
       if (availabilityScope === "radius" && !availabilityRadiusKm.trim()) {
         setAvailabilityRadiusKm("10");
       }
@@ -450,7 +515,28 @@ export default function SellTab() {
   function buildAvailability() {
     const radius = availabilityScope === "radius" ? safeNumber(availabilityRadiusKm) : NaN;
     const center = availabilityCenter ?? { lat: 0, lng: 0, label: "" };
-    return {
+    const geo = trimAvailabilityGeo(availabilityGeoHints);
+    const stateAliases = uniqueLocationParts([
+      availabilityState,
+      geo?.region,
+      geo?.state,
+      geo?.province,
+      geo?.county,
+      geo?.subregion,
+      geo?.district,
+      geo?.municipality,
+    ]);
+    const cityAliases = uniqueLocationParts([
+      availabilityCity,
+      geo?.city,
+      geo?.town,
+      geo?.locality,
+      geo?.village,
+      geo?.municipality,
+      geo?.district,
+      geo?.subregion,
+    ]);
+    const out: any = {
       scope: availabilityScope,
       continents: availabilityContinents,
       country: { name: availabilityCountryName.trim(), code: availabilityCountryCode.trim() },
@@ -460,6 +546,10 @@ export default function SellTab() {
       center,
       note: availabilityNote.trim(),
     };
+    if (stateAliases.length > 0) out.stateAliases = stateAliases;
+    if (cityAliases.length > 0) out.cityAliases = cityAliases;
+    if (geo) out.geo = geo;
+    return out;
   }
 
   function validate(): string | null {
@@ -504,10 +594,10 @@ export default function SellTab() {
     if (availabilityScope === "continent" && availabilityContinents.length === 0) return "Pick at least one continent";
     if (availabilityScope === "country" && !availabilityCountryName.trim() && !availabilityCountryCode.trim()) return "Country is required";
     if (availabilityScope === "state" && (!availabilityState.trim() || (!availabilityCountryName.trim() && !availabilityCountryCode.trim()))) {
-      return "State and country are required";
+      return "Area and country are required";
     }
     if (availabilityScope === "city" && (!availabilityCity.trim() || (!availabilityCountryName.trim() && !availabilityCountryCode.trim()))) {
-      return "City and country are required";
+      return "Local area and country are required";
     }
     if (availabilityScope === "radius") {
       const r = safeNumber(availabilityRadiusKm);
@@ -544,9 +634,8 @@ export default function SellTab() {
         category === "product" && stockMode === "limited" && stockQty.trim()
           ? Math.max(0, Math.floor(safeNumber(stockQty)))
           : null;
-      const effectivePayMode = isNigeria ? payMode : "crypto";
       const baseCurrency: "NGN" | "USD" = localCurrency === "NGN" ? "NGN" : "USD";
-      const listingCurrency: Currency = effectivePayMode === "ngn" ? "NGN" : "USDC";
+      const listingCurrency: Currency = "USDC";
       const toUsd = (valueLocal: number) => valueLocal / fxUsdToLocal;
       const toNgn = (valueLocal: number) => {
         if (localCurrency === "NGN") return valueLocal;
@@ -560,27 +649,26 @@ export default function SellTab() {
       const safeEnteredPriceLocal = Number(enteredPriceLocal.toFixed(2));
       const safeEnteredPriceNgn = Number.isFinite(enteredPriceNgn) ? Number(enteredPriceNgn.toFixed(2)) : null;
       const safeEnteredPriceUsd = Number.isFinite(enteredPriceUsd) ? Number(enteredPriceUsd.toFixed(6)) : null;
-      let unitPrice = listingCurrency === "NGN" ? enteredPriceNgn : enteredPriceUsd;
+      let unitPrice = enteredPriceUsd;
       if (discountEnabled) {
         const opLocal = safeNumber(discountOriginalPrice);
         const dpLocal = safeNumber(discountPrice);
         const effectiveDiscountedNgn = toNgn(dpLocal);
         const effectiveDiscountedUsd = toUsd(dpLocal);
-        const effectiveDiscounted = listingCurrency === "NGN" ? effectiveDiscountedNgn : effectiveDiscountedUsd;
+        const effectiveDiscounted = effectiveDiscountedUsd;
         unitPrice = effectiveDiscounted;
         const effectiveOriginalNgn = toNgn(opLocal);
         const effectiveOriginalUsd = toUsd(opLocal);
-        const effectiveOriginal = listingCurrency === "NGN" ? effectiveOriginalNgn : effectiveOriginalUsd;
+        const effectiveOriginal = effectiveOriginalUsd;
 
         const safeDiscountedNgn = Number.isFinite(effectiveDiscountedNgn) ? Number(effectiveDiscountedNgn.toFixed(2)) : null;
         const safeOriginalNgn = Number.isFinite(effectiveOriginalNgn) ? Number(effectiveOriginalNgn.toFixed(2)) : null;
         const safeDiscountedLocal = Number.isFinite(dpLocal) ? Number(dpLocal.toFixed(2)) : null;
         const safeOriginalLocal = Number.isFinite(opLocal) ? Number(opLocal.toFixed(2)) : null;
         const paymentOptions = {
-          allow_ngn: isNigeria && (effectivePayMode === "ngn" || effectivePayMode === "all"),
-          allow_crypto: effectivePayMode === "crypto" || effectivePayMode === "all",
-          allow_usdc: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdc"),
-          allow_usdt: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdt"),
+          allow_crypto: true,
+          allow_usdc: cryptoCoinMode === "all" || cryptoCoinMode === "usdc",
+          allow_usdt: cryptoCoinMode === "all" || cryptoCoinMode === "usdt",
           allow_pi: false,
           chain_mode: cryptoNetworkMode,
           coin_mode: cryptoCoinMode,
@@ -633,10 +721,9 @@ export default function SellTab() {
         return;
       }
       const paymentOptions = {
-        allow_ngn: isNigeria && (effectivePayMode === "ngn" || effectivePayMode === "all"),
-        allow_crypto: effectivePayMode === "crypto" || effectivePayMode === "all",
-        allow_usdc: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdc"),
-        allow_usdt: (effectivePayMode === "crypto" || effectivePayMode === "all") && (cryptoCoinMode === "all" || cryptoCoinMode === "usdt"),
+        allow_crypto: true,
+        allow_usdc: cryptoCoinMode === "all" || cryptoCoinMode === "usdc",
+        allow_usdt: cryptoCoinMode === "all" || cryptoCoinMode === "usdt",
         allow_pi: false,
         chain_mode: cryptoNetworkMode,
         coin_mode: cryptoCoinMode,
@@ -1055,40 +1142,26 @@ export default function SellTab() {
           <Input value={description} onChangeText={setDescription} placeholder="What the buyer gets, requirements, timeline..." multiline />
 
           <Label>Payment route</Label>
-          {isNigeria ? (
-            <Row>
-              <Pill active={payMode === "ngn"} label="NGN only" onPress={() => setPayMode("ngn")} />
-              <Pill active={payMode === "crypto"} label="Crypto only" onPress={() => setPayMode("crypto")} />
-              <Pill active={payMode === "all"} label="All" onPress={() => setPayMode("all")} />
-            </Row>
-          ) : (
-            <Row>
-              <Pill active label="Crypto only" onPress={() => setPayMode("crypto")} disabled />
-            </Row>
-          )}
-          {!isNigeria ? (
-            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
-              NGN checkout is available only for Nigeria-based accounts.
-            </Text>
-          ) : null}
+          <Row>
+            <Pill active label="Crypto checkout" onPress={() => {}} disabled />
+          </Row>
+          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
+            New listings settle in stablecoins. Buyers can pay with USDC or USDT based on your selection below.
+          </Text>
 
-          {(payMode === "crypto" || payMode === "all") ? (
-            <>
-              <Label>Crypto coin</Label>
-              <Row>
-                <Pill active={cryptoCoinMode === "all"} label="All (USDC/USDT)" onPress={() => setCryptoCoinMode("all")} />
-                <Pill active={cryptoCoinMode === "usdc"} label="USDC only" onPress={() => setCryptoCoinMode("usdc")} />
-                <Pill active={cryptoCoinMode === "usdt"} label="USDT only" onPress={() => setCryptoCoinMode("usdt")} />
-              </Row>
+          <Label>Crypto coin</Label>
+          <Row>
+            <Pill active={cryptoCoinMode === "all"} label="All (USDC/USDT)" onPress={() => setCryptoCoinMode("all")} />
+            <Pill active={cryptoCoinMode === "usdc"} label="USDC only" onPress={() => setCryptoCoinMode("usdc")} />
+            <Pill active={cryptoCoinMode === "usdt"} label="USDT only" onPress={() => setCryptoCoinMode("usdt")} />
+          </Row>
 
-              <Label>Network</Label>
-              <Row>
-                <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
-                <Pill active={cryptoNetworkMode === "base"} label="Base only" onPress={() => setCryptoNetworkMode("base")} />
-                <Pill active={cryptoNetworkMode === "arbitrum"} label="Arbitrum only" onPress={() => setCryptoNetworkMode("arbitrum")} />
-              </Row>
-            </>
-          ) : null}
+          <Label>Network</Label>
+          <Row>
+            <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
+            <Pill active={cryptoNetworkMode === "base"} label="Base only" onPress={() => setCryptoNetworkMode("base")} />
+            <Pill active={cryptoNetworkMode === "arbitrum"} label="Arbitrum only" onPress={() => setCryptoNetworkMode("arbitrum")} />
+          </Row>
 
           <Label>Price *</Label>
           <Row>

@@ -1,3 +1,4 @@
+import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 
@@ -47,6 +48,85 @@ function errorWithPartialRows(message: string, rows: any[]) {
   return error;
 }
 
+function buildListingPayload(input: CreateListingInput) {
+  const stockQty =
+    input.stock_qty === undefined || input.stock_qty === null ? null : Number(input.stock_qty);
+  const outOfStock = input.category === "product" && stockQty !== null && Number(stockQty) <= 0;
+  const requestedActive = typeof input.is_active === "boolean" ? input.is_active : true;
+  const paymentOptions = { ...(input.payment_options ?? {}) } as any;
+  if (outOfStock) {
+    paymentOptions.out_of_stock = true;
+    paymentOptions.out_of_stock_at = new Date().toISOString();
+  } else {
+    delete paymentOptions.out_of_stock;
+    delete paymentOptions.out_of_stock_at;
+  }
+
+  return {
+    seller_id: input.seller_id,
+    category: input.category,
+    sub_category: input.sub_category,
+    title: input.title,
+    description: input.description ?? null,
+    price_amount: input.price_amount,
+    currency: input.currency,
+    delivery_type: input.delivery_type,
+    stock_qty: stockQty,
+    availability: input.availability ?? {},
+    payment_options: paymentOptions,
+    is_active: requestedActive && !outOfStock,
+  };
+}
+
+async function createListingDirect(payload: ReturnType<typeof buildListingPayload>) {
+  const { data, error } = await supabase
+    .from("market_listings")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function insertListingImageDirect(
+  img: ListingImageInsert,
+  options?: { activateListing?: boolean },
+) {
+  const { data, error } = await supabase
+    .from("market_listing_images")
+    .insert({
+      listing_id: img.listing_id,
+      storage_path: img.storage_path,
+      public_url: img.public_url ?? null,
+      sort_order: Number.isFinite(Number(img.sort_order)) ? Number(img.sort_order) : 0,
+      meta: img.meta ?? {},
+    })
+    .select("*")
+    .single();
+
+  if (error || !data?.id) {
+    throw new Error(error?.message || "Image row insert failed.");
+  }
+
+  const isFirstImage = Number(img.sort_order ?? 0) === 0;
+  if (isFirstImage || options?.activateListing === true) {
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (isFirstImage) updates.cover_image_id = data.id;
+    if (options?.activateListing === true) updates.is_active = true;
+
+    const { error: listingError } = await supabase
+      .from("market_listings")
+      .update(updates)
+      .eq("id", img.listing_id);
+    if (listingError) throw new Error(listingError.message);
+  }
+
+  return data;
+}
+
 export async function getMySellerProfile() {
   const { data: auth } = await supabase.auth.getUser();
   const user = auth?.user;
@@ -94,40 +174,17 @@ export async function upsertSellerProfile(input: Partial<MarketSellerProfile> & 
 }
 
 export async function createListing(input: CreateListingInput) {
-  const stockQty =
-    input.stock_qty === undefined || input.stock_qty === null ? null : Number(input.stock_qty);
-  const outOfStock = input.category === "product" && stockQty !== null && Number(stockQty) <= 0;
-  const requestedActive = typeof input.is_active === "boolean" ? input.is_active : true;
-  const paymentOptions = { ...(input.payment_options ?? {}) } as any;
-  if (outOfStock) {
-    paymentOptions.out_of_stock = true;
-    paymentOptions.out_of_stock_at = new Date().toISOString();
-  } else {
-    delete paymentOptions.out_of_stock;
-    delete paymentOptions.out_of_stock_at;
+  const payload = buildListingPayload(input);
+
+  try {
+    const out = await callFn<{ listing?: any }>("market-create-listing", payload);
+    const listing = (out as any)?.listing ?? null;
+    if (!listing?.id) throw new Error("Listing creation failed (missing id)");
+    return listing;
+  } catch (error: any) {
+    console.log("[marketService.createListing] function fallback", String(error?.message || error));
+    return await createListingDirect(payload);
   }
-
-  const { data, error } = await supabase
-    .from("market_listings")
-    .insert({
-      seller_id: input.seller_id,
-      category: input.category,
-      sub_category: input.sub_category,
-      title: input.title,
-      description: input.description ?? null,
-      price_amount: input.price_amount,
-      currency: input.currency,
-      delivery_type: input.delivery_type,
-      stock_qty: stockQty,
-      availability: input.availability ?? {},
-      payment_options: paymentOptions,
-      is_active: requestedActive && !outOfStock,
-    })
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data;
 }
 
 export async function setListingCoverImage(listingId: string, coverImageId: string) {
@@ -147,31 +204,26 @@ export async function insertListingImages(
 
   const rows: any[] = [];
   for (const img of images) {
-    const { data, error } = await supabase
-      .from("market_listing_images")
-      .insert({
+    try {
+      const out = await callFn<{ image?: any }>("market-add-listing-image", {
         listing_id: img.listing_id,
         storage_path: img.storage_path,
         public_url: img.public_url ?? null,
         sort_order: Number.isFinite(Number(img.sort_order)) ? Number(img.sort_order) : 0,
         meta: img.meta ?? {},
-      })
-      .select("*")
-      .single();
-
-    if (error || !data?.id) {
-      throw errorWithPartialRows(error?.message || "Image row insert failed.", rows);
-    }
-
-    rows.push(data);
-
-    if (options?.activateListing === true && Number(img.sort_order ?? 0) === 0) {
-      const { error: activateError } = await supabase
-        .from("market_listings")
-        .update({ is_active: true, updated_at: new Date().toISOString() })
-        .eq("id", img.listing_id);
-      if (activateError) {
-        throw errorWithPartialRows(activateError.message, rows);
+        set_as_cover: Number(img.sort_order ?? 0) === 0,
+        activate_listing: options?.activateListing === true,
+      });
+      const row = (out as any)?.image ?? null;
+      if (!row?.id) throw new Error("Image row insert failed.");
+      rows.push(row);
+    } catch (error: any) {
+      console.log("[marketService.insertListingImages] function fallback", String(error?.message || error));
+      try {
+        const row = await insertListingImageDirect(img, options);
+        rows.push(row);
+      } catch (directError: any) {
+        throw errorWithPartialRows(directError?.message || "Image row insert failed.", rows);
       }
     }
   }

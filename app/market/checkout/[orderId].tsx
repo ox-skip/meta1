@@ -11,19 +11,15 @@ import AppHeader from "@/components/common/AppHeader";
 import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
 import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
-import { requireLocalAuth } from "@/utils/secureAuth";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode, toDeliveryGeo } from "@/utils/location";
 import { getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
 import { friendlyMarketError } from "@/utils/marketUx";
-import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
+import { resolveUserCountry, type UserCountry } from "@/utils/country";
 import { getRpcUrlForChain } from "@/utils/aaWallet";
 
 const BG0 = "#05040B";
 const BG1 = "#0A0620";
-
-// Real function names in your repo
-const RPC_CHECKOUT_WALLET = "market_checkout_wallet_rpc"; // NGN wallet escrow lock (SQL RPC)
 
 function shouldExitCheckoutForStatus(status: unknown) {
   const s = String(status ?? "").trim().toUpperCase();
@@ -122,52 +118,6 @@ function normalizeBuyerContact(value: unknown) {
   };
 }
 
-async function invokeCheckoutWallet(orderId: string) {
-  const withTimeout = async <T,>(promise: Promise<T>, ms: number, label: string) => {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out. Please try again.`)), ms),
-    );
-    return await Promise.race([promise, timeout]);
-  };
-
-  const ensureSession = async () => {
-    const sessionToken = (await withTimeout(supabase.auth.getSession(), 8000, "Session check") as any)?.data?.session?.access_token || "";
-    if (sessionToken) return;
-    const refreshed = await withTimeout(supabase.auth.refreshSession(), 10000, "Session refresh") as any;
-    const token = refreshed?.data?.session?.access_token || "";
-    if (!token) throw new Error("Session expired. Please sign in again.");
-  };
-
-  const run = async () =>
-    await withTimeout(
-      Promise.resolve(supabase.rpc(RPC_CHECKOUT_WALLET, { p_order_id: orderId })),
-      25000,
-      "Checkout request",
-    );
-
-  console.log("[Checkout] invokeCheckoutWallet token start");
-  await ensureSession();
-  console.log("[Checkout] invokeCheckoutWallet token ok");
-  let out = (await run()) as any;
-  console.log("[Checkout] invokeCheckoutWallet first response", { ok: !out.error });
-
-  if (out.error) {
-    const errMsg = String(out.error?.message || "");
-    if (/jwt|session|unauthor/i.test(errMsg)) {
-      console.log("[Checkout] invokeCheckoutWallet retry token refresh");
-      await withTimeout(supabase.auth.refreshSession(), 10000, "Session refresh");
-      out = (await run()) as any;
-      console.log("[Checkout] invokeCheckoutWallet retry response", { ok: !out.error });
-    }
-  }
-
-  if (out.error) {
-    throw new Error(out.error?.message || "Wallet checkout failed");
-  }
-
-  return out.data;
-}
-
 function Pill({
   icon,
   title,
@@ -242,7 +192,6 @@ export default function Checkout() {
   const [chains, setChains] = useState<MarketChainConfig[]>([]);
   const [chain, setChain] = useState<MarketChainConfig | null>(null);
   const [walletAddress, setWalletAddress] = useState("");
-  const [ngnBalance, setNgnBalance] = useState(0);
   const [usdcBalance, setUsdcBalance] = useState(0);
   const [usdtBalance, setUsdtBalance] = useState(0);
   const [fundingLoading, setFundingLoading] = useState(false);
@@ -258,7 +207,6 @@ export default function Checkout() {
   );
   const paymentOptions = ((listing as any)?.payment_options ?? {}) as any;
   const hasExplicitRoutes =
-    typeof paymentOptions?.allow_ngn === "boolean" ||
     typeof paymentOptions?.allow_usdc === "boolean" ||
     typeof paymentOptions?.allow_usdt === "boolean" ||
     typeof paymentOptions?.allow_pi === "boolean";
@@ -268,11 +216,6 @@ export default function Checkout() {
     orderStatus,
   });
 
-  const allowNgnRaw = hasExplicitRoutes
-    ? paymentOptions?.allow_ngn === true
-    : listingCurrency === "NGN" || listingCurrency === "";
-  const isNigeria = isNigeriaCountry(userCountry?.code || userCountry?.name);
-  const allowNgn = allowNgnRaw && isNigeria;
   const allowUsdc = hasExplicitRoutes
     ? paymentOptions?.allow_usdc === true
     : listingCurrency === "USDC";
@@ -280,12 +223,9 @@ export default function Checkout() {
     ? paymentOptions?.allow_usdt === true
     : listingCurrency === "USDT";
   const enabledRoutes = [
-    allowNgn ? "NGN" : null,
     allowUsdc ? "USDC" : null,
     allowUsdt ? "USDT" : null,
   ].filter(Boolean) as string[];
-  const ngnRequired = orderCurrency === "NGN" ? orderAmount : 0;
-  const ngnShortfall = allowNgn && ngnRequired > 0 ? Math.max(0, ngnRequired - ngnBalance) : 0;
   const usdcRequired = orderCurrency === "USDC" ? orderAmount : 0;
   const usdtRequired = orderCurrency === "USDT" ? orderAmount : 0;
   const usdcShortfall = allowUsdc && usdcRequired > 0 ? Math.max(0, usdcRequired - usdcBalance) : 0;
@@ -311,19 +251,11 @@ export default function Checkout() {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
       if (!user) {
-        setNgnBalance(0);
         setUsdcBalance(0);
         setUsdtBalance(0);
         setWalletAddress("");
         return;
       }
-
-      const { data: ngnWallet } = await supabase
-        .from("app_wallets_simple")
-        .select("balance")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      setNgnBalance(Number((ngnWallet as any)?.balance ?? 0));
 
       if (!active) {
         setUsdcBalance(0);
@@ -585,48 +517,6 @@ export default function Checkout() {
     }
   }
 
-  async function payWithWallet() {
-    if (busy) return;
-    setErr(null);
-    if (!oid) return setErr("Missing orderId");
-    if (!allowNgn) return setErr("This listing does not accept NGN payments.");
-    if (ngnShortfall > 0) {
-      return setErr(`Insufficient NGN balance. Fund wallet with NGN ${ngnShortfall.toLocaleString(undefined, { maximumFractionDigits: 2 })}.`);
-    }
-    const user = await requireAuth();
-    if (!user) return;
-
-    console.log("[Checkout] payWithWallet start", { orderId: oid });
-    setBusy(true);
-    try {
-      console.log("[Checkout] payWithWallet auth prompt");
-      const auth = await requireLocalAuth("Confirm wallet payment");
-      if (!auth.ok) throw new Error(auth.message || "Authentication required");
-      console.log("[Checkout] payWithWallet auth ok");
-      try {
-        console.log("[Checkout] payWithWallet rpc start");
-        await invokeCheckoutWallet(oid);
-        console.log("[Checkout] payWithWallet rpc ok");
-      } catch (e: any) {
-        const msg = String(e?.message || "");
-        if (/jwt|session expired|unauthor/i.test(msg)) {
-          console.log("[Checkout] payWithWallet retry after session refresh");
-          await invokeCheckoutWallet(oid);
-          console.log("[Checkout] payWithWallet retry ok");
-        } else {
-          throw e;
-        }
-      }
-
-      router.replace(`/market/order/${oid}` as any);
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't complete NGN payment."));
-    } finally {
-      setBusy(false);
-      console.log("[Checkout] payWithWallet end");
-    }
-  }
-
   async function payWithUsdc() {
     if (busy) return;
     setErr(null);
@@ -832,11 +722,11 @@ export default function Checkout() {
         >
           <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 }}>ORDER AMOUNT</Text>
           <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900", fontSize: 22 }}>
-            {Number(orderAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {orderCurrency || listingCurrency || "NGN"}
+            {Number(orderAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} {orderCurrency || listingCurrency || "USDC"}
           </Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
             Qty {orderQty} x {Number(orderUnitPrice || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}{" "}
-            {orderCurrency || listingCurrency || "NGN"}
+            {orderCurrency || listingCurrency || "USDC"}
           </Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
             Fund only appears when your selected payment wallet is insufficient.
@@ -936,7 +826,6 @@ export default function Checkout() {
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Buyer contact for seller</Text>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-            {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
           </Text>
 
@@ -1049,12 +938,11 @@ export default function Checkout() {
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Payment options</Text>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-            {isNigeria ? "- NGN Wallet: uses your existing in-app wallet balance (top up via Paystack in Wallet tab).\n" : ""}
             - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
           </Text>
-          {!isNigeria && allowNgnRaw ? (
-            <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-              NGN payments are available only to Nigeria users. Please use USDC or USDT.
+          {!enabledRoutes.length ? (
+            <Text style={{ marginTop: 8, color: "#FCA5A5", fontSize: 12 }}>
+              This listing does not have an active crypto checkout route. Ask the seller to republish it with USDC or USDT enabled.
             </Text>
           ) : null}
 
@@ -1087,9 +975,6 @@ export default function Checkout() {
               </Pressable>
             </View>
             <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
-              NGN {ngnBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </Text>
-            <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
               USDC {usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
             </Text>
             <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
@@ -1151,38 +1036,6 @@ export default function Checkout() {
               </Text>
             ) : null}
           </View>
-
-          {allowNgn && ngnShortfall > 0 ? (
-            <View
-              style={{
-                marginTop: 12,
-                borderRadius: 16,
-                padding: 12,
-                backgroundColor: "rgba(251,191,36,0.12)",
-                borderWidth: 1,
-                borderColor: "rgba(251,191,36,0.4)",
-              }}
-            >
-              <Text style={{ color: "#FDE68A", fontWeight: "900", fontSize: 12 }}>
-                Insufficient NGN balance. Add NGN {ngnShortfall.toLocaleString(undefined, { maximumFractionDigits: 2 })} to continue.
-              </Text>
-              <Pressable
-                onPress={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}
-                style={{
-                  marginTop: 10,
-                  borderRadius: 12,
-                  height: 40,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: "rgba(45,212,191,0.45)",
-                  backgroundColor: "rgba(45,212,191,0.18)",
-                }}
-              >
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Fund NGN Wallet</Text>
-              </Pressable>
-            </View>
-          ) : null}
 
           {allowUsdc && usdcRequired > 0 && usdcShortfall > 0 ? (
             <View
@@ -1248,16 +1101,6 @@ export default function Checkout() {
             </View>
           ) : null}
 
-          {isNigeria ? (
-            <Pill
-              icon="wallet-outline"
-              title="Pay with NGN wallet"
-              subtitle="Instant escrow lock from your in-app balance"
-              onPress={payWithWallet}
-              disabled={busy || fundingLoading || !allowNgn || ngnShortfall > 0}
-            />
-          ) : null}
-
           <Pill
             icon="logo-bitcoin"
             title="Pay with USDC"
@@ -1274,7 +1117,7 @@ export default function Checkout() {
             disabled={busy || fundingLoading || !allowUsdt || usdtShortfall > 0}
           />
 
-          {enabledRoutes.length < 3 ? (
+          {enabledRoutes.length < 2 ? (
             <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
               Seller payment setting: {enabledRoutes.length ? enabledRoutes.join(" + ") : "No payment route enabled"}.
             </Text>

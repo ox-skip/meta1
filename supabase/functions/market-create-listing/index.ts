@@ -5,6 +5,10 @@ type ListingCategory = "product" | "service";
 type DeliveryType = "physical" | "digital" | "in_person";
 type Currency = "NGN" | "USDC";
 
+function isMissingOptionalColumnError(message: string, column: string) {
+  return new RegExp(column, "i").test(message) && /(column|schema cache)/i.test(message);
+}
+
 function assertCategoryRules(category: ListingCategory, delivery_type: DeliveryType) {
   if (category === "product" && delivery_type !== "physical") {
     throw new Error("product listings must have delivery_type=physical");
@@ -43,7 +47,16 @@ Deno.serve(async (req) => {
   const price_amount = Number(body.price_amount);
   if (!Number.isFinite(price_amount) || price_amount <= 0) return bad("price_amount must be > 0");
 
-  const row = {
+  const { data: seller, error: sellerErr } = await admin
+    .from("market_seller_profiles")
+    .select("user_id,active")
+    .eq("user_id", u.user.id)
+    .maybeSingle();
+
+  if (sellerErr) return bad(sellerErr.message);
+  if (!seller || seller.active === false) return bad("Create and activate your seller profile first");
+
+  const row: Record<string, unknown> = {
     seller_id: u.user.id,
     category,
     sub_category: String(body.sub_category ?? "").trim(),
@@ -55,16 +68,37 @@ Deno.serve(async (req) => {
     stock_qty: body.stock_qty === null || body.stock_qty === undefined ? null : Number(body.stock_qty),
     is_active: body.is_active === undefined ? true : !!body.is_active,
   };
+  if (Object.prototype.hasOwnProperty.call(body, "availability")) row.availability = body.availability ?? {};
+  if (Object.prototype.hasOwnProperty.call(body, "payment_options")) row.payment_options = body.payment_options ?? {};
 
   if (!row.sub_category) return bad("sub_category is required");
   if (!row.title) return bad("title is required");
   if (row.stock_qty !== null && (!Number.isInteger(row.stock_qty) || row.stock_qty < 0)) return bad("stock_qty must be null or >= 0");
 
-  const { data: listing, error } = await admin
-    .from("market_listings")
-    .insert(row)
-    .select("*")
-    .single();
+  let listing: any = null;
+  let error: any = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await admin
+      .from("market_listings")
+      .insert(row)
+      .select("*")
+      .single();
+    listing = result.data ?? null;
+    error = result.error ?? null;
+    if (!error) break;
+
+    const message = String(error?.message ?? "");
+    let removed = false;
+    if (Object.prototype.hasOwnProperty.call(row, "availability") && isMissingOptionalColumnError(message, "availability")) {
+      delete row.availability;
+      removed = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(row, "payment_options") && isMissingOptionalColumnError(message, "payment_options")) {
+      delete row.payment_options;
+      removed = true;
+    }
+    if (!removed) break;
+  }
 
   if (error) return bad(error.message);
 

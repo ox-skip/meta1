@@ -185,11 +185,6 @@ export default function MarketWallet() {
                 <Text style={s.stateText}>{wallet.connectedAddress ? "Connected" : "Not connected"}</Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {wallet.isNigeria ? (
-                  <Pressable onPress={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}>
-                    <Text style={s.link}>Open NGN Wallet</Text>
-                  </Pressable>
-                ) : null}
                 <Pressable onPress={() => router.push("/market/history" as any)}>
                   <Text style={s.link}>History</Text>
                 </Pressable>

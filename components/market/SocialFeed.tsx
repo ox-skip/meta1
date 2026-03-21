@@ -75,22 +75,22 @@ type Props = {
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-const TIMELINE_BG = "#000000";
-const SURFACE = "#090B0F";
-const SURFACE_ALT = "#0F1419";
-const CARD = "#111821";
-const BORDER = "rgba(255,255,255,0.14)";
+const TIMELINE_BG = "#120E0C";
+const SURFACE = "#17120D";
+const SURFACE_ALT = "#211810";
+const CARD = "#2A1F15";
+const BORDER = "rgba(245,158,11,0.18)";
 const BORDER_SOFT = "rgba(255,255,255,0.08)";
-const TEXT = "#F7F9F9";
-const MUTED = "rgba(247,249,249,0.66)";
-const ACCENT = "#1D9BF0";
-const ACCENT_BG = "rgba(29,155,240,0.16)";
-const LIKE = "#F91880";
-const LIKE_BG = "rgba(249,24,128,0.16)";
-const MEDIA = "#22C55E";
-const MEDIA_BG = "rgba(34,197,94,0.16)";
-const GOLD = "#F59E0B";
-const GOLD_BG = "rgba(245,158,11,0.16)";
+const TEXT = "#FBF7F2";
+const MUTED = "rgba(251,247,242,0.68)";
+const ACCENT = "#F59E0B";
+const ACCENT_BG = "rgba(245,158,11,0.16)";
+const LIKE = "#FB7185";
+const LIKE_BG = "rgba(251,113,133,0.16)";
+const MEDIA = "#14B8A6";
+const MEDIA_BG = "rgba(20,184,166,0.16)";
+const GOLD = "#FBBF24";
+const GOLD_BG = "rgba(251,191,36,0.16)";
 const SOCIAL_BUCKET = "market-social";
 
 function fileExtFromMime(mime: string) {
@@ -117,6 +117,26 @@ function safePublicUrl(bucket: string, storagePath: string | null, publicUrl: st
   if (publicUrl) return publicUrl;
   if (!storagePath) return null;
   return supabase.storage.from(bucket).getPublicUrl(storagePath).data.publicUrl;
+}
+
+function isSocialSetupError(error: unknown) {
+  const msg = String((error as any)?.message || error || "").toLowerCase();
+  const mentionsSocial =
+    msg.includes("market_social_") ||
+    msg.includes("market_profile_follows") ||
+    msg.includes("market-social");
+  const isSetupFailure =
+    msg.includes("does not exist") ||
+    msg.includes("relation") ||
+    msg.includes("schema cache") ||
+    msg.includes("bucket") ||
+    msg.includes("row-level security") ||
+    msg.includes("policy");
+  return mentionsSocial && isSetupFailure;
+}
+
+function socialSetupMessage(action: string) {
+  return `Seller board isn't fully provisioned yet. Run the latest market migration and reload before you ${action}.`;
 }
 
 function formatRelativeTime(dateString: string) {
@@ -308,10 +328,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const uid = auth?.user?.id;
         if (uid) {
           targetAuthorIds.add(uid);
-          const { data: follows } = await supabase
+          const { data: follows, error: followsErr } = await supabase
             .from("market_profile_follows")
             .select("followed_id")
             .eq("follower_id", uid);
+          if (followsErr) throw followsErr;
           (follows ?? []).forEach((row: any) => targetAuthorIds.add(String(row.followed_id)));
         }
       }
@@ -357,6 +378,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               .in("user_id", authorSet)
           : Promise.resolve({ data: [] } as any),
       ]);
+      if ((mediaRes as any)?.error) throw (mediaRes as any).error;
+      if ((profilesRes as any)?.error) throw (profilesRes as any).error;
 
       const nextMediaMap: Record<string, FeedMedia[]> = {};
       (mediaRes.data ?? []).forEach((item: FeedMedia) => {
@@ -385,6 +408,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           : Promise.resolve({ data: [] } as any),
         supabase.from("market_social_comments").select("post_id").in("post_id", postIds),
       ]);
+      if ((reactionRes as any)?.error) throw (reactionRes as any).error;
+      if ((myReactionRes as any)?.error) throw (myReactionRes as any).error;
+      if ((commentRes as any)?.error) throw (commentRes as any).error;
 
       const nextReactionCounts: Record<string, number> = {};
       (reactionRes.data ?? []).forEach((row: any) => {
@@ -406,7 +432,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       });
       setCommentCounts(nextCommentCounts);
     } catch (e: any) {
-      setError(e?.message || "Could not load social feed");
+      setError(isSocialSetupError(e) ? socialSetupMessage("load seller posts") : e?.message || "Could not load seller posts");
       setPosts([]);
     } finally {
       setLoading(false);
@@ -559,6 +585,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   async function uploadAsset(userId: string, postId: string, asset: LocalAsset, idx: number): Promise<FeedMedia> {
     const ext = fileExtFromMime(asset.mimeType);
     const path = `${userId}/${postId}/${Date.now()}-${idx}.${ext}`;
+    const publicUrl = safePublicUrl(SOCIAL_BUCKET, path, null);
 
     await uploadToSupabaseStorage({
       bucket: SOCIAL_BUCKET,
@@ -574,7 +601,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         post_id: postId,
         kind: pickKind(asset.mimeType),
         storage_path: path,
-        public_url: null,
+        public_url: publicUrl,
         mime_type: asset.mimeType,
         sort_order: idx,
       })
@@ -582,7 +609,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       .single();
 
     if (mediaErr) throw mediaErr;
-    return inserted as FeedMedia;
+    return { ...(inserted as FeedMedia), public_url: (inserted as any)?.public_url ?? publicUrl };
   }
 
   async function submitPost() {
@@ -647,7 +674,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
         const firstFailure = String(failedUploads[0] || "");
         if (firstFailure.toLowerCase().includes("row-level security")) {
-          setError("Post published, but the attachment was blocked by storage policy for bucket: market-social.");
+          setError(socialSetupMessage("attach media"));
         } else {
           setError(
             `Post published, but ${failedUploads.length} attachment${failedUploads.length === 1 ? "" : "s"} failed to upload.`,
@@ -657,11 +684,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     } catch (e: any) {
       if (createdPostId) pendingPostIdsRef.current.delete(createdPostId);
       const msg = String(e?.message || "Could not publish post");
-      if (msg.toLowerCase().includes("row-level security")) {
-        setError("Upload blocked by storage/table policy. Add insert policy for your user on bucket: market-social.");
-      } else {
-        setError(msg);
-      }
+      setError(isSocialSetupError(e) ? socialSetupMessage("publish updates") : msg);
     } finally {
       postingLockRef.current = false;
       setPosting(false);
@@ -699,12 +722,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   async function loadComments(postId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("market_social_comments")
       .select("id,post_id,user_id,body,created_at,profiles(username,full_name)")
       .eq("post_id", postId)
       .order("created_at", { ascending: false })
       .limit(120);
+    if (error) throw error;
 
     setComments((data ?? []) as FeedComment[]);
   }
@@ -712,7 +736,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   async function openComments(post: FeedPost) {
     setCommentsOpenPost(post);
     setCommentText("");
-    await loadComments(post.id);
+    try {
+      await loadComments(post.id);
+    } catch (e: any) {
+      setError(isSocialSetupError(e) ? socialSetupMessage("open comments") : String(e?.message || "Could not load comments"));
+    }
   }
 
   async function submitComment() {
@@ -722,14 +750,17 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
     setCommentBusy(true);
     try {
-      const { data: inserted } = await supabase
+      const { data: inserted, error } = await supabase
         .from("market_social_comments")
         .insert({ post_id: commentsOpenPost.id, user_id: meId, body: text })
         .select("id,post_id,user_id,body,created_at")
         .single();
+      if (error) throw error;
 
       if (inserted) setComments((prev) => [inserted as FeedComment, ...prev]);
       setCommentText("");
+    } catch (e: any) {
+      setError(isSocialSetupError(e) ? socialSetupMessage("comment") : String(e?.message || "Could not post comment"));
     } finally {
       setCommentBusy(false);
     }
@@ -861,7 +892,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           paddingBottom: 12,
           borderBottomWidth: 1,
           borderBottomColor: BORDER_SOFT,
-          backgroundColor: "#000",
+          backgroundColor: SURFACE,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
@@ -890,7 +921,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               value={body}
               onChangeText={setBody}
               multiline
-              placeholder={profileUserId ? "Share an update with your audience" : "What's happening?"}
+              placeholder={profileUserId ? "Share a storefront update, offer, or restock note" : "Post a launch, promo, or seller update"}
               placeholderTextColor="rgba(255,255,255,0.34)"
               textAlignVertical="top"
               style={{
@@ -999,7 +1030,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   <Ionicons name="location-outline" size={18} color={ACCENT} />
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12 }}>
-                  {assets.length ? `${assets.length}/4 attached` : "Photo or video"}
+                  {assets.length ? `${assets.length}/4 attached` : "Attach image or video"}
                 </Text>
               </View>
 
@@ -1015,14 +1046,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   style={{
                     borderRadius: 999,
                     borderWidth: 1,
-                    borderColor: "rgba(29,155,240,0.26)",
-                    backgroundColor: "rgba(29,155,240,0.10)",
+                    borderColor: BORDER,
+                    backgroundColor: ACCENT_BG,
                     paddingHorizontal: 12,
                     paddingVertical: 8,
                   }}
                 >
                   <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>
-                    {profileUserId ? "Profile feed" : "Followers feed"}
+                    {profileUserId ? "Store board" : "Following sellers"}
                   </Text>
                 </View>
 
@@ -1036,10 +1067,10 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor:
-                      posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : "#FFFFFF",
+                      posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : ACCENT,
                   }}
                 >
-                  <Text style={{ color: "#000", fontWeight: "900" }}>{posting ? "Posting..." : "Post"}</Text>
+                  <Text style={{ color: "#17120D", fontWeight: "900" }}>{posting ? "Publishing..." : "Publish"}</Text>
                 </Pressable>
               </View>
             </View>
@@ -1069,7 +1100,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           paddingBottom: 14,
           borderBottomWidth: 1,
           borderBottomColor: BORDER_SOFT,
-          backgroundColor: "#000",
+          backgroundColor: SURFACE,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
@@ -1130,13 +1161,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   }}
                 >
                   <Text style={{ color: ACCENT, fontWeight: "800", fontSize: 11 }}>
-                    {media.length > 1 ? `${media.length} media` : "Media drop"}
+                    {media.length > 1 ? `${media.length} attachments` : "Attachment"}
                   </Text>
                 </View>
               ) : null}
 
               <Text numberOfLines={1} style={{ color: MUTED, fontSize: 13 }}>
-                @{authorHandle} - {formatRelativeTime(post.created_at)}
+                @{authorHandle} | {formatRelativeTime(post.created_at)}
               </Text>
             </View>
 
@@ -1158,7 +1189,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
               <ActionButton
                 icon="chatbubble-outline"
-                label="Reply"
+                label="Comment"
                 count={commentCounts[post.id] ?? 0}
                 onPress={() => openComments(post)}
               />
@@ -1193,7 +1224,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     return (
       <View style={{ paddingVertical: 28, alignItems: "center" }}>
         <ActivityIndicator color={ACCENT} />
-        <Text style={{ marginTop: 10, color: MUTED }}>Loading the timeline...</Text>
+        <Text style={{ marginTop: 10, color: MUTED }}>Loading seller posts...</Text>
       </View>
     );
   }
@@ -1211,12 +1242,12 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           }}
         >
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>
-            {profileUserId ? "No posts yet" : "Your timeline is quiet"}
+            {profileUserId ? "No seller updates yet" : "Your market board is quiet"}
           </Text>
           <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
             {profileUserId
-              ? "This account has not shared an update yet."
-              : "Follow more businesses or publish your first update to start filling this feed."}
+              ? "This seller has not published a storefront update yet."
+              : "Follow more sellers or publish your first update to start filling this board."}
           </Text>
         </View>
       </View>
@@ -1231,7 +1262,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           borderRadius: 28,
           borderWidth: 1,
           borderColor: BORDER_SOFT,
-          backgroundColor: "#000",
+          backgroundColor: SURFACE,
           overflow: "hidden",
         }}
       >
@@ -1263,14 +1294,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         >
           <View style={{ flexDirection: isTablet ? "row" : "column", alignItems: isTablet ? "center" : "flex-start", justifyContent: "space-between", gap: 12 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>LIVE FEED</Text>
+              <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>SELLER BOARD</Text>
               <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 24 }}>
-                {profileUserId ? "Seller timeline" : "Marketplace updates in one scroll"}
+                {profileUserId ? "Storefront updates" : "Marketplace seller board"}
               </Text>
               <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
                 {profileUserId
-                  ? "Every post from this seller, presented as a clean modern timeline."
-                  : "A focused stream of posts from the businesses you follow, with media, reactions, and comments in one place."}
+                  ? "Restocks, launches, and media from this seller in one place."
+                  : "A market-first stream of product drops, promos, and announcements from the sellers you follow."}
               </Text>
             </View>
 
@@ -1278,14 +1309,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               style={{
                 borderRadius: 999,
                 borderWidth: 1,
-                borderColor: "rgba(29,155,240,0.28)",
+                borderColor: BORDER,
                 backgroundColor: ACCENT_BG,
                 paddingHorizontal: 14,
                 paddingVertical: 9,
               }}
             >
               <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>
-                {profileUserId ? "Profile posts" : "Following only"}
+                {profileUserId ? "Seller posts" : "Following sellers"}
               </Text>
             </View>
           </View>
@@ -1293,7 +1324,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             <MetricChip icon="newspaper-outline" label={`${formatCount(posts.length)} posts`} />
             <MetricChip icon="images-outline" label={`${formatCount(totalMedia)} media items`} />
-            <MetricChip icon="people-outline" label={`${formatCount(activeProfiles.length)} active sellers`} />
+            <MetricChip icon="people-outline" label={`${formatCount(activeProfiles.length)} active storefronts`} />
           </View>
         </View>
 
@@ -1321,7 +1352,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           }}
         >
           <Ionicons name="search" size={18} color={MUTED} />
-          <Text style={{ color: MUTED }}>Search updates</Text>
+          <Text style={{ color: MUTED }}>Search sellers or updates</Text>
         </View>
 
         <View
@@ -1337,9 +1368,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           <View style={{ padding: 18, gap: 14 }}>
             <View>
               <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 11, letterSpacing: 1 }}>MARKET PULSE</Text>
-              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 22 }}>Feed snapshot</Text>
+              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 22 }}>Board snapshot</Text>
               <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
-                Keep your storefront alive with short updates, media drops, and fast replies.
+                Keep your storefront active with short updates, fresh media, and quick buyer replies.
               </Text>
             </View>
 
@@ -1348,7 +1379,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 { label: "Posts", value: formatCount(posts.length) },
                 { label: "Media", value: formatCount(totalMedia) },
               ].map((item) => (
-                <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: "#0A0E13", padding: 14 }}>
+                <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: CARD, padding: 14 }}>
                   <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{item.value}</Text>
                   <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{item.label}</Text>
                 </View>
@@ -1364,7 +1395,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               }}
             >
               <Text style={{ color: MUTED, lineHeight: 20 }}>
-                {posts[0] ? `Latest post landed ${formatRelativeTime(posts[0].created_at)} ago.` : "No posts loaded yet."}
+                {posts[0] ? `Latest update landed ${formatRelativeTime(posts[0].created_at)} ago.` : "No seller posts loaded yet."}
               </Text>
             </View>
           </View>
@@ -1380,7 +1411,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             gap: 12,
           }}
         >
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Active sellers</Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Active storefronts</Text>
           {activeProfiles.length ? (
             activeProfiles.map((profile) => {
               const avatar = profile.logo_path
@@ -1428,7 +1459,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               );
             })
           ) : (
-            <Text style={{ color: MUTED, lineHeight: 20 }}>Follow sellers to populate this side column.</Text>
+            <Text style={{ color: MUTED, lineHeight: 20 }}>Follow more sellers to populate this panel.</Text>
           )}
         </View>
 
@@ -1442,11 +1473,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             gap: 10,
           }}
         >
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Post ideas</Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Store prompts</Text>
           {[
             "Share one clean product shot or a short demo clip.",
             "Drop quick updates when price or inventory changes.",
-            "Reply to comments fast to keep momentum on your posts.",
+            "Answer buyer comments quickly so interest does not cool off.",
           ].map((tip) => (
             <View key={tip} style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
               <View
@@ -1470,9 +1501,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const railWidth = showRailLabels ? 232 : 88;
     const timelineWidth = showRightRail ? 760 : showLeftRail ? 860 : width;
     const navItems: Array<{ icon: IconName; label: string; active?: boolean }> = [
-      { icon: "home", label: "Home", active: true },
-      { icon: "search", label: "Explore" },
-      { icon: "notifications-outline", label: "Alerts" },
+      { icon: "grid-outline", label: "Board", active: true },
+      { icon: "pricetags-outline", label: "Listings" },
+      { icon: "receipt-outline", label: "Orders" },
       { icon: "mail-outline", label: "Messages" },
       { icon: "person-outline", label: "Profile" },
     ];
@@ -1500,7 +1531,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 borderRadius: 28,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(29,155,240,0.12)",
+                backgroundColor: ACCENT_BG,
               }}
             >
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>M</Text>
@@ -1522,7 +1553,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                     height: 52,
                     borderRadius: 26,
                     paddingHorizontal: showRailLabels ? 18 : 0,
-                    backgroundColor: item.active ? "rgba(255,255,255,0.08)" : "transparent",
+                    backgroundColor: item.active ? ACCENT_BG : "transparent",
                   }}
                 >
                   <Ionicons name={item.icon} size={26} color={TEXT} />
@@ -1543,13 +1574,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 borderRadius: 27,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "#FFFFFF",
+                backgroundColor: ACCENT,
               }}
             >
               {showRailLabels ? (
-                <Text style={{ color: "#000", fontWeight: "900", fontSize: 17 }}>Post</Text>
+                <Text style={{ color: "#17120D", fontWeight: "900", fontSize: 17 }}>Publish</Text>
               ) : (
-                <Ionicons name="add" size={26} color="#000" />
+                <Ionicons name="add" size={26} color="#17120D" />
               )}
             </View>
           </View>
@@ -1561,7 +1592,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             minHeight: 0,
             flexDirection: "row",
             justifyContent: showRightRail ? "space-between" : "center",
-            backgroundColor: "#000",
+            backgroundColor: TIMELINE_BG,
           }}
         >
           <View style={{ flex: 1, minWidth: 0, alignItems: showRightRail ? "flex-start" : "center" }}>
@@ -1574,7 +1605,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 borderLeftWidth: showLeftRail ? 0 : isTablet ? 1 : 0,
                 borderRightWidth: 1,
                 borderColor: BORDER_SOFT,
-                backgroundColor: "#000",
+                backgroundColor: SURFACE,
                 overflow: "hidden",
               }}
             >
@@ -1584,7 +1615,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   paddingTop: insets.top,
                   borderBottomWidth: 1,
                   borderBottomColor: BORDER_SOFT,
-                  backgroundColor: "rgba(0,0,0,0.94)",
+                  backgroundColor: "rgba(23,18,13,0.94)",
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -1600,7 +1631,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                       borderBottomColor: "transparent",
                     }}
                   >
-                    <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 15 }}>For you</Text>
+                    <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 15 }}>Highlights</Text>
                   </Pressable>
                   <Pressable
                     style={{
@@ -1611,12 +1642,12 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                       borderBottomColor: ACCENT,
                     }}
                   >
-                    <Text style={{ color: TEXT, fontWeight: "800", fontSize: 15 }}>Following</Text>
+                    <Text style={{ color: TEXT, fontWeight: "800", fontSize: 15 }}>Following sellers</Text>
                   </Pressable>
                 </View>
 
                 <Pressable onPress={fetchPosts} style={{ width: 54, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="sparkles-outline" size={20} color={TEXT} />
+                  <Ionicons name="refresh" size={20} color={TEXT} />
                 </Pressable>
               </View>
 
@@ -1757,7 +1788,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   }}
                 >
                   <Text style={{ color: TEXT, fontWeight: "800" }}>No comments yet</Text>
-                  <Text style={{ marginTop: 6, color: MUTED }}>Be the first to reply to this post.</Text>
+                  <Text style={{ marginTop: 6, color: MUTED }}>Be the first to comment on this update.</Text>
                 </View>
               ) : (
                 comments.map((comment) => (
@@ -1821,7 +1852,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: "rgba(29,155,240,0.35)",
+                  borderColor: BORDER,
                   backgroundColor: ACCENT_BG,
                 }}
               >
