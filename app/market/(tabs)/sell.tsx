@@ -535,13 +535,9 @@ export default function SellTab() {
         const c = await resolveUserCountry({ prompt: true });
         if (!mounted) return;
         setUserCountry(c);
-        const fx = await getCountryFx(c);
-        if (!mounted) return;
-        setLocalCurrency(String(fx.localCurrency || "USD").toUpperCase());
-        setFxUsdToLocal(fx.usdToLocal);
-        setFxUsdToNgn(fx.usdToNgn);
-        setFxFetchedAt(fx.fetchedAt);
-
+        
+        // Always populate availability fields if country is resolved, 
+        // even if FX fails - this fixes the issue for non-Nigeria countries
         if (c) {
           if (!availabilityCountryName && !availabilityCountryCode) {
             setAvailabilityCountryName(normalizeCountryName(c.name, c.code));
@@ -550,12 +546,33 @@ export default function SellTab() {
           if (availabilityScope === "global") {
             setAvailabilityScope("country");
           }
-          // Set currency to NGN for Nigeria users
-          if (isNigeriaCountry(c.code || c.name)) {
-            setLocalCurrency("NGN");
-          }
         }
-      } catch {
+
+        try {
+          const fx = await getCountryFx(c);
+          if (!mounted) return;
+          setLocalCurrency(String(fx.localCurrency || "USD").toUpperCase());
+          setFxUsdToLocal(fx.usdToLocal);
+          setFxUsdToNgn(fx.usdToNgn);
+          setFxFetchedAt(fx.fetchedAt);
+
+          if (c) {
+            // Set currency to NGN for Nigeria users
+            if (isNigeriaCountry(c.code || c.name)) {
+              setLocalCurrency("NGN");
+            }
+          }
+        } catch (fxError) {
+          // If FX fetch fails, fallback to USD - but keep the country info intact
+          if (mounted) {
+            setLocalCurrency("USD");
+            setFxUsdToLocal(1);
+            setFxUsdToNgn(null);
+            setFxFetchedAt(null);
+          }
+          console.log("[SellTab] FX fetch failed, using fallback values:", fxError);
+        }
+      } catch (countryError) {
         if (mounted) {
           setUserCountry(null);
           setLocalCurrency("USD");
@@ -563,6 +580,7 @@ export default function SellTab() {
           setFxUsdToNgn(null);
           setFxFetchedAt(null);
         }
+        console.log("[SellTab] Country resolution failed:", countryError);
       }
     })();
     return () => {
