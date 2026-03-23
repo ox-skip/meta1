@@ -10,11 +10,11 @@ import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
-import { formatAvailabilitySummary, getCurrentLocationWithGeocode, type LocationGeo } from "@/utils/location";
-import { friendlyMarketError } from "@/utils/marketUx";
 import { resolveUserCountry, type UserCountry } from "@/utils/country";
 import { normalizeCountryName } from "@/utils/countryNames";
 import { getCountryFx } from "@/utils/fx";
+import { formatAvailabilitySummary, getCurrentLocationWithGeocode, type LocationGeo } from "@/utils/location";
+import { friendlyMarketError } from "@/utils/marketUx";
 import { formatCurrency } from "@/utils/pricing";
 
 const BG0 = "#05040B";
@@ -759,12 +759,18 @@ export default function SellTab() {
       });
       return;
     } catch (e: any) {
-      const msg = friendlyMarketError(e, "We couldn't publish your listing right now.");
-      // Helpful hint for the exact error you're seeing
-      if (String(msg).toLowerCase().includes("row-level security")) {
-        Alert.alert("RLS blocked", "Your RLS policies for market_listings or market_listing_images are blocking inserts.\n\nRun the SQL policy fix I sent and try again.");
+      const msg = friendlyMarketError(e, "We couldn't complete this request right now.");
+      const errStr = String(msg || e?.message || "").toLowerCase();
+      
+      // Check if listing was created but images failed
+      if (errStr.includes("listing created") || errStr.includes("saved") || errStr.includes("draft")) {
+        Alert.alert("Listing saved", msg);
+      } else if (errStr.includes("row-level security") || errStr.includes("permission")) {
+        Alert.alert("Permission issue", "Your RLS policies may be blocking inserts. Please check your database permissions.");
+      } else if (errStr.includes("network") || errStr.includes("timeout")) {
+        Alert.alert("Connection issue", "Please check your internet connection and try again.");
       } else {
-        Alert.alert("Failed", msg);
+        Alert.alert("Failed to create listing", msg);
       }
     } finally {
       setSubmitting(false);
@@ -797,44 +803,52 @@ export default function SellTab() {
     const availability = buildAvailability();
     const shouldActivateAfterImages = images.length > 0;
 
+    // Step 1: Create the listing first (always allow this to succeed)
     console.log("[SellTab] createListing -> start");
     setStage("Creating listing...");
-    const listing = await createListing({
-      seller_id: user.id,
-      category,
-      sub_category: finalSubCategory(),
-      delivery_type: deliveryType,
-      title: title.trim(),
-      description: finalDesc,
-      price_amount: unitPrice,
-      currency: listingCurrency,
-      stock_qty: category === "product" ? qty : null,
-      availability,
-      payment_options: paymentOptions,
-      // keep listings with selected media hidden until image rows are persisted
-      is_active: shouldActivateAfterImages ? false : true,
-    } as any);
+    let listing: any;
+    try {
+      listing = await createListing({
+        seller_id: user.id,
+        category,
+        sub_category: finalSubCategory(),
+        delivery_type: deliveryType,
+        title: title.trim(),
+        description: finalDesc,
+        price_amount: unitPrice,
+        currency: listingCurrency,
+        stock_qty: category === "product" ? qty : null,
+        availability,
+        payment_options: paymentOptions,
+        // keep listings with selected media hidden until image rows are persisted
+        is_active: shouldActivateAfterImages ? false : true,
+      } as any);
       console.log("[SellTab] createListing -> ok", listing?.id ?? "no-id");
 
       if (!listing?.id) throw new Error("Listing creation failed (missing id)");
+    } catch (listingErr: any) {
+      console.error("[SellTab] createListing failed", listingErr);
+      throw new Error(`Failed to create listing: ${listingErr?.message || "Unknown error"}`);
+    }
 
-      // If no images (allowed for digital service with website URL), skip images flow
-      if (images.length > 0) {
-        try {
-          console.log("[SellTab] upload images -> start", { count: images.length });
-          setStage("Uploading images...");
-          const inserts: any[] = [];
+    // Step 2: Upload images if present (failures here don't prevent listing creation)
+    if (images.length > 0) {
+      try {
+        console.log("[SellTab] upload images -> start", { count: images.length });
+        setStage("Uploading images...");
+        const inserts: any[] = [];
 
-          for (let i = 0; i < images.length; i++) {
-            const img = images[i];
-            const ext = ensureExtFromMime(img.contentType);
-            const random =
-              typeof crypto !== "undefined" && "randomUUID" in crypto
-                ? (crypto as any).randomUUID()
-                : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+          const ext = ensureExtFromMime(img.contentType);
+          const random =
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? (crypto as any).randomUUID()
+              : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-            const path = `${user.id}/listings/${listing.id}/${i + 1}-${random}.${ext}`;
+          const path = `${user.id}/listings/${listing.id}/${i + 1}-${random}.${ext}`;
 
+          try {
             console.log("[SellTab] upload image -> start", { index: i, path });
             const up = await uploadToBucket({
               bucket: "market-listings",
@@ -851,31 +865,43 @@ export default function SellTab() {
               sort_order: i,
               meta: { content_type: img.contentType },
             });
-          }
-
-          console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
-          setStage("Saving images...");
-          const rows = await insertListingImages(inserts, { activateListing: shouldActivateAfterImages });
-          console.log("[SellTab] insertListingImages -> ok", { count: rows?.length ?? 0 });
-
-          if (!rows?.length) {
-            throw new Error("Upload finished but image rows were not saved. Please retry.");
-          }
-        } catch (imageErr: any) {
-          const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
-          setStage("Keeping saved draft...");
-          if (partialRows.length > 0) {
+          } catch (imgUploadErr: any) {
+            console.error("[SellTab] single image upload failed", { index: i, error: imgUploadErr });
             throw new Error(
-              `Your listing was saved, but only ${partialRows.length} image${partialRows.length === 1 ? "" : "s"} synced before an error. Open My Listings to review it and re-upload the remaining images.`,
+              `Image ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Your listing was saved as a draft.`,
             );
           }
+        }
+
+        console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
+        setStage("Saving images...");
+        const rows = await insertListingImages(inserts, { activateListing: shouldActivateAfterImages });
+        console.log("[SellTab] insertListingImages -> ok", { count: rows?.length ?? 0 });
+
+        if (!rows?.length) {
+          throw new Error("Upload finished but image rows were not saved. Your listing is saved as a draft. Please retry uploading images from My Listings.");
+        }
+      } catch (imageErr: any) {
+        const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
+        setStage("Keeping saved draft...");
+        const errMsg = String(imageErr?.message || imageErr || "");
+        if (errMsg.includes("Your listing was saved")) {
+          // Already a helpful message
+          throw imageErr;
+        }
+        if (partialRows.length > 0) {
           throw new Error(
-            "Your listing draft was saved, but we couldn't attach the uploaded images. Open My Listings and try the images again.",
+            `✓ Listing created! But only ${partialRows.length}/${images.length} image${partialRows.length === 1 ? "" : "s"} uploaded. Open My Listings to re-upload remaining images.`,
           );
         }
+        throw new Error(
+          `✓ Listing created! But images failed to upload. Error: ${errMsg}. Open My Listings to try uploading images again.`,
+        );
       }
+    }
 
-    Alert.alert("Posted", "Your listing is live.");
+    const successMsg = images.length > 0 ? "Your listing is live with all images!" : "Your listing is live!";
+    Alert.alert("Posted", successMsg);
     setTitle("");
     setDescription("");
     setWebsiteUrl("");

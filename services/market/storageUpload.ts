@@ -1,5 +1,5 @@
-import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
 
 import { supabase } from "@/services/supabase";
 
@@ -80,7 +80,8 @@ async function readFileAsBytes(localUri: string) {
     try {
       await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 60_000, "Preparing file");
       cleanupUri = preparedUri;
-    } catch {
+    } catch (e) {
+      console.log("[readFileAsBytes] File copy failed, trying original URI", String((e as any)?.message || e));
       preparedUri = rawUri;
     }
   }
@@ -90,6 +91,7 @@ async function readFileAsBytes(localUri: string) {
       return await readFileAsBytesViaFetch(preparedUri);
     } catch (e) {
       if (Platform.OS === "web") throw e;
+      console.log("[readFileAsBytes] Fetch failed, trying FileSystem", String((e as any)?.message || e));
       return await readFileAsBytesViaFileSystem(preparedUri);
     }
   } finally {
@@ -102,22 +104,34 @@ async function readFileAsBytes(localUri: string) {
 export async function uploadToSupabaseStorage(params: UploadParams) {
   const { bucket, path, localUri, contentType = "image/jpeg", upsert = true } = params;
 
-  const { data: sess, error: sessErr } = await withTimeout(supabase.auth.getSession(), 15_000, "Auth session check");
-  if (sessErr) throw sessErr;
-  if (!sess.session) throw new Error("No session. Please sign in again.");
+  try {
+    const { data: sess, error: sessErr } = await withTimeout(supabase.auth.getSession(), 15_000, "Auth session check");
+    if (sessErr) throw new Error(`Authentication failed: ${sessErr.message}`);
+    if (!sess.session) throw new Error("No session. Please sign in again.");
 
-  const bytes = await readFileAsBytes(localUri);
+    console.log("[uploadToSupabaseStorage] Reading file:", { path, contentType });
+    const bytes = await readFileAsBytes(localUri);
+    console.log("[uploadToSupabaseStorage] File read successfully:", { path, sizeBytes: bytes.length });
 
-  const uploadPromise = supabase.storage.from(bucket).upload(path, bytes, {
-    contentType,
-    upsert,
-  });
+    const uploadPromise = supabase.storage.from(bucket).upload(path, bytes, {
+      contentType,
+      upsert,
+    });
 
-  const { error: uploadErr } = await withTimeout(uploadPromise, 240_000, "Storage upload");
-  if (uploadErr) throw uploadErr;
+    console.log("[uploadToSupabaseStorage] Uploading to Supabase:", { bucket, path });
+    const { error: uploadErr } = await withTimeout(uploadPromise, 240_000, "Storage upload");
+    if (uploadErr) {
+      console.error("[uploadToSupabaseStorage] Upload error:", uploadErr);
+      throw new Error(`Upload failed: ${uploadErr.message}`);
+    }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  return { publicUrl: data?.publicUrl ?? null, storagePath: path };
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    console.log("[uploadToSupabaseStorage] Upload completed successfully:", { path });
+    return { publicUrl: data?.publicUrl ?? null, storagePath: path };
+  } catch (err: any) {
+    console.error("[uploadToSupabaseStorage] Error:", err);
+    throw err;
+  }
 }
 
 export async function uploadImageToSupabase(params: UploadParams): Promise<string> {
