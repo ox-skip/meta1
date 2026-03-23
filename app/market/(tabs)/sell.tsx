@@ -214,6 +214,39 @@ function Chip({ active, label, onPress }: { active: boolean; label: string; onPr
   );
 }
 
+function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View style={{ marginTop: 12 }}>
+      <Pressable
+        onPress={() => setOpen(!open)}
+        style={{
+          borderRadius: 22,
+          padding: 14,
+          backgroundColor: CARD,
+          borderWidth: 1,
+          borderColor: BORDER,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>{title}</Text>
+        <Ionicons
+          name={open ? "chevron-up-outline" : "chevron-down-outline"}
+          size={20}
+          color="rgba(255,255,255,0.6)"
+        />
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: 8, borderRadius: 16, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+          {children}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function SellTab() {
   const [checkingSeller, setCheckingSeller] = useState(true);
   const [hasSellerProfile, setHasSellerProfile] = useState(false);
@@ -699,15 +732,19 @@ export default function SellTab() {
     const p = safeNumber(price);
     if (!Number.isFinite(p) || p <= 0) return "Enter a valid price";
     if (discountEnabled) {
-      const op = safeNumber(discountOriginalPrice);
       const dp = safeNumber(discountPrice);
-      if (!Number.isFinite(op) || op <= 0) return "Original price must be valid";
-      if (!Number.isFinite(dp) || dp <= 0) return "Discounted price must be valid";
-      if (dp >= op) return "Discounted price must be strictly lower than original price";
-      const discountPercent = ((op - dp) / op * 100).toFixed(1);
-      // Warn if discount is unusually high (>90%)
-      if (Number(discountPercent) > 90) {
-        return `Discount is very high (${discountPercent}%). Reduce discount or increase discounted price.`;
+      if (!Number.isFinite(dp) || dp <= 0) return "Discounted price (final selling price) must be valid";
+      
+      // Original price is optional - only validate if provided
+      const op = safeNumber(discountOriginalPrice);
+      if (discountOriginalPrice.trim()) {
+        if (!Number.isFinite(op) || op <= 0) return "Original price must be valid";
+        if (dp >= op) return "Discounted price must be strictly lower than original price";
+        const discountPercent = ((op - dp) / op * 100).toFixed(1);
+        // Warn if discount is unusually high (>90%)
+        if (Number(discountPercent) > 90) {
+          return `Discount is very high (${discountPercent}%). Reduce discount or increase original price.`;
+        }
       }
       // Validate discount end time if custom preset
       if (discountPreset === "custom" && discountEndsAt.trim()) {
@@ -784,92 +821,29 @@ export default function SellTab() {
         category === "product" && stockMode === "limited" && stockQty.trim()
           ? Math.max(0, Math.floor(safeNumber(stockQty)))
           : null;
-      const baseCurrency: "NGN" | "USD" = localCurrency === "NGN" ? "NGN" : "USD";
+      
+      // Determine base currency and listing price based on location
+      const isNigeria = userCountry && isNigeriaCountry(userCountry.code || userCountry.name);
+      const baseCurrency: "NGN" | "USD" = isNigeria ? "NGN" : "USD";
       const listingCurrency: Currency = "USDC";
+      
       const toUsd = (valueLocal: number) => valueLocal / fxUsdToLocal;
       const toNgn = (valueLocal: number) => {
-        if (localCurrency === "NGN") return valueLocal;
-        const usd = toUsd(valueLocal);
-        if (!fxUsdToNgn || fxUsdToNgn <= 0) return NaN;
-        return usd * fxUsdToNgn;
+        if (!isNigeria) return NaN; // Only calculate NGN for Nigeria users
+        return valueLocal;
       };
 
-      const enteredPriceUsd = toUsd(enteredPriceLocal);
-      const enteredPriceNgn = toNgn(enteredPriceLocal);
-      const safeEnteredPriceLocal = Number(enteredPriceLocal.toFixed(2));
-      const safeEnteredPriceNgn = Number.isFinite(enteredPriceNgn) ? Number(enteredPriceNgn.toFixed(2)) : null;
-      const safeEnteredPriceUsd = Number.isFinite(enteredPriceUsd) ? Number(enteredPriceUsd.toFixed(6)) : null;
-      let unitPrice = enteredPriceUsd;
-      if (discountEnabled) {
-        const opLocal = safeNumber(discountOriginalPrice);
-        const dpLocal = safeNumber(discountPrice);
-        const effectiveDiscountedNgn = toNgn(dpLocal);
-        const effectiveDiscountedUsd = toUsd(dpLocal);
-        const effectiveDiscounted = effectiveDiscountedUsd;
-        unitPrice = effectiveDiscounted;
-        const effectiveOriginalNgn = toNgn(opLocal);
-        const effectiveOriginalUsd = toUsd(opLocal);
-        const effectiveOriginal = effectiveOriginalUsd;
+      // If discount is enabled, use discounted price as the main price
+      const effectivePrice = discountEnabled ? safeNumber(discountPrice) : enteredPriceLocal;
+      const finalPrice = effectivePrice;
+      const finalPriceUsd = toUsd(finalPrice);
+      const finalPriceNgn = isNigeria ? finalPrice : null;
+      
+      const safeFinalPriceLocal = Number(finalPrice.toFixed(2));
+      const safeFinalPriceNgn = Number.isFinite(finalPriceNgn) ? Number(finalPriceNgn.toFixed(2)) : null;
+      const safeFinalPriceUsd = Number.isFinite(finalPriceUsd) ? Number(finalPriceUsd.toFixed(6)) : null;
+      let unitPrice = finalPriceUsd;
 
-        const safeDiscountedNgn = Number.isFinite(effectiveDiscountedNgn) ? Number(effectiveDiscountedNgn.toFixed(2)) : null;
-        const safeOriginalNgn = Number.isFinite(effectiveOriginalNgn) ? Number(effectiveOriginalNgn.toFixed(2)) : null;
-        const safeDiscountedLocal = Number.isFinite(dpLocal) ? Number(dpLocal.toFixed(2)) : null;
-        const safeOriginalLocal = Number.isFinite(opLocal) ? Number(opLocal.toFixed(2)) : null;
-        const paymentOptions = {
-          allow_crypto: true,
-          allow_usdc: cryptoCoinMode === "all" || cryptoCoinMode === "usdc",
-          allow_usdt: cryptoCoinMode === "all" || cryptoCoinMode === "usdt",
-          allow_pi: false,
-          chain_mode: cryptoNetworkMode,
-          coin_mode: cryptoCoinMode,
-          pi_mode: "off",
-          stock_mode: category === "product" ? stockMode : "unlimited",
-          out_of_stock: false,
-          base_currency: baseCurrency,
-          fx_rate_ngn_per_usd: fxUsdToNgn ?? null,
-          fx: {
-            source: "open.er-api.com",
-            fetched_at: fxFetchedAt,
-            local_currency: localCurrency,
-            country_code: userCountry?.code ?? null,
-            usd_to_local: fxUsdToLocal,
-            local_to_usd: 1 / fxUsdToLocal,
-            usd_to_ngn: fxUsdToNgn ?? null,
-          },
-          price_book: {
-            local_currency: localCurrency,
-            local: safeEnteredPriceLocal,
-            ngn: safeEnteredPriceNgn,
-            usd: safeEnteredPriceUsd,
-          },
-          discount: {
-            enabled: true,
-            // canonical values for checkout math (same unit as listing currency)
-            originalPrice: Number(effectiveOriginal.toFixed(6)),
-            discountedPrice: Number(effectiveDiscounted.toFixed(6)),
-            // display + analytics
-            baseCurrency,
-            localCurrency,
-            originalPriceLocal: safeOriginalLocal,
-            discountedPriceLocal: safeDiscountedLocal,
-            originalPriceNgn: safeOriginalNgn,
-            discountedPriceNgn: safeDiscountedNgn,
-            originalPriceUsd: Number(effectiveOriginalUsd.toFixed(6)),
-            discountedPriceUsd: Number(effectiveDiscountedUsd.toFixed(6)),
-            startsAt: new Date().toISOString(),
-            endsAt: discountEndsAt.trim() ? new Date(discountEndsAt.trim()).toISOString() : null,
-          },
-          expires_at: autoDeleteAt.trim() ? new Date(autoDeleteAt.trim()).toISOString() : null,
-        };
-        await submitListing({
-          user,
-          listingCurrency,
-          qty,
-          unitPrice,
-          paymentOptions,
-        });
-        return;
-      }
       const paymentOptions = {
         allow_crypto: true,
         allow_usdc: cryptoCoinMode === "all" || cryptoCoinMode === "usdc",
@@ -881,7 +855,7 @@ export default function SellTab() {
         stock_mode: category === "product" ? stockMode : "unlimited",
         out_of_stock: false,
         base_currency: baseCurrency,
-        fx_rate_ngn_per_usd: fxUsdToNgn ?? null,
+        fx_rate_ngn_per_usd: isNigeria && fxUsdToNgn ? fxUsdToNgn : null,
         fx: {
           source: "open.er-api.com",
           fetched_at: fxFetchedAt,
@@ -889,15 +863,29 @@ export default function SellTab() {
           country_code: userCountry?.code ?? null,
           usd_to_local: fxUsdToLocal,
           local_to_usd: 1 / fxUsdToLocal,
-          usd_to_ngn: fxUsdToNgn ?? null,
+          usd_to_ngn: isNigeria && fxUsdToNgn ? fxUsdToNgn : null,
         },
         price_book: {
           local_currency: localCurrency,
-          local: safeEnteredPriceLocal,
-          ngn: safeEnteredPriceNgn,
-          usd: safeEnteredPriceUsd,
+          local: safeFinalPriceLocal,
+          ngn: safeFinalPriceNgn,
+          usd: safeFinalPriceUsd,
         },
-        discount: { enabled: false },
+        discount: {
+          enabled: discountEnabled,
+          originalPrice: discountEnabled ? Number((toUsd(safeNumber(discountOriginalPrice))).toFixed(6)) : unitPrice,
+          discountedPrice: unitPrice,
+          baseCurrency,
+          localCurrency,
+          originalPriceLocal: discountEnabled ? safeNumber(discountOriginalPrice) : safeFinalPriceLocal,
+          discountedPriceLocal: safeFinalPriceLocal,
+          originalPriceNgn: discountEnabled && isNigeria ? safeNumber(discountOriginalPrice) : safeFinalPriceNgn,
+          discountedPriceNgn: safeFinalPriceNgn,
+          originalPriceUsd: discountEnabled ? Number((toUsd(safeNumber(discountOriginalPrice))).toFixed(6)) : safeFinalPriceUsd,
+          discountedPriceUsd: safeFinalPriceUsd,
+          startsAt: new Date().toISOString(),
+          endsAt: discountEnabled && discountEndsAt.trim() ? new Date(discountEndsAt.trim()).toISOString() : null,
+        },
         expires_at: autoDeleteAt.trim() ? new Date(autoDeleteAt.trim()).toISOString() : null,
       };
       await submitListing({
@@ -1170,17 +1158,18 @@ export default function SellTab() {
           ) : null}
         </CardBox>
 
-        <CardBox>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Category</Text>
-          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Pick a sub-category so buyers can find you faster.</Text>
+        <CollapsibleCardBox title="📂 Category (optional)" defaultOpen={true}>
 
           <Label>Search sub-categories</Label>
           <Input value={subSearch} onChangeText={setSubSearch} placeholder="Search… (e.g. phones, design)" />
 
           <Row style={{ flexWrap: "wrap" }}>
-            {visibleSubs.slice(0, 18).map((c: any) => (
+            {visibleSubs.slice(0, 8).map((c: any) => (
               <Chip key={`${c.main}:${c.slug}`} active={!useCustomSub && subCategory === c.slug} label={c.title} onPress={() => { setUseCustomSub(false); setSubCategory(c.slug); }} />
             ))}
+            {visibleSubs.length > 8 ? (
+              <Chip active={false} label={`+${visibleSubs.length - 8} more`} onPress={() => setSubSearch("*")} />
+            ) : null}
             <Chip
               active={useCustomSub}
               label="Other…"
@@ -1199,7 +1188,7 @@ export default function SellTab() {
               <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>We’ll save it as a searchable sub-category.</Text>
             </>
           ) : null}
-        </CardBox>
+        </CollapsibleCardBox>
 
         <CardBox>
           <Text style={{ color: "#fff", fontWeight: "900" }}>Availability</Text>
@@ -1330,28 +1319,10 @@ export default function SellTab() {
 
           <Label>Description</Label>
           <Input value={description} onChangeText={setDescription} placeholder="What the buyer gets, requirements, timeline..." multiline />
+        </CardBox>
 
-          <Label>Payment route</Label>
-          <Row>
-            <Pill active label="Crypto checkout" onPress={() => {}} disabled />
-          </Row>
-          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
-            New listings settle in stablecoins. Buyers can pay with USDC or USDT based on your selection below.
-          </Text>
-
-          <Label>Crypto coin</Label>
-          <Row>
-            <Pill active={cryptoCoinMode === "all"} label="All (USDC/USDT)" onPress={() => setCryptoCoinMode("all")} />
-            <Pill active={cryptoCoinMode === "usdc"} label="USDC only" onPress={() => setCryptoCoinMode("usdc")} />
-            <Pill active={cryptoCoinMode === "usdt"} label="USDT only" onPress={() => setCryptoCoinMode("usdt")} />
-          </Row>
-
-          <Label>Network</Label>
-          <Row>
-            <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
-            <Pill active={cryptoNetworkMode === "base"} label="Base only" onPress={() => setCryptoNetworkMode("base")} />
-            <Pill active={cryptoNetworkMode === "arbitrum"} label="Arbitrum only" onPress={() => setCryptoNetworkMode("arbitrum")} />
-          </Row>
+        <CardBox>
+          <Text style={{ color: "#fff", fontWeight: "900" }}>💰 Pricing & Payment</Text>
 
           <Label>Price *</Label>
           <Row>
@@ -1369,6 +1340,26 @@ export default function SellTab() {
             </Text>
           ) : null}
 
+          <Label>Crypto coin</Label>
+          <Row>
+            <Pill active={cryptoCoinMode === "all"} label="All (USDC/USDT)" onPress={() => setCryptoCoinMode("all")} />
+            <Pill active={cryptoCoinMode === "usdc"} label="USDC only" onPress={() => setCryptoCoinMode("usdc")} />
+            <Pill active={cryptoCoinMode === "usdt"} label="USDT only" onPress={() => setCryptoCoinMode("usdt")} />
+          </Row>
+
+          <Label>Network</Label>
+          <Row>
+            <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
+            <Pill active={cryptoNetworkMode === "base"} label="Base only" onPress={() => setCryptoNetworkMode("base")} />
+            <Pill active={cryptoNetworkMode === "arbitrum"} label="Arbitrum only" onPress={() => setCryptoNetworkMode("arbitrum")} />
+          </Row>
+
+          <Text style={{ marginTop: 12, color: MUTED, fontSize: 12 }}>
+            ✓ Listings settle in stablecoins (USDC/USDT). Buyers choose their preferred network.
+          </Text>
+        </CardBox>
+
+        <CollapsibleCardBox title="🎁 Discount (optional)" defaultOpen={false}>
           <Label>Enable discount</Label>
           <Row>
             <Pill active={discountEnabled} label="On" onPress={() => setDiscountEnabled(true)} />
@@ -1376,19 +1367,27 @@ export default function SellTab() {
           </Row>
           {discountEnabled ? (
             <>
-              <Label>Original price</Label>
-              <Input value={discountOriginalPrice} onChangeText={setDiscountOriginalPrice} placeholder="e.g. 50000" keyboardType="numeric" />
-              <Label>Discounted price</Label>
+              <Label>Discounted price (final selling price) *</Label>
               <Input value={discountPrice} onChangeText={setDiscountPrice} placeholder="e.g. 35000" keyboardType="numeric" />
-              {Number.isFinite(liveOriginalLocal) && liveOriginalLocal > 0 ? (
-                <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
-                  Before: {formatCurrency(localCurrency, liveOriginalLocal)} | USD: {formatCurrency("USD", liveOriginalUsd)}
+              {Number.isFinite(liveDiscountedLocal) && liveDiscountedLocal > 0 ? (
+                <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
+                  Display: {formatCurrency(localCurrency, liveDiscountedLocal)} | USD: {formatCurrency("USD", liveDiscountedUsd)}
                 </Text>
               ) : null}
-              {Number.isFinite(liveDiscountedLocal) && liveDiscountedLocal > 0 ? (
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                  After: {formatCurrency(localCurrency, liveDiscountedLocal)} | USD: {formatCurrency("USD", liveDiscountedUsd)}
-                </Text>
+              
+              <Label>Original price (optional - to show discount %)</Label>
+              <Input value={discountOriginalPrice} onChangeText={setDiscountOriginalPrice} placeholder="e.g. 50000 (leave blank if no discount to show)" keyboardType="numeric" />
+              {discountOriginalPrice.trim() && Number.isFinite(liveOriginalLocal) && liveOriginalLocal > 0 ? (
+                <>
+                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
+                    Original: {formatCurrency(localCurrency, liveOriginalLocal)} | USD: {formatCurrency("USD", liveOriginalUsd)}
+                  </Text>
+                  {Number.isFinite(liveDiscountedLocal) && liveDiscountedLocal > 0 ? (
+                    <Text style={{ marginTop: 4, color: "#10B981", fontSize: 12, fontWeight: "600" }}>
+                      💚 Saves {formatCurrency(localCurrency, liveOriginalLocal - liveDiscountedLocal)} ({(((liveOriginalLocal - liveDiscountedLocal) / liveOriginalLocal) * 100).toFixed(0)}% off)
+                    </Text>
+                  ) : null}
+                </>
               ) : null}
               <Label>Discount duration</Label>
               <View style={{ marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
@@ -1408,7 +1407,9 @@ export default function SellTab() {
               )}
             </>
           ) : null}
+        </CollapsibleCardBox>
 
+        <CollapsibleCardBox title="♻️ Listing auto-delete (optional)" defaultOpen={false}>
           <Label>Listing auto-delete</Label>
           <View style={{ marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Chip label="No auto-delete" active={autoDeletePreset === "none"} onPress={() => applyAutoDeletePreset("none")} />
@@ -1424,37 +1425,38 @@ export default function SellTab() {
           ) : (
             <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Listing stays active until you disable it.</Text>
           )}
+        </CollapsibleCardBox>
 
-          {category === "product" ? (
-            <>
-              <Label>Stock mode</Label>
-              <Row>
-                <Pill
-                  active={stockMode === "limited"}
-                  label="Limited"
-                  icon="layers-outline"
-                  onPress={() => setStockMode("limited")}
-                />
-                <Pill
-                  active={stockMode === "unlimited"}
-                  label="Unlimited"
-                  icon="infinite-outline"
-                  onPress={() => setStockMode("unlimited")}
-                />
-              </Row>
-              {stockMode === "limited" ? (
-                <>
-                  <Label>Stock qty</Label>
-                  <Input value={stockQty} onChangeText={setStockQty} placeholder="e.g. 5" keyboardType="numeric" />
-                </>
-              ) : (
-                <Text style={{ marginTop: 10, color: MUTED, fontSize: 12 }}>
-                  Unlimited stock keeps this product visible until you disable or delete it.
-                </Text>
-              )}
-            </>
-          ) : null}
-        </CardBox>
+        {category === "product" ? (
+          <CardBox>
+            <Text style={{ color: "#fff", fontWeight: "900" }}>Stock (for products)</Text>
+            <Label>Stock mode</Label>
+            <Row>
+              <Pill
+                active={stockMode === "limited"}
+                label="Limited"
+                icon="layers-outline"
+                onPress={() => setStockMode("limited")}
+              />
+              <Pill
+                active={stockMode === "unlimited"}
+                label="Unlimited"
+                icon="infinite-outline"
+                onPress={() => setStockMode("unlimited")}
+              />
+            </Row>
+            {stockMode === "limited" ? (
+              <>
+                <Label>Stock qty</Label>
+                <Input value={stockQty} onChangeText={setStockQty} placeholder="e.g. 5" keyboardType="numeric" />
+              </>
+            ) : (
+              <Text style={{ marginTop: 10, color: MUTED, fontSize: 12 }}>
+                Unlimited stock keeps this product visible until you disable or delete it.
+              </Text>
+            )}
+          </CardBox>
+        ) : null}
 
         <CardBox>
           <Text style={{ color: "#fff", fontWeight: "900" }}>Media</Text>
