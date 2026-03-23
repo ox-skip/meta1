@@ -214,7 +214,7 @@ export default function CreateStockIdentityScreen() {
 
   return (
     <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Digital Stock" subtitle="One EVM stock per verified store. Fixed supply: 100,000,000." />
+      <AppHeader title="Create Digital Stock" subtitle="Launch your store's stock token. Fixed supply: 100,000,000 shares." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
         {loading ? (
           <View style={{ marginTop: 30, alignItems: "center" }}>
@@ -310,21 +310,53 @@ export default function CreateStockIdentityScreen() {
           </View>
         </View>
 
-        <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Creation Economics</Text>
-          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
-            Creation fee is read from the on-chain factory when you submit.
-          </Text>
-          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-            New deployments default to $0 unless the contract admin updates the fee onchain.
-          </Text>
-          <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-            Launch price is fixed onchain for a 100,000,000 supply stock to start below $5,000 market cap.
-          </Text>
-          <View style={{ marginTop: 8, flexDirection: "row", gap: 6, alignItems: "center" }}>
-            <Ionicons name="shield-checkmark-outline" size={15} color={MINT} />
-            <Text style={{ color: MUTED, fontSize: 11 }}>
-              Reserved names/symbols are blocked unless your store has allow_reserved=true.
+        <View style={{ marginTop: 16, borderRadius: 16, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, overflow: "hidden" }}>
+          {/* Header */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "rgba(45,212,191,0.2)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="wallet-outline" size={18} color={MINT} />
+            </View>
+            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 15, flex: 1 }}>Token Economics</Text>
+          </View>
+
+          {/* Info Grid */}
+          <View style={{ gap: 12 }}>
+            {/* Creation Fee */}
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(99,102,241,0.1)", borderWidth: 1, borderColor: "rgba(99,102,241,0.25)" }}>
+              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Creation Fee</Text>
+              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>Determined by Factory</Text>
+              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Current factory fee is typically $0 for new deployments</Text>
+            </View>
+
+            {/* Supply Info */}
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(16,185,129,0.1)", borderWidth: 1, borderColor: "rgba(16,185,129,0.25)" }}>
+              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Initial Supply</Text>
+              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>100,000,000 Shares</Text>
+              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Fixed at launch to ensure fair initial market cap</Text>
+            </View>
+
+            {/* Market Cap */}
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(168,85,247,0.1)", borderWidth: 1, borderColor: "rgba(168,85,247,0.25)" }}>
+              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Launch Market Cap</Text>
+              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>~$5,000 USD</Text>
+              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Launches with conservative valuation for organic growth</Text>
+            </View>
+
+            {/* Reserved Symbols */}
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(59,130,246,0.1)", borderWidth: 1, borderColor: "rgba(59,130,246,0.25)" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="shield-checkmark-outline" size={14} color={MINT} />
+                <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Reserved Protection</Text>
+              </View>
+              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>Reserved Names Protected</Text>
+              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Only unlocked for verified stores with special permission</Text>
+            </View>
+          </View>
+
+          {/* Footer Note */}
+          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)" }}>
+            <Text style={{ color: MUTED, fontSize: 11, lineHeight: 16 }}>
+              💡 <Text style={{ fontWeight: "600" }}>Pro Tip:</Text> Once deployed, your stock token will be tradeable immediately. Price discovery happens naturally through market demand.
             </Text>
           </View>
         </View>

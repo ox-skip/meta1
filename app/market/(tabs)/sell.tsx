@@ -264,7 +264,8 @@ export default function SellTab() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [cryptoCoinMode, setCryptoCoinMode] = useState<"all" | "usdc" | "usdt">("all");
-  const [cryptoNetworkMode, setCryptoNetworkMode] = useState<"all" | "base" | "arbitrum">("all");
+  const [cryptoNetworkMode, setCryptoNetworkMode] = useState<string>("all");
+  const [availableNetworks, setAvailableNetworks] = useState<Array<{ chain: string; chain_id: number }>>([]);
   const [price, setPrice] = useState("");
   const [localCurrency, setLocalCurrency] = useState("NGN");
   const [fxUsdToLocal, setFxUsdToLocal] = useState<number | null>(null);
@@ -302,6 +303,28 @@ export default function SellTab() {
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
+
+  // Fetch active networks from Supabase
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("market_chain_config")
+          .select("chain, chain_id")
+          .eq("active", true)
+          .order("chain");
+        
+        if (error) throw error;
+        if (data) {
+          setAvailableNetworks(data);
+        }
+      } catch (e) {
+        console.log("[SellTab] Failed to fetch networks:", e);
+        // Fallback to base and arbitrum if fetch fails
+        setAvailableNetworks([{ chain: "base", chain_id: 8453 }, { chain: "arbitrum", chain_id: 42161 }]);
+      }
+    })();
+  }, []);
 
   // Load draft from localStorage/AsyncStorage on mount
   useEffect(() => {
@@ -1368,8 +1391,14 @@ export default function SellTab() {
           <Label>Network</Label>
           <Row>
             <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
-            <Pill active={cryptoNetworkMode === "base"} label="Base only" onPress={() => setCryptoNetworkMode("base")} />
-            <Pill active={cryptoNetworkMode === "arbitrum"} label="Arbitrum only" onPress={() => setCryptoNetworkMode("arbitrum")} />
+            {availableNetworks.map((net) => (
+              <Pill
+                key={net.chain_id}
+                active={cryptoNetworkMode === net.chain}
+                label={`${net.chain.charAt(0).toUpperCase() + net.chain.slice(1)} only`}
+                onPress={() => setCryptoNetworkMode(net.chain)}
+              />
+            ))}
           </Row>
 
           <Text style={{ marginTop: 12, color: MUTED, fontSize: 12 }}>
