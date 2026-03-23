@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,8 +17,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { supabase } from "@/services/supabase";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
+import { supabase } from "@/services/supabase";
 
 type FeedProfile = {
   user_id: string;
@@ -188,7 +188,7 @@ function mediaIcon(kind: FeedMedia["kind"]): IconName {
 
 function SellerBadge({ verified }: { verified?: boolean | null }) {
   if (!verified) return null;
-  return <Ionicons name="checkmark-circle" size={17} color={ACCENT} />;
+  return <Ionicons name="checkmark-circle" size={17} color="#3B82F6" />;
 }
 
 function MetricChip({ icon, label }: { icon: IconName; label: string }) {
