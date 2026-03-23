@@ -1,5 +1,6 @@
 // app/market/(tabs)/sell.tsx
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -10,7 +11,7 @@ import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
-import { resolveUserCountry, type UserCountry } from "@/utils/country";
+import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 import { normalizeCountryName } from "@/utils/countryNames";
 import { getCountryFx } from "@/utils/fx";
 import { formatAvailabilitySummary, getCurrentLocationWithGeocode, type LocationGeo } from "@/utils/location";
@@ -264,6 +265,132 @@ export default function SellTab() {
   const [stage, setStage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
+  const draftSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // LocalStorage key for draft
+  const DRAFT_KEY = "sell_listing_draft_v1";
+
+  // Load draft from localStorage/AsyncStorage on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        let saved: string | null = null;
+        
+        // Try AsyncStorage first (React Native)
+        if (typeof AsyncStorage !== "undefined") {
+          saved = await AsyncStorage.getItem(DRAFT_KEY);
+        }
+        // Fallback to localStorage (web)
+        else if (typeof localStorage !== "undefined") {
+          saved = localStorage.getItem(DRAFT_KEY);
+        }
+        
+        if (saved) {
+          const draft = JSON.parse(saved);
+          // Restore all form state
+          if (draft.category) setCategory(draft.category);
+          if (draft.deliveryType) setDeliveryType(draft.deliveryType);
+          if (draft.subCategory) setSubCategory(draft.subCategory);
+          if (draft.useCustomSub) setUseCustomSub(draft.useCustomSub);
+          if (draft.customSub) setCustomSub(draft.customSub);
+          if (draft.websiteUrl) setWebsiteUrl(draft.websiteUrl);
+          if (draft.title) setTitle(draft.title);
+          if (draft.description) setDescription(draft.description);
+          if (draft.cryptoCoinMode) setCryptoCoinMode(draft.cryptoCoinMode);
+          if (draft.cryptoNetworkMode) setCryptoNetworkMode(draft.cryptoNetworkMode);
+          if (draft.price) setPrice(draft.price);
+          if (draft.localCurrency) setLocalCurrency(draft.localCurrency);
+          if (draft.stockMode) setStockMode(draft.stockMode);
+          if (draft.stockQty) setStockQty(draft.stockQty);
+          if (draft.discountEnabled !== undefined) setDiscountEnabled(draft.discountEnabled);
+          if (draft.discountOriginalPrice) setDiscountOriginalPrice(draft.discountOriginalPrice);
+          if (draft.discountPrice) setDiscountPrice(draft.discountPrice);
+          if (draft.discountEndsAt) setDiscountEndsAt(draft.discountEndsAt);
+          if (draft.discountPreset) setDiscountPreset(draft.discountPreset);
+          if (draft.autoDeleteAt) setAutoDeleteAt(draft.autoDeleteAt);
+          if (draft.autoDeletePreset) setAutoDeletePreset(draft.autoDeletePreset);
+          if (draft.availabilityScope) setAvailabilityScope(draft.availabilityScope);
+          if (draft.availabilityContinents) setAvailabilityContinents(draft.availabilityContinents);
+          if (draft.availabilityCountryName) setAvailabilityCountryName(draft.availabilityCountryName);
+          if (draft.availabilityCountryCode) setAvailabilityCountryCode(draft.availabilityCountryCode);
+          if (draft.availabilityState) setAvailabilityState(draft.availabilityState);
+          if (draft.availabilityCity) setAvailabilityCity(draft.availabilityCity);
+          if (draft.availabilityRadiusKm) setAvailabilityRadiusKm(draft.availabilityRadiusKm);
+          if (draft.availabilityNote) setAvailabilityNote(draft.availabilityNote);
+          console.log("[SellTab] Restored draft from storage");
+        }
+      } catch (e) {
+        console.log("[SellTab] Failed to restore draft:", e);
+      }
+    })();
+  }, []);
+
+  // Auto-save draft to AsyncStorage/localStorage (debounced)
+  useEffect(() => {
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    
+    draftSaveTimerRef.current = setTimeout(() => {
+      (async () => {
+        try {
+          const draft = {
+            category,
+            deliveryType,
+            subCategory,
+            useCustomSub,
+            customSub,
+            websiteUrl,
+            title,
+            description,
+            cryptoCoinMode,
+            cryptoNetworkMode,
+            price,
+            localCurrency,
+            stockMode,
+            stockQty,
+            discountEnabled,
+            discountOriginalPrice,
+            discountPrice,
+            discountEndsAt,
+            discountPreset,
+            autoDeleteAt,
+            autoDeletePreset,
+            availabilityScope,
+            availabilityContinents,
+            availabilityCountryName,
+            availabilityCountryCode,
+            availabilityState,
+            availabilityCity,
+            availabilityRadiusKm,
+            availabilityNote,
+            savedAt: new Date().toISOString(),
+          };
+          const draftJson = JSON.stringify(draft);
+          
+          // Try AsyncStorage first (React Native)
+          if (typeof AsyncStorage !== "undefined") {
+            await AsyncStorage.setItem(DRAFT_KEY, draftJson);
+          }
+          // Fallback to localStorage (web)
+          else if (typeof localStorage !== "undefined") {
+            localStorage.setItem(DRAFT_KEY, draftJson);
+          }
+        } catch (e) {
+          console.log("[SellTab] Failed to save draft:", e);
+        }
+      })();
+    }, 1000); // Save 1 second after last change
+
+    return () => {
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [
+    category, deliveryType, subCategory, useCustomSub, customSub, websiteUrl, title, description,
+    cryptoCoinMode, cryptoNetworkMode, price, localCurrency, stockMode, stockQty,
+    discountEnabled, discountOriginalPrice, discountPrice, discountEndsAt, discountPreset,
+    autoDeleteAt, autoDeletePreset, availabilityScope, availabilityContinents,
+    availabilityCountryName, availabilityCountryCode, availabilityState, availabilityCity,
+    availabilityRadiusKm, availabilityNote,
+  ]);
 
   // merge your categories + extras
   const categories = useMemo(() => {
@@ -390,9 +517,8 @@ export default function SellTab() {
           if (availabilityScope === "global") {
             setAvailabilityScope("country");
           }
-          if (!isNigeriaCountry(c.code || c.name)) {
-            setPayMode("crypto");
-          } else {
+          // Set currency to NGN for Nigeria users
+          if (isNigeriaCountry(c.code || c.name)) {
             setLocalCurrency("NGN");
           }
         }
@@ -512,6 +638,15 @@ export default function SellTab() {
     setAutoDeleteAt(preset === "custom" ? autoDeleteAt : isoFromPreset(preset));
   }
 
+  // Calculate discount percentage
+  function getDiscountPercent(): number {
+    if (!discountEnabled) return 0;
+    const op = safeNumber(discountOriginalPrice);
+    const dp = safeNumber(discountPrice);
+    if (!Number.isFinite(op) || op <= 0 || !Number.isFinite(dp) || dp <= 0) return 0;
+    return (op - dp) / op * 100;
+  }
+
   function buildAvailability() {
     const radius = availabilityScope === "radius" ? safeNumber(availabilityRadiusKm) : NaN;
     const center = availabilityCenter ?? { lat: 0, lng: 0, label: "" };
@@ -566,9 +701,24 @@ export default function SellTab() {
     if (discountEnabled) {
       const op = safeNumber(discountOriginalPrice);
       const dp = safeNumber(discountPrice);
-      if (!Number.isFinite(op) || op <= 0) return "Discount original price must be valid";
+      if (!Number.isFinite(op) || op <= 0) return "Original price must be valid";
       if (!Number.isFinite(dp) || dp <= 0) return "Discounted price must be valid";
-      if (dp >= op) return "Discounted price must be lower than original price";
+      if (dp >= op) return "Discounted price must be strictly lower than original price";
+      const discountPercent = ((op - dp) / op * 100).toFixed(1);
+      // Warn if discount is unusually high (>90%)
+      if (Number(discountPercent) > 90) {
+        return `Discount is very high (${discountPercent}%). Reduce discount or increase discounted price.`;
+      }
+      // Validate discount end time if custom preset
+      if (discountPreset === "custom" && discountEndsAt.trim()) {
+        const endDate = new Date(discountEndsAt.trim());
+        if (isNaN(endDate.getTime())) {
+          return "Invalid discount end date format. Use ISO format (e.g., 2026-12-31T23:59:59Z)";
+        }
+        if (endDate <= new Date()) {
+          return "Discount end date must be in the future";
+        }
+      }
     }
 
     if (category === "product") {
@@ -902,6 +1052,8 @@ export default function SellTab() {
 
     const successMsg = images.length > 0 ? "Your listing is live with all images!" : "Your listing is live!";
     Alert.alert("Posted", successMsg);
+    
+    // Clear form state
     setTitle("");
     setDescription("");
     setWebsiteUrl("");
@@ -921,6 +1073,18 @@ export default function SellTab() {
     setAvailabilityCenter(null);
     setAvailabilityNote("");
     setStage(null);
+    
+    // Clear localStorage draft
+    try {
+      if (typeof AsyncStorage !== "undefined") {
+        await AsyncStorage.removeItem(DRAFT_KEY);
+      } else if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(DRAFT_KEY);
+      }
+      console.log("[SellTab] Draft cleared after successful publish");
+    } catch (e) {
+      console.log("[SellTab] Failed to clear draft:", e);
+    }
 
     router.push("/market/(tabs)" as any);
   }
