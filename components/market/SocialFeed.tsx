@@ -1619,32 +1619,10 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  paddingHorizontal: 16,
                 }}
               >
-                <View style={{ flexDirection: "row", flex: 1, height: "100%" }}>
-                  <Pressable
-                    style={{
-                      flex: 1,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderBottomWidth: 3,
-                      borderBottomColor: "transparent",
-                    }}
-                  >
-                    <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 15 }}>Highlights</Text>
-                  </Pressable>
-                  <Pressable
-                    style={{
-                      flex: 1,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderBottomWidth: 3,
-                      borderBottomColor: ACCENT,
-                    }}
-                  >
-                    <Text style={{ color: TEXT, fontWeight: "800", fontSize: 15 }}>Following sellers</Text>
-                  </Pressable>
-                </View>
+                <Text style={{ color: TEXT, fontWeight: "800", fontSize: 15, marginRight: "auto" }}>Following sellers</Text>
 
                 <Pressable onPress={fetchPosts} style={{ width: 54, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="refresh" size={20} color={TEXT} />
