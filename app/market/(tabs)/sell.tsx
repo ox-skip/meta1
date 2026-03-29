@@ -25,7 +25,7 @@ const CARD = "rgba(255,255,255,0.05)";
 const BORDER = "rgba(255,255,255,0.09)";
 const MUTED = "rgba(255,255,255,0.62)";
 
-type Img = { uri: string; contentType: string };
+type Img = { uri: string; contentType: string; fileName?: string | null };
 
 type DeliveryType = "physical" | "digital" | "in_person";
 type Currency = "USDC";
@@ -51,6 +51,17 @@ function ensureExtFromMime(mime: string) {
   if (m.includes("webp")) return "webp";
   if (m.includes("heic")) return "heic";
   return "jpg";
+}
+
+function inferImageContentType(input?: string | null) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "image/jpeg";
+  if (raw.includes("image/")) return raw;
+  if (raw.endsWith(".png")) return "image/png";
+  if (raw.endsWith(".webp")) return "image/webp";
+  if (raw.endsWith(".heic") || raw.endsWith(".heif")) return "image/heic";
+  if (raw.endsWith(".gif")) return "image/gif";
+  return "image/jpeg";
 }
 
 function isValidUrl(u: string) {
@@ -97,6 +108,25 @@ function isoFromPreset(preset: DurationPreset) {
 
 function uniqueLocationParts(parts: Array<string | null | undefined>) {
   return Array.from(new Set(parts.map((part) => String(part || "").trim()).filter(Boolean)));
+}
+
+function resolveAvailabilityCountry(
+  name?: string | null,
+  code?: string | null,
+  fallbackCountry?: UserCountry | null,
+) {
+  const rawCode = String(code || "").trim();
+  const resolvedCode = (/^[A-Za-z]{2,3}$/.test(rawCode) ? rawCode : String(fallbackCountry?.code || ""))
+    .trim()
+    .toUpperCase();
+  const resolvedName = normalizeCountryName(
+    String(name || fallbackCountry?.name || "").trim(),
+    resolvedCode,
+  );
+  return {
+    code: resolvedCode,
+    name: String(resolvedName || "").trim(),
+  };
 }
 
 function trimAvailabilityGeo(geo: AvailabilityGeoHints | null) {
@@ -299,7 +329,7 @@ export default function SellTab() {
   const [stage, setStage] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
-  const draftSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -566,9 +596,6 @@ export default function SellTab() {
             setAvailabilityCountryName(normalizeCountryName(c.name, c.code));
             setAvailabilityCountryCode(String(c.code || ""));
           }
-          if (availabilityScope === "global") {
-            setAvailabilityScope("country");
-          }
         }
 
         try {
@@ -626,12 +653,27 @@ export default function SellTab() {
       if (result.canceled) return;
 
       const picked = (result.assets ?? [])
-        .filter((a: ImagePicker.ImagePickerAsset) => !!a.uri)
-        .map((a: ImagePicker.ImagePickerAsset) => ({ uri: a.uri, contentType: a.mimeType ?? "image/jpeg" }));
+        .filter((a: any) => !!a?.uri)
+        .map((a: any) => ({
+          uri: a.uri,
+          contentType: inferImageContentType(a.mimeType || (a as any).fileName || a.uri),
+          fileName: String((a as any).fileName || "").trim() || null,
+        }));
 
       if (!picked.length) return;
 
-      setImages((prev) => [...prev, ...picked].slice(0, 8));
+      setImages((prev) => {
+        const merged = [...prev, ...picked];
+        const seen = new Set<string>();
+        return merged
+          .filter((img) => {
+            const key = `${img.uri}|${img.fileName || ""}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 8);
+      });
     } catch (e: any) {
       Alert.alert("Try again", friendlyMarketError(e, "We couldn't add your selected images."));
     }
@@ -722,6 +764,11 @@ export default function SellTab() {
   }
 
   function buildAvailability() {
+    const resolvedCountry = resolveAvailabilityCountry(
+      availabilityCountryName,
+      availabilityCountryCode,
+      userCountry,
+    );
     const radius = availabilityScope === "radius" ? safeNumber(availabilityRadiusKm) : NaN;
     const center = availabilityCenter ?? { lat: 0, lng: 0, label: "" };
     const geo = trimAvailabilityGeo(availabilityGeoHints);
@@ -748,7 +795,7 @@ export default function SellTab() {
     const out: any = {
       scope: availabilityScope,
       continents: availabilityContinents,
-      country: { name: availabilityCountryName.trim(), code: availabilityCountryCode.trim() },
+      country: { name: resolvedCountry.name, code: resolvedCountry.code },
       state: availabilityState.trim(),
       city: availabilityCity.trim(),
       radiusKm: Number.isFinite(radius) ? radius : 0,
@@ -762,6 +809,11 @@ export default function SellTab() {
   }
 
   function validate(): string | null {
+    const resolvedCountry = resolveAvailabilityCountry(
+      availabilityCountryName,
+      availabilityCountryCode,
+      userCountry,
+    );
     const t = title.trim();
     if (!t) return "Title is required";
     const bad = containsBannedContent(`${title} ${description}`);
@@ -820,11 +872,11 @@ export default function SellTab() {
     }
 
     if (availabilityScope === "continent" && availabilityContinents.length === 0) return "Pick at least one continent";
-    if (availabilityScope === "country" && !availabilityCountryName.trim() && !availabilityCountryCode.trim()) return "Country is required";
-    if (availabilityScope === "state" && (!availabilityState.trim() || (!availabilityCountryName.trim() && !availabilityCountryCode.trim()))) {
+    if (availabilityScope === "country" && !resolvedCountry.name && !resolvedCountry.code) return "Country is required";
+    if (availabilityScope === "state" && (!availabilityState.trim() || (!resolvedCountry.name && !resolvedCountry.code))) {
       return "Area and country are required";
     }
-    if (availabilityScope === "city" && (!availabilityCity.trim() || (!availabilityCountryName.trim() && !availabilityCountryCode.trim()))) {
+    if (availabilityScope === "city" && (!availabilityCity.trim() || (!resolvedCountry.name && !resolvedCountry.code))) {
       return "Local area and country are required";
     }
     if (availabilityScope === "radius") {
@@ -879,10 +931,23 @@ export default function SellTab() {
       const finalPrice = effectivePrice;
       const finalPriceUsd = toUsd(finalPrice);
       const finalPriceNgn = isNigeria ? finalPrice : null;
+      const originalLocalPrice =
+        discountEnabled && discountOriginalPrice.trim() && Number.isFinite(safeNumber(discountOriginalPrice))
+          ? safeNumber(discountOriginalPrice)
+          : finalPrice;
+      const originalPriceUsd = toUsd(originalLocalPrice);
+      const originalPriceNgn = isNigeria ? originalLocalPrice : null;
       
       const safeFinalPriceLocal = Number(finalPrice.toFixed(2));
-      const safeFinalPriceNgn = Number.isFinite(finalPriceNgn) ? Number(finalPriceNgn.toFixed(2)) : null;
+      const safeFinalPriceNgn = Number.isFinite(Number(finalPriceNgn))
+        ? Number(Number(finalPriceNgn).toFixed(2))
+        : null;
       const safeFinalPriceUsd = Number.isFinite(finalPriceUsd) ? Number(finalPriceUsd.toFixed(6)) : null;
+      const safeOriginalPriceLocal = Number.isFinite(originalLocalPrice) ? Number(originalLocalPrice.toFixed(2)) : safeFinalPriceLocal;
+      const safeOriginalPriceUsd = Number.isFinite(originalPriceUsd) ? Number(originalPriceUsd.toFixed(6)) : safeFinalPriceUsd;
+      const safeOriginalPriceNgn = Number.isFinite(Number(originalPriceNgn))
+        ? Number(Number(originalPriceNgn).toFixed(2))
+        : safeFinalPriceNgn;
       let unitPrice = finalPriceUsd;
 
       const paymentOptions = {
@@ -914,15 +979,15 @@ export default function SellTab() {
         },
         discount: {
           enabled: discountEnabled,
-          originalPrice: discountEnabled ? Number((toUsd(safeNumber(discountOriginalPrice))).toFixed(6)) : unitPrice,
+          originalPrice: safeOriginalPriceUsd,
           discountedPrice: unitPrice,
           baseCurrency,
           localCurrency,
-          originalPriceLocal: discountEnabled ? safeNumber(discountOriginalPrice) : safeFinalPriceLocal,
+          originalPriceLocal: safeOriginalPriceLocal,
           discountedPriceLocal: safeFinalPriceLocal,
-          originalPriceNgn: discountEnabled && isNigeria ? safeNumber(discountOriginalPrice) : safeFinalPriceNgn,
+          originalPriceNgn: safeOriginalPriceNgn,
           discountedPriceNgn: safeFinalPriceNgn,
-          originalPriceUsd: discountEnabled ? Number((toUsd(safeNumber(discountOriginalPrice))).toFixed(6)) : safeFinalPriceUsd,
+          originalPriceUsd: safeOriginalPriceUsd,
           discountedPriceUsd: safeFinalPriceUsd,
           startsAt: new Date().toISOString(),
           endsAt: discountEnabled && discountEndsAt.trim() ? new Date(discountEndsAt.trim()).toISOString() : null,
@@ -1081,6 +1146,7 @@ export default function SellTab() {
 
     const successMsg = images.length > 0 ? "Your listing is live with all images!" : "Your listing is live!";
     Alert.alert("Posted", successMsg);
+    const nextCountry = resolveAvailabilityCountry("", "", userCountry);
     
     // Clear form state
     setTitle("");
@@ -1094,10 +1160,11 @@ export default function SellTab() {
     setCustomSub("");
     setAvailabilityScope("country");
     setAvailabilityContinents([]);
-    setAvailabilityCountryName("");
-    setAvailabilityCountryCode("");
+    setAvailabilityCountryName(nextCountry.name);
+    setAvailabilityCountryCode(nextCountry.code);
     setAvailabilityState("");
     setAvailabilityCity("");
+    setAvailabilityGeoHints(null);
     setAvailabilityRadiusKm("");
     setAvailabilityCenter(null);
     setAvailabilityNote("");
@@ -1168,7 +1235,11 @@ export default function SellTab() {
   return (
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
       <AppHeader title="Sell" subtitle="Products are physical. Services can be digital (remote) or in-person." />
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ paddingBottom: 176 }}
+      >
         <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Create Listing</Text>
         <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
           Products are physical. Services can be digital (remote) or in-person.
@@ -1289,23 +1360,23 @@ export default function SellTab() {
           {["country", "state", "city", "radius"].includes(availabilityScope) ? (
             <>
               <Label>Country name</Label>
-              <Input value={availabilityCountryName} onChangeText={setAvailabilityCountryName} placeholder="e.g. Nigeria" />
+              <Input value={availabilityCountryName} onChangeText={onAvailabilityCountryNameChange} placeholder="e.g. Nigeria" />
               <Label>Country code (optional)</Label>
-              <Input value={availabilityCountryCode} onChangeText={setAvailabilityCountryCode} placeholder="e.g. NG" autoCapitalize="characters" />
+              <Input value={availabilityCountryCode} onChangeText={onAvailabilityCountryCodeChange} placeholder="e.g. NG" autoCapitalize="characters" />
             </>
           ) : null}
 
           {["state", "city", "radius"].includes(availabilityScope) ? (
             <>
               <Label>State / Region</Label>
-              <Input value={availabilityState} onChangeText={setAvailabilityState} placeholder="e.g. Lagos" />
+              <Input value={availabilityState} onChangeText={onAvailabilityStateChange} placeholder="e.g. Lagos" />
             </>
           ) : null}
 
           {["city", "radius"].includes(availabilityScope) ? (
             <>
               <Label>City</Label>
-              <Input value={availabilityCity} onChangeText={setAvailabilityCity} placeholder="e.g. Ikeja" />
+              <Input value={availabilityCity} onChangeText={onAvailabilityCityChange} placeholder="e.g. Ikeja" />
             </>
           ) : null}
 

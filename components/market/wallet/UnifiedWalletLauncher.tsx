@@ -33,11 +33,17 @@ export default function UnifiedWalletLauncher() {
     return p.includes("/market/listing/");
   }, [pathname]);
 
+  const inSellComposer = useMemo(() => {
+    const p = String(pathname || "");
+    return p.endsWith("/market/sell") || p.includes("/market/sell?");
+  }, [pathname]);
+
   const bottomPad = useMemo(() => {
     const base = Platform.OS === "ios" ? 96 : 82;
     if (inListing) return base + 94;
+    if (inSellComposer) return base + 126;
     return compact ? base + 26 : base;
-  }, [compact, inListing]);
+  }, [compact, inListing, inSellComposer]);
 
   const chipWidth = compact ? 120 : 146;
   const chipHeight = compact ? 48 : 54;
@@ -120,57 +126,7 @@ export default function UnifiedWalletLauncher() {
           transform: drag.getTranslateTransform(),
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-        >
-          <Pressable
-            onPress={() => {
-              if (draggedRef.current) {
-                draggedRef.current = false;
-                return;
-              }
-              router.push("/market/wallet" as any);
-            }}
-            style={{
-              minWidth: compact ? 96 : 110,
-              height: compact ? 48 : 54,
-              borderRadius: compact ? 18 : 20,
-              paddingHorizontal: compact ? 10 : 12,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: "rgba(8,23,49,0.92)",
-              borderWidth: 1,
-              borderColor: "rgba(147,197,253,0.45)",
-              shadowColor: "#000",
-              shadowOpacity: 0.35,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 12,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-              <View
-                style={{
-                  width: compact ? 28 : 32,
-                  height: compact ? 28 : 32,
-                  borderRadius: compact ? 10 : 11,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(37,99,235,0.32)",
-                }}
-              >
-                <Ionicons name="water-outline" size={compact ? 15 : 17} color="#DBEAFE" />
-              </View>
-              <View>
-                <Text style={{ color: "#DBEAFE", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Faucet</Text>
-                <Text style={{ color: "rgba(219,234,254,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
-                  Claim
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="arrow-forward" size={compact ? 13 : 15} color="#DBEAFE" />
-          </Pressable>
-
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Pressable
             onPress={() => {
               if (draggedRef.current) {
@@ -179,23 +135,23 @@ export default function UnifiedWalletLauncher() {
               }
               setOpen(true);
             }}
-          style={{
-            minWidth: compact ? 120 : 146,
-            height: compact ? 48 : 54,
-            borderRadius: compact ? 18 : 20,
-            paddingHorizontal: compact ? 11 : 14,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            backgroundColor: "rgba(12,10,25,0.92)",
-            borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.45)",
-            shadowColor: "#000",
-            shadowOpacity: 0.35,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 6 },
-            elevation: 12,
-          }}
+            style={{
+              minWidth: compact ? 120 : 146,
+              height: compact ? 48 : 54,
+              borderRadius: compact ? 18 : 20,
+              paddingHorizontal: compact ? 11 : 14,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "rgba(12,10,25,0.92)",
+              borderWidth: 1,
+              borderColor: "rgba(124,58,237,0.45)",
+              shadowColor: "#000",
+              shadowOpacity: 0.35,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 12,
+            }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
               <View

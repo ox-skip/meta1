@@ -49,6 +49,17 @@ function base64ToUint8Array(base64: string) {
   return bytes.slice(0, p);
 }
 
+function normalizeContentType(value?: string) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "image/jpeg";
+  if (raw.includes("/")) return raw;
+  if (raw.endsWith(".png")) return "image/png";
+  if (raw.endsWith(".webp")) return "image/webp";
+  if (raw.endsWith(".heic") || raw.endsWith(".heif")) return "image/heic";
+  if (raw.endsWith(".gif")) return "image/gif";
+  return "image/jpeg";
+}
+
 async function readFileAsBytesViaFetch(localUri: string) {
   const res = await withTimeout(fetch(localUri, { cache: "no-store" }), 120_000, "Reading file");
   if (!res.ok) {
@@ -74,7 +85,7 @@ async function readFileAsBytes(localUri: string) {
   let preparedUri = rawUri;
   let cleanupUri: string | null = null;
 
-  if (Platform.OS !== "web" && /^content:\/\//i.test(rawUri) && FileSystem.cacheDirectory) {
+  if (Platform.OS !== "web" && FileSystem.cacheDirectory && !/^file:\/\//i.test(rawUri)) {
     const ext = rawUri.split(".").pop()?.split("?")[0] || "bin";
     preparedUri = `${FileSystem.cacheDirectory}supabase-upload-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
     try {
@@ -102,7 +113,8 @@ async function readFileAsBytes(localUri: string) {
 }
 
 export async function uploadToSupabaseStorage(params: UploadParams) {
-  const { bucket, path, localUri, contentType = "image/jpeg", upsert = true } = params;
+  const { bucket, path, localUri, upsert = true } = params;
+  const contentType = normalizeContentType(params.contentType || localUri || path);
 
   try {
     const { data: sess, error: sessErr } = await withTimeout(supabase.auth.getSession(), 15_000, "Auth session check");
