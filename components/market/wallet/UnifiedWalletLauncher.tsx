@@ -115,9 +115,10 @@ export default function UnifiedWalletLauncher() {
   if (hidden) return null;
 
   return (
-    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }}>
+    <>
       <Animated.View
         {...panResponder.panHandlers}
+        pointerEvents="box-none"
         style={{
           position: "absolute",
           right: compact ? 12 : 16,
@@ -195,6 +196,6 @@ export default function UnifiedWalletLauncher() {
           router.push("/market/history" as any);
         }}
       />
-    </View>
+    </>
   );
 }

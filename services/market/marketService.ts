@@ -78,6 +78,44 @@ function buildListingPayload(input: CreateListingInput) {
   };
 }
 
+async function ensureListingAccountProfile() {
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  const user = auth?.user;
+  if (authError) throw new Error(authError.message);
+  if (!user) throw new Error("Not authenticated");
+
+  try {
+    const { data: existing, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (existing?.id) return;
+
+    const payload: Record<string, unknown> = { id: user.id };
+    if (user.email) payload.email = user.email;
+    const fullName = String(user.user_metadata?.full_name || user.user_metadata?.name || "").trim();
+    if (fullName) payload.full_name = fullName;
+
+    const { error: upsertError } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" });
+    if (!upsertError) return;
+
+    console.log("[marketService.ensureListingAccountProfile] direct profiles upsert failed", upsertError.message);
+  } catch (error: any) {
+    console.log("[marketService.ensureListingAccountProfile] direct profiles check failed", String(error?.message || error));
+  }
+
+  try {
+    await callFn("market-seller-profile-upsert", {});
+  } catch (error: any) {
+    console.log("[marketService.ensureListingAccountProfile] function fallback failed", String(error?.message || error));
+  }
+}
+
 async function createListingDirect(payload: ReturnType<typeof buildListingPayload>) {
   const { data, error } = await supabase
     .from("market_listings")
@@ -175,6 +213,13 @@ export async function upsertSellerProfile(input: Partial<MarketSellerProfile> & 
 
 export async function createListing(input: CreateListingInput) {
   const payload = buildListingPayload(input);
+  await ensureListingAccountProfile();
+
+  try {
+    return await createListingDirect(payload);
+  } catch (directError: any) {
+    console.log("[marketService.createListing] direct insert failed", String(directError?.message || directError));
+  }
 
   try {
     const out = await callFn<{ listing?: any }>("market-create-listing", payload);
@@ -182,7 +227,7 @@ export async function createListing(input: CreateListingInput) {
     if (!listing?.id) throw new Error("Listing creation failed (missing id)");
     return listing;
   } catch (error: any) {
-    console.log("[marketService.createListing] function fallback", String(error?.message || error));
+    console.log("[marketService.createListing] function fallback failed", String(error?.message || error));
     return await createListingDirect(payload);
   }
 }
@@ -205,6 +250,14 @@ export async function insertListingImages(
   const rows: any[] = [];
   for (const img of images) {
     try {
+      const row = await insertListingImageDirect(img, options);
+      rows.push(row);
+      continue;
+    } catch (directError: any) {
+      console.log("[marketService.insertListingImages] direct insert failed", String(directError?.message || directError));
+    }
+
+    try {
       const out = await callFn<{ image?: any }>("market-add-listing-image", {
         listing_id: img.listing_id,
         storage_path: img.storage_path,
@@ -218,7 +271,7 @@ export async function insertListingImages(
       if (!row?.id) throw new Error("Image row insert failed.");
       rows.push(row);
     } catch (error: any) {
-      console.log("[marketService.insertListingImages] function fallback", String(error?.message || error));
+      console.log("[marketService.insertListingImages] function fallback failed", String(error?.message || error));
       try {
         const row = await insertListingImageDirect(img, options);
         rows.push(row);
