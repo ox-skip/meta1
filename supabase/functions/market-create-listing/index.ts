@@ -9,6 +9,10 @@ function isMissingOptionalColumnError(message: string, column: string) {
   return new RegExp(column, "i").test(message) && /(column|schema cache)/i.test(message);
 }
 
+function isValidWebsiteUrl(value: string) {
+  return /^https:\/\//i.test(value.trim());
+}
+
 function assertCategoryRules(category: ListingCategory, delivery_type: DeliveryType) {
   if (category === "product" && delivery_type !== "physical") {
     throw new Error("product listings must have delivery_type=physical");
@@ -70,6 +74,15 @@ Deno.serve(async (req) => {
   };
   if (Object.prototype.hasOwnProperty.call(body, "availability")) row.availability = body.availability ?? {};
   if (Object.prototype.hasOwnProperty.call(body, "payment_options")) row.payment_options = body.payment_options ?? {};
+  if (Object.prototype.hasOwnProperty.call(body, "website_url")) {
+    const websiteUrl = String(body.website_url ?? "").trim();
+    if (websiteUrl) {
+      if (!isValidWebsiteUrl(websiteUrl)) return bad("website_url must start with https://");
+      row.website_url = websiteUrl;
+    } else {
+      row.website_url = null;
+    }
+  }
 
   if (!row.sub_category) return bad("sub_category is required");
   if (!row.title) return bad("title is required");
@@ -95,6 +108,10 @@ Deno.serve(async (req) => {
     }
     if (Object.prototype.hasOwnProperty.call(row, "payment_options") && isMissingOptionalColumnError(message, "payment_options")) {
       delete row.payment_options;
+      removed = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(row, "website_url") && isMissingOptionalColumnError(message, "website_url")) {
+      delete row.website_url;
       removed = true;
     }
     if (!removed) break;

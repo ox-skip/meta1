@@ -63,6 +63,7 @@ type Listing = {
   created_at?: string | null;
   availability?: any;
   payment_options?: any;
+  website_url?: string | null;
 };
 
 type ListingComment = {
@@ -112,6 +113,29 @@ function previewIcon(kind: string) {
   if (k === "audio") return "musical-notes-outline";
   if (k === "link") return "globe-outline";
   return "document-attach-outline";
+}
+
+async function safeLoadListing(listingId: string) {
+  const attempt1 = await supabase
+    .from(LISTINGS_TABLE)
+    .select("id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,stock_qty,created_at,availability,payment_options,website_url")
+    .eq("id", listingId)
+    .maybeSingle();
+
+  if (!attempt1.error) return attempt1.data as any;
+
+  const msg = String(attempt1.error.message || "").toLowerCase();
+  if (msg.includes("website_url") && msg.includes("does not exist")) {
+    const attempt2 = await supabase
+      .from(LISTINGS_TABLE)
+      .select("id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,stock_qty,created_at,availability,payment_options")
+      .eq("id", listingId)
+      .maybeSingle();
+    if (attempt2.error) throw new Error(attempt2.error.message);
+    return attempt2.data as any;
+  }
+
+  throw new Error(attempt1.error.message);
 }
 
 export default function ListingDetails() {
@@ -183,13 +207,7 @@ export default function ListingDetails() {
           return;
         }
 
-        const { data: l, error: lErr } = await supabase
-          .from(LISTINGS_TABLE)
-          .select("id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,stock_qty,created_at,availability,payment_options")
-          .eq("id", listingId)
-          .maybeSingle();
-
-        if (lErr) throw new Error(lErr.message);
+        const l = await safeLoadListing(listingId);
         if (!l) {
           setErr("Listing not found");
           return;
@@ -300,6 +318,18 @@ export default function ListingDetails() {
       access: "final",
       title: `${listing?.title || "Listing"} - ${kind} ${index + 1}`,
       urlPromise: async () => url,
+    });
+    setPreviewOpen(true);
+  }
+
+  function openWebsitePreview(url: string) {
+    const cleanUrl = String(url || "").trim();
+    if (!cleanUrl) return;
+    setPreviewPayload({
+      kind: "link",
+      access: "preview",
+      title: "Website preview",
+      url: cleanUrl,
     });
     setPreviewOpen(true);
   }
@@ -949,11 +979,40 @@ export default function ListingDetails() {
               Tap any preview to open image, video, audio, file, or website in-app before purchase.
             </Text>
 
-            {listingPreviews.length === 0 ? (
+            {String(listing.website_url || "").trim() ? (
+              <Pressable
+                onPress={() => openWebsitePreview(String(listing.website_url || ""))}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderWidth: 1,
+                  borderColor: "rgba(124,58,237,0.35)",
+                  backgroundColor: "rgba(124,58,237,0.12)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <Ionicons name="globe-outline" size={18} color="#fff" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: "#fff", fontWeight: "900" }}>Open website preview</Text>
+                    <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                      DEMO LINK
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.65)" />
+              </Pressable>
+            ) : null}
+
+            {listingPreviews.length === 0 && !String(listing.website_url || "").trim() ? (
               <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.6)" }}>
                 Seller has not added preview assets yet.
               </Text>
-            ) : (
+            ) : listingPreviews.length > 0 ? (
               <View style={{ marginTop: 10, gap: 8 }}>
                 {listingPreviews.map((pv) => (
                   <Pressable
@@ -984,7 +1043,7 @@ export default function ListingDetails() {
                   </Pressable>
                 ))}
               </View>
-            )}
+            ) : null}
           </View>
         ) : null}
 

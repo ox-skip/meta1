@@ -31,6 +31,7 @@ export type CreateListingInput = {
   stock_qty?: number | null; // products
   availability?: any;
   payment_options?: any;
+  website_url?: string | null;
   is_active?: boolean;
 };
 
@@ -74,6 +75,7 @@ function buildListingPayload(input: CreateListingInput) {
     stock_qty: stockQty,
     availability: input.availability ?? {},
     payment_options: paymentOptions,
+    ...(input.website_url !== undefined ? { website_url: input.website_url ?? null } : {}),
     is_active: requestedActive && !outOfStock,
   };
 }

@@ -1095,14 +1095,7 @@ export default function SellTab() {
     unitPrice: number;
     paymentOptions: any;
   }) {
-    // Put website URL into description for now (until you add a DB column later)
-    // This keeps you moving without migrations.
-    const descBase = description.trim() || "";
-    const extra =
-      category === "service" && deliveryType === "digital" && websiteUrl.trim()
-        ? `\n\n---\nWebsite preview link: ${websiteUrl.trim()}\n(Note: preview/watermark coming soon.)`
-        : "";
-    const finalDesc = (descBase + extra).trim() || null;
+    const finalDesc = description.trim() || null;
     const availability = buildAvailability();
     let imageWarning: string | null = null;
 
@@ -1123,6 +1116,9 @@ export default function SellTab() {
         stock_qty: category === "product" ? qty : null,
         availability,
         payment_options: paymentOptions,
+        ...(category === "service" && deliveryType === "digital" && websiteUrl.trim()
+          ? { website_url: websiteUrl.trim() }
+          : {}),
         is_active: true,
       } as any);
       console.log("[SellTab] createListing -> ok", listing?.id ?? "no-id");
@@ -1316,10 +1312,10 @@ export default function SellTab() {
 
           {category === "service" && deliveryType === "digital" ? (
             <>
-              <Label>Website URL (optional)</Label>
+              <Label>Portfolio / demo URL (optional)</Label>
               <Input value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="https://example.com" autoCapitalize="none" />
               <Text style={{ marginTop: 8, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                Later you can add “preview + watermark” and partial audio/file previews. For now, we store the link in the description.
+                Optional public website, product demo, portfolio, or prototype link buyers can preview before purchase.
               </Text>
             </>
           ) : null}
