@@ -5,9 +5,10 @@ import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
@@ -15,6 +16,7 @@ import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/
 import { normalizeCountryName } from "@/utils/countryNames";
 import { getCountryFx } from "@/utils/fx";
 import { formatAvailabilitySummary, getCurrentLocationWithGeocode, type LocationGeo } from "@/utils/location";
+import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { formatCurrency } from "@/utils/pricing";
 
@@ -25,7 +27,7 @@ const CARD = "rgba(255,255,255,0.05)";
 const BORDER = "rgba(255,255,255,0.09)";
 const MUTED = "rgba(255,255,255,0.62)";
 
-type Img = { uri: string; contentType: string; fileName?: string | null };
+type ListingMediaAsset = { uri: string; contentType: string; fileName?: string | null };
 
 type DeliveryType = "physical" | "digital" | "in_person";
 type Currency = "USDC";
@@ -47,21 +49,46 @@ function safeNumber(input: string) {
 
 function ensureExtFromMime(mime: string) {
   const m = mime.toLowerCase();
+  if (m.includes("mp4")) return "mp4";
+  if (m.includes("quicktime") || m.includes("mov")) return "mov";
+  if (m.includes("webm")) return "webm";
+  if (m.includes("m4v")) return "m4v";
+  if (m.includes("avi")) return "avi";
+  if (m.includes("mkv")) return "mkv";
   if (m.includes("png")) return "png";
   if (m.includes("webp")) return "webp";
   if (m.includes("heic")) return "heic";
   return "jpg";
 }
 
-function inferImageContentType(input?: string | null) {
+function inferMediaContentType(input?: string | null) {
   const raw = String(input || "").trim().toLowerCase();
   if (!raw) return "image/jpeg";
+  if (raw === "video") return "video/mp4";
+  if (raw === "image") return "image/jpeg";
+  if (raw.includes("video/")) return raw;
   if (raw.includes("image/")) return raw;
+  if (raw.endsWith(".mp4")) return "video/mp4";
+  if (raw.endsWith(".mov")) return "video/quicktime";
+  if (raw.endsWith(".webm")) return "video/webm";
+  if (raw.endsWith(".m4v")) return "video/x-m4v";
+  if (raw.endsWith(".avi")) return "video/x-msvideo";
+  if (raw.endsWith(".mkv")) return "video/x-matroska";
   if (raw.endsWith(".png")) return "image/png";
   if (raw.endsWith(".webp")) return "image/webp";
   if (raw.endsWith(".heic") || raw.endsWith(".heif")) return "image/heic";
   if (raw.endsWith(".gif")) return "image/gif";
   return "image/jpeg";
+}
+
+function isVideoAsset(asset?: ListingMediaAsset | null) {
+  return inferMarketMediaKind(asset?.contentType) === "video";
+}
+
+function prioritizeVideoCover(items: ListingMediaAsset[]) {
+  const videoIndex = items.findIndex((asset) => isVideoAsset(asset));
+  if (videoIndex <= 0) return items;
+  return [items[videoIndex], ...items.slice(0, videoIndex), ...items.slice(videoIndex + 1)];
 }
 
 function isValidUrl(u: string) {
@@ -324,7 +351,7 @@ export default function SellTab() {
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [locatingAvailability, setLocatingAvailability] = useState(false);
 
-  const [images, setImages] = useState<Img[]>([]);
+  const [mediaAssets, setMediaAssets] = useState<ListingMediaAsset[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [submitFeedback, setSubmitFeedback] = useState<{ tone: "error" | "success" | "info"; title: string; message: string } | null>(null);
@@ -640,13 +667,13 @@ export default function SellTab() {
     };
   }, []);
 
-  async function pickImages() {
+  async function pickMedia() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return Alert.alert("Permission needed", "Allow photo access to upload images.");
+      if (!perm.granted) return Alert.alert("Permission needed", "Allow photo/video access to upload listing media.");
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
         allowsMultipleSelection: true,
         selectionLimit: 8,
         quality: 0.85,
@@ -656,33 +683,42 @@ export default function SellTab() {
 
       const picked = (result.assets ?? [])
         .filter((a: any) => !!a?.uri)
-        .map((a: any) => ({
-          uri: a.uri,
-          contentType: inferImageContentType(a.mimeType || (a as any).fileName || a.uri),
-          fileName: String((a as any).fileName || "").trim() || null,
-        }));
+        .map((a: any) => {
+          const contentType = inferMediaContentType(
+            a.mimeType || (a as any).type || (a as any).fileName || a.uri,
+          );
+          return {
+            uri: a.uri,
+            contentType,
+            fileName: String((a as any).fileName || "").trim() || null,
+          };
+        })
+        .filter((asset: ListingMediaAsset) => {
+          const kind = inferMarketMediaKind(asset.contentType);
+          return kind === "image" || kind === "video";
+        });
 
       if (!picked.length) return;
 
-      setImages((prev) => {
+      setMediaAssets((prev) => {
         const merged = [...prev, ...picked];
         const seen = new Set<string>();
-        return merged
+        const deduped = merged
           .filter((img) => {
             const key = `${img.uri}|${img.fileName || ""}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
-          })
-          .slice(0, 8);
+          });
+        return prioritizeVideoCover(deduped).slice(0, 8);
       });
     } catch (e: any) {
-      Alert.alert("Try again", friendlyMarketError(e, "We couldn't add your selected images."));
+      Alert.alert("Try again", friendlyMarketError(e, "We couldn't add your selected media."));
     }
   }
 
-  function removeImage(idx: number) {
-    setImages((prev) => prev.filter((_, i) => i !== idx));
+  function removeMedia(idx: number) {
+    setMediaAssets((prev) => prioritizeVideoCover(prev.filter((_, i) => i !== idx)));
   }
 
   function finalSubCategory() {
@@ -861,15 +897,15 @@ export default function SellTab() {
     }
 
     // media requirements:
-    // - product: require at least 1 image
-    // - service: require either at least 1 image OR website URL (for digital)
-    if (category === "product" && images.length === 0) return "Add at least 1 image";
+    // - product: require at least 1 image/video
+    // - service: require either at least 1 image/video OR website URL (for digital)
+    if (category === "product" && mediaAssets.length === 0) return "Add at least 1 image or video";
     if (category === "service") {
       if (deliveryType === "digital") {
-        if (images.length === 0 && !websiteUrl.trim()) return "Add an image OR provide a website URL";
+        if (mediaAssets.length === 0 && !websiteUrl.trim()) return "Add an image or video OR provide a website URL";
         if (websiteUrl.trim() && !isValidUrl(websiteUrl)) return "Website URL must start with https://";
       } else {
-        if (images.length === 0) return "Add at least 1 image";
+        if (mediaAssets.length === 0) return "Add at least 1 image or video";
       }
     }
 
@@ -1097,15 +1133,15 @@ export default function SellTab() {
       throw new Error(`Failed to create listing: ${listingErr?.message || "Unknown error"}`);
     }
 
-    // Step 2: Upload images if present (failures here don't prevent listing creation)
-    if (images.length > 0) {
+    // Step 2: Upload media if present (failures here don't prevent listing creation)
+    if (mediaAssets.length > 0) {
       try {
-        console.log("[SellTab] upload images -> start", { count: images.length });
-        setStage("Uploading images...");
+        console.log("[SellTab] upload media -> start", { count: mediaAssets.length });
+        setStage("Uploading media...");
         const inserts: any[] = [];
 
-        for (let i = 0; i < images.length; i++) {
-          const img = images[i];
+        for (let i = 0; i < mediaAssets.length; i++) {
+          const img = mediaAssets[i];
           const ext = ensureExtFromMime(img.contentType);
           const random =
             typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -1115,14 +1151,14 @@ export default function SellTab() {
           const path = `${user.id}/listings/${listing.id}/${i + 1}-${random}.${ext}`;
 
           try {
-            console.log("[SellTab] upload image -> start", { index: i, path });
+            console.log("[SellTab] upload media -> start", { index: i, path });
             const up = await uploadToBucket({
               bucket: "market-listings",
               path,
               uri: img.uri,
               contentType: img.contentType,
             });
-            console.log("[SellTab] upload image -> ok", { index: i, storagePath: up.storagePath });
+            console.log("[SellTab] upload media -> ok", { index: i, storagePath: up.storagePath });
 
             inserts.push({
               listing_id: listing.id,
@@ -1132,20 +1168,20 @@ export default function SellTab() {
               meta: { content_type: img.contentType },
             });
           } catch (imgUploadErr: any) {
-            console.error("[SellTab] single image upload failed", { index: i, error: imgUploadErr });
+            console.error("[SellTab] single media upload failed", { index: i, error: imgUploadErr });
             throw new Error(
-              `Image ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Listing is already live without this image.`,
+              `Media item ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Listing is already live without this file.`,
             );
           }
         }
 
         console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
-        setStage("Saving images...");
+        setStage("Saving media...");
         const rows = await insertListingImages(inserts, { activateListing: false });
         console.log("[SellTab] insertListingImages -> ok", { count: rows?.length ?? 0 });
 
         if (!rows?.length) {
-          imageWarning = "Your listing is live, but the uploaded images were not attached yet.";
+          imageWarning = "Your listing is live, but the uploaded media was not attached yet.";
         }
       } catch (imageErr: any) {
         const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
@@ -1153,16 +1189,16 @@ export default function SellTab() {
         const errMsg = String(imageErr?.message || imageErr || "");
         if (partialRows.length > 0) {
           throw new Error(
-            `✓ Listing created! But only ${partialRows.length}/${images.length} image${partialRows.length === 1 ? "" : "s"} uploaded. Open My Listings to re-upload remaining images.`,
+            `Listing created, but only ${partialRows.length}/${mediaAssets.length} media item${partialRows.length === 1 ? "" : "s"} uploaded. Open My Listings to re-upload the remaining files.`,
           );
         }
         throw new Error(
-          `✓ Listing created! But images failed to upload. Error: ${errMsg}. Open My Listings to try uploading images again.`,
+          `Listing created, but media failed to upload. Error: ${errMsg}. Open My Listings to try uploading media again.`,
         );
       }
     }
 
-    const successMsg = images.length > 0 ? "Your listing is live with all images!" : "Your listing is live!";
+    const successMsg = mediaAssets.length > 0 ? "Your listing is live with all media!" : "Your listing is live!";
     showFeedback("success", "Posted", successMsg);
     const nextCountry = resolveAvailabilityCountry("", "", userCountry);
     
@@ -1173,7 +1209,7 @@ export default function SellTab() {
     setPrice("");
     setStockMode("limited");
     setStockQty("");
-    setImages([]);
+    setMediaAssets([]);
     setUseCustomSub(false);
     setCustomSub("");
     setAvailabilityScope("country");
@@ -1599,14 +1635,14 @@ export default function SellTab() {
           <Text style={{ color: "#fff", fontWeight: "900" }}>Media</Text>
           <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
             {category === "product"
-              ? "Add at least 1 image. The first image becomes the cover."
+              ? "Add at least 1 image or video. If you upload a video, it becomes the cover automatically."
               : deliveryType === "digital"
-              ? "Add an image OR provide a website URL. Images make your listing look more trusted."
-              : "Add at least 1 image."}
+              ? "Add an image or video OR provide a website URL. Videos automatically become the cover."
+              : "Add at least 1 image or video. Videos automatically become the cover."}
           </Text>
 
           <Pressable
-            onPress={pickImages}
+            onPress={pickMedia}
             style={{
               marginTop: 12,
               height: 50,
@@ -1621,34 +1657,52 @@ export default function SellTab() {
             }}
           >
             <Ionicons name="images-outline" size={18} color="#fff" />
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{images.length ? "Add more images" : "Pick images"}</Text>
+            <Text style={{ color: "#fff", fontWeight: "900" }}>{mediaAssets.length ? "Add more media" : "Pick image or video"}</Text>
           </Pressable>
 
-          {images.length > 0 ? (
+          {mediaAssets.length > 0 ? (
             <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-              {images.map((img, idx) => (
-                <Pressable
-                  key={`${img.uri}-${idx}`}
-                  onPress={() => removeImage(idx)}
-                  style={{
-                    width: "31%",
-                    aspectRatio: 1,
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Image source={{ uri: img.uri }} style={{ width: "100%", height: "100%" }} />
-                  <View style={{ position: "absolute", left: 8, top: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)" }}>
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{idx === 0 ? "Cover" : `#${idx + 1}`}</Text>
-                  </View>
-                  <View style={{ position: "absolute", right: 8, top: 8, width: 28, height: 28, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="close" size={16} color="#fff" />
-                  </View>
-                </Pressable>
-              ))}
+              {mediaAssets.map((img, idx) => {
+                const isVideo = isVideoAsset(img);
+                return (
+                  <Pressable
+                    key={`${img.uri}-${idx}`}
+                    onPress={() => removeMedia(idx)}
+                    style={{
+                      width: "31%",
+                      aspectRatio: 1,
+                      borderRadius: 16,
+                      overflow: "hidden",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,255,255,0.12)",
+                      backgroundColor: "rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <MarketMediaView
+                      uri={img.uri}
+                      kind={isVideo ? "video" : "image"}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="cover"
+                      autoplay={isVideo}
+                      muted
+                      loop={isVideo}
+                      disablePointerEvents
+                    />
+                    <View style={{ position: "absolute", left: 8, top: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)" }}>
+                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{idx === 0 ? "Cover" : `#${idx + 1}`}</Text>
+                    </View>
+                    {isVideo ? (
+                      <View style={{ position: "absolute", left: 8, bottom: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)", flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="videocam-outline" size={12} color="#fff" />
+                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Video</Text>
+                      </View>
+                    ) : null}
+                    <View style={{ position: "absolute", right: 8, top: 8, width: 28, height: 28, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="close" size={16} color="#fff" />
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : null}
         </CardBox>

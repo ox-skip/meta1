@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -16,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import {
   fetchJsonWithTimeout,
@@ -25,6 +25,7 @@ import {
 } from "@/services/net";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
+import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
 
 const BG0 = "#05040B";
@@ -763,6 +764,7 @@ export default function MarketOrdersTab() {
               const title = o.listing?.title ?? "Order";
               const meta = `${o.listing?.category ?? "-"} - ${o.listing?.delivery_type ?? "-"}`;
               const img = o.cover_image?.public_url ?? null;
+              const coverKind = inferMarketMediaKind(img);
 
               return (
                 <Pressable
@@ -792,7 +794,16 @@ export default function MarketOrdersTab() {
                       }}
                     >
                       {img ? (
-                        <Image source={{ uri: img }} style={{ width: 54, height: 54 }} />
+                        <MarketMediaView
+                          uri={img}
+                          kind={coverKind}
+                          style={{ width: 54, height: 54 }}
+                          resizeMode="cover"
+                          autoplay={coverKind === "video"}
+                          muted
+                          loop={coverKind === "video"}
+                          disablePointerEvents
+                        />
                       ) : (
                         <Ionicons name="cube-outline" size={22} color="rgba(255,255,255,0.75)" />
                       )}

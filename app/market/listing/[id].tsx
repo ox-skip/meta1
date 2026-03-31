@@ -18,11 +18,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { callFn } from "@/services/functions";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { DeliveryGeo, formatAvailabilitySummary, getCurrentLocationWithGeocode, toDeliveryGeo } from "@/utils/location";
+import { buildMarketMediaUrl, resolveMarketMediaKind, type MarketMediaKind, sortMarketMedia } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
@@ -44,6 +46,7 @@ type ListingImage = {
   public_url: string | null;
   storage_path: string;
   sort_order: number | null;
+  meta?: any;
 };
 
 type Listing = {
@@ -109,14 +112,6 @@ function previewIcon(kind: string) {
   if (k === "audio") return "musical-notes-outline";
   if (k === "link") return "globe-outline";
   return "document-attach-outline";
-}
-
-function imgUrl(img: ListingImage, supabaseUrl: string) {
-  if (img.public_url) return img.public_url;
-  if (img.storage_path) {
-    return `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${img.storage_path}`;
-  }
-  return null;
 }
 
 export default function ListingDetails() {
@@ -202,7 +197,7 @@ export default function ListingDetails() {
 
         const { data: imgs, error: iErr } = await supabase
           .from(IMAGES_TABLE)
-          .select("id,public_url,storage_path,sort_order")
+          .select("id,public_url,storage_path,sort_order,meta")
           .eq("listing_id", listingId)
           .order("sort_order", { ascending: true });
 
@@ -298,12 +293,12 @@ export default function ListingDetails() {
     setPreviewOpen(true);
   }
 
-  function openListingImagePreview(url: string, index: number) {
+  function openListingMediaPreview(url: string, kind: MarketMediaKind, index: number) {
     if (!url) return;
     setPreviewPayload({
-      kind: "image",
+      kind,
       access: "final",
-      title: `${listing?.title || "Listing"} - image ${index + 1}`,
+      title: `${listing?.title || "Listing"} - ${kind} ${index + 1}`,
       urlPromise: async () => url,
     });
     setPreviewOpen(true);
@@ -569,7 +564,19 @@ export default function ListingDetails() {
     );
   }
 
-  const imageUrls = images.map((im) => imgUrl(im, supabaseUrl)).filter(Boolean) as string[];
+  const listingMedia = sortMarketMedia(images).reduce<Array<ListingImage & { url: string; kind: MarketMediaKind }>>(
+    (acc, item) => {
+      const url = buildMarketMediaUrl(item, supabaseUrl, LISTING_IMAGES_BUCKET);
+      if (!url) return acc;
+      acc.push({
+        ...item,
+        url,
+        kind: resolveMarketMediaKind(item),
+      });
+      return acc;
+    },
+    [],
+  );
   const availabilitySummary = formatAvailabilitySummary((listing as any)?.availability);
   const recentComments = comments.slice(0, 4);
   const showSeeMore = commentCount > 4;
@@ -651,11 +658,11 @@ export default function ListingDetails() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
           <View style={{ flexDirection: "row", gap: 12 }}>
-            {(imageUrls.length ? imageUrls : [null]).map((u, idx) => (
+            {(listingMedia.length ? listingMedia : [null]).map((media, idx) => (
               <Pressable
-                key={`${u ?? "none"}-${idx}`}
-                onPress={() => (u ? openListingImagePreview(u, idx) : null)}
-                disabled={!u}
+                key={media ? `${media.id}-${idx}` : `none-${idx}`}
+                onPress={() => (media ? openListingMediaPreview(media.url, media.kind, idx) : null)}
+                disabled={!media}
                 style={{
                   width: 280,
                   height: 200,
@@ -666,13 +673,30 @@ export default function ListingDetails() {
                   borderColor: "rgba(255,255,255,0.08)",
                 }}
               >
-                {u ? (
-                  <Image source={{ uri: u }} style={{ width: "100%", height: "100%" }} />
+                {media ? (
+                  <>
+                    <MarketMediaView
+                      uri={media.url}
+                      kind={media.kind}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="cover"
+                      autoplay={media.kind === "video"}
+                      muted
+                      loop={media.kind === "video"}
+                      disablePointerEvents
+                    />
+                    {media.kind === "video" ? (
+                      <View style={{ position: "absolute", left: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.58)", flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="videocam-outline" size={14} color="#fff" />
+                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Tap for full preview</Text>
+                      </View>
+                    ) : null}
+                  </>
                 ) : (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="image-outline" size={34} color="rgba(255,255,255,0.55)" />
+                    <Ionicons name="images-outline" size={34} color="rgba(255,255,255,0.55)" />
                     <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontWeight: "800" }}>
-                      No images
+                      No media
                     </Text>
                   </View>
                 )}
@@ -680,9 +704,9 @@ export default function ListingDetails() {
             ))}
           </View>
         </ScrollView>
-        {imageUrls.length > 0 ? (
+        {listingMedia.length > 0 ? (
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-            Tap any image to view full preview.
+            Tap any image or video to view full preview.
           </Text>
         ) : null}
 

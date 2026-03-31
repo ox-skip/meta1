@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
@@ -23,6 +24,7 @@ import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/service
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
+import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { getCachedCountry, isNigeriaCountry, listingMatchesCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
@@ -56,8 +58,8 @@ type ListingRow = {
   payment_options?: any;
   availability?: any;
   stock_qty?: number | null;
-  cover?: { public_url?: string | null; storage_path?: string | null } | null;
-  images?: { public_url?: string | null; storage_path?: string | null; sort_order?: number | null }[] | null;
+  cover?: { public_url?: string | null; storage_path?: string | null; meta?: any } | null;
+  images?: { public_url?: string | null; storage_path?: string | null; sort_order?: number | null; meta?: any }[] | null;
 };
 
 type SellerCard = {
@@ -75,11 +77,6 @@ type SellerCard = {
 function publicSellerLogo(path?: string | null) {
   if (!path) return null;
   return supabase.storage.from("market-sellers").getPublicUrl(path).data.publicUrl;
-}
-
-function buildPublicFromStorage(supabaseUrl: string, storagePath?: string | null) {
-  if (!storagePath) return null;
-  return `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${storagePath}`;
 }
 
 function VerifiedTick({ verified }: { verified?: boolean | null }) {
@@ -322,7 +319,7 @@ export default function MarketHome() {
       let query = supabase
         .from(LISTINGS_TABLE)
         .select(
-          "id,seller_id,title,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order)"
+          "id,seller_id,title,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)"
         )
         .eq("is_active", true)
         .eq("category", main)
@@ -472,14 +469,13 @@ export default function MarketHome() {
       : "Browse stores with verified seller profiles.";
 
   const renderListing = ({ item }: { item: ListingRow }) => {
-    const firstImage = (item.images ?? [])
-      .slice()
-      .sort((a, b) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0))[0];
-    const coverUrl =
-      item.cover?.public_url ??
-      buildPublicFromStorage(supabaseUrl, item.cover?.storage_path ?? null) ??
-      firstImage?.public_url ??
-      buildPublicFromStorage(supabaseUrl, firstImage?.storage_path ?? null);
+    const mediaSource = resolveMarketMediaSource(
+      [item.cover ?? null, ...sortMarketMedia(item.images ?? [])],
+      supabaseUrl,
+      LISTING_IMAGES_BUCKET,
+    );
+    const coverUrl = mediaSource?.url ?? null;
+    const coverKind = mediaSource?.kind ?? "image";
     const seller = sellersMap[item.seller_id];
     const stats = statsMap[item.id] ?? { completed: 0, cancelled: 0, failed: 0 };
     const displayPrice = getListingPriceDisplay(item as any);
@@ -493,7 +489,18 @@ export default function MarketHome() {
         style={{ width: "48%", borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: CARD }}
       >
         <View style={{ height: 180, backgroundColor: "rgba(255,255,255,0.06)" }}>
-          {coverUrl ? <Image source={{ uri: coverUrl }} style={{ width: "100%", height: "100%" }} resizeMode="cover" /> : null}
+          {coverUrl ? (
+            <MarketMediaView
+              uri={coverUrl}
+              kind={coverKind}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+              autoplay={coverKind === "video"}
+              muted
+              loop={coverKind === "video"}
+              disablePointerEvents
+            />
+          ) : null}
           <View style={{ position: "absolute", bottom: 10, left: 10 }}>
             <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.6)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
               {showDiscount ? (
@@ -526,6 +533,12 @@ export default function MarketHome() {
           {isOutOfStock ? (
             <View style={{ position: "absolute", top: 10, right: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(239,68,68,0.75)" }}>
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Out of stock</Text>
+            </View>
+          ) : null}
+          {coverUrl && coverKind === "video" ? (
+            <View style={{ position: "absolute", top: 10, left: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.58)", flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Ionicons name="videocam-outline" size={13} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Auto-play</Text>
             </View>
           ) : null}
         </View>

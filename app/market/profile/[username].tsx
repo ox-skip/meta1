@@ -5,10 +5,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import SocialFeed from "@/components/market/SocialFeed";
 import { fetchStocksOverview } from "@/services/market/stocks";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, resolveUserCountry } from "@/utils/country";
+import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
@@ -835,6 +837,7 @@ export default function PublicSellerProfile() {
                     {listings.map((l) => (
                       (() => {
                         const dp = getListingPriceDisplay(l as any);
+                        const coverKind = inferMarketMediaKind(l.cover_url);
                         return (
                       <Pressable
                         key={l.id}
@@ -843,7 +846,16 @@ export default function PublicSellerProfile() {
                       >
                         <View style={{ height: 120, backgroundColor: "rgba(255,255,255,0.06)" }}>
                           {l.cover_url ? (
-                            <Image source={{ uri: l.cover_url }} style={{ width: "100%", height: 120 }} />
+                            <MarketMediaView
+                              uri={l.cover_url}
+                              kind={coverKind}
+                              style={{ width: "100%", height: 120 }}
+                              resizeMode="cover"
+                              autoplay={coverKind === "video"}
+                              muted
+                              loop={coverKind === "video"}
+                              disablePointerEvents
+                            />
                           ) : (
                             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                               <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.55)" />

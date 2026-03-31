@@ -2,12 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { getCategoryBySlug } from "@/services/market/categories";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, listingMatchesCountry, resolveUserCountry } from "@/utils/country";
+import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
@@ -29,8 +31,8 @@ type ListingRow = {
   sub_category: string | null;
   cover_image_id: string | null;
   availability?: any;
-  market_listing_images?: { id: string; public_url: string | null; storage_path: string | null } | null;
-  images?: { id: string; public_url: string | null; storage_path: string | null; sort_order: number | null }[] | null;
+  market_listing_images?: { id: string; public_url: string | null; storage_path: string | null; meta?: any } | null;
+  images?: { id: string; public_url: string | null; storage_path: string | null; sort_order: number | null; meta?: any }[] | null;
 };
 
 export default function CategoryFeed() {
@@ -80,13 +82,15 @@ export default function CategoryFeed() {
               market_listing_images!market_listings_cover_image_fk (
                 id,
                 public_url,
-                storage_path
+                storage_path,
+                meta
               ),
               images:market_listing_images (
                 id,
                 public_url,
                 storage_path,
-                sort_order
+                sort_order,
+                meta
               )
             `
           )
@@ -226,17 +230,13 @@ export default function CategoryFeed() {
         ) : (
           <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             {rows.map((r) => {
-              const firstImage = (r.images ?? [])
-                .slice()
-                .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))[0];
-              const img =
-                r.market_listing_images?.public_url ??
-                (r.market_listing_images?.storage_path
-                  ? `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${r.market_listing_images.storage_path}`
-                  : firstImage?.public_url ??
-                    (firstImage?.storage_path
-                      ? `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${firstImage.storage_path}`
-                      : null));
+              const mediaSource = resolveMarketMediaSource(
+                [r.market_listing_images ?? null, ...sortMarketMedia(r.images ?? [])],
+                supabaseUrl,
+                LISTING_IMAGES_BUCKET,
+              );
+              const img = mediaSource?.url ?? null;
+              const coverKind = mediaSource?.kind ?? "image";
 
               return (
                 <Pressable
@@ -253,7 +253,16 @@ export default function CategoryFeed() {
                 >
                   <View style={{ height: 110, backgroundColor: "rgba(255,255,255,0.06)" }}>
                     {img ? (
-                      <Image source={{ uri: img }} style={{ width: "100%", height: 110 }} />
+                      <MarketMediaView
+                        uri={img}
+                        kind={coverKind}
+                        style={{ width: "100%", height: 110 }}
+                        resizeMode="cover"
+                        autoplay={coverKind === "video"}
+                        muted
+                        loop={coverKind === "video"}
+                        disablePointerEvents
+                      />
                     ) : (
                       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                         <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.55)" />

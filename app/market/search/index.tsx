@@ -4,7 +4,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -13,8 +12,10 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, listingMatchesCountry, resolveUserCountry } from "@/utils/country";
+import { buildMarketMediaUrl, resolveMarketMediaKind, sortMarketMedia } from "@/utils/marketMedia";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
@@ -48,26 +49,11 @@ type Listing = {
   }> | null;
 };
 
-function pickCoverUrl(
+function pickCoverMedia(
   imgs: Listing["market_listing_images"],
-  supabaseUrl: string,
 ) {
   if (!imgs || imgs.length === 0) return null;
-
-  const sorted = [...imgs].sort((a, b) => (Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)));
-  const first = sorted[0];
-
-  // if you store a public_url already, use it
-  if (first.public_url) return first.public_url;
-
-  // else build a public url from storage_path
-  // public bucket URL format:
-  // {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
-  if (first.storage_path) {
-    return `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${first.storage_path}`;
-  }
-
-  return null;
+  return sortMarketMedia(imgs)[0] ?? null;
 }
 
 export default function MarketSearchScreen() {
@@ -280,7 +266,9 @@ export default function MarketSearchScreen() {
         ) : (
           <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             {rows.map((r) => {
-              const cover = pickCoverUrl(r.market_listing_images ?? null, supabaseUrl);
+              const coverMedia = pickCoverMedia(r.market_listing_images ?? null);
+              const cover = buildMarketMediaUrl(coverMedia, supabaseUrl, LISTING_IMAGES_BUCKET);
+              const coverKind = resolveMarketMediaKind(coverMedia);
               const dp = getListingPriceDisplay(r as any);
               return (
                 <Pressable
@@ -297,7 +285,16 @@ export default function MarketSearchScreen() {
                 >
                   <View style={{ height: 110, backgroundColor: "rgba(255,255,255,0.06)" }}>
                     {cover ? (
-                      <Image source={{ uri: cover }} style={{ width: "100%", height: 110 }} />
+                      <MarketMediaView
+                        uri={cover}
+                        kind={coverKind}
+                        style={{ width: "100%", height: 110 }}
+                        resizeMode="cover"
+                        autoplay={coverKind === "video"}
+                        muted
+                        loop={coverKind === "video"}
+                        disablePointerEvents
+                      />
                     ) : (
                       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                         <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.55)" />

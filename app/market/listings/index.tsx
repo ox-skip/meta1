@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -18,9 +17,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
+import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
 const BG0 = "#05040B";
@@ -100,20 +101,12 @@ function isMissingRpcError(error: unknown) {
   );
 }
 
-function pickUrl(img: ListingImage | null | undefined, supabaseUrl: string) {
-  if (!img) return null;
-  if (img.public_url) return img.public_url;
-  if (img.storage_path) {
-    return `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${img.storage_path}`;
-  }
-  return null;
-}
-
 function pickCoverUrl(listing: Listing, supabaseUrl: string) {
-  const cover = pickUrl(listing.cover_image ?? null, supabaseUrl);
-  if (cover) return cover;
-  const first = sortImages(listing.images)[0];
-  return pickUrl(first ?? null, supabaseUrl);
+  return resolveMarketMediaSource(
+    [listing.cover_image ?? null, ...sortMarketMedia(listing.images)],
+    supabaseUrl,
+    LISTING_IMAGES_BUCKET,
+  );
 }
 
 function mediaCount(listing: Listing) {
@@ -800,6 +793,8 @@ export default function ListingsFeed() {
   const renderItem = useCallback(
     ({ item }: { item: Listing }) => {
       const cover = pickCoverUrl(item, supabaseUrl);
+      const coverUrl = cover?.url ?? null;
+      const coverKind = cover?.kind ?? "image";
       const busy = busyId === item.id;
       const displayPrice = getListingPriceDisplay(item as any);
       const showDiscount = displayPrice.hasDiscount;
@@ -831,8 +826,17 @@ export default function ListingsFeed() {
         >
           <Pressable onPress={() => router.push(`/market/listing/${item.id}` as any)}>
             <View style={{ height: 130, backgroundColor: "rgba(255,255,255,0.08)" }}>
-              {cover ? (
-                <Image source={{ uri: cover }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+              {coverUrl ? (
+                <MarketMediaView
+                  uri={coverUrl}
+                  kind={coverKind}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                  autoplay={coverKind === "video"}
+                  muted
+                  loop={coverKind === "video"}
+                  disablePointerEvents
+                />
               ) : (
                 <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="image-outline" size={28} color="rgba(255,255,255,0.55)" />
