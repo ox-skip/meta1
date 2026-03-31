@@ -1,7 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
 
-import { supabase } from "@/services/supabase";
+import { supabase, supabaseAnonKey, supabaseUrl } from "@/services/supabase";
 
 type UploadParams = {
   bucket: string;
@@ -53,11 +53,110 @@ function normalizeContentType(value?: string) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return "image/jpeg";
   if (raw.includes("/")) return raw;
+  if (raw.endsWith(".mp4")) return "video/mp4";
+  if (raw.endsWith(".mov")) return "video/quicktime";
+  if (raw.endsWith(".webm")) return "video/webm";
+  if (raw.endsWith(".m4v")) return "video/x-m4v";
+  if (raw.endsWith(".avi")) return "video/x-msvideo";
+  if (raw.endsWith(".mkv")) return "video/x-matroska";
   if (raw.endsWith(".png")) return "image/png";
   if (raw.endsWith(".webp")) return "image/webp";
   if (raw.endsWith(".heic") || raw.endsWith(".heif")) return "image/heic";
   if (raw.endsWith(".gif")) return "image/gif";
   return "image/jpeg";
+}
+
+function buildStorageUploadUrl(bucket: string, path: string) {
+  const base = String(supabaseUrl || (supabase as any)?.supabaseUrl || "").replace(/\/+$/, "");
+  const objectPath = [bucket, ...String(path || "").split("/").filter(Boolean).map(encodeURIComponent)].join("/");
+  return `${base}/storage/v1/object/${objectPath}`;
+}
+
+function extractUploadErrorMessage(body: string) {
+  const raw = String(body || "").trim();
+  if (!raw) return "Upload failed.";
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed?.message || parsed?.error || raw);
+  } catch {
+    return raw;
+  }
+}
+
+async function prepareUploadUri(localUri: string) {
+  const rawUri = String(localUri || "");
+  let preparedUri = rawUri;
+  let cleanupUri: string | null = null;
+
+  if (Platform.OS !== "web" && FileSystem.cacheDirectory && !/^file:\/\//i.test(rawUri)) {
+    const ext = rawUri.split(".").pop()?.split("?")[0] || "bin";
+    preparedUri = `${FileSystem.cacheDirectory}supabase-upload-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    try {
+      await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 60_000, "Preparing file");
+      cleanupUri = preparedUri;
+    } catch (e) {
+      console.log("[prepareUploadUri] File copy failed, trying original URI", String((e as any)?.message || e));
+      preparedUri = rawUri;
+    }
+  }
+
+  return {
+    preparedUri,
+    cleanupUri,
+  };
+}
+
+async function cleanupPreparedUploadUri(cleanupUri: string | null) {
+  if (!cleanupUri) return;
+  await FileSystem.deleteAsync(cleanupUri, { idempotent: true }).catch(() => undefined);
+}
+
+async function uploadViaNativeFileTransfer(params: {
+  bucket: string;
+  path: string;
+  localUri: string;
+  contentType: string;
+  accessToken: string;
+  upsert: boolean;
+}) {
+  const { bucket, path, localUri, contentType, accessToken, upsert } = params;
+  const { preparedUri, cleanupUri } = await prepareUploadUri(localUri);
+
+  try {
+    if (!/^file:\/\//i.test(preparedUri)) {
+      throw new Error("Native upload requires a local file URI.");
+    }
+
+    const uploadUrl = buildStorageUploadUrl(bucket, path);
+    const response = await withTimeout(
+      FileSystem.uploadAsync(uploadUrl, preparedUri, {
+        httpMethod: "POST",
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: supabaseAnonKey,
+          "content-type": contentType,
+          "cache-control": "max-age=3600",
+          "x-upsert": String(upsert),
+        },
+      }),
+      900_000,
+      "Native storage upload",
+    );
+
+    if (!response) {
+      throw new Error("Native upload was cancelled.");
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Upload failed: ${extractUploadErrorMessage(response.body)}`);
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return { publicUrl: data?.publicUrl ?? null, storagePath: path };
+  } finally {
+    await cleanupPreparedUploadUri(cleanupUri);
+  }
 }
 
 async function readFileAsBytesViaFetch(localUri: string) {
@@ -81,21 +180,7 @@ async function readFileAsBytesViaFileSystem(localUri: string) {
 }
 
 async function readFileAsBytes(localUri: string) {
-  const rawUri = String(localUri || "");
-  let preparedUri = rawUri;
-  let cleanupUri: string | null = null;
-
-  if (Platform.OS !== "web" && FileSystem.cacheDirectory && !/^file:\/\//i.test(rawUri)) {
-    const ext = rawUri.split(".").pop()?.split("?")[0] || "bin";
-    preparedUri = `${FileSystem.cacheDirectory}supabase-upload-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-    try {
-      await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 60_000, "Preparing file");
-      cleanupUri = preparedUri;
-    } catch (e) {
-      console.log("[readFileAsBytes] File copy failed, trying original URI", String((e as any)?.message || e));
-      preparedUri = rawUri;
-    }
-  }
+  const { preparedUri, cleanupUri } = await prepareUploadUri(localUri);
 
   try {
     try {
@@ -120,6 +205,25 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
     const { data: sess, error: sessErr } = await withTimeout(supabase.auth.getSession(), 15_000, "Auth session check");
     if (sessErr) throw new Error(`Authentication failed: ${sessErr.message}`);
     if (!sess.session) throw new Error("No session. Please sign in again.");
+
+    if (Platform.OS !== "web") {
+      try {
+        console.log("[uploadToSupabaseStorage] Native file upload -> start", { path, contentType });
+        return await uploadViaNativeFileTransfer({
+          bucket,
+          path,
+          localUri,
+          contentType,
+          accessToken: sess.session.access_token,
+          upsert,
+        });
+      } catch (nativeErr) {
+        console.log(
+          "[uploadToSupabaseStorage] Native upload failed, falling back to byte upload",
+          String((nativeErr as any)?.message || nativeErr),
+        );
+      }
+    }
 
     console.log("[uploadToSupabaseStorage] Reading file:", { path, contentType });
     const bytes = await readFileAsBytes(localUri);

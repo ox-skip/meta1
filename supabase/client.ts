@@ -48,7 +48,7 @@ function supabaseFetch(input: RequestInfo | URL, init?: RequestInit) {
   const isWrite = ["POST", "PUT", "PATCH"].includes(method);
 
   const timeout =
-    isStorage && isWrite ? 120000 : // 2 minutes for uploads
+    isStorage && isWrite ? 600000 : // 10 minutes for storage uploads
     isWrite ? 30000 :               // 30s for writes
     20000;                          // 20s for reads
 
