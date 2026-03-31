@@ -5,7 +5,7 @@ import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
 import { getAllCategories } from "@/services/market/categories";
@@ -327,9 +327,11 @@ export default function SellTab() {
   const [images, setImages] = useState<Img[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
+  const [submitFeedback, setSubmitFeedback] = useState<{ tone: "error" | "success" | "info"; title: string; message: string } | null>(null);
 
   const mountedRef = useRef(true);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const publishAttemptRef = useRef(0);
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -888,10 +890,31 @@ export default function SellTab() {
     return null;
   }
 
+  function showFeedback(tone: "error" | "success" | "info", title: string, message: string) {
+    setSubmitFeedback({ tone, title, message });
+    if (Platform.OS !== "web") {
+      Alert.alert(title, message);
+    }
+  }
+
+  function triggerPublish(source: "press" | "pressIn") {
+    const now = Date.now();
+    if (submitting) return;
+    if (Platform.OS === "web" && source === "press" && now - publishAttemptRef.current < 800) {
+      return;
+    }
+    publishAttemptRef.current = now;
+    void onSubmit();
+  }
+
   async function onSubmit() {
     if (submitting) return;
+    setSubmitFeedback(null);
     const err = validate();
-    if (err) return Alert.alert("Fix this", err);
+    if (err) {
+      showFeedback("error", "Fix this", err);
+      return;
+    }
 
     console.log("[SellTab] submit start");
     setSubmitting(true);
@@ -1007,14 +1030,14 @@ export default function SellTab() {
       const errStr = String(msg || e?.message || "").toLowerCase();
       
       // Check if listing was created but images failed
-      if (errStr.includes("listing created") || errStr.includes("saved") || errStr.includes("draft")) {
-        Alert.alert("Listing saved", msg);
+      if (errStr.includes("listing created") || errStr.includes("saved") || errStr.includes("draft") || errStr.includes("already live")) {
+        showFeedback("info", "Listing saved", msg);
       } else if (errStr.includes("row-level security") || errStr.includes("permission")) {
-        Alert.alert("Permission issue", "Your RLS policies may be blocking inserts. Please check your database permissions.");
+        showFeedback("error", "Permission issue", "Your database permissions blocked this listing insert.");
       } else if (errStr.includes("network") || errStr.includes("timeout")) {
-        Alert.alert("Connection issue", "Please check your internet connection and try again.");
+        showFeedback("error", "Connection issue", "Please check your internet connection and try again.");
       } else {
-        Alert.alert("Failed to create listing", msg);
+        showFeedback("error", "Failed to create listing", msg);
       }
     } finally {
       setSubmitting(false);
@@ -1045,7 +1068,7 @@ export default function SellTab() {
         : "";
     const finalDesc = (descBase + extra).trim() || null;
     const availability = buildAvailability();
-    const shouldActivateAfterImages = images.length > 0;
+    let imageWarning: string | null = null;
 
     // Step 1: Create the listing first (always allow this to succeed)
     console.log("[SellTab] createListing -> start");
@@ -1064,8 +1087,7 @@ export default function SellTab() {
         stock_qty: category === "product" ? qty : null,
         availability,
         payment_options: paymentOptions,
-        // keep listings with selected media hidden until image rows are persisted
-        is_active: shouldActivateAfterImages ? false : true,
+        is_active: true,
       } as any);
       console.log("[SellTab] createListing -> ok", listing?.id ?? "no-id");
 
@@ -1112,27 +1134,23 @@ export default function SellTab() {
           } catch (imgUploadErr: any) {
             console.error("[SellTab] single image upload failed", { index: i, error: imgUploadErr });
             throw new Error(
-              `Image ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Your listing was saved as a draft.`,
+              `Image ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Listing is already live without this image.`,
             );
           }
         }
 
         console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
         setStage("Saving images...");
-        const rows = await insertListingImages(inserts, { activateListing: shouldActivateAfterImages });
+        const rows = await insertListingImages(inserts, { activateListing: false });
         console.log("[SellTab] insertListingImages -> ok", { count: rows?.length ?? 0 });
 
         if (!rows?.length) {
-          throw new Error("Upload finished but image rows were not saved. Your listing is saved as a draft. Please retry uploading images from My Listings.");
+          imageWarning = "Your listing is live, but the uploaded images were not attached yet.";
         }
       } catch (imageErr: any) {
         const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
-        setStage("Keeping saved draft...");
+        setStage("Finalizing listing...");
         const errMsg = String(imageErr?.message || imageErr || "");
-        if (errMsg.includes("Your listing was saved")) {
-          // Already a helpful message
-          throw imageErr;
-        }
         if (partialRows.length > 0) {
           throw new Error(
             `✓ Listing created! But only ${partialRows.length}/${images.length} image${partialRows.length === 1 ? "" : "s"} uploaded. Open My Listings to re-upload remaining images.`,
@@ -1145,7 +1163,7 @@ export default function SellTab() {
     }
 
     const successMsg = images.length > 0 ? "Your listing is live with all images!" : "Your listing is live!";
-    Alert.alert("Posted", successMsg);
+    showFeedback("success", "Posted", successMsg);
     const nextCountry = resolveAvailabilityCountry("", "", userCountry);
     
     // Clear form state
@@ -1236,9 +1254,10 @@ export default function SellTab() {
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
       <AppHeader title="Sell" subtitle="Products are physical. Services can be digital (remote) or in-person." />
       <ScrollView
+        style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingBottom: 176 }}
+        contentContainerStyle={{ paddingBottom: 240 }}
       >
         <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Create Listing</Text>
         <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
@@ -1640,24 +1659,69 @@ export default function SellTab() {
             <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "900" }}>{stage}</Text>
           </View>
         ) : null}
+        {submitFeedback ? (
+          <View
+            style={{
+              marginTop: 12,
+              borderRadius: 16,
+              borderWidth: 1,
+              padding: 12,
+              backgroundColor:
+                submitFeedback.tone === "error"
+                  ? "rgba(239,68,68,0.12)"
+                  : submitFeedback.tone === "success"
+                  ? "rgba(16,185,129,0.12)"
+                  : "rgba(59,130,246,0.12)",
+              borderColor:
+                submitFeedback.tone === "error"
+                  ? "rgba(239,68,68,0.35)"
+                  : submitFeedback.tone === "success"
+                  ? "rgba(16,185,129,0.35)"
+                  : "rgba(59,130,246,0.35)",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "900" }}>{submitFeedback.title}</Text>
+            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.82)" }}>{submitFeedback.message}</Text>
+          </View>
+        ) : null}
+      </ScrollView>
 
-        <Pressable
-          disabled={submitting}
-          onPress={onSubmit}
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: "absolute",
+          left: 16,
+          right: 16,
+          bottom: Platform.OS === "web" ? 18 : 84,
+        }}
+      >
+        <View
           style={{
-            marginTop: 14,
-            borderRadius: 18,
-            paddingVertical: 14,
-            alignItems: "center",
-            backgroundColor: PURPLE,
+            borderRadius: 22,
+            padding: 10,
+            backgroundColor: "rgba(5,4,11,0.94)",
             borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.8)",
-            opacity: submitting ? 0.7 : 1,
+            borderColor: "rgba(255,255,255,0.08)",
           }}
         >
-          {submitting ? <ActivityIndicator /> : <Text style={{ color: "#fff", fontWeight: "900" }}>Publish listing</Text>}
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            disabled={submitting}
+            onPress={() => triggerPublish("press")}
+            onPressIn={Platform.OS === "web" ? () => triggerPublish("pressIn") : undefined}
+            style={{
+              borderRadius: 18,
+              paddingVertical: 14,
+              alignItems: "center",
+              backgroundColor: PURPLE,
+              borderWidth: 1,
+              borderColor: "rgba(124,58,237,0.8)",
+              opacity: submitting ? 0.7 : 1,
+            }}
+          >
+            {submitting ? <ActivityIndicator /> : <Text style={{ color: "#fff", fontWeight: "900" }}>Publish listing</Text>}
+          </Pressable>
+        </View>
+      </View>
     </LinearGradient>
   );
 }

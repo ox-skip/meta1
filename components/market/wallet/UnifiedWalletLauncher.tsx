@@ -20,6 +20,7 @@ export default function UnifiedWalletLauncher() {
     if (!p.startsWith("/market")) return true;
     if (p.includes("/market/wallet")) return true;
     if (p.includes("/market/checkout/")) return true;
+    if (Platform.OS === "web" && (p.endsWith("/market/sell") || p.includes("/market/sell?"))) return true;
     return false;
   }, [pathname]);
 
