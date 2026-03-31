@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput
 import * as ImagePicker from "expo-image-picker";
 
 import { useAuth } from "@/hooks/authentication/useAuth";
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -289,6 +290,7 @@ export default function ProfileRoute() {
       <Pressable
         style={styles.dangerBtn}
         onPress={async () => {
+          await recordAuthSessionNotification("signed_out").catch(() => undefined);
           await supabase.auth.signOut();
           router.replace("/(auth)/login");
         }}

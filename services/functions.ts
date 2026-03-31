@@ -4,6 +4,7 @@ import {
   getSupabaseFunctionsBaseUrl,
   getSupabaseJwtOrThrow,
 } from "@/services/net";
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { supabase } from "@/services/supabase";
 
 function shortText(text: string | null | undefined, limit = 600) {
@@ -142,6 +143,11 @@ export async function callFn<T>(name: string, body?: any, timeoutMs = 20000): Pr
   if (!res.ok || (json as any)?.success === false) {
     const lower = String(msg || "").toLowerCase();
     if (res.status === 401 && (lower.includes("invalid jwt") || lower.includes("jwt"))) {
+      try {
+        await recordAuthSessionNotification("expired");
+      } catch {
+        // ignore notification failures during session expiry
+      }
       try {
         await supabase.auth.signOut();
       } catch {

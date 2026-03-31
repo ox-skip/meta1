@@ -25,6 +25,7 @@ const MENU_ITEMS: Array<{
   { title: "Social Feed", icon: "newspaper-outline", route: "/market/social" },
   { title: "Rewards", icon: "gift-outline", route: "/market/(tabs)/rewards" },
   { title: "Messages", icon: "chatbubble-ellipses-outline", route: "/market/(tabs)/messages" },
+  { title: "Notifications", icon: "notifications-outline", route: "/market/notification" },
   { title: "Wallet", icon: "wallet-outline", route: "/market/wallet" },
   { title: "Transaction History", icon: "time-outline", route: "/market/history" },
   { title: "Listings", icon: "albums-outline", route: "/market/listings" },

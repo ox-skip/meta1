@@ -9,6 +9,7 @@ import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import UnifiedWalletPanel from "@/components/market/wallet/UnifiedWalletPanel";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 import { tutorialFlows } from "@/services/onboarding/definitions";
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
@@ -195,6 +196,7 @@ export default function MarketAccountTab() {
   }
 
   async function onSignOut() {
+    await recordAuthSessionNotification("signed_out").catch(() => undefined);
     await supabase.auth.signOut().catch(() => undefined);
     router.replace("/(auth)/login" as any);
   }

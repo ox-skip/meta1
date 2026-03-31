@@ -16,6 +16,7 @@ import "../global.css";
 import { useAuth } from "../hooks/authentication/useAuth";
 import { initMobileAds } from "@/services/ads/initMobileAds";
 import { OnboardingProvider } from "@/components/onboarding/InAppTutorial";
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { ExternalWalletProvider } from "@/services/wallet/externalWalletProvider";
 
 import * as Application from "expo-application";
@@ -84,6 +85,8 @@ export default function RootLayout() {
   );
 
   const retryNonceRef = useRef(0);
+  const authEventsReadyRef = useRef(false);
+  const lastAuthAccessTokenRef = useRef<string | null>(null);
 
   /* ---------------- ADMOB INIT ---------------- */
   useEffect(() => {
@@ -151,6 +154,50 @@ export default function RootLayout() {
       mounted = false;
     };
   }, [retryNonceRef.current]);
+
+  useEffect(() => {
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        authEventsReadyRef.current = true;
+        lastAuthAccessTokenRef.current = data.session?.access_token ?? null;
+      })
+      .catch(() => {
+        authEventsReadyRef.current = true;
+        lastAuthAccessTokenRef.current = null;
+      });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextToken = session?.access_token ?? null;
+
+      if (!authEventsReadyRef.current) {
+        authEventsReadyRef.current = true;
+        lastAuthAccessTokenRef.current = nextToken;
+        return;
+      }
+
+      if (event === "SIGNED_IN") {
+        if (nextToken && nextToken !== lastAuthAccessTokenRef.current) {
+          void recordAuthSessionNotification("signed_in");
+        }
+        lastAuthAccessTokenRef.current = nextToken;
+        return;
+      }
+
+      if (event === "TOKEN_REFRESHED") {
+        lastAuthAccessTokenRef.current = nextToken;
+        return;
+      }
+
+      if (event === "SIGNED_OUT") {
+        lastAuthAccessTokenRef.current = null;
+      }
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   /* ---------------- WATCHDOG (FIXED) ----------------
      This now only runs while booting/loading is true.

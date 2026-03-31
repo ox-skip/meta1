@@ -2,6 +2,7 @@ import * as Clipboard from "expo-clipboard";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { WALLET_THEME as T } from "@/components/wallet/theme";
 import { supabase } from "@/services/supabase";
 
@@ -59,6 +60,7 @@ export default function ProfileModal({ visible, onClose }: Props) {
           <Pressable
             style={[styles.btn, styles.btnGhost]}
             onPress={async () => {
+              await recordAuthSessionNotification("signed_out").catch(() => undefined);
               await supabase.auth.signOut();
               onClose();
             }}

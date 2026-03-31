@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
@@ -603,6 +604,8 @@ export default function MarketHome() {
             <AppHeader
               title="Marketplace"
               subtitle={section === "social" ? "Community, official channels, and marketplace updates" : "Escrow-protected buying and selling"}
+              showAccount={false}
+              rightSlot={<NotificationBell />}
             />
 
             <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { recordAuthSessionNotification } from "@/services/market/notifications";
 import { supabase } from "@/services/supabase";
 import { useAuth } from "@/hooks/authentication/useAuth";
 
@@ -70,6 +71,7 @@ export function usePrivacyPolicy() {
 
   const reject = async () => {
     console.log("[policy-acceptance] rejected - signing out");
+    await recordAuthSessionNotification("signed_out").catch(() => undefined);
     await supabase.auth.signOut();
   };
 
