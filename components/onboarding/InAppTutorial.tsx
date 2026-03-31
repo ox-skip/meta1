@@ -193,6 +193,11 @@ function useOnboardingContext() {
   return value;
 }
 
+export function useOnboardingState() {
+  const { activeFlowKey, hydrated } = useOnboardingContext();
+  return { activeFlowKey, hydrated };
+}
+
 export function InAppTutorial({
   enabled = true,
   flow,
