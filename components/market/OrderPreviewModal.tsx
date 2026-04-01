@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Linking, Modal, Pressable, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { ResizeMode, Video } from "expo-av";
 import { usePreventScreenCapture } from "@/hooks/usePreventScreenCapture";
 import { WatermarkedBrowser } from "@/components/market/WatermarkedBrowser";
 
@@ -219,25 +220,7 @@ function FileBlock({ uri, watermark }: { uri: string | null; watermark: boolean 
 }
 
 function VideoBlock({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
-  const [av, setAv] = useState<any | null | false>(null);
   const videoRef = useRef<any>(null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const mod = await import("expo-av");
-        if (!alive) return;
-        setAv(mod);
-      } catch {
-        if (!alive) return;
-        setAv(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   if (!uri) {
     return (
@@ -248,32 +231,16 @@ function VideoBlock({ uri, watermark, previewSeconds }: { uri: string | null; wa
     );
   }
 
-  if (av === false) {
-    return (
-      <View style={{ marginTop: 18, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Video preview not installed</Text>
-        <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>Install expo-av to play videos in-app.</Text>
-        <Pressable
-          onPress={() => Linking.openURL(uri)}
-          style={{ marginTop: 12, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(124,58,237,0.85)" }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Open in browser</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  const Video = av?.Video;
-
   return (
     <MediaFrame watermark={watermark}>
       <Video
         ref={videoRef}
         source={{ uri }}
         style={{ width: "100%", height: "100%" }}
-        resizeMode="contain"
+        resizeMode={ResizeMode.CONTAIN}
         useNativeControls
         shouldPlay={false}
+        isMuted={false}
         onPlaybackStatusUpdate={(st: any) => {
           if (!watermark) return;
           if (!st?.isLoaded) return;
