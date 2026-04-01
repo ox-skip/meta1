@@ -41,7 +41,7 @@ const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
 
 type SortBy = "newest" | "price_low" | "price_high";
-type FeedSection = "product" | "service" | "social";
+type FeedSection = "all" | "product" | "service" | "social";
 type DirectoryMode = "listings" | "featured" | "verified";
 type FeedScope = "country" | "global";
 
@@ -223,8 +223,61 @@ function SellerMini({ seller }: { seller?: SellerCard | null }) {
   );
 }
 
+function CardBadge({
+  label,
+  icon,
+  tone = "neutral",
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  tone?: "neutral" | "purple" | "gold" | "green" | "red";
+}) {
+  const tones = {
+    neutral: {
+      bg: "rgba(8,11,24,0.62)",
+      border: "rgba(255,255,255,0.14)",
+    },
+    purple: {
+      bg: "rgba(124,58,237,0.22)",
+      border: "rgba(196,181,253,0.38)",
+    },
+    gold: {
+      bg: "rgba(245,158,11,0.20)",
+      border: "rgba(253,186,116,0.35)",
+    },
+    green: {
+      bg: "rgba(16,185,129,0.20)",
+      border: "rgba(52,211,153,0.35)",
+    },
+    red: {
+      bg: "rgba(239,68,68,0.22)",
+      border: "rgba(252,165,165,0.35)",
+    },
+  } as const;
+
+  const colors = tones[tone];
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: colors.bg,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }}
+    >
+      {icon ? <Ionicons name={icon} size={12} color="#fff" /> : null}
+      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{label}</Text>
+    </View>
+  );
+}
+
 export default function MarketHome() {
-  const [section, setSection] = useState<FeedSection>("product");
+  const [section, setSection] = useState<FeedSection>("all");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("listings");
@@ -242,8 +295,11 @@ export default function MarketHome() {
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
 
-  const main = section === "service" ? "service" : "product";
-  const categories = useMemo<CategoryItem[]>(() => getCategoriesByMain(main as MarketMainCategory), [main]);
+  const main = section === "service" ? "service" : section === "product" ? "product" : null;
+  const categories = useMemo<CategoryItem[]>(
+    () => (main ? getCategoriesByMain(main as MarketMainCategory) : []),
+    [main],
+  );
   const supabaseUrl = (supabase as any)?.supabaseUrl ?? (process.env.EXPO_PUBLIC_SUPABASE_URL as string) ?? "";
   const locationLabel = useMemo(() => {
     if (!userCountry) return "Location unavailable";
@@ -315,17 +371,19 @@ export default function MarketHome() {
     setErr(null);
     try {
       const effectiveCountry = countryOverride === undefined ? userCountry : countryOverride;
-      const restrictToCrypto = !isNigeriaCountry(effectiveCountry?.code || effectiveCountry?.name);
+      const hasResolvedCountry = Boolean(effectiveCountry?.code || effectiveCountry?.name);
+      const restrictToCrypto =
+        hasResolvedCountry && !isNigeriaCountry(effectiveCountry?.code || effectiveCountry?.name);
       let query = supabase
         .from(LISTINGS_TABLE)
         .select(
           "id,seller_id,title,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)"
         )
         .eq("is_active", true)
-        .eq("category", main)
         .order(sortBy === "newest" ? "created_at" : "price_amount", { ascending: sortBy === "price_low" })
         .limit(120);
 
+      if (main) query = query.eq("category", main);
       if (selectedSlug) query = query.eq("sub_category", selectedSlug);
       if (q.trim() && directoryMode === "listings") {
         query = query.or(`title.ilike.%${q.trim()}%,description.ilike.%${q.trim()}%`);
@@ -347,7 +405,7 @@ export default function MarketHome() {
           ? items.filter((r) =>
               listingMatchesCountry(r.availability ?? r.payment_options?.availability, effectiveCountry, false),
             )
-          : [];
+          : items;
       const scoped = restrictToCrypto ? scopedBase.filter((r) => listingAllowsCrypto(r)) : scopedBase;
       const uniq = new Map<string, ListingRow>();
       scoped.forEach((r) => {
@@ -440,19 +498,27 @@ export default function MarketHome() {
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
   const isListingDirectory = section !== "social" && directoryMode === "listings";
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
-  const feedLabel = section === "service" ? "services" : "products";
+  const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
   const searchPlaceholder =
     directoryMode === "listings"
       ? `Filter ${feedLabel} in this feed`
       : "Search stores or @username";
   const heroTitle =
-    section === "social" ? "Stay close to marketplace activity" : section === "service" ? "Hire trusted services" : "Shop trusted products";
+    section === "social"
+      ? "Stay close to marketplace activity"
+      : section === "service"
+      ? "Hire trusted services"
+      : section === "product"
+      ? "Shop trusted products"
+      : "Discover trusted listings";
   const heroSubtitle =
     section === "social"
       ? "Follow updates, discover official channels, and jump into the full social feed when you need it."
       : section === "service"
       ? "Browse service providers, compare offers, and move into escrow-backed checkout when you're ready."
-      : "Discover local and global listings, compare prices quickly, and buy through escrow-backed checkout.";
+      : section === "product"
+      ? "Discover local and global listings, compare prices quickly, and buy through escrow-backed checkout."
+      : "Browse products and services together, compare prices fast, and move into escrow-backed checkout when you're ready.";
   const resultTitle =
     directoryMode === "listings"
       ? `${resultCount} ${feedLabel} in view`
@@ -462,7 +528,9 @@ export default function MarketHome() {
   const resultSubtitle =
     directoryMode === "listings"
       ? feedScope === "country"
-        ? `Showing local-first ${feedLabel} for ${locationLabel}.`
+        ? userCountry
+          ? `Showing local-first ${feedLabel} for ${locationLabel}.`
+          : `Location unavailable. Showing all available ${feedLabel} until live location is detected.`
         : `Showing all available ${feedLabel} across the marketplace.`
       : directoryMode === "featured"
       ? "Browse promoted storefronts first."
@@ -482,13 +550,28 @@ export default function MarketHome() {
     const showDiscount = displayPrice.hasDiscount;
 
     const isOutOfStock = item.category === "product" && typeof item.stock_qty === "number" && item.stock_qty <= 0;
+    const categoryLabel = item.category === "service" ? "Service" : "Product";
+    const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
+    const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
 
     return (
       <Pressable
         onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
-        style={{ width: "48%", borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: CARD }}
+        style={{
+          width: "48%",
+          borderRadius: 24,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.08)",
+          backgroundColor: "rgba(11,10,24,0.96)",
+          shadowColor: "#000",
+          shadowOpacity: 0.18,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 6,
+        }}
       >
-        <View style={{ height: 180, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <View style={{ height: 196, backgroundColor: "rgba(255,255,255,0.06)" }}>
           {coverUrl ? (
             <MarketMediaView
               uri={coverUrl}
@@ -500,8 +583,57 @@ export default function MarketHome() {
               loop={coverKind === "video"}
               disablePointerEvents
             />
-          ) : null}
-          <View style={{ position: "absolute", bottom: 10, left: 10 }}>
+          ) : (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Ionicons name={coverKind === "video" ? "videocam-outline" : "image-outline"} size={30} color="rgba(255,255,255,0.55)" />
+              <Text style={{ color: "rgba(255,255,255,0.58)", fontWeight: "800", fontSize: 12 }}>
+                Preview unavailable
+              </Text>
+            </View>
+          )}
+
+          <LinearGradient
+            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.20)", "rgba(5,4,11,0.86)"]}
+            locations={[0, 0.45, 1]}
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+
+          <View
+            style={{
+              position: "absolute",
+              top: 12,
+              left: 12,
+              right: 12,
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 8,
+            }}
+          >
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, flex: 1 }}>
+              <CardBadge
+                label={categoryLabel}
+                icon={item.category === "service" ? "construct-outline" : "cube-outline"}
+                tone="purple"
+              />
+              <CardBadge
+                label={coverKind === "video" ? "Video cover" : "Image cover"}
+                icon={coverKind === "video" ? "videocam-outline" : "image-outline"}
+              />
+              {showDiscount ? <CardBadge label="Discount" icon="pricetag-outline" tone="gold" /> : null}
+            </View>
+            {isOutOfStock ? (
+              <CardBadge label="Out" icon="alert-circle-outline" tone="red" />
+            ) : (
+              <CardBadge
+                label={freshnessLabel}
+                icon={stats.completed > 0 ? "trending-up-outline" : "time-outline"}
+                tone={stats.completed > 0 ? "green" : "neutral"}
+              />
+            )}
+          </View>
+
+          <View style={{ position: "absolute", bottom: 12, left: 12, right: 12, gap: 10 }}>
             <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.6)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
               {showDiscount ? (
                 <>
@@ -529,30 +661,37 @@ export default function MarketHome() {
                 </>
               )}
             </View>
+
+            <View>
+              <Text numberOfLines={2} style={{ color: "#fff", fontWeight: "900", fontSize: 15, lineHeight: 20 }}>
+                {item.title ?? "Untitled"}
+              </Text>
+              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }} numberOfLines={1}>
+                {item.sub_category || categoryLabel} • {deliveryLabel}
+              </Text>
+            </View>
           </View>
-          {isOutOfStock ? (
-            <View style={{ position: "absolute", top: 10, right: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(239,68,68,0.75)" }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Out of stock</Text>
-            </View>
-          ) : null}
-          {coverUrl && coverKind === "video" ? (
-            <View style={{ position: "absolute", top: 10, left: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.58)", flexDirection: "row", alignItems: "center", gap: 5 }}>
-              <Ionicons name="videocam-outline" size={13} color="#fff" />
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Auto-play</Text>
-            </View>
-          ) : null}
         </View>
 
         <View style={{ padding: 12 }}>
-          <Text numberOfLines={1} style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>{item.title ?? "Untitled"}</Text>
-          {item.category === "product" && typeof item.stock_qty === "number" ? (
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.7)", fontSize: 11 }}>
-              Stock left: {Math.max(0, item.stock_qty)}
-            </Text>
-          ) : null}
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.75)", fontSize: 11 }}>
-            {stats.completed > 0 ? `${stats.completed} sold` : "New listing"} • {String(item.delivery_type || "delivery").replace(/_/g, " ")}
-          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {item.category === "product" && typeof item.stock_qty === "number" ? (
+              <CardBadge
+                label={`Stock ${Math.max(0, item.stock_qty)}`}
+                icon="layers-outline"
+                tone={isOutOfStock ? "red" : "neutral"}
+              />
+            ) : (
+              <CardBadge
+                label={deliveryLabel}
+                icon={item.category === "service" ? "flash-outline" : "cube-outline"}
+              />
+            )}
+            <CardBadge
+              label={coverKind === "video" ? "Auto-play" : "Tap to open"}
+              icon={coverKind === "video" ? "play-circle-outline" : "expand-outline"}
+            />
+          </View>
           <SellerMini seller={seller} />
         </View>
       </Pressable>
@@ -623,6 +762,16 @@ export default function MarketHome() {
 
             <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
               <SectionPill
+                icon="apps-outline"
+                label="All"
+                active={section === "all"}
+                onPress={() => {
+                  setSection("all");
+                  setDirectoryMode("listings");
+                  setSelectedSlug(null);
+                }}
+              />
+              <SectionPill
                 icon="storefront-outline"
                 label="Products"
                 active={section === "product"}
@@ -644,7 +793,7 @@ export default function MarketHome() {
               />
               <SectionPill
                 icon="people-outline"
-                label="Social Feed"
+                label="Social"
                 active={section === "social"}
                 onPress={() => setSection("social")}
               />
@@ -679,7 +828,7 @@ export default function MarketHome() {
                       icon="storefront-outline"
                       accent="#0EA5E9"
                       onPress={() => {
-                        setSection("product");
+                        setSection("all");
                         setDirectoryMode("listings");
                         setSelectedSlug(null);
                       }}
@@ -746,15 +895,27 @@ export default function MarketHome() {
 
                   <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
                     <QuickAction
-                      label="Browse Categories"
-                      subtitle={section === "service" ? "Jump by skill or service type." : "Jump by product type."}
-                      icon="grid-outline"
-                      onPress={() =>
+                      label={section === "all" ? "Browse Products" : "Browse Categories"}
+                      subtitle={
+                        section === "service"
+                          ? "Jump by skill or service type."
+                          : section === "product"
+                          ? "Jump by product type."
+                          : "Open product categories or switch to services above."
+                      }
+                      icon={section === "all" ? "storefront-outline" : "grid-outline"}
+                      onPress={() => {
+                        if (section === "all") {
+                          setSection("product");
+                          setDirectoryMode("listings");
+                          setSelectedSlug(null);
+                          return;
+                        }
                         router.push({
                           pathname: "/market/category" as any,
                           params: { mode: section === "service" ? "service" : "product" },
-                        })
-                      }
+                        });
+                      }}
                     />
                     <QuickAction
                       label="Digital Stock"
@@ -930,17 +1091,28 @@ export default function MarketHome() {
                       </View>
                     ) : null}
 
-                    <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Categories</Text>
-                    <View style={{ marginTop: 8 }}>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
-                        {categories.map((c) => (
-                          <View key={c.slug} style={{ marginLeft: 10 }}>
-                            <Chip label={c.title} active={selectedSlug === c.slug} onPress={() => setSelectedSlug(c.slug)} />
-                          </View>
-                        ))}
-                      </ScrollView>
-                    </View>
+                    {categories.length ? (
+                      <>
+                        <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Categories</Text>
+                        <View style={{ marginTop: 8 }}>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
+                            {categories.map((c) => (
+                              <View key={c.slug} style={{ marginLeft: 10 }}>
+                                <Chip label={c.title} active={selectedSlug === c.slug} onPress={() => setSelectedSlug(c.slug)} />
+                              </View>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={{ marginTop: 14, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.04)" }}>
+                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>All listing types</Text>
+                        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                          This view mixes products and services together. Switch above when you want category-specific browsing.
+                        </Text>
+                      </View>
+                    )}
 
                     <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Sort</Text>
                     <View style={{ marginTop: 8, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
@@ -986,7 +1158,9 @@ export default function MarketHome() {
           !loading && section !== "social" ? (
             <View style={{ marginTop: 14, marginHorizontal: 16, borderRadius: 16, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
               <Text style={{ color: "#fff", fontWeight: "900" }}>No results</Text>
-              <Text style={{ marginTop: 6, color: MUTED }}>Try another filter or search.</Text>
+              <Text style={{ marginTop: 6, color: MUTED }}>
+                Try another filter, switch listing type, or use the Global feed.
+              </Text>
             </View>
           ) : null
         }
