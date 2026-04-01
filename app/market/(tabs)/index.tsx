@@ -11,6 +11,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -277,6 +278,7 @@ function CardBadge({
 }
 
 export default function MarketHome() {
+  const { width: viewportWidth } = useWindowDimensions();
   const [section, setSection] = useState<FeedSection>("all");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
@@ -496,6 +498,8 @@ export default function MarketHome() {
       return text.includes(query);
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
+  const listingColumns =
+    section === "social" || directoryMode !== "listings" ? 1 : viewportWidth >= 980 ? 2 : 1;
   const isListingDirectory = section !== "social" && directoryMode === "listings";
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
   const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
@@ -553,12 +557,15 @@ export default function MarketHome() {
     const categoryLabel = item.category === "service" ? "Service" : "Product";
     const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
     const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
+    const isWideCard = listingColumns === 1;
 
     return (
       <Pressable
         onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
         style={{
-          width: "48%",
+          width: isWideCard ? "100%" : "48.5%",
+          marginTop: 12,
+          marginHorizontal: isWideCard ? 16 : 0,
           borderRadius: 24,
           overflow: "hidden",
           borderWidth: 1,
@@ -571,7 +578,7 @@ export default function MarketHome() {
           elevation: 6,
         }}
       >
-        <View style={{ height: 196, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <View style={{ height: isWideCard ? 252 : 228, backgroundColor: "rgba(255,255,255,0.06)" }}>
           {coverUrl ? (
             <MarketMediaView
               uri={coverUrl}
@@ -593,8 +600,8 @@ export default function MarketHome() {
           )}
 
           <LinearGradient
-            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.20)", "rgba(5,4,11,0.86)"]}
-            locations={[0, 0.45, 1]}
+            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.18)", "rgba(5,4,11,0.38)"]}
+            locations={[0, 0.4, 1]}
             style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
           />
 
@@ -632,49 +639,53 @@ export default function MarketHome() {
               />
             )}
           </View>
-
-          <View style={{ position: "absolute", bottom: 12, left: 12, right: 12, gap: 10 }}>
-            <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.6)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
-              {showDiscount ? (
-                <>
-                  <Text style={{ color: "rgba(255,255,255,0.65)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 11 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.65)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 10 }}>
-                    USD {formatCurrency("USD", displayPrice.usdWas)}
-                  </Text>
-                  <Text style={{ color: "#FCA5A5", fontWeight: "900", fontSize: 12 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                  </Text>
-                  <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 10 }}>
-                    USD {formatCurrency("USD", displayPrice.usdNow)}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                  </Text>
-                  <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 10 }}>
-                    USD {formatCurrency("USD", displayPrice.usdNow)}
-                  </Text>
-                </>
-              )}
-            </View>
-
-            <View>
-              <Text numberOfLines={2} style={{ color: "#fff", fontWeight: "900", fontSize: 15, lineHeight: 20 }}>
-                {item.title ?? "Untitled"}
-              </Text>
-              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }} numberOfLines={1}>
-                {item.sub_category || categoryLabel} • {deliveryLabel}
-              </Text>
-            </View>
-          </View>
         </View>
 
-        <View style={{ padding: 12 }}>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <View style={{ padding: 14 }}>
+          <View
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              backgroundColor: "rgba(255,255,255,0.04)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.08)",
+            }}
+          >
+            {showDiscount ? (
+              <>
+                <Text style={{ color: "rgba(255,255,255,0.52)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 11 }}>
+                  {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)} • USD {formatCurrency("USD", displayPrice.usdWas)}
+                </Text>
+                <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
+                  {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
+                </Text>
+                <Text style={{ marginTop: 2, color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>
+                  USD {formatCurrency("USD", displayPrice.usdNow)}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
+                  {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
+                </Text>
+                <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.68)", fontWeight: "800", fontSize: 12 }}>
+                  USD {formatCurrency("USD", displayPrice.usdNow)}
+                </Text>
+              </>
+            )}
+          </View>
+
+          <Text
+            numberOfLines={2}
+            style={{ marginTop: 12, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 16 : 15, lineHeight: 22 }}
+          >
+            {item.title ?? "Untitled"}
+          </Text>
+          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }} numberOfLines={1}>
+            {item.sub_category || categoryLabel} • {deliveryLabel}
+          </Text>
+
+          <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {item.category === "product" && typeof item.stock_qty === "number" ? (
               <CardBadge
                 label={`Stock ${Math.max(0, item.stock_qty)}`}
@@ -727,10 +738,14 @@ export default function MarketHome() {
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
-        key={section === "social" ? "social" : directoryMode}
+        key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
         keyExtractor={(it: any, idx) => String((it as any)?.id || (it as any)?.user_id || idx)}
-        numColumns={section === "social" || directoryMode !== "listings" ? 1 : 2}
-        columnWrapperStyle={section === "social" || directoryMode !== "listings" ? undefined : { paddingHorizontal: 16, justifyContent: "space-between", marginTop: 12 }}
+        numColumns={listingColumns}
+        columnWrapperStyle={
+          listingColumns === 2
+            ? { paddingHorizontal: 16, justifyContent: "space-between" }
+            : undefined
+        }
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={
           <RefreshControl
