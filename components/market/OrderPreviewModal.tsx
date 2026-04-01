@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Linking, Modal, Pressable, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { ResizeMode, Video } from "expo-av";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePreventScreenCapture } from "@/hooks/usePreventScreenCapture";
 import { WatermarkedBrowser } from "@/components/market/WatermarkedBrowser";
 
@@ -35,6 +36,7 @@ export function OrderPreviewModal({
   payload: PreviewPayload | null;
 }) {
   usePreventScreenCapture(open);
+  const insets = useSafeAreaInsets();
 
   const [busy, setBusy] = useState(false);
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
@@ -77,8 +79,16 @@ export function OrderPreviewModal({
   }, [open, payload]);
 
   return (
-    <Modal visible={open} animationType="slide" onRequestClose={onClose}>
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingTop: 18, paddingHorizontal: 16 }}>
+    <Modal visible={open} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <LinearGradient
+        colors={[BG1, BG0]}
+        style={{
+          flex: 1,
+          paddingTop: Math.max(insets.top, 18),
+          paddingBottom: Math.max(insets.bottom, 16),
+          paddingHorizontal: 16,
+        }}
+      >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Pressable
             onPress={onClose}
@@ -114,12 +124,17 @@ export function OrderPreviewModal({
           </View>
         ) : !payload ? null : payload.kind === "image" ? (
           resolvedUrl ? (
-            <MediaFrame watermark={isPreview}>
+            <MediaFrame watermark={isPreview} fill>
               <Image source={{ uri: resolvedUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
             </MediaFrame>
           ) : null
         ) : payload.kind === "video" ? (
-          <VideoBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} />
+          <VideoBlock
+            uri={resolvedUrl}
+            watermark={isPreview}
+            previewSeconds={payload.previewSeconds ?? 20}
+            fill
+          />
         ) : payload.kind === "audio" ? (
           <AudioBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} />
         ) : payload.kind === "file" ? (
@@ -136,10 +151,36 @@ export function OrderPreviewModal({
   );
 }
 
-function MediaFrame({ watermark, children }: { watermark: boolean; children: React.ReactNode }) {
+function MediaFrame({
+  watermark,
+  children,
+  fill = false,
+}: {
+  watermark: boolean;
+  children: React.ReactNode;
+  fill?: boolean;
+}) {
   return (
-    <View style={{ marginTop: 14, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-      <View style={{ height: 380, backgroundColor: "rgba(255,255,255,0.05)" }}>
+    <View
+      style={{
+        marginTop: 14,
+        flex: fill ? 1 : undefined,
+        minHeight: fill ? 0 : undefined,
+        borderRadius: 18,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.10)",
+      }}
+    >
+      <View
+        style={{
+          flex: fill ? 1 : undefined,
+          minHeight: fill ? 0 : 380,
+          backgroundColor: "rgba(0,0,0,0.96)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         {children}
         {watermark ? (
           <View pointerEvents="none" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
@@ -219,7 +260,17 @@ function FileBlock({ uri, watermark }: { uri: string | null; watermark: boolean 
   );
 }
 
-function VideoBlock({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
+function VideoBlock({
+  uri,
+  watermark,
+  previewSeconds,
+  fill = false,
+}: {
+  uri: string | null;
+  watermark: boolean;
+  previewSeconds: number;
+  fill?: boolean;
+}) {
   const videoRef = useRef<any>(null);
 
   if (!uri) {
@@ -232,7 +283,7 @@ function VideoBlock({ uri, watermark, previewSeconds }: { uri: string | null; wa
   }
 
   return (
-    <MediaFrame watermark={watermark}>
+    <MediaFrame watermark={watermark} fill={fill}>
       <Video
         ref={videoRef}
         source={{ uri }}
