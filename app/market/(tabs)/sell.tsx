@@ -27,7 +27,13 @@ const CARD = "rgba(255,255,255,0.05)";
 const BORDER = "rgba(255,255,255,0.09)";
 const MUTED = "rgba(255,255,255,0.62)";
 
-type ListingMediaAsset = { uri: string; contentType: string; fileName?: string | null };
+type ListingMediaAsset = {
+  uri: string;
+  contentType: string;
+  fileName?: string | null;
+  fileSize?: number | null;
+  webFile?: Blob | null;
+};
 
 type DeliveryType = "physical" | "digital" | "in_person";
 type Currency = "USDC";
@@ -691,6 +697,8 @@ export default function SellTab() {
             uri: a.uri,
             contentType,
             fileName: String((a as any).fileName || "").trim() || null,
+            fileSize: Number((a as any).fileSize ?? (a as any).file?.size ?? 0) || null,
+            webFile: Platform.OS === "web" ? ((a as any).file ?? null) : null,
           };
         })
         .filter((asset: ListingMediaAsset) => {
@@ -705,7 +713,7 @@ export default function SellTab() {
         const seen = new Set<string>();
         const deduped = merged
           .filter((img) => {
-            const key = `${img.uri}|${img.fileName || ""}`;
+            const key = `${img.uri}|${img.fileName || ""}|${img.fileSize || 0}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
@@ -1152,6 +1160,7 @@ export default function SellTab() {
               bucket: "market-listings",
               path,
               uri: img.uri,
+              fileBody: img.webFile ?? null,
               contentType: img.contentType,
             });
             console.log("[SellTab] upload media -> ok", { index: i, storagePath: up.storagePath });
@@ -1768,7 +1777,14 @@ export default function SellTab() {
               opacity: submitting ? 0.7 : 1,
             }}
           >
-            {submitting ? <ActivityIndicator /> : <Text style={{ color: "#fff", fontWeight: "900" }}>Publish listing</Text>}
+            {submitting ? (
+              <View style={{ alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                  {stage || "Publishing..."}
+                </Text>
+              </View>
+            ) : <Text style={{ color: "#fff", fontWeight: "900" }}>Publish listing</Text>}
           </Pressable>
         </View>
       </View>

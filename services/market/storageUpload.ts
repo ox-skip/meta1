@@ -7,6 +7,7 @@ type UploadParams = {
   bucket: string;
   path: string;
   localUri: string;
+  fileBody?: Blob | null;
   contentType?: string;
   upsert?: boolean;
 };
@@ -92,7 +93,7 @@ async function prepareUploadUri(localUri: string) {
     const ext = rawUri.split(".").pop()?.split("?")[0] || "bin";
     preparedUri = `${FileSystem.cacheDirectory}supabase-upload-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
     try {
-      await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 60_000, "Preparing file");
+      await withTimeout(FileSystem.copyAsync({ from: rawUri, to: preparedUri }), 300_000, "Preparing file");
       cleanupUri = preparedUri;
     } catch (e) {
       console.log("[prepareUploadUri] File copy failed, trying original URI", String((e as any)?.message || e));
@@ -160,11 +161,11 @@ async function uploadViaNativeFileTransfer(params: {
 }
 
 async function readFileAsBytesViaFetch(localUri: string) {
-  const res = await withTimeout(fetch(localUri, { cache: "no-store" }), 120_000, "Reading file");
+  const res = await withTimeout(fetch(localUri, { cache: "no-store" }), 300_000, "Reading file");
   if (!res.ok) {
     throw new Error(`Reading file failed (HTTP ${res.status})`);
   }
-  const buf = await withTimeout(res.arrayBuffer(), 120_000, "Reading file bytes");
+  const buf = await withTimeout(res.arrayBuffer(), 300_000, "Reading file bytes");
   return new Uint8Array(buf);
 }
 
@@ -173,10 +174,30 @@ async function readFileAsBytesViaFileSystem(localUri: string) {
     FileSystem.readAsStringAsync(localUri, {
         encoding: "base64" as any,
       }),
-    120_000,
+    300_000,
     "Reading file",
   );
   return base64ToUint8Array(base64);
+}
+
+async function uploadViaWebBlob(params: {
+  bucket: string;
+  path: string;
+  fileBody: Blob;
+  contentType: string;
+  upsert: boolean;
+}) {
+  const { bucket, path, fileBody, contentType, upsert } = params;
+  const uploadPromise = supabase.storage.from(bucket).upload(path, fileBody, {
+    contentType,
+    upsert,
+  });
+  const { error: uploadErr } = await withTimeout(uploadPromise, 900_000, "Web storage upload");
+  if (uploadErr) {
+    throw new Error(`Upload failed: ${uploadErr.message}`);
+  }
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return { publicUrl: data?.publicUrl ?? null, storagePath: path };
 }
 
 async function readFileAsBytes(localUri: string) {
@@ -198,7 +219,7 @@ async function readFileAsBytes(localUri: string) {
 }
 
 export async function uploadToSupabaseStorage(params: UploadParams) {
-  const { bucket, path, localUri, upsert = true } = params;
+  const { bucket, path, localUri, fileBody, upsert = true } = params;
   const contentType = normalizeContentType(params.contentType || localUri || path);
 
   try {
@@ -225,6 +246,21 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
       }
     }
 
+    if (Platform.OS === "web" && fileBody instanceof Blob) {
+      console.log("[uploadToSupabaseStorage] Web blob upload -> start", {
+        path,
+        contentType,
+        sizeBytes: (fileBody as any)?.size ?? null,
+      });
+      return await uploadViaWebBlob({
+        bucket,
+        path,
+        fileBody,
+        contentType,
+        upsert,
+      });
+    }
+
     console.log("[uploadToSupabaseStorage] Reading file:", { path, contentType });
     const bytes = await readFileAsBytes(localUri);
     console.log("[uploadToSupabaseStorage] File read successfully:", { path, sizeBytes: bytes.length });
@@ -235,7 +271,7 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
     });
 
     console.log("[uploadToSupabaseStorage] Uploading to Supabase:", { bucket, path });
-    const { error: uploadErr } = await withTimeout(uploadPromise, 240_000, "Storage upload");
+    const { error: uploadErr } = await withTimeout(uploadPromise, 900_000, "Storage upload");
     if (uploadErr) {
       console.error("[uploadToSupabaseStorage] Upload error:", uploadErr);
       throw new Error(`Upload failed: ${uploadErr.message}`);

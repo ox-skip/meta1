@@ -331,6 +331,7 @@ export async function uploadToBucket(params: {
   bucket: string;
   path: string;
   uri: string;
+  fileBody?: Blob | null;
   contentType: string;
 }) {
   // fetch file as blob (works in Expo)
@@ -339,6 +340,7 @@ export async function uploadToBucket(params: {
     bucket: params.bucket,
     path: params.path,
     localUri: params.uri,
+    fileBody: params.fileBody ?? null,
     contentType: params.contentType,
 
   });
