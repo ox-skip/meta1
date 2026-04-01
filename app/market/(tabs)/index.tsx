@@ -558,6 +558,7 @@ export default function MarketHome() {
     const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
     const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
     const isWideCard = listingColumns === 1;
+    const mediaHeight = isWideCard ? 268 : 228;
 
     return (
       <Pressable
@@ -578,13 +579,13 @@ export default function MarketHome() {
           elevation: 6,
         }}
       >
-        <View style={{ height: isWideCard ? 252 : 228, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <View style={{ height: mediaHeight, backgroundColor: "rgba(255,255,255,0.06)" }}>
           {coverUrl ? (
             <MarketMediaView
               uri={coverUrl}
               kind={coverKind}
               style={{ width: "100%", height: "100%" }}
-              resizeMode="cover"
+              resizeMode={coverKind === "video" ? "contain" : "cover"}
               autoplay={coverKind === "video"}
               muted
               loop={coverKind === "video"}
@@ -600,8 +601,8 @@ export default function MarketHome() {
           )}
 
           <LinearGradient
-            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.18)", "rgba(5,4,11,0.38)"]}
-            locations={[0, 0.4, 1]}
+            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.12)", "rgba(5,4,11,0.30)"]}
+            locations={[0, 0.35, 1]}
             style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
           />
 
@@ -623,11 +624,6 @@ export default function MarketHome() {
                 icon={item.category === "service" ? "construct-outline" : "cube-outline"}
                 tone="purple"
               />
-              <CardBadge
-                label={coverKind === "video" ? "Video cover" : "Image cover"}
-                icon={coverKind === "video" ? "videocam-outline" : "image-outline"}
-              />
-              {showDiscount ? <CardBadge label="Discount" icon="pricetag-outline" tone="gold" /> : null}
             </View>
             {isOutOfStock ? (
               <CardBadge label="Out" icon="alert-circle-outline" tone="red" />
@@ -639,53 +635,111 @@ export default function MarketHome() {
               />
             )}
           </View>
+
+          {coverKind === "video" ? (
+            <View
+              style={{
+                position: "absolute",
+                right: 14,
+                bottom: 14,
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(0,0,0,0.54)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+              }}
+            >
+              <Ionicons name="play" size={18} color="#fff" />
+            </View>
+          ) : null}
         </View>
 
-        <View style={{ padding: 14 }}>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: 14,
+            backgroundColor: "rgba(14,12,28,0.94)",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text
+                numberOfLines={2}
+                style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 17 : 15, lineHeight: 22 }}
+              >
+                {item.title ?? "Untitled"}
+              </Text>
+              <Text style={{ marginTop: 5, color: "rgba(255,255,255,0.68)", fontSize: 12 }} numberOfLines={1}>
+                {item.sub_category || categoryLabel} • {deliveryLabel}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                minWidth: isWideCard ? 118 : 104,
+                borderRadius: 16,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: "rgba(255,255,255,0.04)",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.08)",
+                alignItems: "flex-end",
+              }}
+            >
+              {showDiscount ? (
+                <>
+                  <Text style={{ color: "rgba(255,255,255,0.50)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 10 }}>
+                    {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)}
+                  </Text>
+                  <Text style={{ marginTop: 3, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
+                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
+                  </Text>
+                  <Text style={{ marginTop: 2, color: "#FCA5A5", fontWeight: "800", fontSize: 11 }}>
+                    USD {formatCurrency("USD", displayPrice.usdNow)}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
+                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
+                  </Text>
+                  <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.68)", fontWeight: "800", fontSize: 11 }}>
+                    USD {formatCurrency("USD", displayPrice.usdNow)}
+                  </Text>
+                </>
+              )}
+            </View>
+          </View>
+
           <View
             style={{
-              borderRadius: 18,
-              padding: 12,
-              backgroundColor: "rgba(255,255,255,0.04)",
+              marginTop: 12,
+              paddingVertical: 12,
+              paddingHorizontal: 12,
+              borderRadius: 16,
+              backgroundColor: "rgba(255,255,255,0.035)",
               borderWidth: 1,
               borderColor: "rgba(255,255,255,0.08)",
             }}
           >
-            {showDiscount ? (
-              <>
-                <Text style={{ color: "rgba(255,255,255,0.52)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 11 }}>
-                  {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)} • USD {formatCurrency("USD", displayPrice.usdWas)}
-                </Text>
-                <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
-                  {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                </Text>
-                <Text style={{ marginTop: 2, color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>
-                  USD {formatCurrency("USD", displayPrice.usdNow)}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
-                  {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                </Text>
-                <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.68)", fontWeight: "800", fontSize: 12 }}>
-                  USD {formatCurrency("USD", displayPrice.usdNow)}
-                </Text>
-              </>
-            )}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {showDiscount ? <CardBadge label="Discount" icon="pricetag-outline" tone="gold" /> : null}
+              <CardBadge
+                label={coverKind === "video" ? "Video preview" : "Image preview"}
+                icon={coverKind === "video" ? "videocam-outline" : "image-outline"}
+              />
+              <CardBadge
+                label={coverKind === "video" ? "Auto-play muted" : "Tap for fullscreen"}
+                icon={coverKind === "video" ? "play-circle-outline" : "expand-outline"}
+              />
+            </View>
           </View>
 
-          <Text
-            numberOfLines={2}
-            style={{ marginTop: 12, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 16 : 15, lineHeight: 22 }}
-          >
-            {item.title ?? "Untitled"}
-          </Text>
-          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }} numberOfLines={1}>
-            {item.sub_category || categoryLabel} • {deliveryLabel}
-          </Text>
-
-          <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {item.category === "product" && typeof item.stock_qty === "number" ? (
               <CardBadge
                 label={`Stock ${Math.max(0, item.stock_qty)}`}
@@ -698,10 +752,6 @@ export default function MarketHome() {
                 icon={item.category === "service" ? "flash-outline" : "cube-outline"}
               />
             )}
-            <CardBadge
-              label={coverKind === "video" ? "Auto-play" : "Tap to open"}
-              icon={coverKind === "video" ? "play-circle-outline" : "expand-outline"}
-            />
           </View>
           <SellerMini seller={seller} />
         </View>

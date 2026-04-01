@@ -124,9 +124,7 @@ export function OrderPreviewModal({
           </View>
         ) : !payload ? null : payload.kind === "image" ? (
           resolvedUrl ? (
-            <MediaFrame watermark={isPreview} fill>
-              <Image source={{ uri: resolvedUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
-            </MediaFrame>
+            <ImageBlock uri={resolvedUrl} watermark={isPreview} fill />
           ) : null
         ) : payload.kind === "video" ? (
           <VideoBlock
@@ -151,15 +149,27 @@ export function OrderPreviewModal({
   );
 }
 
+function fitAspectRatio(raw?: number | null) {
+  const ratio = Number(raw || 0);
+  if (!Number.isFinite(ratio) || ratio <= 0) return 9 / 16;
+  const min = 9 / 21;
+  const max = 21 / 9;
+  return Math.max(min, Math.min(max, ratio));
+}
+
 function MediaFrame({
   watermark,
   children,
   fill = false,
+  aspectRatio,
 }: {
   watermark: boolean;
   children: React.ReactNode;
   fill?: boolean;
+  aspectRatio?: number | null;
 }) {
+  const fittedAspectRatio = fitAspectRatio(aspectRatio);
+  const portraitLike = fittedAspectRatio < 1;
   return (
     <View
       style={{
@@ -179,9 +189,22 @@ function MediaFrame({
           backgroundColor: "rgba(0,0,0,0.96)",
           alignItems: "center",
           justifyContent: "center",
+          paddingVertical: fill ? 8 : 0,
+          paddingHorizontal: fill ? 4 : 0,
         }}
       >
-        {children}
+        <View
+          style={{
+            width: portraitLike ? undefined : "100%",
+            height: portraitLike ? "100%" : undefined,
+            maxWidth: "100%",
+            maxHeight: "100%",
+            aspectRatio: fittedAspectRatio,
+            alignSelf: "center",
+          }}
+        >
+          {children}
+        </View>
         {watermark ? (
           <View pointerEvents="none" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
             {Array.from({ length: 8 }).map((_, row) => (
@@ -223,12 +246,53 @@ function MediaFrame({
           </View>
         ) : null}
       </View>
-      <View style={{ padding: 12, backgroundColor: "rgba(0,0,0,0.35)" }}>
+      <View
+        style={{
+          position: fill ? "absolute" : "relative",
+          left: fill ? 12 : 0,
+          right: fill ? 12 : 0,
+          bottom: fill ? 12 : 0,
+          borderRadius: fill ? 14 : 0,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: fill ? "rgba(0,0,0,0.52)" : "rgba(0,0,0,0.35)",
+          borderWidth: fill ? 1 : 0,
+          borderColor: fill ? "rgba(255,255,255,0.10)" : "transparent",
+        }}
+      >
         <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "900", fontSize: 12 }}>
           {watermark ? "Preview only - Low quality / Watermarked" : "Original quality deliverable"}
         </Text>
       </View>
     </View>
+  );
+}
+
+function ImageBlock({ uri, watermark, fill = false }: { uri: string; watermark: boolean; fill?: boolean }) {
+  const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
+
+  useEffect(() => {
+    let alive = true;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (!alive) return;
+        if (width > 0 && height > 0) setAspectRatio(width / height);
+      },
+      () => {
+        if (!alive) return;
+        setAspectRatio(9 / 16);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [uri]);
+
+  return (
+    <MediaFrame watermark={watermark} fill={fill} aspectRatio={aspectRatio}>
+      <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+    </MediaFrame>
   );
 }
 
@@ -272,6 +336,11 @@ function VideoBlock({
   fill?: boolean;
 }) {
   const videoRef = useRef<any>(null);
+  const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
+
+  useEffect(() => {
+    setAspectRatio(9 / 16);
+  }, [uri]);
 
   if (!uri) {
     return (
@@ -283,7 +352,7 @@ function VideoBlock({
   }
 
   return (
-    <MediaFrame watermark={watermark} fill={fill}>
+    <MediaFrame watermark={watermark} fill={fill} aspectRatio={aspectRatio}>
       <Video
         ref={videoRef}
         source={{ uri }}
@@ -292,6 +361,21 @@ function VideoBlock({
         useNativeControls
         shouldPlay={false}
         isMuted={false}
+        onReadyForDisplay={(event: any) => {
+          const naturalWidth = Number(
+            event?.naturalSize?.width ??
+              event?.status?.naturalSize?.width ??
+              0,
+          );
+          const naturalHeight = Number(
+            event?.naturalSize?.height ??
+              event?.status?.naturalSize?.height ??
+              0,
+          );
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            setAspectRatio(naturalWidth / naturalHeight);
+          }
+        }}
         onPlaybackStatusUpdate={(st: any) => {
           if (!watermark) return;
           if (!st?.isLoaded) return;
