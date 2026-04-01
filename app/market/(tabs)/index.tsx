@@ -11,7 +11,6 @@ import {
   ScrollView,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -196,27 +195,45 @@ function QuickAction({
   );
 }
 
-function SellerMini({ seller }: { seller?: SellerCard | null }) {
+function SellerMini({ seller, compact = false }: { seller?: SellerCard | null; compact?: boolean }) {
   if (!seller) return null;
   const logo = publicSellerLogo(seller.logo_path);
+  const primaryLabel = seller.market_username
+    ? `@${seller.market_username}`
+    : seller.display_name || seller.business_name || "Store";
+  const secondaryLabel =
+    seller.market_username && !compact ? seller.display_name || seller.business_name || null : null;
+  const avatarSize = compact ? 18 : 22;
   return (
-    <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <View style={{ marginTop: compact ? 10 : 12, flexDirection: "row", alignItems: "center", gap: compact ? 6 : 8 }}>
       <View
         style={{
-          width: 22,
-          height: 22,
-          borderRadius: 11,
+          width: avatarSize,
+          height: avatarSize,
+          borderRadius: avatarSize / 2,
           overflow: "hidden",
           backgroundColor: "rgba(255,255,255,0.08)",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        {logo ? <Image source={{ uri: logo }} style={{ width: 22, height: 22 }} /> : <Ionicons name="person-outline" size={12} color="#fff" />}
+        {logo ? (
+          <Image source={{ uri: logo }} style={{ width: avatarSize, height: avatarSize }} />
+        ) : (
+          <Ionicons name="person-outline" size={compact ? 10 : 12} color="#fff" />
+        )}
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
-        <Text numberOfLines={1} style={{ color: "rgba(255,255,255,0.78)", fontWeight: "800", fontSize: 11, flex: 1 }}>
-          @{seller.market_username || "store"} - {seller.display_name || seller.business_name || "Business"}
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "rgba(255,255,255,0.78)",
+            fontWeight: "800",
+            fontSize: compact ? 10 : 11,
+            flex: 1,
+          }}
+        >
+          {secondaryLabel ? `${primaryLabel} • ${secondaryLabel}` : primaryLabel}
         </Text>
         <VerifiedTick verified={seller.is_verified} />
       </View>
@@ -278,7 +295,6 @@ function CardBadge({
 }
 
 export default function MarketHome() {
-  const { width: viewportWidth } = useWindowDimensions();
   const [section, setSection] = useState<FeedSection>("all");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
@@ -498,8 +514,7 @@ export default function MarketHome() {
       return text.includes(query);
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
-  const listingColumns =
-    section === "social" || directoryMode !== "listings" ? 1 : viewportWidth >= 980 ? 2 : 1;
+  const listingColumns = section === "social" || directoryMode !== "listings" ? 1 : 2;
   const isListingDirectory = section !== "social" && directoryMode === "listings";
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
   const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
@@ -557,17 +572,15 @@ export default function MarketHome() {
     const categoryLabel = item.category === "service" ? "Service" : "Product";
     const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
     const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
-    const isWideCard = listingColumns === 1;
-    const mediaHeight = isWideCard ? 268 : 228;
+    const mediaHeight = 192;
 
     return (
       <Pressable
         onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
         style={{
-          width: isWideCard ? "100%" : "48.5%",
+          width: "48.4%",
           marginTop: 12,
-          marginHorizontal: isWideCard ? 16 : 0,
-          borderRadius: 24,
+          borderRadius: 20,
           overflow: "hidden",
           borderWidth: 1,
           borderColor: "rgba(255,255,255,0.08)",
@@ -659,87 +672,43 @@ export default function MarketHome() {
 
         <View
           style={{
-            paddingHorizontal: 16,
-            paddingTop: 16,
-            paddingBottom: 14,
+            paddingHorizontal: 12,
+            paddingTop: 12,
+            paddingBottom: 12,
             backgroundColor: "rgba(14,12,28,0.94)",
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-            <View style={{ flex: 1 }}>
+          <View style={{ minHeight: 58 }}>
+            <Text numberOfLines={2} style={{ color: "#fff", fontWeight: "900", fontSize: 14, lineHeight: 19 }}>
+              {item.title ?? "Untitled"}
+            </Text>
+            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 11 }} numberOfLines={1}>
+              {item.sub_category || categoryLabel} • {deliveryLabel}
+            </Text>
+          </View>
+
+          <View style={{ marginTop: 10, minHeight: showDiscount ? 48 : 38 }}>
+            {showDiscount ? (
               <Text
-                numberOfLines={2}
-                style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 17 : 15, lineHeight: 22 }}
+                style={{
+                  color: "rgba(255,255,255,0.45)",
+                  textDecorationLine: "line-through",
+                  fontWeight: "800",
+                  fontSize: 10,
+                }}
               >
-                {item.title ?? "Untitled"}
+                {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)}
               </Text>
-              <Text style={{ marginTop: 5, color: "rgba(255,255,255,0.68)", fontSize: 12 }} numberOfLines={1}>
-                {item.sub_category || categoryLabel} • {deliveryLabel}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                minWidth: isWideCard ? 118 : 104,
-                borderRadius: 16,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                backgroundColor: "rgba(255,255,255,0.04)",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.08)",
-                alignItems: "flex-end",
-              }}
-            >
-              {showDiscount ? (
-                <>
-                  <Text style={{ color: "rgba(255,255,255,0.50)", textDecorationLine: "line-through", fontWeight: "800", fontSize: 10 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localWas)}
-                  </Text>
-                  <Text style={{ marginTop: 3, color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                  </Text>
-                  <Text style={{ marginTop: 2, color: "#FCA5A5", fontWeight: "800", fontSize: 11 }}>
-                    USD {formatCurrency("USD", displayPrice.usdNow)}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: isWideCard ? 18 : 16 }}>
-                    {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
-                  </Text>
-                  <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.68)", fontWeight: "800", fontSize: 11 }}>
-                    USD {formatCurrency("USD", displayPrice.usdNow)}
-                  </Text>
-                </>
-              )}
-            </View>
+            ) : null}
+            <Text style={{ marginTop: showDiscount ? 2 : 0, color: "#fff", fontWeight: "900", fontSize: 18 }}>
+              {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
+            </Text>
+            <Text style={{ marginTop: 2, color: showDiscount ? "#FCA5A5" : "rgba(255,255,255,0.66)", fontWeight: "800", fontSize: 11 }}>
+              USD {formatCurrency("USD", displayPrice.usdNow)}
+            </Text>
           </View>
 
-          <View
-            style={{
-              marginTop: 12,
-              paddingVertical: 12,
-              paddingHorizontal: 12,
-              borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.035)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
-            }}
-          >
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {showDiscount ? <CardBadge label="Discount" icon="pricetag-outline" tone="gold" /> : null}
-              <CardBadge
-                label={coverKind === "video" ? "Video preview" : "Image preview"}
-                icon={coverKind === "video" ? "videocam-outline" : "image-outline"}
-              />
-              <CardBadge
-                label={coverKind === "video" ? "Auto-play muted" : "Tap for fullscreen"}
-                icon={coverKind === "video" ? "play-circle-outline" : "expand-outline"}
-              />
-            </View>
-          </View>
-
-          <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
             {item.category === "product" && typeof item.stock_qty === "number" ? (
               <CardBadge
                 label={`Stock ${Math.max(0, item.stock_qty)}`}
@@ -752,8 +721,13 @@ export default function MarketHome() {
                 icon={item.category === "service" ? "flash-outline" : "cube-outline"}
               />
             )}
+            <CardBadge
+              label={coverKind === "video" ? "Video" : "Image"}
+              icon={coverKind === "video" ? "videocam-outline" : "image-outline"}
+            />
+            {showDiscount ? <CardBadge label="Sale" icon="pricetag-outline" tone="gold" /> : null}
           </View>
-          <SellerMini seller={seller} />
+          <SellerMini seller={seller} compact />
         </View>
       </Pressable>
     );
@@ -791,12 +765,8 @@ export default function MarketHome() {
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
         keyExtractor={(it: any, idx) => String((it as any)?.id || (it as any)?.user_id || idx)}
         numColumns={listingColumns}
-        columnWrapperStyle={
-          listingColumns === 2
-            ? { paddingHorizontal: 16, justifyContent: "space-between" }
-            : undefined
-        }
-        contentContainerStyle={{ paddingBottom: 28 }}
+        columnWrapperStyle={listingColumns === 2 ? { paddingHorizontal: 14, justifyContent: "space-between" } : undefined}
+        contentContainerStyle={{ paddingBottom: 28, paddingTop: 2 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
