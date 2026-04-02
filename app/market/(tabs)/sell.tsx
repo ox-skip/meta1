@@ -9,6 +9,7 @@ import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Tex
 
 import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
+import { generateListingAiDraft, type MarketAiDraftResult } from "@/services/market/ai";
 import { getAllCategories } from "@/services/market/categories";
 import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
@@ -34,6 +35,8 @@ type ListingMediaAsset = {
   fileSize?: number | null;
   webFile?: Blob | null;
 };
+
+type ListingAiDraft = MarketAiDraftResult["draft"];
 
 type DeliveryType = "physical" | "digital" | "in_person";
 type Currency = "USDC";
@@ -361,6 +364,10 @@ export default function SellTab() {
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [submitFeedback, setSubmitFeedback] = useState<{ tone: "error" | "success" | "info"; title: string; message: string } | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiDraft, setAiDraft] = useState<ListingAiDraft | null>(null);
+  const [aiModel, setAiModel] = useState("");
 
   const mountedRef = useRef(true);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -557,6 +564,105 @@ export default function SellTab() {
     if (!q) return list;
     return list.filter((c: any) => (c.title || c.slug).toLowerCase().includes(q));
   }, [categories, category, subSearch]);
+
+  const availableSubCategories = useMemo(
+    () =>
+      categories
+        .filter((c: any) => c.main === category)
+        .map((c: any) => ({ slug: String(c.slug || "").trim(), title: String(c.title || c.slug || "").trim() }))
+        .filter((c: any) => c.slug && c.title),
+    [categories, category],
+  );
+
+  useEffect(() => {
+    setAiDraft(null);
+    setAiError(null);
+    setAiModel("");
+  }, [category, deliveryType]);
+
+  function normalizeSubCategoryValue(value: string) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s-]+/g, "");
+  }
+
+  function applyAiSubCategorySuggestion(value: string) {
+    const nextValue = String(value || "").trim();
+    if (!nextValue) return false;
+
+    const normalized = normalizeSubCategoryValue(nextValue);
+    const match = availableSubCategories.find((item) => {
+      return (
+        normalizeSubCategoryValue(item.slug) === normalized ||
+        normalizeSubCategoryValue(item.title) === normalized
+      );
+    });
+
+    if (match) {
+      setUseCustomSub(false);
+      setSubCategory(match.slug);
+      setCustomSub("");
+      return true;
+    }
+
+    setUseCustomSub(true);
+    setSubCategory("");
+    setCustomSub(nextValue);
+    return true;
+  }
+
+  function applyAiDraftSuggestions() {
+    if (!aiDraft) return;
+    if (aiDraft.suggested_title) setTitle(aiDraft.suggested_title);
+    if (aiDraft.suggested_description) setDescription(aiDraft.suggested_description);
+    if (aiDraft.suggested_sub_category) applyAiSubCategorySuggestion(aiDraft.suggested_sub_category);
+  }
+
+  async function runAiListingAssistant() {
+    if (aiBusy) return;
+
+    const hasMeaningfulInput =
+      !!title.trim() ||
+      !!description.trim() ||
+      !!websiteUrl.trim() ||
+      mediaAssets.length > 0;
+
+    if (!hasMeaningfulInput) {
+      setAiError("Add at least a title, description, website URL, or media before using AI.");
+      return;
+    }
+
+    setAiBusy(true);
+    setAiError(null);
+
+    try {
+      const priceValue = safeNumber(price);
+      const result = await generateListingAiDraft({
+        category,
+        delivery_type: deliveryType,
+        sub_category: finalSubCategory(),
+        title: title.trim(),
+        description: description.trim(),
+        website_url: websiteUrl.trim(),
+        price: Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null,
+        local_currency: localCurrency,
+        media_summary: mediaAssets.map((asset) => ({
+          kind: isVideoAsset(asset) ? "video" as const : "image" as const,
+          content_type: asset.contentType,
+          file_name: asset.fileName ?? null,
+          file_size: asset.fileSize ?? null,
+        })),
+        available_sub_categories: availableSubCategories,
+      });
+      setAiDraft(result.draft);
+      setAiModel(String(result.model || ""));
+    } catch (error) {
+      setAiError(friendlyMarketError(error, "AI could not prepare listing suggestions right now."));
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   // Defaults when switching type
   useEffect(() => {
@@ -1491,6 +1597,175 @@ export default function SellTab() {
 
           <Label>Description</Label>
           <Input value={description} onChangeText={setDescription} placeholder="What the buyer gets, requirements, timeline..." multiline />
+
+          <View
+            style={{
+              marginTop: 14,
+              borderRadius: 18,
+              padding: 12,
+              backgroundColor: "rgba(124,58,237,0.10)",
+              borderWidth: 1,
+              borderColor: "rgba(124,58,237,0.28)",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "900" }}>AI listing assistant</Text>
+            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
+              Improve the title, description, sub-category hints, and buyer-facing details. This does not publish or overwrite anything unless you apply it.
+            </Text>
+
+            <Pressable
+              onPress={runAiListingAssistant}
+              disabled={aiBusy || submitting}
+              style={{
+                marginTop: 12,
+                minHeight: 46,
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                backgroundColor: aiBusy ? "rgba(124,58,237,0.68)" : PURPLE,
+                borderWidth: 1,
+                borderColor: "rgba(124,58,237,0.9)",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                opacity: submitting ? 0.7 : 1,
+              }}
+            >
+              {aiBusy ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
+              <Text style={{ color: "#fff", fontWeight: "900" }}>
+                {aiBusy ? "Generating AI suggestions..." : "Generate with AI"}
+              </Text>
+            </Pressable>
+
+            {aiError ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 14,
+                  padding: 10,
+                  backgroundColor: "rgba(239,68,68,0.10)",
+                  borderWidth: 1,
+                  borderColor: "rgba(239,68,68,0.24)",
+                }}
+              >
+                <Text style={{ color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>{aiError}</Text>
+              </View>
+            ) : null}
+
+            {aiDraft ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 16,
+                  padding: 12,
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                  gap: 12,
+                }}
+              >
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, minWidth: 180 }}>
+                    <Text style={{ color: "#fff", fontWeight: "900" }}>AI suggestions</Text>
+                    {aiModel ? (
+                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>Model: {aiModel}</Text>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={applyAiDraftSuggestions}
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderWidth: 1,
+                      borderColor: "rgba(124,58,237,0.45)",
+                      backgroundColor: "rgba(124,58,237,0.18)",
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Apply main suggestions</Text>
+                  </Pressable>
+                </View>
+
+                {aiDraft.suggested_title ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Title</Text>
+                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>{aiDraft.suggested_title}</Text>
+                    <Pressable onPress={() => setTitle(aiDraft.suggested_title)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use title</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {aiDraft.suggested_description ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Description</Text>
+                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.86)", lineHeight: 20 }}>{aiDraft.suggested_description}</Text>
+                    <Pressable onPress={() => setDescription(aiDraft.suggested_description)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use description</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {aiDraft.suggested_sub_category ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Sub-category</Text>
+                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>{aiDraft.suggested_sub_category}</Text>
+                    <Pressable onPress={() => applyAiSubCategorySuggestion(aiDraft.suggested_sub_category)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
+                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use sub-category</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {aiDraft.tags.length ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Search keywords</Text>
+                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.86)", lineHeight: 20 }}>{aiDraft.tags.join(", ")}</Text>
+                  </View>
+                ) : null}
+
+                {aiDraft.warnings.length ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Missing details to tighten up</Text>
+                    {aiDraft.warnings.map((warning, index) => (
+                      <Text key={`${warning}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,255,255,0.86)", lineHeight: 19 }}>
+                        • {warning}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {aiDraft.price_hint_low > 0 || aiDraft.price_hint_high > 0 ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Price hint</Text>
+                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>
+                      {aiDraft.price_hint_high > 0
+                        ? `${formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_low)} - ${formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_high)}`
+                        : formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_low)}
+                    </Text>
+                    {aiDraft.price_hint_reason ? (
+                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.76)", lineHeight: 18 }}>{aiDraft.price_hint_reason}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {aiDraft.media_notes.length ? (
+                  <View>
+                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Media notes</Text>
+                    {aiDraft.media_notes.map((note, index) => (
+                      <Text key={`${note}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,255,255,0.86)", lineHeight: 19 }}>
+                        • {note}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {aiDraft.confidence_note ? (
+                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{aiDraft.confidence_note}</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         </CardBox>
 
         <CardBox>
