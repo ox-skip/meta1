@@ -366,6 +366,7 @@ export default function SellTab() {
   const [submitFeedback, setSubmitFeedback] = useState<{ tone: "error" | "success" | "info"; title: string; message: string } | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiDebug, setAiDebug] = useState<string | null>(null);
   const [aiDraft, setAiDraft] = useState<ListingAiDraft | null>(null);
   const [aiModel, setAiModel] = useState("");
 
@@ -577,6 +578,7 @@ export default function SellTab() {
   useEffect(() => {
     setAiDraft(null);
     setAiError(null);
+    setAiDebug(null);
     setAiModel("");
   }, [category, deliveryType]);
 
@@ -630,11 +632,13 @@ export default function SellTab() {
 
     if (!hasMeaningfulInput) {
       setAiError("Add at least a title, description, website URL, or media before using AI.");
+      setAiDebug("AI input validation failed: no title, description, website URL, or media.");
       return;
     }
 
     setAiBusy(true);
     setAiError(null);
+    setAiDebug(null);
 
     try {
       const priceValue = safeNumber(price);
@@ -661,6 +665,7 @@ export default function SellTab() {
       console.log("[SellTab] AI listing assistant failed", error);
       const rawMessage = String((error as any)?.message || error || "").trim();
       const status = Number((error as any)?.details?.status || 0);
+      setAiDebug(rawMessage ? `status=${status || "n/a"} message=${rawMessage}` : `status=${status || "n/a"}`);
       const friendly = friendlyMarketError(error, "AI could not prepare listing suggestions right now.");
 
       if (status === 404 || rawMessage.toLowerCase().includes("function market-ai-draft-listing failed")) {
@@ -1672,6 +1677,12 @@ export default function SellTab() {
               >
                 <Text style={{ color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>{aiError}</Text>
               </View>
+            ) : null}
+
+            {__DEV__ && aiDebug ? (
+              <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.56)", fontSize: 11, lineHeight: 16 }}>
+                Debug: {aiDebug}
+              </Text>
             ) : null}
 
             {aiDraft ? (
