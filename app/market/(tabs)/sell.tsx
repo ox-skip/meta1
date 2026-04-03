@@ -658,7 +658,28 @@ export default function SellTab() {
       setAiDraft(result.draft);
       setAiModel(String(result.model || ""));
     } catch (error) {
-      setAiError(friendlyMarketError(error, "AI could not prepare listing suggestions right now."));
+      console.log("[SellTab] AI listing assistant failed", error);
+      const rawMessage = String((error as any)?.message || error || "").trim();
+      const status = Number((error as any)?.details?.status || 0);
+      const friendly = friendlyMarketError(error, "AI could not prepare listing suggestions right now.");
+
+      if (status === 404 || rawMessage.toLowerCase().includes("function market-ai-draft-listing failed")) {
+        setAiError("AI function is not deployed yet. Deploy the market-ai-draft-listing Supabase function first.");
+      } else if (
+        rawMessage &&
+        (
+          rawMessage.toLowerCase().includes("openai") ||
+          rawMessage.toLowerCase().includes("billing") ||
+          rawMessage.toLowerCase().includes("quota") ||
+          rawMessage.toLowerCase().includes("model") ||
+          rawMessage.toLowerCase().includes("configured") ||
+          rawMessage.toLowerCase().includes("deploy")
+        )
+      ) {
+        setAiError(rawMessage);
+      } else {
+        setAiError(friendly);
+      }
     } finally {
       setAiBusy(false);
     }

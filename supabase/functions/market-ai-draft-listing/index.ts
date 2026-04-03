@@ -63,6 +63,33 @@ function trimText(input: unknown, max = 1000) {
   return String(input ?? "").trim().slice(0, max);
 }
 
+function normalizeOpenAiErrorMessage(status: number, rawMessage: string) {
+  const message = trimText(rawMessage, 500);
+  const lower = message.toLowerCase();
+
+  if (status === 401 || status === 403 || lower.includes("invalid api key")) {
+    return "OpenAI API key is invalid. Update OPENAI_API_KEY in Supabase secrets.";
+  }
+  if (
+    lower.includes("insufficient_quota") ||
+    lower.includes("quota") ||
+    lower.includes("billing") ||
+    lower.includes("payment required") ||
+    lower.includes("free tier") ||
+    lower.includes("not supported for your usage tier")
+  ) {
+    return "OpenAI API billing or credits are not enabled for this project. Add billing in OpenAI before using AI suggestions.";
+  }
+  if (lower.includes("model") && (lower.includes("not found") || lower.includes("access") || lower.includes("unsupported"))) {
+    return "The configured OpenAI model is not available for this API key. Check OPENAI_LISTING_MODEL.";
+  }
+  if (status === 429 || lower.includes("rate limit")) {
+    return "OpenAI rate limit reached. Wait a moment and try again.";
+  }
+
+  return message || "OpenAI request failed";
+}
+
 function normalizeStringList(input: unknown, maxItems: number, maxChars: number) {
   const list = Array.isArray(input) ? input : [];
   const seen = new Set<string>();
@@ -213,10 +240,7 @@ async function requestListingDraft(prompt: string) {
         `OpenAI request failed with status ${res.status}`,
       400,
     );
-    if (res.status === 401 || res.status === 403) {
-      throw new Error("OpenAI API key is invalid. Update OPENAI_API_KEY in Supabase secrets.");
-    }
-    throw new Error(rawMessage || "OpenAI request failed");
+    throw new Error(normalizeOpenAiErrorMessage(res.status, rawMessage));
   }
 
   const outputText = extractOpenAiText(json);
