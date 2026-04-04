@@ -19,7 +19,7 @@ type AiDraft = {
   confidence_note: string;
 };
 
-const OPENAI_RESPONSE_SCHEMA = {
+const DRAFT_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -63,31 +63,32 @@ function trimText(input: unknown, max = 1000) {
   return String(input ?? "").trim().slice(0, max);
 }
 
-function normalizeOpenAiErrorMessage(status: number, rawMessage: string) {
+function normalizeProviderErrorMessage(status: number, rawMessage: string) {
   const message = trimText(rawMessage, 500);
   const lower = message.toLowerCase();
 
-  if (status === 401 || status === 403 || lower.includes("invalid api key")) {
-    return "OpenAI API key is invalid. Update OPENAI_API_KEY in Supabase secrets.";
+  if (status === 401 || status === 403 || lower.includes("invalid api key") || lower.includes("unauthorized")) {
+    return "OpenRouter API key is invalid. Update OPENROUTER_API_KEY in Supabase secrets.";
   }
   if (
-    lower.includes("insufficient_quota") ||
+    status === 402 ||
+    lower.includes("insufficient_credit") ||
+    lower.includes("insufficient credits") ||
     lower.includes("quota") ||
     lower.includes("billing") ||
     lower.includes("payment required") ||
-    lower.includes("free tier") ||
-    lower.includes("not supported for your usage tier")
+    lower.includes("credits required")
   ) {
-    return "OpenAI API billing or credits are not enabled for this project. Add billing in OpenAI before using AI suggestions.";
+    return "OpenRouter credits are required for this request or your free quota is exhausted. Use the free router model and check your OpenRouter account limits.";
   }
   if (lower.includes("model") && (lower.includes("not found") || lower.includes("access") || lower.includes("unsupported"))) {
-    return "The configured OpenAI model is not available for this API key. Check OPENAI_LISTING_MODEL.";
+    return "The configured OpenRouter model is not available for this API key. Check OPENROUTER_MODEL.";
   }
   if (status === 429 || lower.includes("rate limit")) {
-    return "OpenAI rate limit reached. Wait a moment and try again.";
+    return "OpenRouter free-model rate limit reached. Free accounts have low request limits. Wait and try again.";
   }
 
-  return message || "OpenAI request failed";
+  return message || "AI provider request failed";
 }
 
 function normalizeStringList(input: unknown, maxItems: number, maxChars: number) {
@@ -110,23 +111,12 @@ function normalizeMoney(input: unknown) {
   return Number.isFinite(num) && num > 0 ? num : 0;
 }
 
-function extractOpenAiText(payload: any): string {
-  const direct = trimText(payload?.output_text, 20000);
-  if (direct) return direct;
+function extractAssistantText(payload: any): string {
+  const content = trimText(payload?.choices?.[0]?.message?.content, 20000);
+  if (content) return content;
 
-  const output = Array.isArray(payload?.output) ? payload.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    for (const entry of content) {
-      const candidate =
-        (typeof entry?.text === "string" ? entry.text : "") ||
-        (typeof entry?.text?.value === "string" ? entry.text.value : "") ||
-        (entry?.json ? JSON.stringify(entry.json) : "") ||
-        (typeof entry?.value === "string" ? entry.value : "");
-      const text = trimText(candidate, 20000);
-      if (text) return text;
-    }
-  }
+  const text = trimText(payload?.choices?.[0]?.text, 20000);
+  if (text) return text;
 
   return "";
 }
@@ -197,28 +187,41 @@ function buildPrompt(body: any) {
 }
 
 async function requestListingDraft(prompt: string) {
-  const apiKey = envAny(["OPENAI_API_KEY"]);
-  const model = envAny(["OPENAI_LISTING_MODEL", "OPENAI_MODEL"], "gpt-5.4-mini").trim();
-  const baseUrl = envAny(["OPENAI_API_BASE"], "https://api.openai.com/v1").replace(/\/+$/, "");
+  const apiKey = envAny(["OPENROUTER_API_KEY"]);
+  const model = envAny(["OPENROUTER_MODEL"], "openrouter/free").trim();
+  const baseUrl = envAny(["OPENROUTER_API_BASE"], "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+  const referer = trimText(envAny(["OPENROUTER_HTTP_REFERER", "APP_PUBLIC_URL"], ""), 200);
+  const title = trimText(envAny(["OPENROUTER_APP_TITLE"], "Meta Market"), 80);
 
-  const res = await fetch(`${baseUrl}/responses`, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+  if (referer) headers["HTTP-Referer"] = referer;
+  if (title) headers["X-OpenRouter-Title"] = title;
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify({
       model,
-      input: prompt,
-      max_output_tokens: 1200,
-      text: {
-        format: {
-          type: "json_schema",
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
           name: "market_listing_ai_draft",
           strict: true,
-          schema: OPENAI_RESPONSE_SCHEMA,
+          schema: DRAFT_RESPONSE_SCHEMA,
         },
       },
+      plugins: [{ id: "response-healing" }],
+      temperature: 0.3,
+      max_tokens: 1200,
     }),
   });
 
@@ -235,28 +238,29 @@ async function requestListingDraft(prompt: string) {
   if (!res.ok) {
     const rawMessage = trimText(
       json?.error?.message ||
+        json?.error?.metadata?.raw ||
         json?.message ||
         text ||
-        `OpenAI request failed with status ${res.status}`,
+        `Provider request failed with status ${res.status}`,
       400,
     );
-    throw new Error(normalizeOpenAiErrorMessage(res.status, rawMessage));
+    throw new Error(normalizeProviderErrorMessage(res.status, rawMessage));
   }
 
-  const outputText = extractOpenAiText(json);
+  const outputText = extractAssistantText(json);
   if (!outputText) {
-    throw new Error("OpenAI returned an empty response.");
+    throw new Error("The AI provider returned an empty response.");
   }
 
   let parsed: any = null;
   try {
     parsed = JSON.parse(outputText);
   } catch {
-    throw new Error("OpenAI returned an unreadable AI draft.");
+    throw new Error("The AI provider returned an unreadable AI draft.");
   }
 
   return {
-    model,
+    model: String(json?.model || model),
     draft: parsed,
   };
 }
@@ -295,8 +299,8 @@ Deno.serve(async (req) => {
     });
   } catch (error: any) {
     const message = String(error?.message || error || "AI draft failed");
-    if (/missing env var/i.test(message) || /OPENAI_API_KEY/i.test(message)) {
-      return bad("AI is not configured yet. Add OPENAI_API_KEY to Supabase Edge Function secrets.");
+    if (/missing env var/i.test(message) || /OPENROUTER_API_KEY/i.test(message)) {
+      return bad("AI is not configured yet. Add OPENROUTER_API_KEY to Supabase Edge Function secrets.");
     }
     return bad(message);
   }
