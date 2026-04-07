@@ -8,7 +8,9 @@ import * as Clipboard from "expo-clipboard";
 import { createPublicClient, formatUnits, http } from "viem";
 
 import AppHeader from "@/components/common/AppHeader";
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
+import { useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
 import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
@@ -177,6 +179,7 @@ export default function Checkout() {
   const insets = useSafeAreaInsets();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const oid = useMemo(() => String(orderId || ""), [orderId]);
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -965,27 +968,36 @@ export default function Checkout() {
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Available balances</Text>
-              <Pressable
-                onPress={() => refreshFunding()}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.12)",
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                }}
-              >
-                <Ionicons name="refresh" size={14} color="#fff" />
-              </Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <BalanceVisibilityToggle
+                  hidden={balancesHidden}
+                  onPress={() => {
+                    void toggleBalancesHidden();
+                  }}
+                  size={30}
+                />
+                <Pressable
+                  onPress={() => refreshFunding()}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.12)",
+                    backgroundColor: "rgba(255,255,255,0.05)",
+                  }}
+                >
+                  <Ionicons name="refresh" size={14} color="#fff" />
+                </Pressable>
+              </View>
             </View>
             <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
-              USDC {usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+              USDC {balancesHidden ? "******" : usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
             </Text>
             <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
-              USDT {usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+              USDT {balancesHidden ? "******" : usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
             </Text>
             {walletAddress ? (
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>

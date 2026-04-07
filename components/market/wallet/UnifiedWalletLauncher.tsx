@@ -3,12 +3,15 @@ import { router, usePathname } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import UnifiedWalletSheet from "@/components/market/wallet/UnifiedWalletSheet";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
 export default function UnifiedWalletLauncher() {
   const pathname = usePathname();
   const wallet = useUnifiedWallet();
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
   const [open, setOpen] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -171,12 +174,24 @@ export default function UnifiedWalletLauncher() {
               <View>
                 <Text style={{ color: "#fff", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Wallet</Text>
                 <Text style={{ color: "rgba(255,255,255,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
-                  ${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {balancesHidden
+                    ? maskBalanceValue("$")
+                    : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </Text>
               </View>
             </View>
             <Ionicons name="chevron-up" size={compact ? 14 : 16} color="#fff" />
           </Pressable>
+
+          <View style={{ marginLeft: 8 }}>
+            <BalanceVisibilityToggle
+              hidden={balancesHidden}
+              onPress={() => {
+                void toggleBalancesHidden();
+              }}
+              size={compact ? 42 : 46}
+            />
+          </View>
         </View>
       </Animated.View>
 

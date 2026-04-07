@@ -3,6 +3,8 @@ import * as Clipboard from "expo-clipboard";
 import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
 type UnifiedWalletData = ReturnType<typeof useUnifiedWallet>;
@@ -51,6 +53,7 @@ export default function UnifiedWalletPanel({
   onOpenCryptoWallet,
   onOpenHistory,
 }: Props) {
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sendToken, setSendToken] = useState<"USDC" | "USDT">("USDC");
@@ -114,23 +117,32 @@ export default function UnifiedWalletPanel({
             Crypto, PI, and stock portfolio in one place.
           </Text>
         </View>
-        <Pressable
-          onPress={wallet.refreshAll}
-          disabled={wallet.busy}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.14)",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            opacity: wallet.busy ? 0.6 : 1,
-          }}
-        >
-          <Ionicons name="refresh" size={18} color="#fff" />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <BalanceVisibilityToggle
+            hidden={balancesHidden}
+            onPress={() => {
+              void toggleBalancesHidden();
+            }}
+            size={40}
+          />
+          <Pressable
+            onPress={wallet.refreshAll}
+            disabled={wallet.busy}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.14)",
+              backgroundColor: "rgba(255,255,255,0.06)",
+              opacity: wallet.busy ? 0.6 : 1,
+            }}
+          >
+            <Ionicons name="refresh" size={18} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
       <View
@@ -145,10 +157,14 @@ export default function UnifiedWalletPanel({
       >
         <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 }}>TOTAL PORTFOLIO (USD APPROX)</Text>
         <Text style={{ marginTop: 5, color: "#fff", fontWeight: "900", fontSize: 22 }}>
-          ${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {balancesHidden
+            ? maskBalanceValue("$")
+            : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
         </Text>
         <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 11 }}>
-          Stable ${wallet.stableTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} + Stock ${wallet.portfolioTotalUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {balancesHidden
+            ? "Stable $****** + Stock $******"
+            : `Stable $${wallet.stableTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} + Stock $${wallet.portfolioTotalUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
         </Text>
       </View>
 
@@ -174,7 +190,9 @@ export default function UnifiedWalletPanel({
                 <Text numberOfLines={1} style={{ color: "rgba(255,255,255,0.85)", fontWeight: "800", flex: 1 }}>
                   {row.name} ({row.symbol || "STK"}) - {row.qty.toFixed(4)}
                 </Text>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>${row.value_usdc.toFixed(2)}</Text>
+                <Text style={{ color: "#fff", fontWeight: "900" }}>
+                  {balancesHidden ? maskBalanceValue("$") : `$${row.value_usdc.toFixed(2)}`}
+                </Text>
               </View>
             ))}
           </View>
@@ -185,13 +203,13 @@ export default function UnifiedWalletPanel({
         <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
           <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>USDC</Text>
           <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
-            {wallet.usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            {balancesHidden ? "******" : wallet.usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
           </Text>
         </View>
         <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
           <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>USDT</Text>
           <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
-            {wallet.usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            {balancesHidden ? "******" : wallet.usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
           </Text>
         </View>
       </View>

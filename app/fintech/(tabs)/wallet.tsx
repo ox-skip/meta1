@@ -18,6 +18,8 @@ import ProfileModal from "@/components/wallet/profile";
 import SendMoney from "@/components/wallet/send";
 import { WALLET_THEME as T } from "@/components/wallet/theme";
 import Withdraw from "@/components/wallet/withdraw";
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { useWalletSimple } from "@/hooks/wallet/useWalletSimple";
 import { useWalletTxPaginated } from "@/hooks/wallet/useWalletTxPaginated";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -52,6 +54,7 @@ export default function WalletRoute() {
   const params = useLocalSearchParams<{ action?: string }>();
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
 
   const [section, setSection] = useState<NgnSection>(toSection(params.action));
   const [showProfile, setShowProfile] = useState(false);
@@ -136,11 +139,21 @@ export default function WalletRoute() {
           </View>
 
           <View style={styles.card}>
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>FINTECH</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>FINTECH</Text>
+              </View>
+              <BalanceVisibilityToggle
+                hidden={balancesHidden}
+                onPress={() => {
+                  void toggleBalancesHidden();
+                }}
+              />
             </View>
             <Text style={styles.label}>Available balance</Text>
-            <Text style={styles.balance}>NGN {Number(balance || 0).toLocaleString()}</Text>
+            <Text style={styles.balance}>
+              {balancesHidden ? maskBalanceValue("NGN") : `NGN ${Number(balance || 0).toLocaleString()}`}
+            </Text>
             <Text style={styles.foot}>Funds are tracked in your wallet ledger with transaction history.</Text>
           </View>
         </View>

@@ -16,7 +16,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
 import { useAuth } from "@/hooks/authentication/useAuth";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { useWalletSimple } from "@/hooks/wallet/useWalletSimple";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 
@@ -241,6 +243,7 @@ const BigCard = memo(function BigCard({
 });
 
 export default function Dashboard() {
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
   const insets = useSafeAreaInsets();
   const { user, loading: authLoading } = useAuth();
   const { balance, tx, loading: walletLoading, error, reload } = useWalletSimple();
@@ -352,7 +355,16 @@ export default function Dashboard() {
         {isNigeria ? (
           <View style={styles.walletCard}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.walletLabel}>Wallet Balance</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <Text style={styles.walletLabel}>Wallet Balance</Text>
+                <BalanceVisibilityToggle
+                  hidden={balancesHidden}
+                  onPress={() => {
+                    void toggleBalancesHidden();
+                  }}
+                  size={34}
+                />
+              </View>
 
               {walletLoading ? (
                 <View style={{ marginTop: 10 }}>
@@ -360,7 +372,7 @@ export default function Dashboard() {
                 </View>
               ) : (
                 <Text style={styles.walletBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                  NGN {formatNGN(balance ?? 0)}
+                  {balancesHidden ? maskBalanceValue("NGN") : `NGN ${formatNGN(balance ?? 0)}`}
                 </Text>
               )}
 

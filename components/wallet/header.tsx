@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { WALLET_THEME as T } from "@/components/wallet/theme";
 
 type Props = {
@@ -16,6 +18,7 @@ function fmt(value: number) {
 }
 
 export default function WalletHeader({ balance, onRefresh, onOpenProfile, refreshing }: Props) {
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
   return (
     <View style={styles.wrap}>
       <View style={styles.topRow}>
@@ -35,11 +38,19 @@ export default function WalletHeader({ balance, onRefresh, onOpenProfile, refres
       </View>
 
       <View style={styles.card}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>NGN WALLET</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>NGN WALLET</Text>
+          </View>
+          <BalanceVisibilityToggle
+            hidden={balancesHidden}
+            onPress={() => {
+              void toggleBalancesHidden();
+            }}
+          />
         </View>
         <Text style={styles.label}>Available balance</Text>
-        <Text style={styles.balance}>NGN {fmt(balance)}</Text>
+        <Text style={styles.balance}>{balancesHidden ? maskBalanceValue("NGN") : `NGN ${fmt(balance)}`}</Text>
         <Text style={styles.foot}>Ledger-backed balance with audit trail</Text>
       </View>
     </View>

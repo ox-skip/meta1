@@ -17,7 +17,9 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
+import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { supabase } from "@/services/supabase";
 import { formatCountryLabel } from "@/utils/countryNames";
 
@@ -199,6 +201,7 @@ export default function MarketWallet() {
   const { width } = useWindowDimensions();
   const wide = width >= 980;
   const wallet = useUnifiedWallet();
+  const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
 
   const [piInput, setPiInput] = useState("");
   const [sendTo, setSendTo] = useState("");
@@ -323,25 +326,37 @@ export default function MarketWallet() {
               <View style={[styles.statusPill, wallet.connectedAddress ? styles.connectedPill : styles.idlePill]}>
                 <Text style={styles.statusPillText}>{wallet.connectedAddress ? "Connected" : "Not connected"}</Text>
               </View>
-              <Pressable onPress={() => router.push("/market/history" as any)} style={styles.heroGhostButton}>
-                <Ionicons name="time-outline" size={16} color="#F8FAFC" />
-                <Text style={styles.heroGhostText}>History</Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <BalanceVisibilityToggle
+                  hidden={balancesHidden}
+                  onPress={() => {
+                    void toggleBalancesHidden();
+                  }}
+                />
+                <Pressable onPress={() => router.push("/market/history" as any)} style={styles.heroGhostButton}>
+                  <Ionicons name="time-outline" size={16} color="#F8FAFC" />
+                  <Text style={styles.heroGhostText}>History</Text>
+                </Pressable>
+              </View>
             </View>
 
             <Text style={styles.heroEyebrow}>TOTAL VALUE</Text>
-            <Text style={styles.heroAmount}>${fmt(wallet.overallUsdApprox)}</Text>
+            <Text style={styles.heroAmount}>
+              {balancesHidden ? maskBalanceValue("$") : `$${fmt(wallet.overallUsdApprox)}`}
+            </Text>
             <Text style={styles.heroSubtext}>
-              Stable ${fmt(wallet.stableTotalUsd)} / Stock ${fmt(wallet.portfolioTotalUsdc)}
+              {balancesHidden
+                ? "Stable $****** / Stock $******"
+                : `Stable $${fmt(wallet.stableTotalUsd)} / Stock $${fmt(wallet.portfolioTotalUsdc)}`}
             </Text>
             <Text style={styles.heroLocation}>{locationText}</Text>
 
             <View style={styles.metricGrid}>
-              <MetricCard label="USDC" value={fmt(wallet.usdcBalance, 6)} hint="Available now" accent="#0EA5A4" />
-              <MetricCard label="USDT" value={fmt(wallet.usdtBalance, 6)} hint="Cross-chain stable" accent="#F59E0B" />
+              <MetricCard label="USDC" value={balancesHidden ? "******" : fmt(wallet.usdcBalance, 6)} hint="Available now" accent="#0EA5A4" />
+              <MetricCard label="USDT" value={balancesHidden ? "******" : fmt(wallet.usdtBalance, 6)} hint="Cross-chain stable" accent="#F59E0B" />
               <MetricCard
                 label={wallet.isNigeria ? "NGN" : "Stocks"}
-                value={wallet.isNigeria ? fmt(wallet.ngnBalance) : `$${fmt(wallet.portfolioTotalUsdc)}`}
+                value={balancesHidden ? (wallet.isNigeria ? "******" : maskBalanceValue("$")) : wallet.isNigeria ? fmt(wallet.ngnBalance) : `$${fmt(wallet.portfolioTotalUsdc)}`}
                 hint={wallet.isNigeria ? "Local wallet balance" : `${wallet.portfolioPositions.length} holdings`}
                 accent="#60A5FA"
               />
@@ -441,7 +456,7 @@ export default function MarketWallet() {
 
                 <View style={styles.transferMetaRow}>
                   <Text style={styles.transferMetaText}>
-                    Balance: {sendToken === "USDT" ? fmt(wallet.usdtBalance, 6) : fmt(wallet.usdcBalance, 6)} {sendToken}
+                    Balance: {balancesHidden ? "******" : sendToken === "USDT" ? fmt(wallet.usdtBalance, 6) : fmt(wallet.usdcBalance, 6)} {sendToken}
                   </Text>
                   {sendToken === "USDC" && !canSendUsdc ? (
                     <Text style={styles.transferMetaText}>USDC is not configured on this network.</Text>
@@ -564,11 +579,15 @@ export default function MarketWallet() {
                 <View style={styles.portfolioSummary}>
                   <View style={styles.portfolioPill}>
                     <Text style={styles.portfolioPillLabel}>Stable</Text>
-                    <Text style={styles.portfolioPillValue}>${fmt(wallet.stableTotalUsd)}</Text>
+                    <Text style={styles.portfolioPillValue}>
+                      {balancesHidden ? maskBalanceValue("$") : `$${fmt(wallet.stableTotalUsd)}`}
+                    </Text>
                   </View>
                   <View style={styles.portfolioPill}>
                     <Text style={styles.portfolioPillLabel}>Stocks</Text>
-                    <Text style={styles.portfolioPillValue}>${fmt(wallet.portfolioTotalUsdc)}</Text>
+                    <Text style={styles.portfolioPillValue}>
+                      {balancesHidden ? maskBalanceValue("$") : `$${fmt(wallet.portfolioTotalUsdc)}`}
+                    </Text>
                   </View>
                 </View>
 
@@ -589,7 +608,9 @@ export default function MarketWallet() {
                             {row.symbol || "STK"} · Qty {fmt(row.qty, 4)}
                           </Text>
                         </View>
-                        <Text style={styles.holdingValue}>${fmt(row.value_usdc)}</Text>
+                        <Text style={styles.holdingValue}>
+                          {balancesHidden ? maskBalanceValue("$") : `$${fmt(row.value_usdc)}`}
+                        </Text>
                       </View>
                     ))}
                   </View>
