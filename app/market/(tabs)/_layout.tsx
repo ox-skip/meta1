@@ -1,10 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const BG = "#05040B";
-const PURPLE = "#7C3AED";
+const SURFACE = "#15100C";
+const ACCENT = "#F59E0B";
+const MUTED = "rgba(255,247,237,0.58)";
+
+let BlurViewComp: any = null;
+if (Platform.OS === "ios") {
+  try {
+    BlurViewComp = require("expo-blur").BlurView;
+  } catch {
+    BlurViewComp = null;
+  }
+}
 
 function CenterTabButton({
   accessibilityState,
@@ -28,26 +39,31 @@ function CenterTabButton({
     >
       <View
         style={{
-          width: 58,
-          height: 58,
+          width: 62,
+          height: 62,
           borderRadius: 22,
           alignItems: "center",
           justifyContent: "center",
-          marginTop: -18,
-          backgroundColor: focused ? PURPLE : "rgba(124,58,237,0.85)",
+          marginTop: -24,
+          backgroundColor: focused ? ACCENT : "#C88714",
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.16)",
+          borderColor: "rgba(255,244,230,0.18)",
+          shadowColor: "#000",
+          shadowOpacity: 0.28,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 10,
         }}
       >
-        <Ionicons name="grid-outline" size={28} color="#fff" />
+        <Ionicons name="grid-outline" size={28} color="#1A120A" />
       </View>
 
       <Text
         style={{
-          marginTop: 6,
+          marginTop: 4,
           fontSize: 11,
           fontWeight: "900",
-          color: focused ? PURPLE : "rgba(255,255,255,0.65)",
+          color: focused ? ACCENT : MUTED,
         }}
       >
         Category
@@ -58,42 +74,79 @@ function CenterTabButton({
 
 export default function MarketTabsLayout() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isWebDesktop = Platform.OS === "web" && width >= 980;
+  const bottomPad = isWebDesktop ? 0 : Math.max(insets.bottom, 10);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
+        tabBarHideOnKeyboard: true,
         tabBarPosition: isWebDesktop ? "left" : "bottom",
+        tabBarBackground: () => {
+          if (isWebDesktop) {
+            return (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: "rgba(12,9,7,0.98)" },
+                ]}
+              />
+            );
+          }
+
+          if (Platform.OS === "ios" && BlurViewComp) {
+            return <BlurViewComp intensity={72} tint="dark" style={StyleSheet.absoluteFill} />;
+          }
+
+          return (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: SURFACE },
+              ]}
+            />
+          );
+        },
         tabBarStyle: isWebDesktop
           ? {
-              backgroundColor: "rgba(9,9,17,0.96)",
-              borderRightColor: "rgba(255,255,255,0.09)",
+              backgroundColor: "rgba(12,9,7,0.98)",
+              borderRightColor: "rgba(245,158,11,0.14)",
               borderRightWidth: 1,
               borderTopWidth: 0,
-              width: 220,
-              paddingTop: 14,
-              paddingBottom: 14,
-              paddingHorizontal: 8,
+              width: 228,
+              paddingTop: 18,
+              paddingBottom: 18,
+              paddingHorizontal: 10,
             }
-          : {
-              backgroundColor: BG,
-              borderTopColor: "rgba(255,255,255,0.08)",
-              height: 64,
-              paddingTop: 6,
-              paddingBottom: 8,
-            },
-        tabBarActiveTintColor: PURPLE,
-        tabBarInactiveTintColor: "rgba(255,255,255,0.6)",
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "800" as any },
+          : [
+              styles.mobileBar,
+              {
+                height: 72 + bottomPad,
+                paddingBottom: bottomPad + 4,
+                backgroundColor: Platform.OS === "android" ? SURFACE : "transparent",
+              },
+            ],
+        tabBarActiveTintColor: ACCENT,
+        tabBarInactiveTintColor: MUTED,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "800" as any,
+          marginTop: isWebDesktop ? 4 : 2,
+        },
         tabBarItemStyle: isWebDesktop
           ? {
-              borderRadius: 14,
+              borderRadius: 18,
               marginVertical: 4,
               marginHorizontal: 2,
             }
-          : undefined,
+          : {
+              borderRadius: 18,
+              marginHorizontal: 2,
+              paddingTop: 2,
+            },
         sceneStyle: isWebDesktop
           ? {
               width: "100%",
@@ -177,3 +230,16 @@ export default function MarketTabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  mobileBar: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    bottom: 10,
+    borderTopWidth: 0,
+    elevation: 0,
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+});
