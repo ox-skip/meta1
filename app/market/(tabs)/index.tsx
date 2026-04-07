@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
@@ -632,6 +633,12 @@ export default function MarketHome() {
                 label={categoryLabel}
                 icon={item.category === "service" ? "construct-outline" : "cube-outline"}
                 tone="purple"
+              />
+              <ListingOriginBadge
+                availability={item.availability}
+                paymentOptions={item.payment_options}
+                compact
+                tone="overlay"
               />
             </View>
             {isOutOfStock ? (

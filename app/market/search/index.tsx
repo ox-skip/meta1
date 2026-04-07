@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MarketMediaView from "@/components/market/MarketMediaView";
+import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import { supabase } from "@/services/supabase";
 import { listingMatchesCountry, resolveUserCountry } from "@/utils/country";
 import { formatCountryLabel } from "@/utils/countryNames";
@@ -30,7 +31,7 @@ const MUTED = "rgba(255,255,255,0.62)";
 const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
 const LISTING_SELECT =
-  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,sort_order,meta,mime_type),images:market_listing_images!market_listing_images_listing_id_fkey(id,public_url,storage_path,sort_order,meta,mime_type)";
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,sort_order,meta),images:market_listing_images!market_listing_images_listing_id_fkey(id,public_url,storage_path,sort_order,meta)";
 
 type SearchMode = "all" | "product" | "service" | "store";
 
@@ -615,6 +616,14 @@ export default function MarketSearchScreen() {
                           <Text numberOfLines={1} style={{ marginTop: 4, color: "rgba(255,255,255,0.52)", fontSize: 11 }}>
                             {listing.sub_category || listing.delivery_type || "-"}
                           </Text>
+
+                          <View style={{ marginTop: 8 }}>
+                            <ListingOriginBadge
+                              availability={listing.availability}
+                              paymentOptions={listing.payment_options}
+                              compact
+                            />
+                          </View>
 
                           <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 15 }}>
                             {formatCurrency(dp.localCurrency, dp.localNow)}

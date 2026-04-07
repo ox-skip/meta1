@@ -14,9 +14,11 @@ import {
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { subscribeToAccountNotifications } from "@/services/market/notifications";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { fetchMarketHistory, type MarketHistoryEntry } from "@/services/market/history";
 import { tutorialFlows } from "@/services/onboarding/definitions";
+import { supabase } from "@/services/supabase";
 import { formatCurrency } from "@/utils/pricing";
 
 const BG0 = "#05040B";
@@ -34,6 +36,7 @@ const KINDS = [
   "stock_buy",
   "stock_sell",
   "stock_profit",
+  "event",
 ] as const;
 
 function toNum(input: string) {
@@ -57,6 +60,10 @@ function signAmount(entry: MarketHistoryEntry) {
   return Math.abs(amount);
 }
 
+function isEventEntry(entry: MarketHistoryEntry) {
+  return String(entry.kind || "").toLowerCase() === "event" || String(entry.source_table || "").toLowerCase() === "account_notifications";
+}
+
 function shortHash(v?: string | null) {
   const s = String(v || "");
   if (!s.startsWith("0x")) return "";
@@ -72,6 +79,9 @@ function kindLabel(kind: string) {
 
 function statusTone(status: string) {
   const s = String(status || "").toUpperCase();
+  if (["NEW", "UNREAD"].includes(s)) {
+    return { bg: "rgba(124,58,237,0.22)", border: "rgba(167,139,250,0.45)", text: "#E9D5FF" };
+  }
   if (["SUCCESS", "CONFIRMED", "RELEASED"].includes(s)) {
     return { bg: "rgba(16,185,129,0.20)", border: "rgba(16,185,129,0.42)", text: "#A7F3D0" };
   }
@@ -114,6 +124,51 @@ export default function MarketHistoryScreen() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    let removeNotifications: undefined | (() => void);
+    let historyChannel: any = null;
+
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const userId = data?.user?.id;
+      if (!active || !userId) return;
+
+      removeNotifications = await subscribeToAccountNotifications(() => {
+        void load(true);
+      });
+
+      if (!active) {
+        removeNotifications?.();
+        return;
+      }
+
+      historyChannel = supabase
+        .channel(`market-history-live-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "market_transaction_history",
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            void load(true);
+          },
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      active = false;
+      removeNotifications?.();
+      if (historyChannel) {
+        supabase.removeChannel(historyChannel);
+      }
+    };
   }, [load]);
 
   useEffect(() => {
@@ -189,7 +244,7 @@ export default function MarketHistoryScreen() {
         }
         ListHeaderComponent={
           <View style={{ paddingTop: 14 }}>
-            <AppHeader title="Transaction History" subtitle="Deposits, buys, sells, crypto, and stock activity." />
+            <AppHeader title="History" subtitle="Deposits, orders, crypto, stock activity, and account events." />
 
             <View style={{ marginTop: 10, borderRadius: 18, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
               <Text style={{ color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 11 }}>SUMMARY (FILTERED)</Text>
@@ -205,7 +260,7 @@ export default function MarketHistoryScreen() {
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search by hash, status, kind, order id..."
+                placeholder="Search by title, route, hash, order id..."
                 placeholderTextColor="rgba(255,255,255,0.4)"
                 style={{
                   marginTop: 8,
@@ -308,7 +363,7 @@ export default function MarketHistoryScreen() {
 
             <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>
-                {filtered.length.toLocaleString()} transactions
+                {filtered.length.toLocaleString()} activity records
               </Text>
               <Pressable
                 onPress={() => load(true)}
@@ -334,7 +389,7 @@ export default function MarketHistoryScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: "#fff", fontWeight: "900" }}>No transactions match your filter.</Text>
+              <Text style={{ color: "#fff", fontWeight: "900" }}>No history records match your filter.</Text>
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
                 Try clearing year/month/day/hour or search text.
               </Text>
@@ -345,6 +400,8 @@ export default function MarketHistoryScreen() {
           const signed = signAmount(item);
           const positive = signed >= 0;
           const tone = statusTone(item.status);
+          const eventEntry = isEventEntry(item);
+          const eventBody = String((item.details as any)?.body || "").trim();
           return (
             <Pressable
               onPress={() => router.push(`/market/history/${encodeURIComponent(item.id)}` as any)}
@@ -368,17 +425,27 @@ export default function MarketHistoryScreen() {
                 {kindLabel(String(item.kind))} - {new Date(item.occurred_at).toLocaleString()}
               </Text>
 
-              {!!item.tx_hash ? (
+              {eventBody ? (
+                <Text numberOfLines={2} style={{ marginTop: 5, color: "rgba(255,255,255,0.62)", fontSize: 11, lineHeight: 16 }}>
+                  {eventBody}
+                </Text>
+              ) : !!item.tx_hash ? (
                 <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.58)", fontSize: 11 }}>
                   Hash: {shortHash(item.tx_hash)}
                 </Text>
               ) : null}
 
               <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ color: positive ? "#86EFAC" : "#FCA5A5", fontWeight: "900", fontSize: 14 }}>
-                  {positive ? "+" : "-"}
-                  {formatCurrency(item.currency, Math.abs(signed), item.currency === "USDC" ? 6 : 2)}
-                </Text>
+                {eventEntry ? (
+                  <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 13 }}>
+                    {(item.details as any)?.route ? "Open event details" : "Event note"}
+                  </Text>
+                ) : (
+                  <Text style={{ color: positive ? "#86EFAC" : "#FCA5A5", fontWeight: "900", fontSize: 14 }}>
+                    {positive ? "+" : "-"}
+                    {formatCurrency(item.currency, Math.abs(signed), item.currency === "USDC" ? 6 : 2)}
+                  </Text>
+                )}
                 <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
               </View>
             </Pressable>

@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import { getCategoryBySlug } from "@/services/market/categories";
 import { supabase } from "@/services/supabase";
@@ -285,6 +286,9 @@ export default function CategoryFeed() {
                     <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
                       USD {formatCurrency("USD", dp.usdNow)}
                     </Text>
+                    <View style={{ marginTop: 8 }}>
+                      <ListingOriginBadge availability={r.availability} compact />
+                    </View>
                         </>
                       );
                     })()}

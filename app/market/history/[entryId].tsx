@@ -31,8 +31,15 @@ function signedAmount(entry: MarketHistoryEntry) {
   return Math.abs(amount);
 }
 
+function isEventEntry(entry: MarketHistoryEntry) {
+  return String(entry.kind || "").toLowerCase() === "event" || String(entry.source_table || "").toLowerCase() === "account_notifications";
+}
+
 function statusTone(status: string) {
   const s = String(status || "").toUpperCase();
+  if (["NEW", "UNREAD"].includes(s)) {
+    return { bg: "rgba(124,58,237,0.20)", border: "rgba(167,139,250,0.42)", text: "#E9D5FF" };
+  }
   if (["SUCCESS", "CONFIRMED", "RELEASED"].includes(s)) {
     return { bg: "rgba(16,185,129,0.20)", border: "rgba(16,185,129,0.42)", text: "#A7F3D0" };
   }
@@ -94,6 +101,9 @@ export default function MarketHistoryDetailScreen() {
   const amount = item ? signedAmount(item) : 0;
   const positive = amount >= 0;
   const tone = statusTone(String(item?.status || ""));
+  const eventEntry = item ? isEventEntry(item) : false;
+  const detailBody = String((item?.details as any)?.body || "").trim();
+  const detailRoute = String((item?.details as any)?.route || "").trim();
   const detailsText = useMemo(
     () => JSON.stringify(item?.details ?? {}, null, 2),
     [item?.details],
@@ -101,7 +111,7 @@ export default function MarketHistoryDetailScreen() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Transaction Detail" subtitle="Full record, hash, source and metadata." />
+      <AppHeader title="History Detail" subtitle="Full record, route, source, and metadata." />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 26 }}>
         <View style={{ marginTop: 8, flexDirection: "row", gap: 10 }}>
@@ -162,13 +172,22 @@ export default function MarketHistoryDetailScreen() {
                   <Text style={{ color: tone.text, fontWeight: "900", fontSize: 10 }}>{item.status}</Text>
                 </View>
               </View>
-              <Text style={{ marginTop: 8, color: positive ? "#86EFAC" : "#FCA5A5", fontWeight: "900", fontSize: 19 }}>
-                {positive ? "+" : "-"}
-                {formatCurrency(item.currency, Math.abs(amount), item.currency === "USDC" ? 6 : 2)}
-              </Text>
+              {eventEntry ? (
+                <Text style={{ marginTop: 8, color: "#DDD6FE", fontWeight: "900", fontSize: 19 }}>Account event</Text>
+              ) : (
+                <Text style={{ marginTop: 8, color: positive ? "#86EFAC" : "#FCA5A5", fontWeight: "900", fontSize: 19 }}>
+                  {positive ? "+" : "-"}
+                  {formatCurrency(item.currency, Math.abs(amount), item.currency === "USDC" ? 6 : 2)}
+                </Text>
+              )}
               <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                 {kindLabel(item.kind)} - {new Date(item.occurred_at).toLocaleString()}
               </Text>
+              {detailBody ? (
+                <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 18 }}>
+                  {detailBody}
+                </Text>
+              ) : null}
             </View>
 
             <View style={{ marginTop: 10, borderRadius: 18, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
@@ -181,6 +200,7 @@ export default function MarketHistoryDetailScreen() {
               <Row label="Order ID" value={item.order_id || "-"} />
               <Row label="Stock ID" value={item.stock_id || "-"} />
               <Row label="Transaction Hash" value={item.tx_hash || "-"} />
+              <Row label="Route" value={detailRoute || "-"} />
 
               {!!item.tx_hash ? (
                 <Pressable
@@ -204,6 +224,24 @@ export default function MarketHistoryDetailScreen() {
                   }}
                 >
                   <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Copy tx hash</Text>
+                </Pressable>
+              ) : null}
+
+              {!!detailRoute ? (
+                <Pressable
+                  onPress={() => router.push(detailRoute as any)}
+                  style={{
+                    marginTop: 10,
+                    borderRadius: 12,
+                    height: 40,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: "rgba(45,212,191,0.45)",
+                    backgroundColor: "rgba(45,212,191,0.18)",
+                  }}
+                >
+                  <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Open related screen</Text>
                 </Pressable>
               ) : null}
 

@@ -2,9 +2,9 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Linking, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import SocialFeed from "@/components/market/SocialFeed";
 import { fetchStocksOverview } from "@/services/market/stocks";
@@ -14,9 +14,16 @@ import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
+const BG0 = "#0B0907";
+const BG1 = "#22160D";
+const PANEL = "rgba(24,18,14,0.9)";
+const PANEL_ALT = "rgba(255,255,255,0.04)";
+const BORDER = "rgba(245,158,11,0.16)";
+const TEXT = "#FFF7ED";
+const MUTED = "rgba(255,247,237,0.68)";
+const ACCENT = "#F59E0B";
+const ACCENT_2 = "#FB923C";
+const SUCCESS = "#4ADE80";
 const BUCKET_SELLERS = "market-sellers";
 const BUCKET_LISTINGS = "market-listings";
 
@@ -121,9 +128,256 @@ function buildSocialUrl(key: SocialKey, handle: string) {
   return `${base}${cleaned}`;
 }
 
+function SurfaceSection({
+  title,
+  subtitle,
+  children,
+  style,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  style?: any;
+}) {
+  return (
+    <View
+      style={[
+        {
+          borderRadius: 28,
+          padding: 18,
+          backgroundColor: PANEL,
+          borderWidth: 1,
+          borderColor: BORDER,
+        },
+        style,
+      ]}
+    >
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{title}</Text>
+      <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>{subtitle}</Text>
+      <View style={{ marginTop: 16 }}>{children}</View>
+    </View>
+  );
+}
+
+function ActionButton({
+  icon,
+  label,
+  accent,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  accent: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        minWidth: 126,
+        borderRadius: 18,
+        paddingHorizontal: 14,
+        paddingVertical: 13,
+        backgroundColor: `${accent}18`,
+        borderWidth: 1,
+        borderColor: `${accent}2E`,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+      }}
+    >
+      <Ionicons name={icon} size={16} color={accent} />
+      <Text style={{ color: accent, fontWeight: "900", fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function MetricCard({
+  value,
+  label,
+}: {
+  value: string;
+  label: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 94,
+        borderRadius: 18,
+        padding: 14,
+        backgroundColor: PANEL_ALT,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+      }}
+    >
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{value}</Text>
+      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{label}</Text>
+    </View>
+  );
+}
+
+function StoreTag({
+  icon,
+  label,
+  tone = ACCENT,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tone?: string;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        backgroundColor: `${tone}18`,
+        borderWidth: 1,
+        borderColor: `${tone}30`,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <Ionicons name={icon} size={14} color={tone} />
+      <Text style={{ color: tone, fontWeight: "900", fontSize: 12 }}>{label}</Text>
+    </View>
+  );
+}
+
+function SegmentButton({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        minHeight: 46,
+        borderRadius: 16,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: active ? "rgba(245,158,11,0.18)" : PANEL_ALT,
+        borderWidth: 1,
+        borderColor: active ? "rgba(245,158,11,0.34)" : "rgba(255,255,255,0.08)",
+      }}
+    >
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ReviewCard({ review }: { review: Review }) {
+  return (
+    <View
+      style={{
+        borderRadius: 18,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+        backgroundColor: PANEL_ALT,
+      }}
+    >
+      <Text style={{ color: TEXT, fontWeight: "800" }}>
+        @{review.profiles?.username || "user"}{" "}
+        <Text style={{ color: MUTED, fontWeight: "600", fontSize: 11 }}>
+          • {new Date(review.created_at).toLocaleString()}
+        </Text>
+      </Text>
+      <View style={{ marginTop: 6, flexDirection: "row", gap: 4 }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <Ionicons key={n} name={review.rating >= n ? "star" : "star-outline"} size={14} color="#FBBF24" />
+        ))}
+      </View>
+      {review.comment ? <Text style={{ marginTop: 8, color: MUTED, lineHeight: 19 }}>{review.comment}</Text> : null}
+    </View>
+  );
+}
+
+function ListingCard({
+  listing,
+  width,
+}: {
+  listing: Listing;
+  width: string;
+}) {
+  const display = getListingPriceDisplay(listing as any);
+  const coverKind = inferMarketMediaKind(listing.cover_url);
+
+  return (
+    <Pressable
+      onPress={() => router.push(`/market/listing/${listing.id}` as any)}
+      style={{
+        width,
+        borderRadius: 24,
+        overflow: "hidden",
+        backgroundColor: PANEL_ALT,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+      }}
+    >
+      <View style={{ height: 156, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        {listing.cover_url ? (
+          <MarketMediaView
+            uri={listing.cover_url}
+            kind={coverKind}
+            style={{ width: "100%", height: 156 }}
+            resizeMode="cover"
+            autoplay={coverKind === "video"}
+            muted
+            loop={coverKind === "video"}
+            disablePointerEvents
+          />
+        ) : (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="image-outline" size={28} color={MUTED} />
+          </View>
+        )}
+      </View>
+
+      <View style={{ padding: 14 }}>
+        <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>
+          {listing.title || "Untitled"}
+        </Text>
+
+        <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 14 }}>
+          {formatCurrency(display.localCurrency, display.localNow)}
+        </Text>
+        <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>
+          USD {formatCurrency("USD", display.usdNow)}
+        </Text>
+
+        <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <MaterialCommunityIcons
+            name={listing.category === "service" ? "briefcase-outline" : "shopping-outline"}
+            size={14}
+            color={MUTED}
+          />
+          <Text style={{ color: MUTED, fontSize: 12 }}>
+            {listing.category === "service" ? "Service" : "Product"} • {listing.delivery_type || "N/A"}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function PublicSellerProfile() {
   const { username } = useLocalSearchParams<{ username: string }>();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const handle = useMemo(() => String(username || "").trim().toLowerCase(), [username]);
+  const isDesktop = width >= 1080;
+  const isTablet = width >= 700;
+  const listingCardWidth = isDesktop ? "31.8%" : isTablet ? "48.8%" : "100%";
 
   const [loading, setLoading] = useState(true);
   const [seller, setSeller] = useState<Seller | null>(null);
@@ -450,27 +704,69 @@ export default function PublicSellerProfile() {
       return { ...s, enabled, handle, url };
     }).filter((s) => !!s.url);
   }, [seller?.social_links]);
+  const storeName = seller?.business_name || seller?.display_name || "Store";
+  const ratingLabel = reviewCount ? `${avgRating}★` : "New";
 
   if (loading) {
     return (
-      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <AppHeader title="Store" />
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading store…</Text>
+      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+        <View style={{ paddingTop: insets.top + 18, paddingHorizontal: 16 }}>
+          <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
+            <View
+              style={{
+                alignSelf: "flex-start",
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                backgroundColor: "rgba(245,158,11,0.14)",
+                borderWidth: 1,
+                borderColor: "rgba(245,158,11,0.26)",
+              }}
+            >
+              <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>
+                Public Store
+              </Text>
+            </View>
+            <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Storefront profile</Text>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+              Loading the public-facing storefront, seller trust signals, and live catalog.
+            </Text>
+
+            <View
+              style={{
+                marginTop: 22,
+                borderRadius: 32,
+                padding: 28,
+                alignItems: "center",
+                backgroundColor: PANEL,
+                borderWidth: 1,
+                borderColor: BORDER,
+              }}
+            >
+              <ActivityIndicator color={ACCENT} />
+              <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading store profile</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+                Pulling public seller identity, followers, ratings, and listings into the new layout.
+              </Text>
+            </View>
+          </View>
+        </View>
       </LinearGradient>
     );
   }
 
   if (err) {
     return (
-      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-        <AppHeader title="Store" />
-        <View style={{ marginTop: 10, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Could not load store</Text>
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)" }}>{err}</Text>
-          <Pressable onPress={() => router.back()} style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: PURPLE }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Go back</Text>
-          </Pressable>
+      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+        <View style={{ paddingTop: insets.top + 18, paddingHorizontal: 16 }}>
+          <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
+            <SurfaceSection title="Could not load store" subtitle={err}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton icon="arrow-back" label="Go back" accent={ACCENT} onPress={() => router.back()} />
+                <ActionButton icon="storefront-outline" label="Open market" accent={ACCENT_2} onPress={() => router.push("/market/(tabs)" as any)} />
+              </View>
+            </SurfaceSection>
+          </View>
         </View>
       </LinearGradient>
     );
@@ -478,229 +774,92 @@ export default function PublicSellerProfile() {
 
   if (!seller) {
     return (
-      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-        <AppHeader title="Store" />
-        <View style={{ marginTop: 10, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Store not found</Text>
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)" }}>@{handle}</Text>
-          <Pressable onPress={() => router.push("/market/(tabs)" as any)} style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: PURPLE }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Back to Market</Text>
-          </Pressable>
-          
+      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+        <View style={{ paddingTop: insets.top + 18, paddingHorizontal: 16 }}>
+          <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
+            <SurfaceSection title="Store not found" subtitle={`No active public storefront was found for @${handle}.`}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton icon="storefront-outline" label="Back to Market" accent={ACCENT} onPress={() => router.push("/market/(tabs)" as any)} />
+                <ActionButton icon="arrow-back" label="Go back" accent={ACCENT_2} onPress={() => router.back()} />
+              </View>
+            </SurfaceSection>
+          </View>
         </View>
       </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
-      <AppHeader title={seller?.business_name || seller?.display_name || "Store"} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 26 }}>
-        <View style={{ height: 180, backgroundColor: "rgba(255,255,255,0.06)" }}>
-          {bannerUrl ? (
-            <Image source={{ uri: bannerUrl }} style={{ width: "100%", height: 180 }} />
-          ) : (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="images-outline" size={28} color="rgba(255,255,255,0.55)" />
-              <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontWeight: "800" }}>No banner</Text>
-            </View>
-          )}
-
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              position: "absolute",
-              top: 14,
-              left: 16,
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              backgroundColor: "rgba(0,0,0,0.35)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="arrow-back" size={20} color="#fff" />
-          </Pressable>
-        </View>
-
-        <View style={{ paddingHorizontal: 16, marginTop: -34 }}>
-          <View style={{ borderRadius: 24, padding: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: "rgba(255,255,255,0.06)" }}>
-            <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-end" }}>
-              <View style={{ width: 76, height: 76, borderRadius: 24, overflow: "hidden", borderWidth: 2, borderColor: "rgba(255,255,255,0.35)", backgroundColor: "rgba(255,255,255,0.06)" }}>
-                {logoUrl ? (
-                  <Image source={{ uri: logoUrl }} style={{ width: 76, height: 76 }} />
-                ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="person-outline" size={22} color="rgba(255,255,255,0.55)" />
-                  </View>
-                )}
+    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 16, paddingBottom: 168 }}>
+        <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
+          <View style={{ flexDirection: isDesktop ? "row" : "column", alignItems: isDesktop ? "center" : "flex-start", justifyContent: "space-between", gap: 14 }}>
+            <View style={{ flex: 1 }}>
+              <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.26)" }}>
+                <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Public Store</Text>
               </View>
-
-              <View style={{ flex: 1, paddingBottom: 4 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>
-                    {seller.business_name || seller.display_name || "Store"}
-                  </Text>
-                  {seller.is_verified ? <Ionicons name="checkmark-circle" size={18} color="#3B82F6" /> : null}
-                </View>
-
-                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontWeight: "800" }}>
-                  @{seller.market_username}
-                </Text>
-
-                {!!seller.location_text && (
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                    <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.55)" /> {seller.location_text}
-                  </Text>
-                )}
-              </View>
+              <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Storefront profile</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>A public-facing seller page using the same premium dashboard language as the new account hub.</Text>
             </View>
-
-            <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{followersCount} Followers</Text>
-                </View>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                    {avgRating ? `${avgRating} ★` : "No ratings"} ({reviewCount})
-                  </Text>
-                </View>
-              </View>
-
-              <Pressable
-                onPress={toggleFollow}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: isFollowing ? "rgba(239,68,68,0.35)" : "rgba(124,58,237,0.45)",
-                  backgroundColor: isFollowing ? "rgba(239,68,68,0.12)" : "rgba(124,58,237,0.20)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{isFollowing ? "Unfollow" : "Follow"}</Text>
-              </Pressable>
-            </View>
-
-            <View style={{ marginTop: 12 }}>
-              <Text style={{ color: "#fff", fontWeight: "900" }}>About</Text>
-              <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", lineHeight: 18 }}>
-                {seller.bio || "No bio yet."}
-              </Text>
-            </View>
-
-            {storeStock ? (
-              <Pressable
-                onPress={() => router.push(`/market/stock/${storeStock.slug}` as any)}
-                style={{
-                  marginTop: 12,
-                  borderRadius: 14,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: "rgba(45,212,191,0.45)",
-                  backgroundColor: "rgba(45,212,191,0.14)",
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View>
-                    <Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 14 }}>
-                      {storeStock.name} ({storeStock.symbol})
-                    </Text>
-                    <Text style={{ marginTop: 4, color: "rgba(236,254,255,0.78)", fontSize: 11 }}>
-                      {String(storeStock.chain).toUpperCase().replace("_", " ")} • {storeStock.status}
-                    </Text>
-                  </View>
-                  <Ionicons name="trending-up-outline" size={18} color="#99F6E4" />
-                </View>
-                <View style={{ marginTop: 8, flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-                  <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>
-                    Price ${storeStock.price_usdc.toFixed(6)}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "800" }}>
-                    MCap ${storeStock.market_cap_usdc.toFixed(2)}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "800" }}>
-                    24h ${storeStock.volume_24h_usdc.toFixed(2)}
-                  </Text>
-                  <Text style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "800" }}>
-                    Trades {storeStock.trades_24h}
-                  </Text>
-                </View>
-                <Text style={{ marginTop: 8, color: "#ECFEFF", fontSize: 12, fontWeight: "900" }}>
-                  Open Stock Market
-                </Text>
-              </Pressable>
-            ) : null}
-
-            {socialItems.length ? (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Socials</Text>
-                <View style={{ marginTop: 8, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                  {socialItems.map((s) => (
-                    <Pressable
-                      key={s.key}
-                      onPress={() => s.url && Linking.openURL(s.url)}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        backgroundColor: "rgba(255,255,255,0.06)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <MaterialCommunityIcons name={s.icon as any} size={18} color="#fff" />
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/market/dm/[username]" as any,
-                  params: { username: seller.market_username },
-                })
-              }
-              style={{
-                marginTop: 12,
-                borderRadius: 18,
-                paddingVertical: 12,
-                alignItems: "center",
-                backgroundColor: "rgba(124,58,237,0.20)",
-                borderWidth: 1,
-                borderColor: "rgba(124,58,237,0.45)",
-                flexDirection: "row",
-                gap: 8,
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Message</Text>
-            </Pressable>
-
-            <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-              {seller.offers_remote ? <Pill icon="laptop-outline" label="Remote service" /> : null}
-              {seller.offers_in_person ? <Pill icon="walk-outline" label="In-person service" /> : null}
-              <Pill icon="shield-checkmark-outline" label={`Payout: ${seller.payout_tier}`} />
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <ActionButton icon="arrow-back" label="Go back" accent={ACCENT} onPress={() => router.back()} />
+              <ActionButton icon="storefront-outline" label="Open market" accent={ACCENT_2} onPress={() => router.push("/market/(tabs)" as any)} />
             </View>
           </View>
 
-          <View style={{ marginTop: 12, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Reviews</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-              {reviewCount ? `${reviewCount} reviews • ${avgRating}★ average` : "No reviews yet"}
-            </Text>
+          <View style={{ marginTop: 20, borderRadius: 34, overflow: "hidden", borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL }}>
+            <View style={{ height: isDesktop ? 240 : 196, backgroundColor: "#1A120C" }}>
+              {bannerUrl ? <Image source={{ uri: bannerUrl }} style={{ width: "100%", height: "100%" }} /> : <LinearGradient colors={["#5B3A11", "#1A120D"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: "100%", height: "100%" }} />}
+              <LinearGradient colors={["rgba(0,0,0,0.06)", "rgba(11,9,7,0.88)"]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+              <View style={{ position: "absolute", top: 18, left: 18, right: 18, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <StoreTag icon="shield-checkmark-outline" label={seller.is_verified ? "Verified seller" : "Public seller"} tone={seller.is_verified ? SUCCESS : ACCENT} />
+                <StoreTag icon="wallet-outline" label={seller.payout_tier === "fast" ? "Fast payouts" : "Standard payouts"} tone={ACCENT_2} />
+                {storeStock ? <StoreTag icon="trending-up-outline" label={`${storeStock.symbol} live`} tone="#2DD4BF" /> : null}
+              </View>
+            </View>
 
+            <View style={{ padding: 22, marginTop: -44 }}>
+              <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 16, alignItems: isDesktop ? "flex-end" : "flex-start" }}>
+                <View style={{ width: 92, height: 92, borderRadius: 28, overflow: "hidden", borderWidth: 2, borderColor: "rgba(255,247,237,0.22)", backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
+                  {logoUrl ? <Image source={{ uri: logoUrl }} style={{ width: 92, height: 92 }} /> : <Ionicons name="person-outline" size={30} color={TEXT} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>{storeName}</Text>
+                  <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Text style={{ color: MUTED, fontWeight: "800", fontSize: 13 }}>@{seller.market_username}</Text>
+                    {seller.is_verified ? <Ionicons name="checkmark-circle" size={16} color={SUCCESS} /> : null}
+                    {!!seller.location_text ? <Text style={{ color: MUTED, fontSize: 12 }}>• {seller.location_text}</Text> : null}
+                  </View>
+                  <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <MetricCard value={String(followersCount)} label="Followers" />
+                    <MetricCard value={ratingLabel} label={`${reviewCount} reviews`} />
+                    <MetricCard value={String(listings.length)} label="Live listings" />
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton icon={isFollowing ? "remove-circle-outline" : "add-circle-outline"} label={isFollowing ? "Unfollow" : "Follow"} accent={isFollowing ? "#F87171" : ACCENT} onPress={toggleFollow} />
+                <ActionButton icon="chatbubble-ellipses-outline" label="Message" accent={ACCENT_2} onPress={() => router.push({ pathname: "/market/dm/[username]" as any, params: { username: seller.market_username } })} />
+                {storeStock ? <ActionButton icon="trending-up-outline" label="Open stock" accent="#2DD4BF" onPress={() => router.push(`/market/stock/${storeStock.slug}` as any)} /> : null}
+              </View>
+            </View>
+          </View>
+
+          <SurfaceSection style={{ marginTop: 16 }} title="Store overview" subtitle="Brand story, service modes, and commercial signals presented in the same upgraded card system." >
+            <Text style={{ color: MUTED, lineHeight: 22 }}>{seller.bio || "No store bio has been published yet."}</Text>
+            <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {seller.offers_remote ? <StoreTag icon="laptop-outline" label="Remote service" tone={ACCENT} /> : null}
+              {seller.offers_in_person ? <StoreTag icon="walk-outline" label="In-person service" tone={ACCENT_2} /> : null}
+              <StoreTag icon="shield-checkmark-outline" label={`Payout: ${seller.payout_tier}`} tone="#FBBF24" />
+            </View>
+            {socialItems.length ? <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{socialItems.map((s) => <Pressable key={s.key} onPress={() => s.url && Linking.openURL(s.url)} style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}><MaterialCommunityIcons name={s.icon as any} size={18} color={TEXT} /></Pressable>)}</View> : null}
+            {storeStock ? <Pressable onPress={() => router.push(`/market/stock/${storeStock.slug}` as any)} style={{ marginTop: 16, borderRadius: 22, padding: 16, borderWidth: 1, borderColor: "rgba(45,212,191,0.30)", backgroundColor: "rgba(45,212,191,0.10)" }}><View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 15 }}>{storeStock.name} ({storeStock.symbol})</Text><Text style={{ marginTop: 4, color: "rgba(236,254,255,0.78)", fontSize: 11 }}>{String(storeStock.chain).toUpperCase().replace("_", " ")} • {storeStock.status}</Text></View><Ionicons name="trending-up-outline" size={20} color="#99F6E4" /></View><View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 12 }}><Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>Price ${storeStock.price_usdc.toFixed(6)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>MCap ${storeStock.market_cap_usdc.toFixed(2)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>24h ${storeStock.volume_24h_usdc.toFixed(2)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Trades {storeStock.trades_24h}</Text></View></Pressable> : null}
+          </SurfaceSection>
+
+          <SurfaceSection style={{ marginTop: 16 }} title="Buyer reviews" subtitle={reviewCount ? `${reviewCount} reviews • ${avgRating}★ average` : "No reviews yet"}>
             {canReview ? (
-              <View style={{ marginTop: 12 }}>
+              <View style={{ borderRadius: 20, padding: 14, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" }}>
                 <View style={{ flexDirection: "row", gap: 6 }}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <Pressable key={n} onPress={() => setMyRating(n)} style={{ padding: 6 }}>
@@ -708,204 +867,68 @@ export default function PublicSellerProfile() {
                     </Pressable>
                   ))}
                 </View>
-                <TextInput
-                  value={myComment}
-                  onChangeText={setMyComment}
-                  placeholder="Write a short review (optional)"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  style={{
-                    marginTop: 8,
-                    borderRadius: 14,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    color: "#fff",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.10)",
-                  }}
-                />
-                <Pressable
-                  onPress={submitReview}
-                  disabled={reviewBusy}
-                  style={{
-                    marginTop: 10,
-                    borderRadius: 14,
-                    paddingVertical: 12,
-                    alignItems: "center",
-                    backgroundColor: "rgba(124,58,237,0.20)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.45)",
-                    opacity: reviewBusy ? 0.7 : 1,
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{reviewBusy ? "Submitting…" : "Submit review"}</Text>
+                <TextInput value={myComment} onChangeText={setMyComment} placeholder="Write a short review (optional)" placeholderTextColor="rgba(255,247,237,0.35)" style={{ marginTop: 10, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 11, color: TEXT, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }} />
+                <Pressable onPress={submitReview} disabled={reviewBusy} style={{ marginTop: 10, borderRadius: 16, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(245,158,11,0.18)", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)", opacity: reviewBusy ? 0.7 : 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>{reviewBusy ? "Submitting…" : "Submit review"}</Text>
                 </Pressable>
               </View>
             ) : (
-              <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.5)", fontSize: 12 }}>
-                Only buyers who completed an order can review.
-              </Text>
+              <Text style={{ color: MUTED }}>Only buyers who completed an order can review this store.</Text>
             )}
 
-            <View style={{ marginTop: 12, gap: 10 }}>
+            <View style={{ marginTop: 14, gap: 10 }}>
               {reviews.length === 0 ? (
-                <Text style={{ color: "rgba(255,255,255,0.6)" }}>No reviews yet.</Text>
+                <View style={{ borderRadius: 18, padding: 14, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" }}>
+                  <Text style={{ color: MUTED }}>No reviews yet.</Text>
+                </View>
               ) : (
-                reviews.map((r) => (
-                  <View key={r.id} style={{ borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>
-                      @{r.profiles?.username || "user"}{" "}
-                      <Text style={{ color: "rgba(255,255,255,0.5)", fontWeight: "600", fontSize: 11 }}>
-                        • {new Date(r.created_at).toLocaleString()}
-                      </Text>
-                    </Text>
-                    <View style={{ marginTop: 6, flexDirection: "row", gap: 4 }}>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Ionicons key={n} name={r.rating >= n ? "star" : "star-outline"} size={14} color="#FBBF24" />
-                      ))}
-                    </View>
-                    {r.comment ? <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.7)" }}>{r.comment}</Text> : null}
-                  </View>
-                ))
+                reviews.map((review) => <ReviewCard key={review.id} review={review} />)
               )}
             </View>
-          </View>
+          </SurfaceSection>
 
-          <View style={{ marginTop: 14, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+          <SurfaceSection style={{ marginTop: 16 }} title={contentTab === "social" ? "Social feed" : "Storefront listings"} subtitle={contentTab === "social" ? "Public posts from this seller stay in the same premium storefront layout." : "Live products and services published by this seller."}>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable
-                onPress={() => setContentTab("listings")}
-                style={{
-                  flex: 1,
-                  height: 42,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: contentTab === "listings" ? "rgba(124,58,237,0.24)" : "rgba(255,255,255,0.06)",
-                  borderWidth: 1,
-                  borderColor: contentTab === "listings" ? "rgba(124,58,237,0.45)" : "rgba(255,255,255,0.10)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Listings</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setContentTab("social")}
-                style={{
-                  flex: 1,
-                  height: 42,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: contentTab === "social" ? "rgba(124,58,237,0.24)" : "rgba(255,255,255,0.06)",
-                  borderWidth: 1,
-                  borderColor: contentTab === "social" ? "rgba(124,58,237,0.45)" : "rgba(255,255,255,0.10)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Social Feed</Text>
-              </Pressable>
+              <SegmentButton label="Listings" active={contentTab === "listings"} onPress={() => setContentTab("listings")} />
+              <SegmentButton label="Social Feed" active={contentTab === "social"} onPress={() => setContentTab("social")} />
             </View>
 
             {contentTab === "social" ? (
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Social posts</Text>
-                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                  All posts from this account are visible here.
-                </Text>
+              <View style={{ marginTop: 14 }}>
                 <SocialFeed profileUserId={seller.user_id} hideComposer={meId !== seller.user_id} />
               </View>
             ) : (
-              <View style={{ marginTop: 12 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Listings</Text>
-                  <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+              <View style={{ marginTop: 14 }}>
+                <View style={{ flexDirection: isTablet ? "row" : "column", alignItems: isTablet ? "center" : "flex-start", justifyContent: "space-between", gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>{listings.length} live {listings.length === 1 ? "listing" : "listings"}</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
                     <Pressable onPress={() => router.push(`/market/listings?seller_id=${seller.user_id}` as any)}>
-                      <Text style={{ color: "#C4B5FD", fontWeight: "900" }}>See all</Text>
+                      <Text style={{ color: "#FCD34D", fontWeight: "900" }}>See all</Text>
                     </Pressable>
                     <Pressable onPress={() => router.push("/market/(tabs)" as any)}>
-                      <Text style={{ color: "#C4B5FD", fontWeight: "900" }}>Back to Market</Text>
+                      <Text style={{ color: "#FCD34D", fontWeight: "900" }}>Back to Market</Text>
                     </Pressable>
                   </View>
                 </View>
 
                 {listings.length === 0 ? (
-                  <View style={{ marginTop: 10, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>No listings yet</Text>
-                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>This seller has not posted anything yet.</Text>
+                  <View style={{ marginTop: 14, borderRadius: 22, padding: 16, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" }}>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>No listings yet</Text>
+                    <Text style={{ marginTop: 6, color: MUTED }}>This seller has not published anything yet.</Text>
                   </View>
                 ) : (
-                  <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                    {listings.map((l) => (
-                      (() => {
-                        const dp = getListingPriceDisplay(l as any);
-                        const coverKind = inferMarketMediaKind(l.cover_url);
-                        return (
-                      <Pressable
-                        key={l.id}
-                        onPress={() => router.push(`/market/listing/${l.id}` as any)}
-                        style={{ width: "48%", borderRadius: 22, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}
-                      >
-                        <View style={{ height: 120, backgroundColor: "rgba(255,255,255,0.06)" }}>
-                          {l.cover_url ? (
-                            <MarketMediaView
-                              uri={l.cover_url}
-                              kind={coverKind}
-                              style={{ width: "100%", height: 120 }}
-                              resizeMode="cover"
-                              autoplay={coverKind === "video"}
-                              muted
-                              loop={coverKind === "video"}
-                              disablePointerEvents
-                            />
-                          ) : (
-                            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                              <Ionicons name="image-outline" size={26} color="rgba(255,255,255,0.55)" />
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={{ padding: 12 }}>
-                          <Text numberOfLines={1} style={{ color: "#fff", fontWeight: "900" }}>{l.title || "Untitled"}</Text>
-                          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                            <Text style={{ color: "#fff", fontWeight: "900" }}>
-                              {formatCurrency(dp.localCurrency, dp.localNow)}
-                            </Text>
-                          </Text>
-                          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-                            USD {formatCurrency("USD", dp.usdNow)}
-                          </Text>
-
-                          <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <MaterialCommunityIcons
-                              name={l.category === "service" ? "briefcase-outline" : "shopping-outline"}
-                              size={14}
-                              color="rgba(255,255,255,0.6)"
-                            />
-                            <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                              {l.category === "service" ? "Service" : "Product"} - {l.delivery_type || "N/A"}
-                            </Text>
-                          </View>
-                        </View>
-                      </Pressable>
-                        );
-                      })()
+                  <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                    {listings.map((listing) => (
+                      <ListingCard key={listing.id} listing={listing} width={listingCardWidth} />
                     ))}
                   </View>
                 )}
               </View>
             )}
-          </View>
+          </SurfaceSection>
         </View>
       </ScrollView>
     </LinearGradient>
-  );
-}
-
-function Pill(props: { icon: any; label: string }) {
-  return (
-    <View style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Ionicons name={props.icon} size={14} color="rgba(255,255,255,0.75)" />
-      <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "900", fontSize: 12 }}>{props.label}</Text>
-    </View>
   );
 }
 

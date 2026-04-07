@@ -19,7 +19,8 @@ export type HistoryKind =
   | "stock_profit"
   | "fee"
   | "refund"
-  | "release";
+  | "release"
+  | "event";
 
 export type MarketHistoryEntry = {
   id: string;
@@ -51,6 +52,21 @@ function toIso(input: unknown, fallback?: string) {
   return fallback || new Date().toISOString();
 }
 
+function parseJsonObject(value: unknown) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
 function normalizeRow(row: any): MarketHistoryEntry {
   return {
     id: String(row.id || ""),
@@ -68,6 +84,67 @@ function normalizeRow(row: any): MarketHistoryEntry {
     occurred_at: toIso(row.occurred_at, toIso(row.created_at)),
     created_at: toIso(row.created_at),
   };
+}
+
+function notificationOrderId(row: any, metadata: Record<string, unknown>) {
+  if (String(row?.entity_type || "").trim().toLowerCase() === "market_order" && row?.entity_id) {
+    return String(row.entity_id);
+  }
+  const value = metadata.order_id ?? metadata.orderId;
+  return value ? String(value) : null;
+}
+
+function notificationStockId(row: any, metadata: Record<string, unknown>) {
+  if (String(row?.entity_type || "").trim().toLowerCase().includes("stock") && row?.entity_id) {
+    return String(row.entity_id);
+  }
+  const value = metadata.stock_id ?? metadata.stockId;
+  return value ? String(value) : null;
+}
+
+function notificationTxHash(metadata: Record<string, unknown>) {
+  const value = metadata.tx_hash ?? metadata.transaction_hash ?? metadata.hash ?? metadata.txHash;
+  return value ? String(value) : null;
+}
+
+function normalizeNotificationRow(row: any): MarketHistoryEntry {
+  const metadata = parseJsonObject(row?.metadata) ?? {};
+  return {
+    id: `notification:${String(row?.id || "")}`,
+    source_table: "account_notifications",
+    source_id: String(row?.id || ""),
+    kind: "event",
+    title: String(row?.title || "Account event"),
+    amount: 0,
+    currency: "USD",
+    status: row?.read_at ? "READ" : "NEW",
+    tx_hash: notificationTxHash(metadata),
+    order_id: notificationOrderId(row, metadata),
+    stock_id: notificationStockId(row, metadata),
+    details: {
+      notification_kind: String(row?.kind || "general"),
+      body: row?.body ? String(row.body) : null,
+      route: row?.route ? String(row.route) : null,
+      entity_type: row?.entity_type ? String(row.entity_type) : null,
+      entity_id: row?.entity_id ? String(row.entity_id) : null,
+      actor_id: row?.actor_id ? String(row.actor_id) : null,
+      read_at: row?.read_at ? toIso(row.read_at) : null,
+      metadata,
+    },
+    occurred_at: toIso(row?.created_at, toIso(row?.updated_at)),
+    created_at: toIso(row?.created_at, toIso(row?.updated_at)),
+  };
+}
+
+function mergeHistoryRows(limit: number, ...groups: MarketHistoryEntry[][]) {
+  const map = new Map<string, MarketHistoryEntry>();
+  for (const row of groups.flat()) {
+    if (!row?.id || map.has(row.id)) continue;
+    map.set(row.id, row);
+  }
+  return Array.from(map.values())
+    .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime())
+    .slice(0, limit);
 }
 
 function isMissingHistoryTableError(error: unknown) {
@@ -142,6 +219,34 @@ async function fetchHistoryViaFunction(limit: number) {
 
   const rows = Array.isArray((json as any)?.items) ? ((json as any).items as any[]) : [];
   return rows.map(normalizeRow);
+}
+
+async function fetchNotificationHistory(userId: string, limit: number) {
+  const { data, error } = await supabase
+    .from("account_notifications")
+    .select("id,kind,title,body,route,entity_type,entity_id,actor_id,metadata,read_at,created_at,updated_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 500));
+
+  if (error) {
+    console.warn(`[history] account_notifications skipped: ${String(error?.message || error)}`);
+    return [] as MarketHistoryEntry[];
+  }
+
+  return ((data ?? []) as any[]).map(normalizeNotificationRow);
+}
+
+async function fetchNotificationHistoryDetail(userId: string, notificationId: string) {
+  const { data, error } = await supabase
+    .from("account_notifications")
+    .select("id,kind,title,body,route,entity_type,entity_id,actor_id,metadata,read_at,created_at,updated_at")
+    .eq("user_id", userId)
+    .eq("id", notificationId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ? normalizeNotificationRow(data) : null;
 }
 
 async function fetchLegacyHistory(userId: string, limit: number) {
@@ -427,6 +532,12 @@ export async function fetchMarketHistory(limit = 300) {
     await maybeBackfillHistory(limit);
   }
 
+  const notificationRowsPromise = fetchNotificationHistory(user.id, limit).catch(
+    () => [] as MarketHistoryEntry[],
+  );
+  const withNotifications = async (rows: MarketHistoryEntry[]) =>
+    mergeHistoryRows(limit, rows, await notificationRowsPromise);
+
   const readHistoryTable = async () =>
     await supabase
       .from("market_transaction_history")
@@ -448,34 +559,35 @@ export async function fetchMarketHistory(limit = 300) {
 
   if (!tableRes.error) {
     let rows = ((tableRes.data ?? []) as any[]).map(normalizeRow);
-    if (rows.length > 0) return rows;
+    if (rows.length > 0) return await withNotifications(rows);
 
     const backfilled = await maybeBackfillHistory(limit);
     if (backfilled) {
       tableRes = await readHistoryTable();
       if (!tableRes.error) {
         rows = ((tableRes.data ?? []) as any[]).map(normalizeRow);
-        if (rows.length > 0) return rows;
+        if (rows.length > 0) return await withNotifications(rows);
       }
     }
 
     // If history table exists but isn't populated yet, fall back to live legacy sources.
     const legacyRows = await fetchLegacyHistory(user.id, limit);
-    if (legacyRows.length > 0) return legacyRows;
+    if (legacyRows.length > 0) return await withNotifications(legacyRows);
 
-    return await tryFunctionFallback();
+    return await withNotifications(await tryFunctionFallback());
   }
 
   if (!isMissingHistoryTableError(tableRes.error)) {
     const functionRows = await tryFunctionFallback();
-    if (functionRows.length > 0) return functionRows;
+    const mergedFunctionRows = await withNotifications(functionRows);
+    if (mergedFunctionRows.length > 0) return mergedFunctionRows;
     throw new Error(tableRes.error.message);
   }
 
   const legacyRows = await fetchLegacyHistory(user.id, limit);
-  if (legacyRows.length > 0) return legacyRows;
+  if (legacyRows.length > 0) return await withNotifications(legacyRows);
 
-  return await tryFunctionFallback();
+  return await withNotifications(await tryFunctionFallback());
 }
 
 function looksLikeUuid(value: string) {
@@ -491,6 +603,11 @@ export async function fetchMarketHistoryDetail(entryId: string) {
   const user = auth?.user;
   if (!user) throw new Error("Not authenticated");
 
+  const notificationId = id.startsWith("notification:") ? id.slice("notification:".length).trim() : "";
+  if (looksLikeUuid(notificationId)) {
+    return await fetchNotificationHistoryDetail(user.id, notificationId);
+  }
+
   if (looksLikeUuid(id)) {
     const tableRes = await supabase
       .from("market_transaction_history")
@@ -499,6 +616,8 @@ export async function fetchMarketHistoryDetail(entryId: string) {
       .eq("user_id", user.id)
       .maybeSingle();
     if (!tableRes.error && tableRes.data) return normalizeRow(tableRes.data);
+    const notificationRow = await fetchNotificationHistoryDetail(user.id, id).catch(() => null);
+    if (notificationRow) return notificationRow;
     if (tableRes.error && !isMissingHistoryTableError(tableRes.error)) {
       const functionRows = await fetchHistoryViaFunction(500).catch(() => [] as MarketHistoryEntry[]);
       const fromFunction = functionRows.find((x) => x.id === id);

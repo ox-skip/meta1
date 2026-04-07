@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
+import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { callFn } from "@/services/functions";
@@ -938,6 +939,12 @@ export default function ListingDetails() {
           }}
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Available in</Text>
+          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.58)", fontWeight: "800", fontSize: 11 }}>
+            Listed from
+          </Text>
+          <View style={{ marginTop: 8 }}>
+            <ListingOriginBadge availability={listing?.availability} paymentOptions={listing?.payment_options} />
+          </View>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
             {availabilitySummary}
           </Text>

@@ -8,6 +8,7 @@ import * as Clipboard from "expo-clipboard";
 import { createPublicClient, formatUnits, http } from "viem";
 
 import AppHeader from "@/components/common/AppHeader";
+import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
 import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
 import { supabase } from "@/services/supabase";
@@ -754,6 +755,12 @@ export default function Checkout() {
           }}
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Availability</Text>
+          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.58)", fontWeight: "800", fontSize: 11 }}>
+            Seller country
+          </Text>
+          <View style={{ marginTop: 8 }}>
+            <ListingOriginBadge availability={listing?.availability} paymentOptions={listing?.payment_options} />
+          </View>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
             {formatAvailabilitySummary(listing?.availability)}
           </Text>
