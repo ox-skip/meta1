@@ -25,8 +25,7 @@ import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
-import { getCachedCountry, isNigeriaCountry, listingMatchesCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
-import { listingAllowsCrypto } from "@/utils/marketVisibility";
+import { getCachedCountry, listingMatchesCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 import { formatCountryLabel } from "@/utils/countryNames";
 
@@ -389,9 +388,6 @@ export default function MarketHome() {
     setErr(null);
     try {
       const effectiveCountry = countryOverride === undefined ? userCountry : countryOverride;
-      const hasResolvedCountry = Boolean(effectiveCountry?.code || effectiveCountry?.name);
-      const restrictToCrypto =
-        hasResolvedCountry && !isNigeriaCountry(effectiveCountry?.code || effectiveCountry?.name);
       let query = supabase
         .from(LISTINGS_TABLE)
         .select(
@@ -423,8 +419,8 @@ export default function MarketHome() {
           ? items.filter((r) =>
               listingMatchesCountry(r.availability ?? r.payment_options?.availability, effectiveCountry, false),
             )
-          : items;
-      const scoped = restrictToCrypto ? scopedBase.filter((r) => listingAllowsCrypto(r)) : scopedBase;
+          : [];
+      const scoped = scopedBase;
       const uniq = new Map<string, ListingRow>();
       scoped.forEach((r) => {
         if (!uniq.has(r.id)) uniq.set(r.id, r);
@@ -548,9 +544,9 @@ export default function MarketHome() {
     directoryMode === "listings"
       ? feedScope === "country"
         ? userCountry
-          ? `Showing local-first ${feedLabel} for ${locationLabel}.`
-          : `Location unavailable. Showing all available ${feedLabel} until live location is detected.`
-        : `Showing all available ${feedLabel} across the marketplace.`
+          ? `Showing ${feedLabel} matched to ${locationLabel}.`
+          : `Waiting for your location before showing ${feedLabel} for your country.`
+        : `Showing ${feedLabel} from every country in the marketplace.`
       : directoryMode === "featured"
       ? "Browse promoted storefronts first."
       : "Browse stores with verified seller profiles.";
@@ -1062,7 +1058,7 @@ export default function MarketHome() {
                         <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
                         <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
                           {feedScope === "country"
-                            ? "Prioritizing listings matched to your current country."
+                            ? "Showing only listings matched to your current country."
                             : "Showing every listing currently available in the marketplace."}
                         </Text>
                       </View>
@@ -1110,7 +1106,7 @@ export default function MarketHome() {
                         <Text style={{ marginTop: 2, color: MUTED, fontSize: 11 }}>
                           {feedScope === "country"
                             ? "Local listings show local currency plus USD reference."
-                            : "Global feed ignores country restrictions when listing visibility allows it."}
+                            : "Global feed shows listings from every country."}
                         </Text>
                       </View>
                     </View>

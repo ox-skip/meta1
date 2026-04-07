@@ -1,4 +1,3 @@
-import * as FileSystem from "expo-file-system/legacy";
 import { supabase } from "@/services/supabase";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
@@ -361,6 +360,35 @@ async function inferMimeFromUri(uri: string) {
   return "application/octet-stream";
 }
 
+function inferExtensionFromMime(mime: string, kind: "image" | "video" | "audio" | "file") {
+  const raw = String(mime || "").trim().toLowerCase();
+  if (!raw) {
+    if (kind === "audio") return "m4a";
+    if (kind === "video") return "mp4";
+    if (kind === "image") return "jpg";
+    return "bin";
+  }
+  if (raw.includes("png")) return "png";
+  if (raw.includes("webp")) return "webp";
+  if (raw.includes("heic") || raw.includes("heif")) return "heic";
+  if (raw.includes("jpeg") || raw.includes("jpg")) return "jpg";
+  if (raw.includes("quicktime")) return "mov";
+  if (raw.includes("webm")) return "webm";
+  if (raw.includes("mpeg")) return kind === "audio" ? "mp3" : "mpeg";
+  if (raw.includes("aac")) return "aac";
+  if (raw.includes("wav")) return "wav";
+  if (raw.includes("m4a")) return "m4a";
+  if (raw.includes("mp4")) return "mp4";
+  return kind === "audio" ? "m4a" : kind === "video" ? "mp4" : kind === "image" ? "jpg" : "bin";
+}
+
+function inferExtensionFromUri(uri: string, mime: string, kind: "image" | "video" | "audio" | "file") {
+  const clean = String(uri || "").split("#")[0]?.split("?")[0] ?? "";
+  const match = clean.match(/\.([a-z0-9]{2,5})$/i);
+  if (match?.[1]) return match[1].toLowerCase();
+  return inferExtensionFromMime(mime, kind);
+}
+
 export async function sendMedia(params: {
   threadId: string;
   kind: "image" | "video" | "audio" | "file";
@@ -394,9 +422,7 @@ export async function sendMedia(params: {
   const messageId = msg?.id as string;
 
   try {
-    const fileInfo = await FileSystem.getInfoAsync(uri);
-    const fileSize = fileInfo && "size" in fileInfo ? fileInfo.size ?? null : null;
-    const ext = uri.split(".").pop() || "file";
+    const ext = inferExtensionFromUri(uri, mime_type || "", kind);
     const path = `${threadId}/${messageId}/${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
 
     const up = await uploadToSupabaseStorage({
@@ -417,9 +443,7 @@ export async function sendMedia(params: {
         public_url: up.publicUrl ?? null,
         mime_type: mime_type ?? null,
         duration_sec: duration_sec ?? null,
-        meta: {
-          size: fileSize,
-        },
+        meta: {},
       });
 
     if (aErr) throw new Error(aErr.message);

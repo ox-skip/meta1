@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OrderPreviewModal, type PreviewPayload } from "@/components/market/OrderPreviewModal";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 
@@ -59,12 +60,6 @@ type LocalAsset = {
   uri: string;
   mimeType: string;
   kind: "image" | "video";
-};
-
-type PreviewAsset = {
-  uri: string;
-  mimeType: string;
-  kind: "image" | "video" | "audio" | "file";
 };
 
 type Props = {
@@ -186,6 +181,27 @@ function mediaIcon(kind: FeedMedia["kind"]): IconName {
   return "images-outline";
 }
 
+function previewTitle(kind: FeedMedia["kind"]) {
+  if (kind === "video") return "Video preview";
+  if (kind === "audio") return "Audio preview";
+  if (kind === "file") return "File preview";
+  return "Image preview";
+}
+
+function buildPreviewPayload(input: {
+  uri: string;
+  kind: FeedMedia["kind"];
+  mimeType?: string | null;
+}): PreviewPayload {
+  return {
+    kind: input.kind,
+    title: previewTitle(input.kind),
+    access: "final",
+    mimeType: input.mimeType ?? null,
+    urlPromise: async () => input.uri,
+  };
+}
+
 function SellerBadge({ verified }: { verified?: boolean | null }) {
   if (!verified) return null;
   return <Ionicons name="checkmark-circle" size={17} color="#3B82F6" />;
@@ -275,7 +291,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   const [body, setBody] = useState("");
   const [assets, setAssets] = useState<LocalAsset[]>([]);
-  const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
+  const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, FeedMedia[]>>({});
@@ -770,11 +786,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const uri = safePublicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
     if (!uri) return;
 
-    setPreviewAsset({
-      uri,
-      mimeType: media.mime_type || "",
-      kind: media.kind,
-    });
+    setPreviewPayload(
+      buildPreviewPayload({
+        uri,
+        mimeType: media.mime_type || "",
+        kind: media.kind,
+      }),
+    );
   }
 
   function renderMediaCard(media: FeedMedia, height: number, overlayText?: string) {
@@ -937,7 +955,18 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             {assets.length ? (
               <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 {assets.map((asset, index) => (
-                  <Pressable key={`${asset.uri}-${index}`} onPress={() => setPreviewAsset(asset)}>
+                  <Pressable
+                    key={`${asset.uri}-${index}`}
+                    onPress={() =>
+                      setPreviewPayload(
+                        buildPreviewPayload({
+                          uri: asset.uri,
+                          mimeType: asset.mimeType,
+                          kind: asset.kind,
+                        }),
+                      )
+                    }
+                  >
                     <View
                       style={{
                         width: thumbSize,
@@ -1656,60 +1685,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     <View style={{ flex: isContained ? 1 : 0, width: "100%" }}>
       {isContained ? renderContainedTimeline() : renderInlineContent()}
 
-      <Modal visible={!!previewAsset} transparent animationType="fade" onRequestClose={() => setPreviewAsset(null)}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(2,6,23,0.94)",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <Pressable onPress={() => setPreviewAsset(null)} style={{ position: "absolute", top: 42, right: 18, zIndex: 10 }}>
-            <Ionicons name="close-circle" size={36} color={TEXT} />
-          </Pressable>
-
-          <View
-            style={{
-              width: "100%",
-              maxWidth: isTablet ? 920 : "100%",
-              borderRadius: 28,
-              borderWidth: 1,
-              borderColor: BORDER,
-              backgroundColor: SURFACE_ALT,
-              overflow: "hidden",
-            }}
-          >
-            {previewAsset?.kind === "image" ? (
-              <Image
-                source={{ uri: previewAsset.uri }}
-                style={{ width: "100%", height: isTablet ? 560 : 360 }}
-                resizeMode="contain"
-              />
-            ) : (
-              <View style={{ padding: 24 }}>
-                <View
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 28,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: ACCENT_BG,
-                  }}
-                >
-                  <Ionicons name={previewAsset ? mediaIcon(previewAsset.kind as FeedMedia["kind"]) : "document-outline"} size={28} color={TEXT} />
-                </View>
-                <Text style={{ marginTop: 16, color: TEXT, fontWeight: "900", fontSize: 18 }}>Media preview</Text>
-                <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }}>
-                  Video, audio, and file previews are limited in this build. The attachment still keeps its cleaner card layout in the feed on mobile and web.
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <OrderPreviewModal open={!!previewPayload} onClose={() => setPreviewPayload(null)} payload={previewPayload} />
 
       <Modal visible={!!commentsOpenPost} transparent animationType="fade" onRequestClose={() => setCommentsOpenPost(null)}>
         <View

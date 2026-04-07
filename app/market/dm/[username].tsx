@@ -282,6 +282,10 @@ export default function DMChat() {
       setRecordingBusy(true);
       try {
         await recording.stopAndUnloadAsync();
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        }).catch(() => undefined);
         const uri = recording.getURI();
         const status = await recording.getStatusAsync();
         setRecording(null);
