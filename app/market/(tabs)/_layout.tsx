@@ -34,7 +34,7 @@ function CenterTabButton({
       testID={testID}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+      style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 4 }}
       hitSlop={10}
     >
       <View
@@ -44,7 +44,7 @@ function CenterTabButton({
           borderRadius: 22,
           alignItems: "center",
           justifyContent: "center",
-          marginTop: -24,
+          marginTop: -18,
           backgroundColor: focused ? ACCENT : "#C88714",
           borderWidth: 1,
           borderColor: "rgba(255,244,230,0.18)",
@@ -98,13 +98,20 @@ export default function MarketTabsLayout() {
           }
 
           if (Platform.OS === "ios" && BlurViewComp) {
-            return <BlurViewComp intensity={72} tint="dark" style={StyleSheet.absoluteFill} />;
+            return (
+              <BlurViewComp
+                intensity={72}
+                tint="dark"
+                style={[StyleSheet.absoluteFill, styles.mobileBarBackground]}
+              />
+            );
           }
 
           return (
             <View
               style={[
                 StyleSheet.absoluteFill,
+                styles.mobileBarBackground,
                 { backgroundColor: SURFACE },
               ]}
             />
@@ -124,7 +131,8 @@ export default function MarketTabsLayout() {
           : [
               styles.mobileBar,
               {
-                height: 72 + bottomPad,
+                height: 78 + bottomPad,
+                paddingTop: 6,
                 paddingBottom: bottomPad + 4,
                 backgroundColor: Platform.OS === "android" ? SURFACE : "transparent",
               },
@@ -145,7 +153,7 @@ export default function MarketTabsLayout() {
           : {
               borderRadius: 18,
               marginHorizontal: 2,
-              paddingTop: 2,
+              paddingTop: 6,
             },
         sceneStyle: isWebDesktop
           ? {
@@ -240,6 +248,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     elevation: 0,
     borderRadius: 24,
-    overflow: "hidden",
+    overflow: "visible",
+  },
+  mobileBarBackground: {
+    borderRadius: 24,
   },
 });

@@ -5,7 +5,8 @@ import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
@@ -314,6 +315,8 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
 }
 
 export default function SellTab() {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [checkingSeller, setCheckingSeller] = useState(true);
   const [hasSellerProfile, setHasSellerProfile] = useState(false);
 
@@ -373,6 +376,11 @@ export default function SellTab() {
   const mountedRef = useRef(true);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishAttemptRef = useRef(0);
+  const isWebDesktop = Platform.OS === "web" && width >= 980;
+  const bottomPad = isWebDesktop ? 0 : Math.max(insets.bottom, 10);
+  const floatingTabBarHeight = isWebDesktop ? 0 : 72 + bottomPad;
+  const stickyPublishBottom = isWebDesktop ? Math.max(insets.bottom, 18) : floatingTabBarHeight + 22;
+  const scrollBottomPadding = stickyPublishBottom + 132;
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -1430,7 +1438,7 @@ export default function SellTab() {
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingBottom: 240 }}
+        contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
       >
         <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Create Listing</Text>
         <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
@@ -2058,7 +2066,7 @@ export default function SellTab() {
           position: "absolute",
           left: 16,
           right: 16,
-          bottom: Platform.OS === "web" ? 18 : 84,
+          bottom: stickyPublishBottom,
         }}
       >
         <View
