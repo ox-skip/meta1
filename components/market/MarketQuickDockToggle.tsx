@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePathname } from "expo-router";
-import React, { useMemo } from "react";
-import { Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { Animated, PanResponder, Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { toggleMarketQuickDockExpanded, useMarketQuickDockExpanded } from "@/components/market/quickDockState";
@@ -11,7 +11,10 @@ export default function MarketQuickDockToggle() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const expanded = useMarketQuickDockExpanded();
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const draggedRef = useRef(false);
 
   const hidden = useMemo(() => {
     const p = String(pathname || "");
@@ -33,21 +36,95 @@ export default function MarketQuickDockToggle() {
 
   const compact = viewportWidth < 390;
   const toggleWidth = compact ? 64 : 72;
+  const toggleHeight = compact ? 58 : 64;
+  const baseLeft = Math.max(16, viewportWidth / 2 - toggleWidth / 2);
+
+  const clampDrag = useCallback(
+    (x: number, y: number) => {
+      const minX = 8 - baseLeft;
+      const maxX = viewportWidth - toggleWidth - 8 - baseLeft;
+      const topSafe = Platform.OS === "ios" ? 74 : 58;
+      const upTravel = viewportHeight - topSafe - bottomOffset - toggleHeight - 16;
+      const maxUp = Math.min(0, -upTravel);
+      return {
+        x: Math.max(minX, Math.min(maxX, x)),
+        y: Math.max(maxUp, Math.min(0, y)),
+      };
+    },
+    [baseLeft, bottomOffset, toggleHeight, toggleWidth, viewportHeight, viewportWidth],
+  );
+
+  useEffect(() => {
+    const clamped = clampDrag(dragOffsetRef.current.x, dragOffsetRef.current.y);
+    dragOffsetRef.current = clamped;
+    drag.setValue(clamped);
+  }, [clampDrag, drag]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_evt, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+        onPanResponderGrant: () => {
+          draggedRef.current = false;
+          drag.setOffset(dragOffsetRef.current);
+          drag.setValue({ x: 0, y: 0 });
+        },
+        onPanResponderMove: (_evt, g) => {
+          if (Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4) draggedRef.current = true;
+          Animated.event([null, { dx: drag.x, dy: drag.y }], { useNativeDriver: false })(_evt, g);
+        },
+        onPanResponderRelease: (_evt, g) => {
+          drag.flattenOffset();
+          const raw = {
+            x: dragOffsetRef.current.x + g.dx,
+            y: dragOffsetRef.current.y + g.dy,
+          };
+          const clamped = clampDrag(raw.x, raw.y);
+          dragOffsetRef.current = clamped;
+          Animated.spring(drag, {
+            toValue: clamped,
+            useNativeDriver: false,
+            bounciness: 0,
+            speed: 18,
+          }).start();
+        },
+        onPanResponderTerminate: (_evt, g) => {
+          drag.flattenOffset();
+          const raw = {
+            x: dragOffsetRef.current.x + g.dx,
+            y: dragOffsetRef.current.y + g.dy,
+          };
+          const clamped = clampDrag(raw.x, raw.y);
+          dragOffsetRef.current = clamped;
+          drag.setValue(clamped);
+        },
+      }),
+    [clampDrag, drag],
+  );
 
   if (hidden) return null;
 
   return (
-    <View
+    <Animated.View
+      {...panResponder.panHandlers}
       pointerEvents="box-none"
       style={{
         position: "absolute",
-        left: Math.max(16, viewportWidth / 2 - toggleWidth / 2),
+        left: baseLeft,
         bottom: bottomOffset,
         zIndex: 39,
+        transform: drag.getTranslateTransform(),
       }}
     >
       <Pressable
-        onPress={() => toggleMarketQuickDockExpanded()}
+        onPress={() => {
+          if (draggedRef.current) {
+            draggedRef.current = false;
+            return;
+          }
+          toggleMarketQuickDockExpanded();
+        }}
         style={{
           borderRadius: 999,
           overflow: "hidden",
@@ -64,9 +141,9 @@ export default function MarketQuickDockToggle() {
           end={{ x: 1, y: 1 }}
           style={{
             width: toggleWidth,
-            height: compact ? 42 : 46,
-            borderRadius: 999,
-            borderWidth: 1,
+          height: compact ? 42 : 46,
+          borderRadius: 999,
+          borderWidth: 1,
             borderColor: "rgba(245,158,11,0.28)",
             paddingHorizontal: 10,
             flexDirection: "row",
@@ -92,6 +169,6 @@ export default function MarketQuickDockToggle() {
       >
         {expanded ? "Hide" : "Show"}
       </Text>
-    </View>
+    </Animated.View>
   );
 }
