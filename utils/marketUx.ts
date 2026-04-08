@@ -3,6 +3,14 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   if (!raw) return fallback;
 
   const msg = raw.toLowerCase();
+  if (
+    msg.includes("listing created") ||
+    msg.includes("listing saved") ||
+    msg.includes("listing is live") ||
+    msg.includes("already live")
+  ) {
+    return raw;
+  }
   if (msg.includes("invalid jwt") || msg.includes("session expired") || msg.includes("jwt")) {
     return "Your session expired. Please sign in again.";
   }

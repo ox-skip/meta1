@@ -105,6 +105,17 @@ function isValidUrl(u: string) {
   return /^https?:\/\/.+/i.test(u.trim());
 }
 
+function isListingAlreadySavedMessage(input?: string | null) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return false;
+  return (
+    raw.includes("listing created") ||
+    raw.includes("listing saved") ||
+    raw.includes("listing is live") ||
+    raw.includes("already live")
+  );
+}
+
 const BANNED_KEYWORDS = [
   "cocaine",
   "heroin",
@@ -1210,15 +1221,20 @@ export default function SellTab() {
       });
       return;
     } catch (e: any) {
+      const rawMsg = String(e?.message || e || "").trim();
       const msg = friendlyMarketError(e, "We couldn't complete this request right now.");
-      const errStr = String(msg || e?.message || "").toLowerCase();
-      
-      // Check if listing was created but images failed
-      if (errStr.includes("listing created") || errStr.includes("saved") || errStr.includes("draft") || errStr.includes("already live")) {
-        showFeedback("info", "Listing saved", msg);
+      const errStr = rawMsg.toLowerCase();
+
+      if (isListingAlreadySavedMessage(rawMsg)) {
+        showFeedback("info", "Listing saved", rawMsg || msg);
       } else if (errStr.includes("row-level security") || errStr.includes("permission")) {
         showFeedback("error", "Permission issue", "Your database permissions blocked this listing insert.");
-      } else if (errStr.includes("network") || errStr.includes("timeout")) {
+      } else if (
+        errStr.includes("network request failed") ||
+        errStr.includes("failed to fetch") ||
+        errStr.includes("network") ||
+        errStr.includes("timeout")
+      ) {
         showFeedback("error", "Connection issue", "Please check your internet connection and try again.");
       } else {
         showFeedback("error", "Failed to create listing", msg);
@@ -1279,72 +1295,105 @@ export default function SellTab() {
 
     // Step 2: Upload media if present (failures here don't prevent listing creation)
     if (mediaAssets.length > 0) {
-      try {
-        console.log("[SellTab] upload media -> start", { count: mediaAssets.length });
-        setStage("Uploading media...");
-        const inserts: any[] = [];
+      console.log("[SellTab] upload media -> start", { count: mediaAssets.length });
+      setStage("Uploading media...");
+      const inserts: any[] = [];
+      const mediaIssues: string[] = [];
+      let attachedCount = 0;
 
-        for (let i = 0; i < mediaAssets.length; i++) {
-          const img = mediaAssets[i];
-          const ext = ensureExtFromMime(img.contentType);
-          const random =
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? (crypto as any).randomUUID()
-              : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      for (let i = 0; i < mediaAssets.length; i++) {
+        const img = mediaAssets[i];
+        const ext = ensureExtFromMime(img.contentType);
+        const random =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? (crypto as any).randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-          const path = `${user.id}/listings/${listing.id}/${i + 1}-${random}.${ext}`;
+        const path = `${user.id}/listings/${listing.id}/${i + 1}-${random}.${ext}`;
 
-          try {
-            console.log("[SellTab] upload media -> start", { index: i, path });
-            const up = await uploadToBucket({
-              bucket: "market-listings",
-              path,
-              uri: img.uri,
-              fileBody: img.webFile ?? null,
-              contentType: img.contentType,
-            });
-            console.log("[SellTab] upload media -> ok", { index: i, storagePath: up.storagePath });
+        try {
+          console.log("[SellTab] upload media -> start", { index: i, path });
+          const up = await uploadToBucket({
+            bucket: "market-listings",
+            path,
+            uri: img.uri,
+            fileBody: img.webFile ?? null,
+            contentType: img.contentType,
+            upsert: false,
+          });
+          console.log("[SellTab] upload media -> ok", { index: i, storagePath: up.storagePath });
 
-            inserts.push({
-              listing_id: listing.id,
-              storage_path: up.storagePath,
-              public_url: up.publicUrl ?? null,
-              sort_order: i,
-              meta: { content_type: img.contentType },
-            });
-          } catch (imgUploadErr: any) {
-            console.error("[SellTab] single media upload failed", { index: i, error: imgUploadErr });
-            throw new Error(
-              `Media item ${i + 1} upload failed: ${imgUploadErr?.message || "Unknown error"}. Listing is already live without this file.`,
-            );
-          }
-        }
-
-        console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
-        setStage("Saving media...");
-        const rows = await insertListingImages(inserts, { activateListing: false });
-        console.log("[SellTab] insertListingImages -> ok", { count: rows?.length ?? 0 });
-
-        if (!rows?.length) {
-          imageWarning = "Your listing is live, but the uploaded media was not attached yet.";
-        }
-      } catch (imageErr: any) {
-        const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
-        setStage("Finalizing listing...");
-        const errMsg = String(imageErr?.message || imageErr || "");
-        if (partialRows.length > 0) {
-          throw new Error(
-            `Listing created, but only ${partialRows.length}/${mediaAssets.length} media item${partialRows.length === 1 ? "" : "s"} uploaded. Open My Listings to re-upload the remaining files.`,
+          inserts.push({
+            listing_id: listing.id,
+            storage_path: up.storagePath,
+            public_url: up.publicUrl ?? null,
+            sort_order: i,
+            meta: { content_type: img.contentType },
+          });
+        } catch (imgUploadErr: any) {
+          console.error("[SellTab] single media upload failed", { index: i, error: imgUploadErr });
+          mediaIssues.push(
+            `Media item ${i + 1} failed: ${friendlyMarketError(
+              imgUploadErr,
+              "We couldn't upload that file.",
+            )}`,
           );
         }
-        throw new Error(
-          `Listing created, but media failed to upload. Error: ${errMsg}. Open My Listings to try uploading media again.`,
-        );
+      }
+
+      if (inserts.length > 0) {
+        try {
+          console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
+          setStage("Saving media...");
+          const rows = await insertListingImages(inserts, { activateListing: false });
+          attachedCount = rows?.length ?? 0;
+          console.log("[SellTab] insertListingImages -> ok", { count: attachedCount });
+
+          const unattachedCount = Math.max(inserts.length - attachedCount, 0);
+          if (unattachedCount > 0) {
+            mediaIssues.push(
+              `${unattachedCount} uploaded media item${unattachedCount === 1 ? "" : "s"} could not be attached to the listing.`,
+            );
+          }
+        } catch (imageErr: any) {
+          const partialRows = Array.isArray(imageErr?.partialRows) ? imageErr.partialRows : [];
+          attachedCount = partialRows.length;
+          setStage("Finalizing listing...");
+
+          const failedAttachCount = Math.max(inserts.length - attachedCount, 0);
+          const attachMessage = friendlyMarketError(
+            imageErr,
+            "Uploaded media could not be attached to the listing.",
+          );
+
+          if (failedAttachCount > 0) {
+            mediaIssues.push(
+              failedAttachCount === inserts.length
+                ? `Uploaded media could not be attached to the listing. ${attachMessage}`
+                : `${failedAttachCount} uploaded media item${failedAttachCount === 1 ? "" : "s"} could not be attached to the listing. ${attachMessage}`,
+            );
+          } else {
+            mediaIssues.push(attachMessage);
+          }
+        }
+      }
+
+      if (mediaIssues.length > 0) {
+        const firstIssue = mediaIssues[0];
+        if (attachedCount > 0) {
+          imageWarning =
+            `Your listing is live, and ${attachedCount}/${mediaAssets.length} media item${attachedCount === 1 ? "" : "s"} ` +
+            `${attachedCount === 1 ? "is" : "are"} attached. Open My Listings to add the rest.\n\nFirst issue: ${firstIssue}`;
+        } else {
+          imageWarning =
+            "Your listing is live, but none of the selected media are attached yet. Open My Listings to try again." +
+            `\n\nFirst issue: ${firstIssue}`;
+        }
       }
     }
 
-    const successMsg = mediaAssets.length > 0 ? "Your listing is live with all media!" : "Your listing is live!";
-    showFeedback("success", "Posted", successMsg);
+    const successMsg = imageWarning || (mediaAssets.length > 0 ? "Your listing is live with all media!" : "Your listing is live!");
+    showFeedback(imageWarning ? "info" : "success", imageWarning ? "Listing saved" : "Posted", successMsg);
     const nextCountry = resolveAvailabilityCountry("", "", userCountry);
     
     // Clear form state

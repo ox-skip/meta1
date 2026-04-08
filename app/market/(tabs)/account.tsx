@@ -28,6 +28,7 @@ type StatState = {
   activeListings: number;
   allListings: number;
   orders: number;
+  completedOrders: number;
 };
 
 const BG0 = "#0B0907";
@@ -202,7 +203,7 @@ export default function MarketAccountTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<SellerProfile | null>(null);
-  const [stats, setStats] = useState<StatState>({ activeListings: 0, allListings: 0, orders: 0 });
+  const [stats, setStats] = useState<StatState>({ activeListings: 0, allListings: 0, orders: 0, completedOrders: 0 });
 
   const logo = publicUrl("market-sellers", profile?.logo_path);
   const banner = publicUrl("market-sellers", profile?.banner_path);
@@ -227,11 +228,11 @@ export default function MarketAccountTab() {
       const user = auth?.user;
       if (!user) {
         setProfile(null);
-        setStats({ activeListings: 0, allListings: 0, orders: 0 });
+        setStats({ activeListings: 0, allListings: 0, orders: 0, completedOrders: 0 });
         return;
       }
 
-      const [profileRes, activeListingsRes, allListingsRes, ordersRes] = await Promise.all([
+      const [profileRes, activeListingsRes, allListingsRes, ordersRes, completedOrdersRes] = await Promise.all([
         supabase
           .from("market_seller_profiles")
           .select("user_id,market_username,display_name,business_name,is_verified,logo_path,banner_path,payout_tier,active")
@@ -240,6 +241,7 @@ export default function MarketAccountTab() {
         supabase.from("market_listings").select("id", { count: "exact", head: true }).eq("seller_id", user.id).eq("is_active", true),
         supabase.from("market_listings").select("id", { count: "exact", head: true }).eq("seller_id", user.id),
         supabase.from("market_orders").select("id", { count: "exact", head: true }).or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`),
+        supabase.from("market_orders").select("id", { count: "exact", head: true }).eq("seller_id", user.id).in("status", ["DELIVERED", "RELEASED"]),
       ]);
 
       setProfile((profileRes.data as SellerProfile | null) ?? null);
@@ -247,6 +249,7 @@ export default function MarketAccountTab() {
         activeListings: Number(activeListingsRes.count ?? 0),
         allListings: Number(allListingsRes.count ?? 0),
         orders: Number(ordersRes.count ?? 0),
+        completedOrders: Number(completedOrdersRes.count ?? 0),
       });
     } catch (e: any) {
       setError(friendlyMarketError(e, "Unable to load account."));
@@ -409,6 +412,7 @@ export default function MarketAccountTab() {
                   <StatCard value="0" label="Active listings" />
                   <StatCard value="0" label="Total listings" />
                   <StatCard value="0" label="Orders" />
+                  <StatCard value="0" label="Completed orders" />
                 </View>
               </View>
             </View>
@@ -539,6 +543,7 @@ export default function MarketAccountTab() {
                       <StatCard value={String(stats.activeListings)} label="Active listings" />
                       <StatCard value={String(stats.allListings)} label="Total listings" />
                       <StatCard value={String(stats.orders)} label="Orders" />
+                      <StatCard value={String(stats.completedOrders)} label="Completed orders" />
                     </View>
                   </View>
                 </View>

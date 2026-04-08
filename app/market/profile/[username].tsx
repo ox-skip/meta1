@@ -26,6 +26,9 @@ const ACCENT_2 = "#FB923C";
 const SUCCESS = "#4ADE80";
 const BUCKET_SELLERS = "market-sellers";
 const BUCKET_LISTINGS = "market-listings";
+const COMPLETED_ORDER_STATUSES = ["DELIVERED", "RELEASED"] as const;
+const CANCELLED_ORDER_STATUSES = ["CANCELLED"] as const;
+const REFUNDED_ORDER_STATUSES = ["REFUNDED"] as const;
 
 type SocialKey =
   | "x"
@@ -105,6 +108,22 @@ type Review = {
   comment: string | null;
   created_at: string;
   profiles?: { username?: string | null; full_name?: string | null } | null;
+};
+
+type StoreOrderSignals = {
+  total: number;
+  completed: number;
+  cancelled: number;
+  refunded: number;
+  fulfillmentRate: number;
+};
+
+const EMPTY_ORDER_SIGNALS: StoreOrderSignals = {
+  total: 0,
+  completed: 0,
+  cancelled: 0,
+  refunded: 0,
+  fulfillmentRate: 0,
 };
 
 function publicUrl(bucket: string, path: string | null) {
@@ -214,6 +233,52 @@ function MetricCard({
     >
       <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{value}</Text>
       <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{label}</Text>
+    </View>
+  );
+}
+
+function SignalCard({
+  icon,
+  value,
+  label,
+  hint,
+  tone,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string;
+  label: string;
+  hint: string;
+  tone: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 150,
+        borderRadius: 22,
+        padding: 14,
+        backgroundColor: PANEL_ALT,
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+      }}
+    >
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${tone}18`,
+          borderWidth: 1,
+          borderColor: `${tone}30`,
+        }}
+      >
+        <Ionicons name={icon} size={18} color={tone} />
+      </View>
+      <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 21 }}>{value}</Text>
+      <Text style={{ marginTop: 5, color: TEXT, fontWeight: "800", fontSize: 13 }}>{label}</Text>
+      <Text style={{ marginTop: 5, color: MUTED, fontSize: 11, lineHeight: 17 }}>{hint}</Text>
     </View>
   );
 }
@@ -392,6 +457,7 @@ export default function PublicSellerProfile() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [avgRating, setAvgRating] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
+  const [orderSignals, setOrderSignals] = useState<StoreOrderSignals>(EMPTY_ORDER_SIGNALS);
   const [myRating, setMyRating] = useState<number>(0);
   const [myComment, setMyComment] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -574,6 +640,52 @@ export default function PublicSellerProfile() {
     setCanReview(!!data?.length);
   }
 
+  async function loadOrderSignals() {
+    if (!seller?.user_id) {
+      setOrderSignals(EMPTY_ORDER_SIGNALS);
+      return;
+    }
+
+    const [totalRes, completedRes, cancelledRes, refundedRes] = await Promise.all([
+      supabase.from("market_orders").select("id", { count: "exact", head: true }).eq("seller_id", seller.user_id),
+      supabase
+        .from("market_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("seller_id", seller.user_id)
+        .in("status", [...COMPLETED_ORDER_STATUSES]),
+      supabase
+        .from("market_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("seller_id", seller.user_id)
+        .in("status", [...CANCELLED_ORDER_STATUSES]),
+      supabase
+        .from("market_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("seller_id", seller.user_id)
+        .in("status", [...REFUNDED_ORDER_STATUSES]),
+    ]);
+
+    if (totalRes.error || completedRes.error || cancelledRes.error || refundedRes.error) {
+      setOrderSignals(EMPTY_ORDER_SIGNALS);
+      return;
+    }
+
+    const total = Number(totalRes.count ?? 0);
+    const completed = Number(completedRes.count ?? 0);
+    const cancelled = Number(cancelledRes.count ?? 0);
+    const refunded = Number(refundedRes.count ?? 0);
+    const resolved = completed + cancelled + refunded;
+    const fulfillmentRate = resolved ? Math.round((completed / resolved) * 1000) / 10 : 0;
+
+    setOrderSignals({
+      total,
+      completed,
+      cancelled,
+      refunded,
+      fulfillmentRate,
+    });
+  }
+
   async function loadStoreStock(storeId: string) {
     const feed = await fetchStocksOverview(100, 0);
     const row = (feed.items ?? []).find((i) => String(i.store_id) === storeId);
@@ -599,10 +711,14 @@ export default function PublicSellerProfile() {
   }
 
   useEffect(() => {
-    if (!seller?.user_id) return;
+    if (!seller?.user_id) {
+      setOrderSignals(EMPTY_ORDER_SIGNALS);
+      return;
+    }
     loadFollowers();
     loadReviews();
     loadCanReview();
+    loadOrderSignals();
 
     const ch = supabase
       .channel(`seller-social-${seller.user_id}`)
@@ -611,6 +727,9 @@ export default function PublicSellerProfile() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "market_seller_reviews", filter: `seller_id=eq.${seller.user_id}` }, () => {
         loadReviews();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "market_orders", filter: `seller_id=eq.${seller.user_id}` }, () => {
+        loadOrderSignals();
       })
       .subscribe();
 
@@ -706,6 +825,11 @@ export default function PublicSellerProfile() {
   }, [seller?.social_links]);
   const storeName = seller?.business_name || seller?.display_name || "Store";
   const ratingLabel = reviewCount ? `${avgRating}★` : "New";
+  const resolvedOrders = orderSignals.completed + orderSignals.cancelled + orderSignals.refunded;
+  const fulfillmentLabel = resolvedOrders ? `${orderSignals.fulfillmentRate.toFixed(1)}%` : "New";
+  const trustSummary = resolvedOrders
+    ? `This store has completed ${orderSignals.completed} of ${resolvedOrders} publicly resolved orders. Cancelled: ${orderSignals.cancelled}. Refunded: ${orderSignals.refunded}.`
+    : "No resolved orders yet. Buyers can still use reviews, verification, and live listings to judge this store.";
 
   if (loading) {
     return (
@@ -834,6 +958,8 @@ export default function PublicSellerProfile() {
                     <MetricCard value={String(followersCount)} label="Followers" />
                     <MetricCard value={ratingLabel} label={`${reviewCount} reviews`} />
                     <MetricCard value={String(listings.length)} label="Live listings" />
+                    <MetricCard value={String(orderSignals.completed)} label="Completed orders" />
+                    <MetricCard value={String(orderSignals.cancelled)} label="Cancelled orders" />
                   </View>
                 </View>
               </View>
@@ -855,6 +981,51 @@ export default function PublicSellerProfile() {
             </View>
             {socialItems.length ? <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{socialItems.map((s) => <Pressable key={s.key} onPress={() => s.url && Linking.openURL(s.url)} style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}><MaterialCommunityIcons name={s.icon as any} size={18} color={TEXT} /></Pressable>)}</View> : null}
             {storeStock ? <Pressable onPress={() => router.push(`/market/stock/${storeStock.slug}` as any)} style={{ marginTop: 16, borderRadius: 22, padding: 16, borderWidth: 1, borderColor: "rgba(45,212,191,0.30)", backgroundColor: "rgba(45,212,191,0.10)" }}><View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 15 }}>{storeStock.name} ({storeStock.symbol})</Text><Text style={{ marginTop: 4, color: "rgba(236,254,255,0.78)", fontSize: 11 }}>{String(storeStock.chain).toUpperCase().replace("_", " ")} • {storeStock.status}</Text></View><Ionicons name="trending-up-outline" size={20} color="#99F6E4" /></View><View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 12 }}><Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>Price ${storeStock.price_usdc.toFixed(6)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>MCap ${storeStock.market_cap_usdc.toFixed(2)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>24h ${storeStock.volume_24h_usdc.toFixed(2)}</Text><Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Trades {storeStock.trades_24h}</Text></View></Pressable> : null}
+          </SurfaceSection>
+
+          <SurfaceSection
+            style={{ marginTop: 16 }}
+            title="Trust and fulfillment"
+            subtitle="Public order outcomes help buyers judge seller reliability before starting checkout."
+          >
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+              <SignalCard icon="checkmark-circle-outline" value={String(orderSignals.completed)} label="Completed orders" hint="Closed successfully" tone={SUCCESS} />
+              <SignalCard icon="close-circle-outline" value={String(orderSignals.cancelled)} label="Cancelled orders" hint="Cancelled before completion" tone="#F97316" />
+              <SignalCard icon="refresh-circle-outline" value={String(orderSignals.refunded)} label="Refunded orders" hint="Closed with buyer recovery" tone="#F87171" />
+              <SignalCard icon="pulse-outline" value={fulfillmentLabel} label="Fulfillment rate" hint={resolvedOrders ? `${resolvedOrders} resolved orders tracked publicly` : "Awaiting first resolved order"} tone="#FBBF24" />
+            </View>
+
+            <View
+              style={{
+                marginTop: 16,
+                borderRadius: 22,
+                padding: 16,
+                backgroundColor: PANEL_ALT,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Buyer safety snapshot</Text>
+                <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>{orderSignals.total} total orders</Text>
+              </View>
+              <View style={{ marginTop: 12, height: 10, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                <View
+                  style={{
+                    width: resolvedOrders ? `${Math.max(6, Math.min(100, orderSignals.fulfillmentRate))}%` : "0%",
+                    height: "100%",
+                    borderRadius: 999,
+                    backgroundColor: SUCCESS,
+                  }}
+                />
+              </View>
+              <Text style={{ marginTop: 12, color: MUTED, fontSize: 12, lineHeight: 20 }}>{trustSummary}</Text>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <StoreTag icon="shield-checkmark-outline" label={seller.is_verified ? "Verified identity" : "Identity not verified"} tone={seller.is_verified ? SUCCESS : "#FBBF24"} />
+                <StoreTag icon="document-text-outline" label={`${reviewCount} buyer reviews`} tone={ACCENT} />
+                <StoreTag icon="people-outline" label={`${followersCount} followers`} tone={ACCENT_2} />
+              </View>
+            </View>
           </SurfaceSection>
 
           <SurfaceSection style={{ marginTop: 16 }} title="Buyer reviews" subtitle={reviewCount ? `${reviewCount} reviews • ${avgRating}★ average` : "No reviews yet"}>

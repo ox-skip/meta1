@@ -333,17 +333,14 @@ export async function uploadToBucket(params: {
   uri: string;
   fileBody?: Blob | null;
   contentType: string;
+  upsert?: boolean;
 }) {
-  // fetch file as blob (works in Expo)
-
   return uploadToSupabaseStorage({
     bucket: params.bucket,
     path: params.path,
     localUri: params.uri,
     fileBody: params.fileBody ?? null,
     contentType: params.contentType,
-
+    upsert: params.upsert ?? false,
   });
-
-  
 }
