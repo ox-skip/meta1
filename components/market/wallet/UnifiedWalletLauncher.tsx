@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Animated, PanResponder, Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 
 import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
+import { useMarketQuickDockExpanded } from "@/components/market/quickDockState";
 import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import UnifiedWalletSheet from "@/components/market/wallet/UnifiedWalletSheet";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
@@ -18,6 +19,7 @@ function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
 export default function UnifiedWalletLauncher() {
   const pathname = usePathname();
   const wallet = useUnifiedWallet();
+  const dockExpanded = useMarketQuickDockExpanded();
   const { balancesHidden, toggleBalancesHidden } = useBalanceVisibility();
   const [open, setOpen] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
@@ -126,7 +128,7 @@ export default function UnifiedWalletLauncher() {
     [clampDrag, drag]
   );
 
-  if (hidden) return null;
+  if (hidden || !dockExpanded) return null;
 
   return (
     <>

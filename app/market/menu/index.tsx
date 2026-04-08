@@ -119,7 +119,7 @@ const MENU_SECTIONS: MenuSection[] = [
     items: [
       {
         title: "Account Hub",
-        description: "Open the seller command deck with wallet and launch status.",
+        description: "Open your store profile, activity, and selling tools.",
         icon: "person-circle-outline",
         route: "/market/(tabs)/account",
       },

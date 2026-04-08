@@ -870,7 +870,7 @@ export default function PublicSellerProfile() {
               <ActivityIndicator color={ACCENT} />
               <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading store profile</Text>
               <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
-                Pulling public seller identity, followers, ratings, and listings into the new layout.
+                Fetching seller details, followers, ratings, and active listings.
               </Text>
             </View>
           </View>
@@ -923,7 +923,7 @@ export default function PublicSellerProfile() {
                 <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Public Store</Text>
               </View>
               <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Storefront profile</Text>
-              <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>A public-facing seller page using the same premium dashboard language as the new account hub.</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>Browse store details, seller trust signals, reviews, and active listings.</Text>
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               <ActionButton icon="arrow-back" label="Go back" accent={ACCENT} onPress={() => router.back()} />
@@ -972,7 +972,7 @@ export default function PublicSellerProfile() {
             </View>
           </View>
 
-          <SurfaceSection style={{ marginTop: 16 }} title="Store overview" subtitle="Brand story, service modes, and commercial signals presented in the same upgraded card system." >
+          <SurfaceSection style={{ marginTop: 16 }} title="Store overview" subtitle="Brand story, service modes, and key store details." >
             <Text style={{ color: MUTED, lineHeight: 22 }}>{seller.bio || "No store bio has been published yet."}</Text>
             <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {seller.offers_remote ? <StoreTag icon="laptop-outline" label="Remote service" tone={ACCENT} /> : null}

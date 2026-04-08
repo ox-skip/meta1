@@ -4,6 +4,7 @@ import { View } from "react-native";
 
 import MarketMenuLauncher from "@/components/market/MarketMenuLauncher";
 import MarketProfileCompletionPrompt from "@/components/market/MarketProfileCompletionPrompt";
+import MarketQuickDockToggle from "@/components/market/MarketQuickDockToggle";
 import UnifiedWalletLauncher from "@/components/market/wallet/UnifiedWalletLauncher";
 
 export default function MarketLayout() {
@@ -25,6 +26,7 @@ export default function MarketLayout() {
         <Stack.Screen name="stocks/index" />
       </Stack>
       <MarketProfileCompletionPrompt />
+      <MarketQuickDockToggle />
       <MarketMenuLauncher />
       <UnifiedWalletLauncher />
     </View>

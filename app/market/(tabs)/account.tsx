@@ -286,11 +286,11 @@ export default function MarketAccountTab() {
     >
       <View style={{ flex: 1 }}>
         <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.26)" }}>
-          <Text style={{ color: WARNING, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Seller Control</Text>
+          <Text style={{ color: WARNING, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Account</Text>
         </View>
-        <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Command deck</Text>
+        <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Store account</Text>
         <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-          A cleaner workspace for store identity, seller posture, and launch readiness. Wallet and menu access now stay in floating controls.
+          Profile, listings, orders, and seller activity.
         </Text>
       </View>
 
@@ -309,9 +309,9 @@ export default function MarketAccountTab() {
             {header}
             <View style={{ marginTop: 22, borderRadius: 32, padding: 28, alignItems: "center", backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
               <ActivityIndicator color={WARNING} />
-              <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading seller workspace</Text>
+              <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading account</Text>
               <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
-                Pulling profile, order, and wallet state into the new dashboard.
+                Fetching your store profile and activity.
               </Text>
             </View>
           </View>
@@ -401,12 +401,20 @@ export default function MarketAccountTab() {
                 </View>
 
                 <Text style={{ marginTop: 18, color: TEXT, fontWeight: "900", fontSize: 26 }}>
-                  Build the store before the sales flow
+                  Create your store profile
                 </Text>
                 <Text style={{ marginTop: 8, color: MUTED, fontSize: 14, lineHeight: 22 }}>
-                  Setup now stays focused on the store itself. Use the floating menu and wallet controls for quick actions
-                  while this screen stays dedicated to seller state.
+                  Add your business details so buyers can find and trust your store.
                 </Text>
+
+                <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <HeaderButton
+                    icon="create-outline"
+                    label="Create profile"
+                    accent={WARNING}
+                    onPress={() => router.push("/market/profile/create" as any)}
+                  />
+                </View>
 
                 <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                   <StatCard value="0" label="Active listings" />
@@ -545,25 +553,24 @@ export default function MarketAccountTab() {
                       <StatCard value={String(stats.orders)} label="Orders" />
                       <StatCard value={String(stats.completedOrders)} label="Completed orders" />
                     </View>
-                  </View>
-                </View>
 
-                <View
-                  style={{
-                    marginTop: 18,
-                    borderRadius: 22,
-                    padding: 16,
-                    backgroundColor: PANEL_ALT,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.06)",
-                    gap: 8,
-                  }}
-                >
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Floating controls are now primary</Text>
-                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                    Store actions, menu access, and wallet tools were removed from this panel so they stay one tap away
-                    in the floating launchers across market screens.
-                  </Text>
+                    <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <HeaderButton
+                        icon="create-outline"
+                        label="Edit profile"
+                        accent={WARNING}
+                        onPress={() => router.push("/market/profile/edit" as any)}
+                      />
+                      {profile.market_username ? (
+                        <HeaderButton
+                          icon="eye-outline"
+                          label="View store"
+                          accent="#FBBF24"
+                          onPress={() => router.push(`/market/profile/${profile.market_username}` as any)}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
                 </View>
               </View>
             </View>
@@ -571,8 +578,8 @@ export default function MarketAccountTab() {
 
           <View style={{ marginTop: 18, gap: 16 }}>
             <SectionShell
-              title="Seller posture"
-              subtitle="This screen now stays focused on store health while the floating wallet and menu handle quick actions."
+              title="Store summary"
+              subtitle="Public visibility, payouts, and seller status."
             >
               <View style={{ gap: 10 }}>
                 <ReadinessRow
@@ -597,12 +604,6 @@ export default function MarketAccountTab() {
                   optional
                 />
                 <ReadinessRow
-                  icon="grid-outline"
-                  title="Floating control access"
-                  subtitle="Menu and wallet shortcuts now float over this screen so navigation stays one tap away."
-                  done
-                />
-                <ReadinessRow
                   icon="storefront-outline"
                   title="Store visibility"
                   subtitle={
@@ -619,8 +620,8 @@ export default function MarketAccountTab() {
             </SectionShell>
 
             <SectionShell
-              title="Launch readiness"
-              subtitle="The setup state is preserved, but the checklist now reads like a real dashboard."
+              title="Checklist"
+              subtitle="Important items for selling and payouts."
             >
               <View style={{ gap: 10 }}>
                 <ReadinessRow icon="person-circle-outline" title="Seller profile" subtitle="A public seller identity exists and can be used for listings and discovery." done={launchReady.profile} />

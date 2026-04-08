@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Animated, PanResponder, Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useMarketQuickDockExpanded } from "@/components/market/quickDockState";
+
 const ACCENT = "#F59E0B";
 const TEXT = "#FFF7ED";
 const MUTED = "rgba(255,247,237,0.7)";
@@ -12,6 +14,7 @@ const MUTED = "rgba(255,247,237,0.7)";
 export default function MarketMenuLauncher() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  const dockExpanded = useMarketQuickDockExpanded();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -101,7 +104,7 @@ export default function MarketMenuLauncher() {
     [clampDrag, drag],
   );
 
-  if (hidden) return null;
+  if (hidden || !dockExpanded) return null;
 
   return (
     <Animated.View
@@ -167,7 +170,7 @@ export default function MarketMenuLauncher() {
           <View>
             <Text style={{ color: TEXT, fontSize: compact ? 11 : 12, fontWeight: "900" }}>Menu</Text>
             <Text style={{ color: MUTED, fontSize: compact ? 9 : 10, fontWeight: "700" }}>
-              All market routes
+              Browse routes
             </Text>
           </View>
         </LinearGradient>

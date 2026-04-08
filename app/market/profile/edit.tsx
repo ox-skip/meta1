@@ -1,4 +1,4 @@
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+﻿import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -16,19 +16,21 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import AppHeader from "@/components/common/AppHeader";
 import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 import { getCurrentLocationWithGeocode, syncManualLocationTextAddress, toProfileLocationAddress } from "@/utils/location";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.62)";
+const BG0 = "#0B0907";
+const BG1 = "#22160D";
+const ACCENT = "#F59E0B";
+const CARD = "rgba(24,18,14,0.9)";
+const CARD_ALT = "rgba(255,255,255,0.04)";
+const BORDER = "rgba(245,158,11,0.16)";
+const TEXT = "#FFF7ED";
+const MUTED = "rgba(255,247,237,0.68)";
 const BUCKET = "market-sellers";
 
 type SocialKey =
@@ -91,6 +93,7 @@ function normalizeSocialLinks(input: Partial<SocialLinks> | null | undefined) {
 type NameStatus = "idle" | "invalid" | "checking" | "current" | "available" | "taken" | "error";
 
 export default function EditMarketProfile() {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
@@ -188,7 +191,7 @@ export default function EditMarketProfile() {
     }
     if (!usernameOk) {
       setNameStatus("invalid");
-      setNameHint("Use 3–24 chars: a–z, 0–9, underscore. Start with letter/number.");
+      setNameHint("Use 3-24 chars: a-z, 0-9, underscore. Start with letter/number.");
       return;
     }
 
@@ -199,7 +202,7 @@ export default function EditMarketProfile() {
     }
 
     setNameStatus("checking");
-    setNameHint("Checking availability…");
+    setNameHint("Checking availability...");
 
     const reqId = ++lastReq.current;
     const t = setTimeout(async () => {
@@ -221,10 +224,10 @@ export default function EditMarketProfile() {
 
         if (data?.user_id) {
           setNameStatus("taken");
-          setNameHint("Taken — choose another username.");
+          setNameHint("Taken - choose another username.");
         } else {
           setNameStatus("available");
-          setNameHint("Available ✅");
+          setNameHint("Available");
         }
       } catch {
         if (reqId !== lastReq.current) return;
@@ -283,7 +286,7 @@ export default function EditMarketProfile() {
   async function onSave() {
     if (!userId) return;
 
-    if (!usernameOk) return Alert.alert("Fix username", "Use 3–24 chars: letters, numbers, underscore.");
+    if (!usernameOk) return Alert.alert("Fix username", "Use 3-24 chars: letters, numbers, underscore.");
     if (!(nameStatus === "current" || nameStatus === "available")) {
       return Alert.alert("Username not available", "Choose an available username first.");
     }
@@ -303,31 +306,31 @@ export default function EditMarketProfile() {
 
       // Upload new logo (optional)
       if (logoUri) {
-        setStage("Uploading logo…");
+        setStage("Uploading logo...");
         const up = await uploadToSupabaseStorage({
           bucket: BUCKET,
           path: `${user.id}/logo/logo_${Date.now()}.jpg`,
           localUri: logoUri,
           contentType: "image/jpeg",
-          upsert: false, // ✅ reduces policy requirements
+          upsert: false, //  reduces policy requirements
         });
         nextLogo = up.storagePath;
       }
 
       // Upload new banner (optional)
       if (bannerUri) {
-        setStage("Uploading banner…");
+        setStage("Uploading banner...");
         const up = await uploadToSupabaseStorage({
           bucket: BUCKET,
           path: `${user.id}/banner/banner_${Date.now()}.jpg`,
           localUri: bannerUri,
           contentType: "image/jpeg",
-          upsert: false, // ✅ reduces policy requirements
+          upsert: false, //  reduces policy requirements
         });
         nextBanner = up.storagePath;
       }
 
-      setStage("Saving profile…");
+      setStage("Saving profile...");
       try {
         await callFn("market-seller-profile-upsert", {
           market_username: usernameClean,
@@ -348,7 +351,7 @@ export default function EditMarketProfile() {
         throw e;
       }
 
-      Alert.alert("Saved ✅", "Profile updated.");
+      Alert.alert("Saved", "Profile updated.");
       router.back();
     } catch (e: any) {
       // Make Storage RLS obvious
@@ -370,10 +373,26 @@ export default function EditMarketProfile() {
 
   if (loading) {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <AppHeader title="Edit Market Profile" subtitle="Update your store details and images." />
-        <ActivityIndicator color="#fff" />
-        <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading…</Text>
+      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingTop: insets.top + 18, paddingHorizontal: 16 }}>
+          <View style={{ maxWidth: 1080, width: "100%", alignSelf: "center" }}>
+            <View style={styles.heroPanel}>
+              <View style={styles.eyebrowBadge}>
+                <Text style={styles.eyebrowText}>Store profile</Text>
+              </View>
+              <Text style={styles.title}>Edit profile</Text>
+              <Text style={styles.subtitle}>Loading your store details.</Text>
+            </View>
+
+            <View style={styles.loadingCard}>
+              <ActivityIndicator color={ACCENT} />
+              <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading profile</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+                Fetching branding, links, and profile details.
+              </Text>
+            </View>
+          </View>
+        </View>
       </LinearGradient>
     );
   }
@@ -392,30 +411,43 @@ export default function EditMarketProfile() {
 
   return (
     <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
-      <AppHeader title="Edit Market Profile" subtitle="Update your store details and images." />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 130 }} keyboardShouldPersistTaps="handled">
-          {/* Header */}
-          <View style={styles.header}>
-            <Pressable onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={20} color="#fff" />
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Edit Market Profile</Text>
-              <Text style={styles.subtitle}>Update your store details and images.</Text>
+        <ScrollView
+          contentContainerStyle={{ paddingTop: insets.top + 18, paddingHorizontal: 16, paddingBottom: 130 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={{ maxWidth: 1080, width: "100%", alignSelf: "center" }}>
+            <View style={styles.heroPanel}>
+              <View style={styles.header}>
+                <Pressable onPress={() => router.back()} style={styles.backBtn}>
+                  <Ionicons name="arrow-back" size={20} color={TEXT} />
+                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.eyebrowBadge}>
+                    <Text style={styles.eyebrowText}>Store profile</Text>
+                  </View>
+                  <Text style={styles.title}>Edit profile</Text>
+                  <Text style={styles.subtitle}>Update branding, details, location, and public links.</Text>
+                </View>
+                {originalUsername ? (
+                  <Pressable onPress={() => router.push(`/market/profile/${originalUsername}` as any)} style={styles.heroAction}>
+                    <Ionicons name="eye-outline" size={16} color={ACCENT} />
+                    <Text style={styles.heroActionText}>View store</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <Text style={styles.heroHint}>Update your public store details, then save when ready.</Text>
             </View>
-          </View>
 
-          {/* Banner */}
           <View style={styles.card}>
             <Pressable onPress={() => pickImage(setBannerUri)} style={styles.bannerBox}>
               {bannerPreview ? (
                 <Image source={{ uri: bannerPreview }} style={{ width: "100%", height: "100%" }} />
               ) : (
                 <View style={{ alignItems: "center" }}>
-                  <Ionicons name="images-outline" size={26} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="images-outline" size={26} color={TEXT} />
                   <Text style={styles.imageHintMain}>Tap to change banner</Text>
-                  <Text style={styles.imageHintSub}>Optional • appears at the top</Text>
+                  <Text style={styles.imageHintSub}>Optional - appears at the top</Text>
                 </View>
               )}
             </Pressable>
@@ -425,14 +457,14 @@ export default function EditMarketProfile() {
                 {logoPreview ? (
                   <Image source={{ uri: logoPreview }} style={{ width: 78, height: 78 }} />
                 ) : (
-                  <Ionicons name="image-outline" size={22} color="rgba(255,255,255,0.75)" />
+                  <Ionicons name="image-outline" size={22} color={TEXT} />
                 )}
               </Pressable>
 
               <View style={{ flex: 1 }}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Logo</Text>
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Logo</Text>
                 <Text style={{ color: MUTED, marginTop: 4, fontSize: 12 }}>
-                  Optional • helps buyers recognize you
+                  Optional - helps buyers recognize you
                 </Text>
 
                 <View style={{ flexDirection: "row", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
@@ -506,20 +538,21 @@ export default function EditMarketProfile() {
             disabled={locatingAddress}
             style={{
               marginTop: 10,
-              borderRadius: 14,
-              paddingVertical: 12,
+              borderRadius: 18,
+              paddingVertical: 13,
+              paddingHorizontal: 16,
               alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: "rgba(245,158,11,0.12)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(245,158,11,0.24)",
               flexDirection: "row",
               gap: 8,
               justifyContent: "center",
               opacity: locatingAddress ? 0.7 : 1,
             }}
           >
-            {locatingAddress ? <ActivityIndicator color="#fff" /> : <Ionicons name="locate-outline" size={18} color="#fff" />}
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Use my current location</Text>
+            {locatingAddress ? <ActivityIndicator color={ACCENT} /> : <Ionicons name="locate-outline" size={18} color={ACCENT} />}
+            <Text style={{ color: ACCENT, fontWeight: "900" }}>Use my current location</Text>
           </Pressable>
 
           <SectionTitle title="Social links" />
@@ -533,16 +566,17 @@ export default function EditMarketProfile() {
             value={bio}
             onChangeText={setBio}
             icon="document-text-outline"
-            placeholder="We sell phones, accessories, and repairs…"
+            placeholder="We sell phones, accessories, and repairs..."
             multiline
           />
 
           {stage ? (
             <View style={styles.stage}>
-              <ActivityIndicator color="#fff" />
-              <Text style={{ color: "rgba(255,255,255,0.9)", fontWeight: "900" }}>{stage}</Text>
+              <ActivityIndicator color={ACCENT} />
+              <Text style={{ color: TEXT, fontWeight: "900" }}>{stage}</Text>
             </View>
           ) : null}
+          </View>
         </ScrollView>
 
         {/* Sticky Save */}
@@ -554,11 +588,11 @@ export default function EditMarketProfile() {
           >
             {submitting ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Saving…</Text>
+                <ActivityIndicator color={BG0} />
+                <Text style={{ color: BG0, fontWeight: "900" }}>Saving...</Text>
               </View>
             ) : (
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 15 }}>Save Changes</Text>
+              <Text style={{ color: BG0, fontWeight: "900", fontSize: 15 }}>Save Changes</Text>
             )}
           </Pressable>
 
@@ -575,7 +609,7 @@ export default function EditMarketProfile() {
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <Text style={{ marginTop: 14, marginBottom: 8, color: "rgba(255,255,255,0.85)", fontWeight: "900", fontSize: 13 }}>
+    <Text style={{ marginTop: 18, marginBottom: 8, color: TEXT, fontWeight: "900", fontSize: 13, letterSpacing: 0.4 }}>
       {title.toUpperCase()}
     </Text>
   );
@@ -592,7 +626,7 @@ function SocialLinksEditor(props: {
 
   return (
     <View style={{ borderRadius: 22, padding: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
-      <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginBottom: 8 }}>
+      <Text style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>
         Toggle a platform and enter a username or number. Public profiles show only enabled links.
       </Text>
 
@@ -609,8 +643,8 @@ function SocialLinksEditor(props: {
                 paddingHorizontal: 12,
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
-                backgroundColor: "rgba(255,255,255,0.04)",
+                borderColor: "rgba(255,255,255,0.08)",
+                backgroundColor: CARD_ALT,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -618,9 +652,9 @@ function SocialLinksEditor(props: {
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <View style={{ width: 30, height: 30, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
-                  <MaterialCommunityIcons name={s.icon as any} size={16} color="rgba(255,255,255,0.8)" />
+                  <MaterialCommunityIcons name={s.icon as any} size={16} color={TEXT} />
                 </View>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>{s.label}</Text>
+                <Text style={{ color: TEXT, fontWeight: "900" }}>{s.label}</Text>
               </View>
 
               <View
@@ -628,9 +662,9 @@ function SocialLinksEditor(props: {
                   width: 46,
                   height: 28,
                   borderRadius: 999,
-                  backgroundColor: enabled ? "rgba(124,58,237,0.65)" : "rgba(255,255,255,0.15)",
+                  backgroundColor: enabled ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.15)",
                   borderWidth: 1,
-                  borderColor: enabled ? "rgba(124,58,237,0.85)" : "rgba(255,255,255,0.18)",
+                  borderColor: enabled ? "rgba(245,158,11,0.7)" : "rgba(255,255,255,0.18)",
                   padding: 3,
                   justifyContent: "center",
                 }}
@@ -648,8 +682,8 @@ function SocialLinksEditor(props: {
             </Pressable>
 
             {enabled ? (
-              <View style={{ marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.06)" }}>
-                <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, paddingHorizontal: 12, paddingTop: 10 }}>
+              <View style={{ marginTop: 8, borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: CARD_ALT }}>
+                <Text style={{ color: MUTED, fontSize: 12, paddingHorizontal: 12, paddingTop: 10 }}>
                   {s.prefix}
                 </Text>
                 <TextInput
@@ -658,7 +692,7 @@ function SocialLinksEditor(props: {
                   placeholder={s.key === "whatsapp" ? "2348012345678" : "username"}
                   placeholderTextColor="rgba(255,255,255,0.35)"
                   autoCapitalize="none"
-                  style={{ color: "#fff", fontWeight: "800", paddingHorizontal: 12, paddingBottom: 12 }}
+                  style={{ color: TEXT, fontWeight: "800", paddingHorizontal: 12, paddingBottom: 12 }}
                 />
               </View>
             ) : null}
@@ -672,8 +706,8 @@ function SocialLinksEditor(props: {
 function Chip({ onPress, icon, text }: { onPress: () => void; icon: any; text: string }) {
   return (
     <Pressable onPress={onPress} style={styles.chip}>
-      <Ionicons name={icon} size={16} color="rgba(255,255,255,0.85)" />
-      <Text style={{ color: "rgba(255,255,255,0.9)", fontWeight: "900", fontSize: 12 }}>{text}</Text>
+      <Ionicons name={icon} size={16} color={TEXT} />
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{text}</Text>
     </Pressable>
   );
 }
@@ -689,18 +723,18 @@ function UsernameField(props: {
   const border =
     props.invalid || props.nameStatus === "taken"
       ? "rgba(239,68,68,0.55)"
-      : "rgba(255,255,255,0.10)";
+      : BORDER;
 
   return (
     <View style={[styles.fieldCard, { borderColor: border }]}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
           <View style={styles.iconBox}>
-            <Ionicons name="at-outline" size={18} color="rgba(255,255,255,0.85)" />
+            <Ionicons name="at-outline" size={18} color={TEXT} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Username</Text>
-            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Username</Text>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
               Lowercase, no spaces. We check availability.
             </Text>
           </View>
@@ -709,7 +743,7 @@ function UsernameField(props: {
       </View>
 
       <View style={styles.usernameInputRow}>
-        <Text style={{ color: "rgba(255,255,255,0.65)", fontWeight: "900" }}>@</Text>
+        <Text style={{ color: MUTED, fontWeight: "900" }}>@</Text>
         <TextInput
           value={props.value}
           onChangeText={props.onChangeText}
@@ -718,14 +752,14 @@ function UsernameField(props: {
           autoCapitalize="none"
           style={styles.usernameInput}
         />
-        <Text style={{ color: "rgba(255,255,255,0.45)", fontWeight: "800", fontSize: 12 }}>
+        <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>
           {props.usernameClean.length}/24
         </Text>
       </View>
 
       <Text style={{ marginTop: 10, color: props.invalid || props.nameStatus === "taken" ? "#FCA5A5" : MUTED, fontSize: 12 }}>
-        Handle: <Text style={{ color: "#C4B5FD", fontWeight: "900" }}>@{props.usernameClean || "yourstore"}</Text>
-        {"  "}•{" "}
+        Handle: <Text style={{ color: "#FCD34D", fontWeight: "900" }}>@{props.usernameClean || "yourstore"}</Text>
+        {"  "}-{" "}
         <Text style={{ fontWeight: "800" }}>{props.nameHint}</Text>
       </Text>
     </View>
@@ -738,8 +772,8 @@ function UsernameBadge({ status }: { status: NameStatus }) {
   if (status === "checking") {
     return (
       <View style={{ ...base, borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.06)", flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <ActivityIndicator size="small" color="#fff" />
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Checking</Text>
+        <ActivityIndicator size="small" color={TEXT} />
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Checking</Text>
       </View>
     );
   }
@@ -779,12 +813,12 @@ function Field(props: {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
         {props.icon ? (
           <View style={styles.iconBox}>
-            <Ionicons name={props.icon} size={18} color="rgba(255,255,255,0.85)" />
+            <Ionicons name={props.icon} size={18} color={TEXT} />
           </View>
         ) : null}
         <View style={{ flex: 1 }}>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>{props.label}</Text>
-          {!!props.hint && <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{props.hint}</Text>}
+          <Text style={{ color: TEXT, fontWeight: "900" }}>{props.label}</Text>
+          {!!props.hint && <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{props.hint}</Text>}
         </View>
       </View>
 
@@ -806,30 +840,88 @@ function Field(props: {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
-  backBtn: { width: 44, height: 44, borderRadius: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
-  title: { color: "#fff", fontSize: 22, fontWeight: "900" },
-  subtitle: { color: MUTED, marginTop: 4, fontSize: 12 },
+  heroPanel: {
+    borderRadius: 28,
+    padding: 18,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 16,
+  },
+  eyebrowBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(245,158,11,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.26)",
+  },
+  eyebrowText: {
+    color: ACCENT,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  backBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: CARD_ALT,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroAction: {
+    minWidth: 110,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "rgba(245,158,11,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.26)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  heroActionText: { color: ACCENT, fontWeight: "900", fontSize: 13 },
+  title: { color: TEXT, fontSize: 28, fontWeight: "900", marginTop: 12 },
+  subtitle: { color: MUTED, marginTop: 6, fontSize: 13, lineHeight: 20 },
+  heroHint: { color: MUTED, marginTop: 14, fontSize: 12, lineHeight: 18 },
+  loadingCard: {
+    marginTop: 22,
+    borderRadius: 32,
+    padding: 28,
+    alignItems: "center",
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
 
-  card: { borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: BORDER, backgroundColor: CARD },
-  bannerBox: { height: 160, alignItems: "center", justifyContent: "center" },
-  imageHintMain: { marginTop: 8, color: "rgba(255,255,255,0.9)", fontWeight: "900" },
+  card: { borderRadius: 28, overflow: "hidden", borderWidth: 1, borderColor: BORDER, backgroundColor: CARD },
+  bannerBox: { height: 188, alignItems: "center", justifyContent: "center", backgroundColor: "#1A120C" },
+  imageHintMain: { marginTop: 8, color: TEXT, fontWeight: "900" },
   imageHintSub: { marginTop: 4, color: MUTED, fontSize: 12 },
 
-  logoRow: { padding: 14, flexDirection: "row", alignItems: "center", gap: 12 },
-  logoBox: { width: 78, height: 78, borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", backgroundColor: "rgba(255,255,255,0.06)", overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  logoRow: { padding: 18, flexDirection: "row", alignItems: "center", gap: 14 },
+  logoBox: { width: 86, height: 86, borderRadius: 26, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", backgroundColor: CARD_ALT, overflow: "hidden", alignItems: "center", justifyContent: "center" },
 
-  chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.06)", flexDirection: "row", alignItems: "center", gap: 6 },
+  chip: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "rgba(245,158,11,0.22)", backgroundColor: "rgba(255,255,255,0.04)", flexDirection: "row", alignItems: "center", gap: 6 },
 
-  fieldCard: { borderRadius: 22, padding: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, marginTop: 10 },
-  iconBox: { width: 34, height: 34, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", alignItems: "center", justifyContent: "center" },
-  input: { marginTop: 10, color: "#fff", fontWeight: "800", fontSize: 14, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
+  fieldCard: { borderRadius: 24, padding: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD, marginTop: 10 },
+  iconBox: { width: 36, height: 36, borderRadius: 12, backgroundColor: CARD_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" },
+  input: { marginTop: 12, color: TEXT, fontWeight: "800", fontSize: 14, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 16, backgroundColor: CARD_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
 
-  usernameInputRow: { marginTop: 10, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
-  usernameInput: { flex: 1, color: "#fff", fontWeight: "900", fontSize: 14, paddingVertical: 12 },
+  usernameInputRow: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, borderRadius: 16, backgroundColor: CARD_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
+  usernameInput: { flex: 1, color: TEXT, fontWeight: "900", fontSize: 14, paddingVertical: 12 },
 
-  stage: { marginTop: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.06)", flexDirection: "row", alignItems: "center", gap: 10 },
+  stage: { marginTop: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: "rgba(245,158,11,0.22)", backgroundColor: "rgba(255,255,255,0.04)", flexDirection: "row", alignItems: "center", gap: 10 },
 
-  footer: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 24 : 16, backgroundColor: "rgba(5,4,11,0.92)", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
-  saveBtn: { borderRadius: 18, paddingVertical: 14, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: PURPLE },
+  footer: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === "ios" ? 24 : 16, backgroundColor: "rgba(11,9,7,0.94)", borderTopWidth: 1, borderTopColor: "rgba(245,158,11,0.12)" },
+  saveBtn: { borderRadius: 18, paddingVertical: 14, alignItems: "center", backgroundColor: ACCENT, borderWidth: 1, borderColor: ACCENT },
 });
+
