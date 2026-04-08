@@ -80,6 +80,12 @@ function chainLabel(raw?: string | null) {
   return String(raw || "").toUpperCase().replace(/_/g, " ");
 }
 
+function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
+  if (mode === "base_smart") return "Base wallet";
+  if (mode === "walletconnect") return "WalletConnect";
+  return "Wallet";
+}
+
 function statusTone(status?: string | null) {
   const s = String(status || "").toUpperCase();
   if (["COMPLETED", "SUCCESS", "CONFIRMED", "FINALIZED"].includes(s)) {
@@ -217,7 +223,7 @@ export default function MarketWallet() {
 
   const loadTx = useCallback(
     async (addrInput?: string) => {
-      const addr = String(addrInput || wallet.savedAddress || wallet.connectedAddress || "").trim();
+      const addr = String(addrInput || wallet.connectedAddress || wallet.savedAddress || "").trim();
       if (!isAddress(addr)) {
         setTxs([]);
         return;
@@ -277,6 +283,11 @@ export default function MarketWallet() {
     await loadTx();
   }
 
+  async function onDisconnect() {
+    await wallet.disconnectWallet();
+    await loadTx();
+  }
+
   async function onSend() {
     try {
       const out = await wallet.sendStableToken({
@@ -301,8 +312,13 @@ export default function MarketWallet() {
       .join(", ");
   }, [wallet.country]);
 
+  const connected = Boolean(wallet.connectedAddress);
+  const activeWalletMode = wallet.connectedMode ?? wallet.walletMode;
+  const activeWalletModeLabel = walletModeLabel(activeWalletMode);
+  const walletConnectBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "walletconnect");
+  const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
   const primaryAddress = useMemo(
-    () => firstValidAddress(wallet.savedAddress, wallet.connectedAddress),
+    () => firstValidAddress(wallet.connectedAddress, wallet.savedAddress),
     [wallet.connectedAddress, wallet.savedAddress],
   );
   const usingPiChain = String(wallet.chain?.chain || "").toLowerCase().includes("pi");
@@ -323,8 +339,8 @@ export default function MarketWallet() {
           <AppHeader title="Wallet Hub" subtitle="Stablecoins, payouts, and market portfolio" />
           <LinearGradient colors={["rgba(13,148,136,0.22)", "rgba(245,158,11,0.18)"]} style={styles.hero}>
             <View style={styles.heroTop}>
-              <View style={[styles.statusPill, wallet.connectedAddress ? styles.connectedPill : styles.idlePill]}>
-                <Text style={styles.statusPillText}>{wallet.connectedAddress ? "Connected" : "Not connected"}</Text>
+              <View style={[styles.statusPill, connected ? styles.connectedPill : styles.idlePill]}>
+                <Text style={styles.statusPillText}>{connected ? `Connected via ${activeWalletModeLabel}` : "Not connected"}</Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <BalanceVisibilityToggle
@@ -333,6 +349,11 @@ export default function MarketWallet() {
                     void toggleBalancesHidden();
                   }}
                 />
+                {connected ? (
+                  <Pressable onPress={onDisconnect} disabled={wallet.busy} style={[styles.iconButton, wallet.busy ? styles.dimmed : undefined]}>
+                    <Ionicons name="power-outline" size={16} color="#F8FAFC" />
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={() => router.push("/market/history" as any)} style={styles.heroGhostButton}>
                   <Ionicons name="time-outline" size={16} color="#F8FAFC" />
                   <Text style={styles.heroGhostText}>History</Text>
@@ -364,7 +385,7 @@ export default function MarketWallet() {
 
             <View style={styles.heroFooter}>
               <Text style={styles.heroFooterText}>Network: {wallet.chain ? chainLabel(wallet.chain.chain) : "Select network"}</Text>
-              <Text style={styles.heroFooterText}>Mode: {wallet.walletMode === "base_smart" ? "Base smart" : "WalletConnect"}</Text>
+              <Text style={styles.heroFooterText}>Mode: {activeWalletModeLabel}</Text>
             </View>
           </LinearGradient>
 
@@ -396,10 +417,16 @@ export default function MarketWallet() {
                     onPress={() => setNetOpen(true)}
                   />
                   <ActionTile
-                    icon={usingPiChain ? "logo-usd" : "wallet-outline"}
-                    title={usingPiChain ? "PI mode" : "Connect"}
-                    subtitle={usingPiChain ? "PI uses saved payout address" : "Open wallet connection flow"}
-                    onPress={onConnect}
+                    icon={usingPiChain ? "logo-usd" : connected ? "power-outline" : "wallet-outline"}
+                    title={usingPiChain ? "PI mode" : connected ? "Disconnect" : "Connect"}
+                    subtitle={
+                      usingPiChain
+                        ? "PI uses saved payout address"
+                        : connected
+                          ? `End the ${activeWalletModeLabel} session before switching engines`
+                          : "Open wallet connection flow"
+                    }
+                    onPress={connected ? onDisconnect : onConnect}
                     disabled={usingPiChain || !wallet.chain?.active || wallet.busy}
                   />
                   <ActionTile
@@ -410,8 +437,52 @@ export default function MarketWallet() {
                     disabled={!wallet.chain?.active || wallet.busy || !wallet.connectedAddress}
                   />
                 </View>
+
+                <View style={{ marginTop: 12, gap: 8 }}>
+                  <Text style={styles.helperText}>Wallet engine</Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable
+                      onPress={() => {
+                        void wallet.setWalletMode("walletconnect");
+                      }}
+                      disabled={walletConnectBlocked}
+                      style={[
+                        styles.secondaryButton,
+                        {
+                          flex: 1,
+                          borderColor: activeWalletMode === "walletconnect" ? "rgba(96,165,250,0.38)" : "rgba(255,255,255,0.10)",
+                          backgroundColor: activeWalletMode === "walletconnect" ? "rgba(59,130,246,0.14)" : "rgba(255,255,255,0.05)",
+                        },
+                        walletConnectBlocked ? styles.dimmed : undefined,
+                      ]}
+                    >
+                      <Text style={styles.secondaryButtonText}>WalletConnect</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        void wallet.setWalletMode("base_smart");
+                      }}
+                      disabled={!wallet.baseSmartSupported || baseSmartBlocked}
+                      style={[
+                        styles.secondaryButton,
+                        {
+                          flex: 1,
+                          borderColor: activeWalletMode === "base_smart" ? "rgba(45,212,191,0.38)" : "rgba(255,255,255,0.10)",
+                          backgroundColor: activeWalletMode === "base_smart" ? "rgba(13,148,136,0.14)" : "rgba(255,255,255,0.05)",
+                        },
+                        !wallet.baseSmartSupported || baseSmartBlocked ? styles.dimmed : undefined,
+                      ]}
+                    >
+                      <Text style={styles.secondaryButtonText}>Base wallet</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
                 {!wallet.baseSmartSupported ? (
                   <Text style={styles.helperText}>Base smart mode is currently available on web.</Text>
+                ) : null}
+                {connected ? (
+                  <Text style={styles.helperText}>Disconnect {activeWalletModeLabel} before switching wallet engines.</Text>
                 ) : null}
               </View>
 
@@ -525,7 +596,7 @@ export default function MarketWallet() {
                   </Pressable>
                 </View>
                 <Text style={styles.sectionCopy}>
-                  Your market wallet is used for stored checkout settings. Device wallet is the active session.
+                  Your market wallet is used for stored checkout settings. The active device session is locked to one wallet engine at a time.
                 </Text>
 
                 <AddressCard
@@ -538,7 +609,7 @@ export default function MarketWallet() {
                 <AddressCard
                   label="Device session"
                   value={shortAddr(wallet.connectedAddress)}
-                  note={wallet.connectedAddress ? "Current connected wallet" : "No device wallet session"}
+                  note={wallet.connectedAddress ? `${activeWalletModeLabel} is currently connected` : "No device wallet session"}
                 />
                 <AddressCard
                   label="PI payout"

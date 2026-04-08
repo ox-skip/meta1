@@ -40,6 +40,12 @@ function chainLabel(v?: string | null) {
   return String(v || "").toUpperCase().replace(/_/g, " ");
 }
 
+function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
+  if (mode === "base_smart") return "Base wallet";
+  if (mode === "walletconnect") return "WalletConnect";
+  return "Wallet";
+}
+
 function firstValidAddress(...values: Array<string | null | undefined>) {
   for (const value of values) {
     if (isAddress(value)) return String(value);
@@ -64,7 +70,10 @@ export default function UnifiedWalletPanel({
   }, [wallet.savedPiAddress]);
 
   const portfolio = wallet.portfolioPositions.slice(0, compact ? 3 : 5);
-  const copyAddress = firstValidAddress(wallet.savedAddress, wallet.connectedAddress);
+  const connected = Boolean(wallet.connectedAddress);
+  const activeWalletMode = wallet.connectedMode ?? wallet.walletMode;
+  const activeWalletModeLabel = walletModeLabel(activeWalletMode);
+  const copyAddress = firstValidAddress(wallet.connectedAddress, wallet.savedAddress);
   const canSendUsdt = isAddress(wallet.chain?.usdt_address || "");
   const sendDisabled =
     wallet.sendBusy ||
@@ -75,6 +84,8 @@ export default function UnifiedWalletPanel({
   const piAddressTrimmed = piAddressInput.trim();
   const piSaveDisabled =
     wallet.piSaving || piAddressTrimmed === String(wallet.savedPiAddress || "").trim();
+  const walletConnectBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "walletconnect");
+  const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
 
   const doSend = async () => {
     try {
@@ -103,18 +114,33 @@ export default function UnifiedWalletPanel({
   return (
     <View
       style={{
-        borderRadius: 22,
+        borderRadius: 24,
         padding: 14,
-        backgroundColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(6,16,20,0.86)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.12)",
+        borderColor: "rgba(255,255,255,0.08)",
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 17 }}>Unified Wallet</Text>
+          <View
+            style={{
+              alignSelf: "flex-start",
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              backgroundColor: connected ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.08)",
+              borderWidth: 1,
+              borderColor: connected ? "rgba(16,185,129,0.35)" : "rgba(255,255,255,0.12)",
+            }}
+          >
+            <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 10 }}>
+              {connected ? `Connected via ${activeWalletModeLabel}` : `${activeWalletModeLabel} ready`}
+            </Text>
+          </View>
+          <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 17 }}>Wallet Hub</Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-            Crypto, PI, and stock portfolio in one place.
+            Stablecoins, PI wallet data, and market portfolio in one place.
           </Text>
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -148,11 +174,11 @@ export default function UnifiedWalletPanel({
       <View
         style={{
           marginTop: 12,
-          borderRadius: 16,
-          padding: 12,
-          backgroundColor: "rgba(124,58,237,0.16)",
+          borderRadius: 20,
+          padding: 14,
+          backgroundColor: "rgba(13,148,136,0.16)",
           borderWidth: 1,
-          borderColor: "rgba(167,139,250,0.35)",
+          borderColor: "rgba(45,212,191,0.28)",
         }}
       >
         <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 }}>TOTAL PORTFOLIO (USD APPROX)</Text>
@@ -165,6 +191,9 @@ export default function UnifiedWalletPanel({
           {balancesHidden
             ? "Stable $****** + Stock $******"
             : `Stable $${wallet.stableTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} + Stock $${wallet.portfolioTotalUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+        </Text>
+        <Text style={{ marginTop: 5, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
+          {connected ? `${activeWalletModeLabel} session active` : "Connect a wallet to sync the device session"}
         </Text>
       </View>
 
@@ -347,16 +376,20 @@ export default function UnifiedWalletPanel({
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <Pressable
-            onPress={() => wallet.setWalletMode("walletconnect")}
+            onPress={() => {
+              void wallet.setWalletMode("walletconnect");
+            }}
+            disabled={walletConnectBlocked}
             style={{
               flex: 1,
               borderRadius: 12,
-              height: 38,
+              minHeight: 46,
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
-              borderColor: wallet.walletMode === "walletconnect" ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.12)",
-              backgroundColor: wallet.walletMode === "walletconnect" ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.05)",
+              borderColor: activeWalletMode === "walletconnect" ? "rgba(96,165,250,0.45)" : "rgba(255,255,255,0.12)",
+              backgroundColor: activeWalletMode === "walletconnect" ? "rgba(59,130,246,0.16)" : "rgba(255,255,255,0.05)",
+              opacity: walletConnectBlocked ? 0.55 : 1,
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -365,18 +398,20 @@ export default function UnifiedWalletPanel({
             </View>
           </Pressable>
           <Pressable
-            onPress={() => wallet.setWalletMode("base_smart")}
-            disabled={!wallet.baseSmartSupported}
+            onPress={() => {
+              void wallet.setWalletMode("base_smart");
+            }}
+            disabled={!wallet.baseSmartSupported || baseSmartBlocked}
             style={{
               flex: 1,
               borderRadius: 12,
-              height: 38,
+              minHeight: 46,
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
-              borderColor: wallet.walletMode === "base_smart" ? "rgba(45,212,191,0.55)" : "rgba(255,255,255,0.12)",
-              backgroundColor: wallet.walletMode === "base_smart" ? "rgba(45,212,191,0.2)" : "rgba(255,255,255,0.05)",
-              opacity: wallet.baseSmartSupported ? 1 : 0.55,
+              borderColor: activeWalletMode === "base_smart" ? "rgba(45,212,191,0.45)" : "rgba(255,255,255,0.12)",
+              backgroundColor: activeWalletMode === "base_smart" ? "rgba(13,148,136,0.18)" : "rgba(255,255,255,0.05)",
+              opacity: !wallet.baseSmartSupported || baseSmartBlocked ? 0.55 : 1,
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -388,6 +423,11 @@ export default function UnifiedWalletPanel({
         {!wallet.baseSmartSupported ? (
           <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
             Base Smart Account is currently available on web.
+          </Text>
+        ) : null}
+        {connected ? (
+          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
+            Disconnect {activeWalletModeLabel} before switching wallet engines.
           </Text>
         ) : null}
       </View>
@@ -422,41 +462,66 @@ export default function UnifiedWalletPanel({
         </ScrollView>
       </View>
 
-      <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
-        <Pressable
-          onPress={wallet.connectWallet}
-          disabled={wallet.busy || !wallet.chain?.active}
-          style={{
-            flex: 1,
-            borderRadius: 14,
-            height: 44,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#7C3AED",
-            borderWidth: 1,
-            borderColor: "#7C3AED",
-            opacity: wallet.busy || !wallet.chain?.active ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900" }}>{wallet.busy ? "Working..." : "Connect Wallet"}</Text>
-        </Pressable>
-        <Pressable
-          onPress={wallet.useConnectedWallet}
-          disabled={wallet.busy || !wallet.chain?.active || !isAddress(wallet.connectedAddress)}
-          style={{
-            flex: 1,
-            borderRadius: 14,
-            height: 44,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.12)",
-            opacity: wallet.busy || !wallet.chain?.active || !isAddress(wallet.connectedAddress) ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Use Connected</Text>
-        </Pressable>
+      <View style={{ marginTop: 10, gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            onPress={connected ? wallet.disconnectWallet : wallet.connectWallet}
+            disabled={wallet.busy || !wallet.chain?.active}
+            style={{
+              flex: 1,
+              borderRadius: 14,
+              height: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: connected ? "rgba(248,113,113,0.16)" : "#F59E0B",
+              borderWidth: 1,
+              borderColor: connected ? "rgba(248,113,113,0.32)" : "#F59E0B",
+              opacity: wallet.busy || !wallet.chain?.active ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: connected ? "#FECACA" : "#061311", fontWeight: "900" }}>
+              {wallet.busy ? "Working..." : connected ? "Disconnect Wallet" : "Connect Wallet"}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={wallet.useConnectedWallet}
+            disabled={wallet.busy || !wallet.chain?.active || !connected}
+            style={{
+              flex: 1,
+              borderRadius: 14,
+              height: 44,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.12)",
+              opacity: wallet.busy || !wallet.chain?.active || !connected ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "900" }}>Use Connected</Text>
+          </Pressable>
+        </View>
+
+        {connected ? (
+          <View
+            style={{
+              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderWidth: 1,
+              borderColor: "rgba(16,185,129,0.3)",
+              backgroundColor: "rgba(16,185,129,0.12)",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={16} color="#6EE7B7" />
+            <Text style={{ color: "#D1FAE5", fontWeight: "800", fontSize: 11 }}>
+              Connected session: {activeWalletModeLabel}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>

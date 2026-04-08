@@ -13,7 +13,9 @@ import {
   replaceSavedWalletWithDevice,
   saveMyPiWallet,
 } from "@/services/market/usdcCheckout";
-import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession, subscribeActiveWalletSession } from "@/services/wallet/activeWalletSession";
+import { connectActiveWalletEvm, disconnectWalletMode } from "@/services/wallet/activeWalletSession";
+import { getBaseSmartSession, subscribeBaseSmartSession } from "@/services/wallet/baseSmartSession";
+import { getWalletConnectSession, subscribeWalletConnectSession } from "@/services/wallet/walletConnectSession";
 import { getWalletModeSync, isBaseSmartSupported, setWalletMode, subscribeWalletMode, type WalletMode } from "@/services/wallet/walletMode";
 import { getRpcUrlForChain, getSmartAccount } from "@/utils/aaWallet";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -47,6 +49,10 @@ function isAddress(value?: string | null) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || ""));
 }
 
+function walletModeLabel(mode: WalletMode) {
+  return mode === "base_smart" ? "Base wallet" : "WalletConnect";
+}
+
 export type UnifiedWalletStockPosition = {
   stock_id: string;
   slug: string;
@@ -66,8 +72,9 @@ export function useUnifiedWallet() {
   const [chainErr, setChainErr] = useState<string | null>(null);
   const [savedAddress, setSavedAddress] = useState("");
   const [savedPiAddress, setSavedPiAddress] = useState("");
-  const [connectedAddress, setConnectedAddress] = useState("");
   const [walletMode, setWalletModeState] = useState<WalletMode>(getWalletModeSync());
+  const [baseSmartSession, setBaseSmartSessionState] = useState(() => getBaseSmartSession());
+  const [walletConnectSession, setWalletConnectSessionState] = useState(() => getWalletConnectSession());
   const [usdcBalance, setUsdcBalance] = useState("0");
   const [usdtBalance, setUsdtBalance] = useState("0");
   const [portfolioTotalUsdc, setPortfolioTotalUsdc] = useState(0);
@@ -79,6 +86,20 @@ export function useUnifiedWallet() {
   const [error, setError] = useState<string | null>(null);
 
   const isNigeria = isNigeriaCountry(country?.code || country?.name);
+  const baseSmartConnected = Boolean(baseSmartSession.connected && isAddress(baseSmartSession.address));
+  const walletConnectConnected = Boolean(walletConnectSession.connected && isAddress(walletConnectSession.address));
+  const connectedMode = useMemo<WalletMode | null>(() => {
+    if (walletMode === "base_smart" && baseSmartConnected) return "base_smart";
+    if (walletMode === "walletconnect" && walletConnectConnected) return "walletconnect";
+    if (baseSmartConnected) return "base_smart";
+    if (walletConnectConnected) return "walletconnect";
+    return null;
+  }, [baseSmartConnected, walletConnectConnected, walletMode]);
+  const connectedAddress = useMemo(() => {
+    if (connectedMode === "base_smart") return String(baseSmartSession.address || "");
+    if (connectedMode === "walletconnect") return String(walletConnectSession.address || "");
+    return "";
+  }, [baseSmartSession.address, connectedMode, walletConnectSession.address]);
   const stableTotalUsd = useMemo(() => Number(usdcBalance || 0) + Number(usdtBalance || 0), [usdcBalance, usdtBalance]);
   const overallUsdApprox = useMemo(() => stableTotalUsd + Number(portfolioTotalUsdc || 0), [stableTotalUsd, portfolioTotalUsdc]);
   const loading = ngnLoading || portfolioLoading || busy || sendBusy || piSaving || country === undefined;
@@ -231,11 +252,24 @@ export function useUnifiedWallet() {
     [refreshChainBalances],
   );
 
+  const ensureWalletModeAvailable = useCallback(
+    (targetMode: WalletMode) => {
+      if (targetMode === "base_smart" && !isBaseSmartSupported()) {
+        throw new Error("Base Smart Account is currently available on web.");
+      }
+      if (connectedMode && connectedMode !== targetMode) {
+        throw new Error(`Disconnect ${walletModeLabel(connectedMode)} before using ${walletModeLabel(targetMode)}.`);
+      }
+    },
+    [connectedMode],
+  );
+
   const connectWallet = useCallback(async () => {
     if (!chain) return;
     setBusy(true);
     setError(null);
     try {
+      ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
         throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
       }
@@ -247,13 +281,14 @@ export function useUnifiedWallet() {
     } finally {
       setBusy(false);
     }
-  }, [chain, refreshChainBalances]);
+  }, [chain, ensureWalletModeAvailable, refreshChainBalances, walletMode]);
 
   const useConnectedWallet = useCallback(async () => {
     if (!chain) return;
     setBusy(true);
     setError(null);
     try {
+      ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
         throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
       }
@@ -265,7 +300,20 @@ export function useUnifiedWallet() {
     } finally {
       setBusy(false);
     }
-  }, [chain, refreshChainBalances]);
+  }, [chain, ensureWalletModeAvailable, refreshChainBalances, walletMode]);
+
+  const disconnectWallet = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await disconnectWalletMode(connectedMode ?? walletMode);
+      await refreshChainBalances(chain);
+    } catch (e: any) {
+      setError(friendlyMarketError(e, "Unable to disconnect wallet."));
+    } finally {
+      setBusy(false);
+    }
+  }, [chain, connectedMode, refreshChainBalances, walletMode]);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -407,12 +455,16 @@ export function useUnifiedWallet() {
   );
 
   useEffect(() => {
-    const sync = () => {
-      const s = getActiveWalletSession();
-      setConnectedAddress(s.connected ? String(s.address || "") : "");
-    };
+    const sync = () => setBaseSmartSessionState(getBaseSmartSession());
     sync();
-    const unsub = subscribeActiveWalletSession(sync);
+    const unsub = subscribeBaseSmartSession(sync);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const sync = () => setWalletConnectSessionState(getWalletConnectSession());
+    sync();
+    const unsub = subscribeWalletConnectSession(sync);
     return () => unsub();
   }, []);
 
@@ -421,16 +473,33 @@ export function useUnifiedWallet() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (!connectedMode || connectedMode === walletMode) return;
+
+    let cancelled = false;
+
+    void setWalletMode(connectedMode)
+      .then(() => {
+        if (!cancelled) setWalletModeState(connectedMode);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedMode, walletMode]);
+
   const changeWalletMode = useCallback(async (next: WalletMode) => {
     setError(null);
     try {
+      ensureWalletModeAvailable(next);
       await setWalletMode(next);
       setWalletModeState(next);
       await refreshChainBalances();
     } catch (e: any) {
       setError(friendlyMarketError(e, "Unable to change wallet mode."));
     }
-  }, [refreshChainBalances]);
+  }, [ensureWalletModeAvailable, refreshChainBalances]);
 
   useEffect(() => {
     loadChains();
@@ -448,7 +517,10 @@ export function useUnifiedWallet() {
     country,
     isNigeria,
     walletMode,
+    connectedMode,
     baseSmartSupported: isBaseSmartSupported(),
+    baseSmartConnected,
+    walletConnectConnected,
     chains,
     chain,
     savedAddress,
@@ -461,6 +533,7 @@ export function useUnifiedWallet() {
     portfolioPositions,
     overallUsdApprox,
     connectWallet,
+    disconnectWallet,
     useConnectedWallet,
     setWalletMode: changeWalletMode,
     refreshAll,

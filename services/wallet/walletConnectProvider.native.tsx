@@ -52,6 +52,7 @@ function SessionBinder() {
   const providerState = useProvider("eip155" as any) as any;
 
   const open = appKit?.open;
+  const disconnect = appKit?.disconnect;
   const isConnected = Boolean(accountState?.isConnected);
   const address = String(accountState?.address || "");
   const caipAddress = String(accountState?.caipAddress || "");
@@ -67,8 +68,15 @@ function SessionBinder() {
         if (!open) throw new Error("WalletConnect modal is unavailable.");
         await Promise.resolve(open());
       },
+      disconnect: async () => {
+        if (!disconnect) {
+          clearWalletConnectConnection();
+          return;
+        }
+        await Promise.resolve(disconnect());
+      },
     });
-  }, [open]);
+  }, [disconnect, open]);
 
   useEffect(() => {
     if (!isConnected || !address) {

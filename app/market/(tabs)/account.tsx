@@ -6,7 +6,6 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Text, useWindowDimensi
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
-import UnifiedWalletPanel from "@/components/market/wallet/UnifiedWalletPanel";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { recordAuthSessionNotification } from "@/services/market/notifications";
@@ -29,14 +28,6 @@ type StatState = {
   activeListings: number;
   allListings: number;
   orders: number;
-};
-
-type ActionCard = {
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  route: string;
-  accent: string;
 };
 
 const BG0 = "#0B0907";
@@ -107,39 +98,6 @@ function StatCard({ value, label }: { value: string; label: string }) {
       <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{value}</Text>
       <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{label}</Text>
     </View>
-  );
-}
-
-function CommandCard({ action, onPress }: { action: ActionCard; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{
-        borderRadius: 22,
-        padding: 16,
-        backgroundColor: PANEL_ALT,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.06)",
-      }}
-    >
-      <View
-        style={{
-          width: 42,
-          height: 42,
-          borderRadius: 15,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: `${action.accent}18`,
-          borderWidth: 1,
-          borderColor: `${action.accent}30`,
-        }}
-      >
-        <Ionicons name={action.icon} size={20} color={action.accent} />
-      </View>
-
-      <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 15 }}>{action.title}</Text>
-      <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>{action.subtitle}</Text>
-    </Pressable>
   );
 }
 
@@ -236,39 +194,6 @@ function ReadinessRow({
   );
 }
 
-function EnginePill({
-  icon,
-  label,
-  active,
-  accent,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  active: boolean;
-  accent: string;
-}) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        minHeight: 48,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: active ? `${accent}40` : "rgba(255,255,255,0.08)",
-        backgroundColor: active ? `${accent}18` : PANEL_ALT,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        paddingHorizontal: 12,
-      }}
-    >
-      <Ionicons name={icon} size={14} color={active ? accent : TEXT} />
-      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{label}</Text>
-    </View>
-  );
-}
-
 export default function MarketAccountTab() {
   const wallet = useUnifiedWallet();
   const insets = useSafeAreaInsets();
@@ -285,7 +210,6 @@ export default function MarketAccountTab() {
   const storeName = profile?.business_name || profile?.display_name || "Your Store";
   const verified = Boolean(profile?.is_verified);
   const isDesktop = width >= 1080;
-  const stackedCards = width < 620;
 
   const launchReady = useMemo(() => {
     return {
@@ -295,28 +219,6 @@ export default function MarketAccountTab() {
       verification: verified,
     };
   }, [profile, stats.allListings, verified, wallet.connectedAddress, wallet.savedAddress]);
-
-  const primaryActions = useMemo<ActionCard[]>(() => {
-    if (!profile) {
-      return [
-        { title: "Create Profile", subtitle: "Set up your public store identity and launch seller access.", icon: "person-add-outline", route: "/market/profile/create", accent: "#F59E0B" },
-        { title: "Verification", subtitle: "Start the trust flow once your profile and branding are ready.", icon: "shield-checkmark-outline", route: "/market/verification/apply", accent: "#FBBF24" },
-        { title: "Sell", subtitle: "Open the composer and prepare your first product or service.", icon: "add-circle-outline", route: "/market/(tabs)/sell", accent: "#FB923C" },
-        { title: "Navigation Deck", subtitle: "Use the new grouped menu instead of jumping through old routes.", icon: "grid-outline", route: "/market/menu", accent: "#F97316" },
-      ];
-    }
-
-    return [
-      { title: "Edit Store", subtitle: "Refine identity, visuals, and public-facing brand details.", icon: "create-outline", route: "/market/profile/edit", accent: "#F59E0B" },
-      { title: "Public Store", subtitle: "Preview the live storefront exactly as buyers will see it.", icon: "eye-outline", route: profile.market_username ? `/market/profile/${profile.market_username}` : "/market/profile/create", accent: "#FBBF24" },
-      { title: "My Listings", subtitle: "Manage products, services, and listing visibility in one lane.", icon: "albums-outline", route: "/market/listings?mine=1", accent: "#FB923C" },
-      { title: "Orders", subtitle: "Move directly into incoming and outgoing transaction flows.", icon: "receipt-outline", route: "/market/(tabs)/orders", accent: "#F97316" },
-      { title: "History", subtitle: "Review deposits, trades, withdrawals, and settlement records.", icon: "time-outline", route: "/market/history", accent: "#F59E0B" },
-      { title: "Verification", subtitle: "Check status or continue your trust and KYC progression.", icon: "shield-checkmark-outline", route: "/market/verification/status", accent: "#FBBF24" },
-      { title: "Sell", subtitle: "Open the composer for a new product or service listing.", icon: "add-circle-outline", route: "/market/(tabs)/sell", accent: "#FB923C" },
-      { title: "Navigation Deck", subtitle: "Reach the full market menu from a cleaner, grouped view.", icon: "grid-outline", route: "/market/menu", accent: "#F97316" },
-    ];
-  }, [profile]);
 
   async function load() {
     setError(null);
@@ -385,7 +287,7 @@ export default function MarketAccountTab() {
         </View>
         <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Command deck</Text>
         <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-          A cleaner workspace for store identity, trade operations, wallet access, and launch readiness.
+          A cleaner workspace for store identity, seller posture, and launch readiness. Wallet and menu access now stay in floating controls.
         </Text>
       </View>
 
@@ -499,24 +401,9 @@ export default function MarketAccountTab() {
                   Build the store before the sales flow
                 </Text>
                 <Text style={{ marginTop: 8, color: MUTED, fontSize: 14, lineHeight: 22 }}>
-                  The old account screen made setup feel buried. This version puts the seller profile, verification,
-                  and navigation deck in one visible starting point.
+                  Setup now stays focused on the store itself. Use the floating menu and wallet controls for quick actions
+                  while this screen stays dedicated to seller state.
                 </Text>
-
-                <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  <HeaderButton
-                    icon="person-add-outline"
-                    label="Create profile"
-                    accent={WARNING}
-                    onPress={() => router.push("/market/profile/create" as any)}
-                  />
-                  <HeaderButton
-                    icon="grid-outline"
-                    label="Open menu"
-                    accent="#F97316"
-                    onPress={() => router.push("/market/menu" as any)}
-                  />
-                </View>
 
                 <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                   <StatCard value="0" label="Active listings" />
@@ -656,100 +543,87 @@ export default function MarketAccountTab() {
                   </View>
                 </View>
 
-                <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  <HeaderButton
-                    icon="create-outline"
-                    label="Edit store"
-                    accent={WARNING}
-                    onPress={() => router.push("/market/profile/edit" as any)}
-                  />
-                  <HeaderButton
-                    icon="eye-outline"
-                    label="Public store"
-                    accent="#FBBF24"
-                    onPress={() =>
-                      router.push(
-                        profile.market_username
-                          ? (`/market/profile/${profile.market_username}` as any)
-                          : ("/market/profile/create" as any)
-                      )
-                    }
-                  />
-                  <HeaderButton
-                    icon="grid-outline"
-                    label="Navigation deck"
-                    accent="#F97316"
-                    onPress={() => router.push("/market/menu" as any)}
-                  />
+                <View
+                  style={{
+                    marginTop: 18,
+                    borderRadius: 22,
+                    padding: 16,
+                    backgroundColor: PANEL_ALT,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.06)",
+                    gap: 8,
+                  }}
+                >
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Floating controls are now primary</Text>
+                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    Store actions, menu access, and wallet tools were removed from this panel so they stay one tap away
+                    in the floating launchers across market screens.
+                  </Text>
                 </View>
               </View>
             </View>
           )}
 
-          <View
-            style={{
-              marginTop: 18,
-              flexDirection: isDesktop ? "row" : "column",
-              alignItems: "flex-start",
-              gap: 16,
-            }}
-          >
-            <View style={{ flex: isDesktop ? 1.1 : undefined, width: "100%", gap: 16 }}>
-              <SectionShell
-                title="Operation lanes"
-                subtitle="The most useful actions are grouped together instead of hiding behind a second menu."
-              >
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                  {primaryActions.map((action) => (
-                    <View key={action.title} style={{ width: stackedCards ? "100%" : "48.8%" }}>
-                      <CommandCard action={action} onPress={() => router.push(action.route as any)} />
-                    </View>
-                  ))}
-                </View>
-              </SectionShell>
-            </View>
+          <View style={{ marginTop: 18, gap: 16 }}>
+            <SectionShell
+              title="Seller posture"
+              subtitle="This screen now stays focused on store health while the floating wallet and menu handle quick actions."
+            >
+              <View style={{ gap: 10 }}>
+                <ReadinessRow
+                  icon="eye-outline"
+                  title="Public storefront"
+                  subtitle={
+                    profile?.market_username
+                      ? `Your public store is available at @${profile.market_username}.`
+                      : "Create the public storefront handle to expose the seller page."
+                  }
+                  done={Boolean(profile?.market_username)}
+                />
+                <ReadinessRow
+                  icon="cash-outline"
+                  title="Payout configuration"
+                  subtitle={
+                    profile
+                      ? `Store payouts are set to the ${profile.payout_tier === "fast" ? "fast" : "standard"} lane.`
+                      : "Payout preferences appear once the seller profile exists."
+                  }
+                  done={Boolean(profile)}
+                  optional
+                />
+                <ReadinessRow
+                  icon="grid-outline"
+                  title="Floating control access"
+                  subtitle="Menu and wallet shortcuts now float over this screen so navigation stays one tap away."
+                  done
+                />
+                <ReadinessRow
+                  icon="storefront-outline"
+                  title="Store visibility"
+                  subtitle={
+                    profile
+                      ? profile.active === false
+                        ? "The store profile exists but is currently paused."
+                        : "The store profile is active and ready for buyer traffic."
+                      : "The store is not visible until the seller profile is created."
+                  }
+                  done={Boolean(profile && profile.active !== false)}
+                  optional={!profile}
+                />
+              </View>
+            </SectionShell>
 
-            <View style={{ flex: isDesktop ? 0.9 : undefined, width: "100%", gap: 16 }}>
-              <SectionShell
-                title="Wallet and liquidity"
-                subtitle="Balances, wallet rails, and history shortcuts stay in the same workspace."
-              >
-                <View
-                  style={{
-                    borderRadius: 24,
-                    overflow: "hidden",
-                    backgroundColor: PANEL_ALT,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <UnifiedWalletPanel
-                    wallet={wallet}
-                    compact
-                    onOpenNgnWallet={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}
-                    onOpenCryptoWallet={() => router.push("/market/wallet" as any)}
-                    onOpenHistory={() => router.push("/market/history" as any)}
-                  />
-                </View>
-
-                <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
-                  <EnginePill icon="link-outline" label="WalletConnect" active={wallet.walletMode === "walletconnect"} accent="#60A5FA" />
-                  <EnginePill icon="sparkles-outline" label="Base Wallet" active={wallet.walletMode === "base_smart"} accent="#2DD4BF" />
-                </View>
-              </SectionShell>
-
-              <SectionShell
-                title="Launch readiness"
-                subtitle="The setup state is preserved, but the checklist now reads like a real dashboard."
-              >
-                <View style={{ gap: 10 }}>
-                  <ReadinessRow icon="person-circle-outline" title="Seller profile" subtitle="A public seller identity exists and can be used for listings and discovery." done={launchReady.profile} />
-                  <ReadinessRow icon="wallet-outline" title="Wallet connection" subtitle="A wallet address is connected or saved for payments and transfers." done={launchReady.wallet} />
-                  <ReadinessRow icon="albums-outline" title="Live inventory" subtitle="At least one listing has been created to activate the selling flow." done={launchReady.listings} />
-                  <ReadinessRow icon="shield-checkmark-outline" title="Verification" subtitle="Optional trust layer for stronger buyer confidence and profile credibility." done={launchReady.verification} optional />
-                </View>
-              </SectionShell>
-            </View>
+            <SectionShell
+              title="Launch readiness"
+              subtitle="The setup state is preserved, but the checklist now reads like a real dashboard."
+            >
+              <View style={{ gap: 10 }}>
+                <ReadinessRow icon="person-circle-outline" title="Seller profile" subtitle="A public seller identity exists and can be used for listings and discovery." done={launchReady.profile} />
+                <ReadinessRow icon="wallet-outline" title="Wallet connection" subtitle="A wallet address is connected or saved for payments and transfers." done={launchReady.wallet} />
+                <ReadinessRow icon="albums-outline" title="Live inventory" subtitle="At least one listing has been created to activate the selling flow." done={launchReady.listings} />
+                <ReadinessRow icon="shield-checkmark-outline" title="Verification" subtitle="Optional trust layer for stronger buyer confidence and profile credibility." done={launchReady.verification} optional />
+              </View>
+            </SectionShell>
           </View>
         </View>
       </ScrollView>

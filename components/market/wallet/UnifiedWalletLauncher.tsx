@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, usePathname } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Platform, Pressable, Text, useWindowDimensions, View } from "react-native";
@@ -7,6 +8,12 @@ import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle
 import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import UnifiedWalletSheet from "@/components/market/wallet/UnifiedWalletSheet";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
+
+function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
+  if (mode === "base_smart") return "Base wallet";
+  if (mode === "walletconnect") return "WalletConnect";
+  return "Wallet";
+}
 
 export default function UnifiedWalletLauncher() {
   const pathname = usePathname();
@@ -49,8 +56,11 @@ export default function UnifiedWalletLauncher() {
     return compact ? base + 26 : base;
   }, [compact, inListing, inSellComposer]);
 
-  const chipWidth = compact ? 120 : 146;
-  const chipHeight = compact ? 48 : 54;
+  const chipWidth = compact ? 172 : 194;
+  const chipHeight = compact ? 60 : 68;
+  const connected = Boolean(wallet.connectedAddress);
+  const activeMode = wallet.connectedMode ?? wallet.walletMode;
+  const activeModeLabel = walletModeLabel(activeMode);
 
   const clampDrag = useCallback(
     (x: number, y: number) => {
@@ -132,25 +142,19 @@ export default function UnifiedWalletLauncher() {
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => {
-              if (draggedRef.current) {
-                draggedRef.current = false;
-                return;
-              }
-              setOpen(true);
-            }}
+          <LinearGradient
+            colors={connected ? ["rgba(13,148,136,0.98)", "rgba(15,23,42,0.96)", "rgba(180,83,9,0.9)"] : ["rgba(7,18,24,0.96)", "rgba(15,23,42,0.94)"]}
             style={{
-              minWidth: compact ? 120 : 146,
-              height: compact ? 48 : 54,
-              borderRadius: compact ? 18 : 20,
-              paddingHorizontal: compact ? 11 : 14,
+              minWidth: chipWidth,
+              minHeight: chipHeight,
+              borderRadius: compact ? 22 : 24,
+              paddingHorizontal: compact ? 11 : 13,
+              paddingVertical: compact ? 9 : 10,
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
-              backgroundColor: "rgba(12,10,25,0.92)",
               borderWidth: 1,
-              borderColor: "rgba(124,58,237,0.45)",
+              borderColor: connected ? "rgba(45,212,191,0.35)" : "rgba(148,163,184,0.22)",
               shadowColor: "#000",
               shadowOpacity: 0.35,
               shadowRadius: 16,
@@ -158,30 +162,86 @@ export default function UnifiedWalletLauncher() {
               elevation: 12,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Pressable
+              onPress={() => {
+                if (draggedRef.current) {
+                  draggedRef.current = false;
+                  return;
+                }
+                setOpen(true);
+              }}
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
               <View
                 style={{
-                  width: compact ? 28 : 32,
-                  height: compact ? 28 : 32,
-                  borderRadius: compact ? 10 : 11,
+                  width: compact ? 34 : 38,
+                  height: compact ? 34 : 38,
+                  borderRadius: compact ? 12 : 14,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: "rgba(124,58,237,0.3)",
+                  backgroundColor: connected ? "rgba(255,255,255,0.16)" : "rgba(45,212,191,0.16)",
+                  borderWidth: 1,
+                  borderColor: connected ? "rgba(255,255,255,0.22)" : "rgba(45,212,191,0.28)",
                 }}
               >
-                <Ionicons name="wallet-outline" size={compact ? 15 : 17} color="#fff" />
+                <Ionicons name="wallet-outline" size={compact ? 17 : 18} color="#F8FAFC" />
               </View>
-              <View>
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Wallet</Text>
-                <Text style={{ color: "rgba(255,255,255,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
+
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Wallet Hub</Text>
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      backgroundColor: connected ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.08)",
+                      borderWidth: 1,
+                      borderColor: connected ? "rgba(16,185,129,0.32)" : "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: compact ? 8 : 9 }}>
+                      {connected ? "Connected" : activeModeLabel}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={{ marginTop: 5, color: "#fff", fontWeight: "900", fontSize: compact ? 12 : 14 }}>
                   {balancesHidden
                     ? maskBalanceValue("$")
                     : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </Text>
+                <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
+                  {connected ? `${activeModeLabel} active` : "Tap to open wallet tools"}
+                </Text>
               </View>
-            </View>
-            <Ionicons name="chevron-up" size={compact ? 14 : 16} color="#fff" />
-          </Pressable>
+
+              <Ionicons name="chevron-up" size={compact ? 15 : 16} color="#fff" />
+            </Pressable>
+
+            {connected ? (
+              <Pressable
+                onPress={async () => {
+                  await wallet.disconnectWallet();
+                }}
+                disabled={wallet.busy}
+                style={{
+                  width: compact ? 34 : 38,
+                  height: compact ? 34 : 38,
+                  borderRadius: compact ? 12 : 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginLeft: 8,
+                  backgroundColor: "rgba(255,255,255,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.18)",
+                  opacity: wallet.busy ? 0.6 : 1,
+                }}
+              >
+                <Ionicons name="power-outline" size={compact ? 16 : 18} color="#F8FAFC" />
+              </Pressable>
+            ) : null}
+          </LinearGradient>
 
           <View style={{ marginLeft: 8 }}>
             <BalanceVisibilityToggle

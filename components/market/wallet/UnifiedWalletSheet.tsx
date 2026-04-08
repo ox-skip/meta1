@@ -31,12 +31,12 @@ export default function UnifiedWalletSheet({
         <View
           style={{
             maxHeight: "86%",
-            borderTopLeftRadius: 22,
-            borderTopRightRadius: 22,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
             padding: 14,
-            backgroundColor: "#090812",
+            backgroundColor: "#071018",
             borderTopWidth: 1,
-            borderTopColor: "rgba(255,255,255,0.15)",
+            borderTopColor: "rgba(45,212,191,0.16)",
           }}
         >
           <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 8 }}>

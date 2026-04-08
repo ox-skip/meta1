@@ -116,6 +116,7 @@ function SessionBinder({ rt }: { rt: RuntimeModules }) {
   const providerState = rt.useAppKitProvider("eip155") as any;
 
   const open = appKit?.open;
+  const disconnect = appKit?.disconnect;
   const isConnected = Boolean(accountState?.isConnected);
   const address = String(accountState?.address || "");
   const caipAddress = String(accountState?.caipAddress || "");
@@ -129,8 +130,15 @@ function SessionBinder({ rt }: { rt: RuntimeModules }) {
       openModal: async () => {
         await Promise.resolve(open());
       },
+      disconnect: async () => {
+        if (!disconnect) {
+          clearWalletConnectConnection();
+          return;
+        }
+        await Promise.resolve(disconnect());
+      },
     });
-  }, [open]);
+  }, [disconnect, open]);
 
   useEffect(() => {
     if (!isConnected || !address) {
