@@ -6,7 +6,7 @@ Deno.serve(async (req) => {
   if (req.method !== "GET") return methodNotAllowed(req);
 
   try {
-    const authFail = requireAdmin(req);
+    const authFail = await requireAdmin(req, { requireSession: true, permissions: ["audit.read"] });
     if (authFail) return authFail;
 
     const admin = supabaseAdminClient();

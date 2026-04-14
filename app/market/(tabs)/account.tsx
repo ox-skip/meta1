@@ -31,6 +31,11 @@ type StatState = {
   completedOrders: number;
 };
 
+type AdminAccessState = {
+  isAdmin: boolean;
+  roleKey: string | null;
+};
+
 const BG0 = "#0B0907";
 const BG1 = "#22160D";
 const PANEL = "rgba(24,18,14,0.9)";
@@ -204,6 +209,7 @@ export default function MarketAccountTab() {
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [stats, setStats] = useState<StatState>({ activeListings: 0, allListings: 0, orders: 0, completedOrders: 0 });
+  const [adminAccess, setAdminAccess] = useState<AdminAccessState>({ isAdmin: false, roleKey: null });
 
   const logo = publicUrl("market-sellers", profile?.logo_path);
   const banner = publicUrl("market-sellers", profile?.banner_path);
@@ -229,10 +235,11 @@ export default function MarketAccountTab() {
       if (!user) {
         setProfile(null);
         setStats({ activeListings: 0, allListings: 0, orders: 0, completedOrders: 0 });
+        setAdminAccess({ isAdmin: false, roleKey: null });
         return;
       }
 
-      const [profileRes, activeListingsRes, allListingsRes, ordersRes, completedOrdersRes] = await Promise.all([
+      const [profileRes, activeListingsRes, allListingsRes, ordersRes, completedOrdersRes, adminRes] = await Promise.all([
         supabase
           .from("market_seller_profiles")
           .select("user_id,market_username,display_name,business_name,is_verified,logo_path,banner_path,payout_tier,active")
@@ -242,6 +249,7 @@ export default function MarketAccountTab() {
         supabase.from("market_listings").select("id", { count: "exact", head: true }).eq("seller_id", user.id),
         supabase.from("market_orders").select("id", { count: "exact", head: true }).or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`),
         supabase.from("market_orders").select("id", { count: "exact", head: true }).eq("seller_id", user.id).in("status", ["DELIVERED", "RELEASED"]),
+        supabase.from("market_admin_users").select("role_key,is_active").eq("user_id", user.id).eq("is_active", true).maybeSingle(),
       ]);
 
       setProfile((profileRes.data as SellerProfile | null) ?? null);
@@ -251,8 +259,13 @@ export default function MarketAccountTab() {
         orders: Number(ordersRes.count ?? 0),
         completedOrders: Number(completedOrdersRes.count ?? 0),
       });
+      setAdminAccess({
+        isAdmin: Boolean(adminRes.data?.is_active),
+        roleKey: adminRes.data?.role_key ? String(adminRes.data.role_key) : null,
+      });
     } catch (e: any) {
       setError(friendlyMarketError(e, "Unable to load account."));
+      setAdminAccess({ isAdmin: false, roleKey: null });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -295,6 +308,14 @@ export default function MarketAccountTab() {
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        {adminAccess.isAdmin ? (
+          <HeaderButton
+            icon="shield-checkmark-outline"
+            label="Admin"
+            accent="#FBBF24"
+            onPress={() => router.push("/market/admin" as any)}
+          />
+        ) : null}
         <HeaderButton icon="refresh" label={refreshing ? "Syncing" : "Refresh"} accent={WARNING} loading={refreshing} onPress={onRefresh} />
         <HeaderButton icon="log-out-outline" label="Sign out" accent={DANGER} onPress={onSignOut} />
       </View>
@@ -561,6 +582,14 @@ export default function MarketAccountTab() {
                         accent={WARNING}
                         onPress={() => router.push("/market/profile/edit" as any)}
                       />
+                      {adminAccess.isAdmin ? (
+                        <HeaderButton
+                          icon="shield-checkmark-outline"
+                          label={adminAccess.roleKey === "super_admin" ? "Admin HQ" : "Admin"}
+                          accent="#FBBF24"
+                          onPress={() => router.push("/market/admin" as any)}
+                        />
+                      ) : null}
                       {profile.market_username ? (
                         <HeaderButton
                           icon="eye-outline"

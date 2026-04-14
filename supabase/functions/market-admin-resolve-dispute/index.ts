@@ -1,4 +1,4 @@
-import { adminError, requireAdmin } from "../_shared/market/admin.ts";
+import { adminError, getAdminContext, getForwardedAdminHeaders } from "../_shared/market/admin.ts";
 import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
 import { supabaseAdminClient } from "../_shared/market/supabase.ts";
 
@@ -8,8 +8,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const authFail = requireAdmin(req);
-    if (authFail) return authFail;
+    const ctx = await getAdminContext(req, { requireSession: true, permissions: ["disputes.resolve"] });
+    if (ctx instanceof Response) return ctx;
 
     const admin = supabaseAdminClient();
     const body = await req.json().catch(() => ({}));
@@ -54,14 +54,13 @@ Deno.serve(async (req) => {
     // If decision = RELEASE: ensure order is DELIVERED (or set it delivered)
     let curVersion = Number(order.version);
     let curStatus = String(order.status);
-    const adminToken = String(Deno.env.get("MARKET_ADMIN_TOKEN") || "").trim();
-    if ((isPiOrder || stableOrder) && !adminToken) return bad("MARKET_ADMIN_TOKEN env var not set");
+    const forwardedHeaders = getForwardedAdminHeaders(req);
 
     if (decision === "RELEASE") {
       if (stableOrder) {
         const { data: releaseOut, error: releaseErr } = await admin.functions.invoke("market-stable-admin-settle", {
           body: { order_id, decision, note },
-          headers: { "x-admin-token": adminToken },
+          headers: forwardedHeaders,
         });
         if (releaseErr) return bad(releaseErr.message);
         if (!(releaseOut as any)?.ok) {
@@ -74,7 +73,7 @@ Deno.serve(async (req) => {
       if (isPiOrder) {
         const { data: releasedOut, error: releasedErr } = await admin.functions.invoke("market-pi-release-intent", {
           body: { order_id, note },
-          headers: { "x-admin-token": adminToken },
+          headers: forwardedHeaders,
         });
         if (releasedErr) return bad(releasedErr.message);
         if (!(releasedOut as any)?.ok) {
@@ -109,16 +108,16 @@ Deno.serve(async (req) => {
       await admin.from("market_disputes").update({
         status: "RESOLVED",
         resolution: "RELEASE_TO_SELLER",
-        resolved_by: null,
+        resolved_by: ctx.userId,
       }).eq("order_id", order_id);
 
       await admin.from("market_audit_logs").insert({
-        actor_id: null,
+        actor_id: ctx.userId,
         actor_type: "admin",
         action: "DISPUTE_RESOLVED_RELEASE",
         entity_type: "market_orders",
         entity_id: order_id,
-        payload: { note },
+        payload: { note, role_key: ctx.roleKey },
       });
 
       return ok({ order: released, dispute_resolution: "RELEASE_TO_SELLER" });
@@ -129,7 +128,7 @@ Deno.serve(async (req) => {
     if (stableOrder) {
       const { data: refundOut, error: refundErr } = await admin.functions.invoke("market-stable-admin-settle", {
         body: { order_id, decision, note },
-        headers: { "x-admin-token": adminToken },
+        headers: forwardedHeaders,
       });
       if (refundErr) return bad(refundErr.message);
       if (!(refundOut as any)?.ok) {
@@ -142,7 +141,7 @@ Deno.serve(async (req) => {
     if (isPiOrder) {
       const { data: refundedOut, error: refundedErr } = await admin.functions.invoke("market-pi-refund-intent", {
         body: { order_id, note },
-        headers: { "x-admin-token": adminToken },
+        headers: forwardedHeaders,
       });
       if (refundedErr) return bad(refundedErr.message);
       if (!(refundedOut as any)?.ok) {
@@ -163,16 +162,16 @@ Deno.serve(async (req) => {
     await admin.from("market_disputes").update({
       status: "RESOLVED",
       resolution: "REFUND_TO_BUYER",
-      resolved_by: null,
+      resolved_by: ctx.userId,
     }).eq("order_id", order_id);
 
     await admin.from("market_audit_logs").insert({
-      actor_id: null,
+      actor_id: ctx.userId,
       actor_type: "admin",
       action: "DISPUTE_RESOLVED_REFUND",
       entity_type: "market_orders",
       entity_id: order_id,
-      payload: { note },
+      payload: { note, role_key: ctx.roleKey },
     });
 
     return ok({ order: refunded, dispute_resolution: "REFUND_TO_BUYER" });

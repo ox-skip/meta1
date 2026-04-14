@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
   let adminMode = false;
   try {
-    const adminFail = requireAdmin(req);
+    const adminFail = await requireAdmin(req);
     adminMode = adminFail === null;
   } catch {
     adminMode = false;

@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const authFail = requireAdmin(req);
+    const authFail = await requireAdmin(req);
     if (authFail) return authFail;
 
     const SB_URL = envAny("SB_URL", "SUPABASE_URL");

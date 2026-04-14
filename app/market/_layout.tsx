@@ -19,6 +19,7 @@ export default function MarketLayout() {
         <Stack.Screen name="history/[entryId]" />
         <Stack.Screen name="social/index" />
         <Stack.Screen name="dm/[username]" />
+        <Stack.Screen name="admin/index" />
         <Stack.Screen name="stock/index" />
         <Stack.Screen name="stock/[slug]" />
         <Stack.Screen name="stock/create" />

@@ -1,0 +1,102 @@
+import { adminError, getAdminContext } from "../_shared/market/admin.ts";
+import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
+import { supabaseAdminClient } from "../_shared/market/supabase.ts";
+
+Deno.serve(async (req) => {
+  if (req.method !== "POST") return methodNotAllowed(req);
+
+  try {
+    const ctx = await getAdminContext(req, { requireSession: true, permissions: ["audit.read"] });
+    if (ctx instanceof Response) return ctx;
+
+    const admin = supabaseAdminClient();
+
+    const [
+      disputesRes,
+      verificationRes,
+      ordersInEscrowRes,
+      ordersDisputedRes,
+      deliverablesRes,
+      listingsRes,
+      pausedListingsRes,
+      sellersRes,
+      usersRes,
+      adminsRes,
+    ] = await Promise.all([
+      admin.from("market_disputes").select("id", { count: "exact", head: true }).in("status", ["OPEN", "UNDER_REVIEW"]),
+      admin.from("market_verification_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
+      admin.from("market_orders").select("id", { count: "exact", head: true }).eq("status", "IN_ESCROW"),
+      admin.from("market_orders").select("id", { count: "exact", head: true }).eq("status", "DISPUTED"),
+      admin.from("market_deliverables").select("id", { count: "exact", head: true }),
+      admin.from("market_listings").select("id", { count: "exact", head: true }).eq("is_active", true),
+      admin.from("market_listings").select("id", { count: "exact", head: true }).eq("is_active", false),
+      admin.from("market_seller_profiles").select("user_id", { count: "exact", head: true }),
+      admin.from("profiles").select("id", { count: "exact", head: true }),
+      admin.from("market_admin_users").select("user_id", { count: "exact", head: true }).eq("is_active", true),
+    ]);
+
+    const failures = [
+      disputesRes.error,
+      verificationRes.error,
+      ordersInEscrowRes.error,
+      ordersDisputedRes.error,
+      deliverablesRes.error,
+      listingsRes.error,
+      pausedListingsRes.error,
+      sellersRes.error,
+      usersRes.error,
+      adminsRes.error,
+    ].filter(Boolean);
+    if (failures.length) return bad(String(failures[0]?.message ?? "Could not load admin overview"));
+
+    return ok({
+      ok: true,
+      admin: {
+        user_id: ctx.userId,
+        role_key: ctx.roleKey,
+        role_name: ctx.roleName,
+        permissions: ctx.permissions,
+      },
+      metrics: {
+        open_disputes: Number(disputesRes.count ?? 0),
+        pending_verifications: Number(verificationRes.count ?? 0),
+        orders_in_escrow: Number(ordersInEscrowRes.count ?? 0),
+        disputed_orders: Number(ordersDisputedRes.count ?? 0),
+        deliverables_uploaded: Number(deliverablesRes.count ?? 0),
+        active_listings: Number(listingsRes.count ?? 0),
+        paused_listings: Number(pausedListingsRes.count ?? 0),
+        seller_profiles: Number(sellersRes.count ?? 0),
+        total_users: Number(usersRes.count ?? 0),
+        active_admins: Number(adminsRes.count ?? 0),
+      },
+      modules: [
+        {
+          key: "support",
+          title: "Disputes and complaints",
+          description: "Review complaints, see evidence, compare buyer and seller timelines, and issue the final ruling.",
+          permission: "disputes.resolve",
+        },
+        {
+          key: "moderation",
+          title: "Users and listings",
+          description: "Ban accounts, pause stores, remove listings, and inspect seller history before taking action.",
+          permission: "users.moderate",
+        },
+        {
+          key: "verification",
+          title: "Verification and trust",
+          description: "Review KYC decisions, risk flags, and policy blocks around seller onboarding.",
+          permission: "verification.review",
+        },
+        {
+          key: "escrow",
+          title: "Escrow and chain operations",
+          description: "Track crypto settlement state, reconcile escrow events, and control chain-level operations.",
+          permission: "escrow.settle",
+        },
+      ],
+    });
+  } catch (e) {
+    return adminError(e);
+  }
+});

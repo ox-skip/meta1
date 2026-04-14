@@ -44,7 +44,7 @@ serve(async (req) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (req.method !== "POST") return json(405, { ok: false, message: "Method not allowed" });
 
-    const authFail = requireAdmin(req);
+    const authFail = await requireAdmin(req);
     if (authFail) return authFail;
 
     const SB_URL = envAny("SB_URL", "SUPABASE_URL");
