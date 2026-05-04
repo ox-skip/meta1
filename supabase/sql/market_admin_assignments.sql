@@ -1,12 +1,15 @@
--- Market admin assignment templates
--- Replace the email addresses and passwords before running in production.
+-- Market admin assignment template
+-- Replace the email address and password before running in production.
 -- Passwords are stored as bcrypt hashes via extensions.crypt(..., extensions.gen_salt('bf', 12)).
+--
+-- Important: public.market_admin_users is keyed by user_id, so one Supabase
+-- account can only have one active admin role at a time. To change the role,
+-- rerun this block with a different role_key.
 
--- 1. Super admin
 WITH target_user AS (
   SELECT id
   FROM auth.users
-  WHERE email = 'superadmin@example.com'
+  WHERE lower(email) = lower('skima714@gmail.com')
   LIMIT 1
 )
 INSERT INTO public.market_admin_users (
@@ -21,7 +24,7 @@ INSERT INTO public.market_admin_users (
 SELECT
   id,
   'super_admin',
-  extensions.crypt('CHANGE-ME-SUPER-ADMIN-PASSWORD', extensions.gen_salt('bf', 12)),
+  extensions.crypt('16@Nath.com1', extensions.gen_salt('bf', 12)),
   'Super Admin',
   true,
   now(),
@@ -36,121 +39,27 @@ SET
   updated_at = now(),
   last_password_change_at = now();
 
--- 2. Operations admin
-WITH target_user AS (
-  SELECT id
-  FROM auth.users
-  WHERE email = 'opsadmin@example.com'
-  LIMIT 1
-)
-INSERT INTO public.market_admin_users (
-  user_id,
-  role_key,
-  password_hash,
-  display_name,
-  is_active,
-  updated_at,
-  last_password_change_at
-)
-SELECT
-  id,
-  'operations_admin',
-  extensions.crypt('CHANGE-ME-OPS-ADMIN-PASSWORD', extensions.gen_salt('bf', 12)),
-  'Operations Admin',
-  true,
-  now(),
-  now()
-FROM target_user
-ON CONFLICT (user_id) DO UPDATE
-SET
-  role_key = EXCLUDED.role_key,
-  password_hash = EXCLUDED.password_hash,
-  display_name = EXCLUDED.display_name,
-  is_active = true,
-  updated_at = now(),
-  last_password_change_at = now();
+-- Optional role examples for separate accounts:
+-- operations_admin
+-- support_admin
+-- compliance_admin
+--
+-- Copy the block above and change the email, role_key, password, and
+-- display_name when you need to add another admin account.
 
--- 3. Support admin
-WITH target_user AS (
-  SELECT id
-  FROM auth.users
-  WHERE email = 'supportadmin@example.com'
-  LIMIT 1
-)
-INSERT INTO public.market_admin_users (
-  user_id,
-  role_key,
-  password_hash,
-  display_name,
-  is_active,
-  updated_at,
-  last_password_change_at
-)
-SELECT
-  id,
-  'support_admin',
-  extensions.crypt('CHANGE-ME-SUPPORT-ADMIN-PASSWORD', extensions.gen_salt('bf', 12)),
-  'Support Admin',
-  true,
-  now(),
-  now()
-FROM target_user
-ON CONFLICT (user_id) DO UPDATE
-SET
-  role_key = EXCLUDED.role_key,
-  password_hash = EXCLUDED.password_hash,
-  display_name = EXCLUDED.display_name,
-  is_active = true,
-  updated_at = now(),
-  last_password_change_at = now();
-
--- 4. Compliance admin
-WITH target_user AS (
-  SELECT id
-  FROM auth.users
-  WHERE email = 'complianceadmin@example.com'
-  LIMIT 1
-)
-INSERT INTO public.market_admin_users (
-  user_id,
-  role_key,
-  password_hash,
-  display_name,
-  is_active,
-  updated_at,
-  last_password_change_at
-)
-SELECT
-  id,
-  'compliance_admin',
-  extensions.crypt('CHANGE-ME-COMPLIANCE-ADMIN-PASSWORD', extensions.gen_salt('bf', 12)),
-  'Compliance Admin',
-  true,
-  now(),
-  now()
-FROM target_user
-ON CONFLICT (user_id) DO UPDATE
-SET
-  role_key = EXCLUDED.role_key,
-  password_hash = EXCLUDED.password_hash,
-  display_name = EXCLUDED.display_name,
-  is_active = true,
-  updated_at = now(),
-  last_password_change_at = now();
-
--- 5. Disable admin access for a user
+-- Disable admin access for a user
 -- UPDATE public.market_admin_users
 -- SET is_active = false, updated_at = now()
 -- WHERE user_id = (
---   SELECT id FROM auth.users WHERE email = 'oldadmin@example.com' LIMIT 1
+--   SELECT id FROM auth.users WHERE lower(email) = lower('oldadmin@example.com') LIMIT 1
 -- );
 
--- 6. Rotate an admin password
+-- Rotate an admin password
 -- UPDATE public.market_admin_users
 -- SET
 --   password_hash = extensions.crypt('NEW-STRONG-PASSWORD', extensions.gen_salt('bf', 12)),
 --   last_password_change_at = now(),
 --   updated_at = now()
 -- WHERE user_id = (
---   SELECT id FROM auth.users WHERE email = 'supportadmin@example.com' LIMIT 1
+--   SELECT id FROM auth.users WHERE lower(email) = lower('skima714@gmail.com') LIMIT 1
 -- );
