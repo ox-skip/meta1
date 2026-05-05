@@ -19,6 +19,8 @@ type AiDraft = {
   confidence_note: string;
 };
 
+type JsonRecord = Record<string, unknown>;
+
 const DRAFT_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -63,35 +65,71 @@ function trimText(input: unknown, max = 1000) {
   return String(input ?? "").trim().slice(0, max);
 }
 
+function asRecord(input: unknown): JsonRecord {
+  return input && typeof input === "object" && !Array.isArray(input)
+    ? input as JsonRecord
+    : {};
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  return String(error || fallback);
+}
+
 function normalizeProviderErrorMessage(status: number, rawMessage: string) {
   const message = trimText(rawMessage, 500);
   const lower = message.toLowerCase();
 
-  if (status === 401 || status === 403 || lower.includes("invalid api key") || lower.includes("unauthorized")) {
-    return "OpenRouter API key is invalid. Update OPENROUTER_API_KEY in Supabase secrets.";
+  if (
+    status === 400 &&
+    (
+      lower.includes("api key not valid") ||
+      lower.includes("invalid api key") ||
+      lower.includes("permission denied")
+    )
+  ) {
+    return "Gemini API key is invalid. Update GEMINI_API_KEY in Supabase secrets.";
+  }
+  if (
+    status === 401 ||
+    status === 403 ||
+    lower.includes("api key not valid") ||
+    lower.includes("invalid api key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("permission_denied")
+  ) {
+    return "Gemini API key is invalid or does not have access. Update GEMINI_API_KEY in Supabase secrets.";
   }
   if (
     status === 402 ||
-    lower.includes("insufficient_credit") ||
-    lower.includes("insufficient credits") ||
+    lower.includes("resource_exhausted") ||
     lower.includes("quota") ||
     lower.includes("billing") ||
     lower.includes("payment required") ||
-    lower.includes("credits required")
+    lower.includes("free tier") ||
+    lower.includes("rate limit")
   ) {
-    return "OpenRouter credits are required for this request or your free quota is exhausted. Use the free router model and check your OpenRouter account limits.";
+    return "Gemini quota or rate limit reached. Wait and try again, or set GEMINI_MODEL to gemini-2.5-flash-lite for lighter free-tier usage.";
   }
-  if (lower.includes("model") && (lower.includes("not found") || lower.includes("access") || lower.includes("unsupported"))) {
-    return "The configured OpenRouter model is not available for this API key. Check OPENROUTER_MODEL.";
+  if (
+    lower.includes("model") &&
+    (lower.includes("not found") || lower.includes("access") ||
+      lower.includes("unsupported"))
+  ) {
+    return "The configured Gemini model is not available for this API key. Check GEMINI_MODEL.";
   }
   if (status === 429 || lower.includes("rate limit")) {
-    return "OpenRouter free-model rate limit reached. Free accounts have low request limits. Wait and try again.";
+    return "Gemini free-tier rate limit reached. Wait and try again.";
   }
 
   return message || "AI provider request failed";
 }
 
-function normalizeStringList(input: unknown, maxItems: number, maxChars: number) {
+function normalizeStringList(
+  input: unknown,
+  maxItems: number,
+  maxChars: number,
+) {
   const list = Array.isArray(input) ? input : [];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -111,60 +149,79 @@ function normalizeMoney(input: unknown) {
   return Number.isFinite(num) && num > 0 ? num : 0;
 }
 
-function extractAssistantText(payload: any): string {
-  const content = trimText(payload?.choices?.[0]?.message?.content, 20000);
-  if (content) return content;
-
-  const text = trimText(payload?.choices?.[0]?.text, 20000);
-  if (text) return text;
-
-  return "";
+function extractAssistantText(payload: unknown): string {
+  const root = asRecord(payload);
+  const candidates = Array.isArray(root.candidates) ? root.candidates : [];
+  const firstCandidate = asRecord(candidates[0]);
+  const content = asRecord(firstCandidate.content);
+  const parts = Array.isArray(content.parts) ? content.parts : [];
+  const text = parts
+    .map((part: unknown) => trimText(asRecord(part).text, 20000))
+    .filter(Boolean)
+    .join("");
+  return trimText(text, 20000);
 }
 
-function normalizeDraft(raw: any, fallbackCurrency: string): AiDraft {
-  const priceHintLow = normalizeMoney(raw?.price_hint_low);
-  const priceHintHigh = normalizeMoney(raw?.price_hint_high);
+function normalizeDraft(raw: unknown, fallbackCurrency: string): AiDraft {
+  const draft = asRecord(raw);
+  const priceHintLow = normalizeMoney(draft.price_hint_low);
+  const priceHintHigh = normalizeMoney(draft.price_hint_high);
   const low = priceHintLow;
   const high = priceHintHigh > 0 ? Math.max(priceHintLow, priceHintHigh) : 0;
 
   return {
-    suggested_title: trimText(raw?.suggested_title, 120),
-    suggested_description: trimText(raw?.suggested_description, 2200),
-    suggested_sub_category: trimText(raw?.suggested_sub_category, 80),
-    tags: normalizeStringList(raw?.tags, 8, 32),
-    warnings: normalizeStringList(raw?.warnings, 6, 180),
+    suggested_title: trimText(draft.suggested_title, 120),
+    suggested_description: trimText(draft.suggested_description, 2200),
+    suggested_sub_category: trimText(draft.suggested_sub_category, 80),
+    tags: normalizeStringList(draft.tags, 8, 32),
+    warnings: normalizeStringList(draft.warnings, 6, 180),
     price_hint_low: low,
     price_hint_high: high,
-    price_hint_currency: trimText(raw?.price_hint_currency, 12) || fallbackCurrency,
-    price_hint_reason: trimText(raw?.price_hint_reason, 220),
-    media_notes: normalizeStringList(raw?.media_notes, 4, 180),
-    confidence_note: trimText(raw?.confidence_note, 180),
+    price_hint_currency: trimText(draft.price_hint_currency, 12) ||
+      fallbackCurrency,
+    price_hint_reason: trimText(draft.price_hint_reason, 220),
+    media_notes: normalizeStringList(draft.media_notes, 4, 180),
+    confidence_note: trimText(draft.confidence_note, 180),
   };
 }
 
-function buildPrompt(body: any) {
+function buildPrompt(body: JsonRecord) {
+  const mediaSummary = Array.isArray(body.media_summary)
+    ? body.media_summary
+    : [];
+  const availableSubCategories = Array.isArray(body.available_sub_categories)
+    ? body.available_sub_categories
+    : [];
   const payload = {
-    category: trimText(body?.category, 20),
-    delivery_type: trimText(body?.delivery_type, 20),
-    current_sub_category: trimText(body?.sub_category, 80),
-    title: trimText(body?.title, 300),
-    description: trimText(body?.description, 5000),
-    website_url: trimText(body?.website_url, 300),
-    price: Number.isFinite(Number(body?.price)) ? Number(body.price) : null,
-    local_currency: trimText(body?.local_currency, 12) || "USD",
-    media_summary: Array.isArray(body?.media_summary)
-      ? body.media_summary.slice(0, 8).map((item: any) => ({
-          kind: trimText(item?.kind, 12),
-          content_type: trimText(item?.content_type, 80),
-          file_name: trimText(item?.file_name, 120),
-          file_size: Number.isFinite(Number(item?.file_size)) ? Number(item.file_size) : null,
-        }))
+    category: trimText(body.category, 20),
+    delivery_type: trimText(body.delivery_type, 20),
+    current_sub_category: trimText(body.sub_category, 80),
+    title: trimText(body.title, 300),
+    description: trimText(body.description, 5000),
+    website_url: trimText(body.website_url, 300),
+    price: Number.isFinite(Number(body.price)) ? Number(body.price) : null,
+    local_currency: trimText(body.local_currency, 12) || "USD",
+    media_summary: mediaSummary.length
+      ? mediaSummary.slice(0, 8).map((item: unknown) => {
+        const media = asRecord(item);
+        return {
+          kind: trimText(media.kind, 12),
+          content_type: trimText(media.content_type, 80),
+          file_name: trimText(media.file_name, 120),
+          file_size: Number.isFinite(Number(media.file_size))
+            ? Number(media.file_size)
+            : null,
+        };
+      })
       : [],
-    available_sub_categories: Array.isArray(body?.available_sub_categories)
-      ? body.available_sub_categories.slice(0, 60).map((item: any) => ({
-          slug: trimText(item?.slug, 80),
-          title: trimText(item?.title, 120),
-        }))
+    available_sub_categories: availableSubCategories.length
+      ? availableSubCategories.slice(0, 60).map((item: unknown) => {
+        const subCategory = asRecord(item);
+        return {
+          slug: trimText(subCategory.slug, 80),
+          title: trimText(subCategory.title, 120),
+        };
+      })
       : [],
   };
 
@@ -187,46 +244,42 @@ function buildPrompt(body: any) {
 }
 
 async function requestListingDraft(prompt: string) {
-  const apiKey = envAny(["OPENROUTER_API_KEY"]);
-  const model = envAny(["OPENROUTER_MODEL"], "openrouter/free").trim();
-  const baseUrl = envAny(["OPENROUTER_API_BASE"], "https://openrouter.ai/api/v1").replace(/\/+$/, "");
-  const referer = trimText(envAny(["OPENROUTER_HTTP_REFERER", "APP_PUBLIC_URL"], ""), 200);
-  const title = trimText(envAny(["OPENROUTER_APP_TITLE"], "Meta Market"), 80);
+  const apiKey = envAny([
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+  ]);
+  const model = envAny(["GEMINI_MODEL"], "gemini-2.5-flash").trim();
+  const baseUrl = envAny(
+    ["GEMINI_API_BASE"],
+    "https://generativelanguage.googleapis.com/v1beta",
+  ).replace(/\/+$/, "");
+  const modelPath = model.startsWith("models/") ? model : `models/${model}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
-  };
-  if (referer) headers["HTTP-Referer"] = referer;
-  if (title) headers["X-OpenRouter-Title"] = title;
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await fetch(`${baseUrl}/${modelPath}:generateContent`, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
     body: JSON.stringify({
-      model,
-      messages: [
+      contents: [
         {
           role: "user",
-          content: prompt,
+          parts: [{ text: prompt }],
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "market_listing_ai_draft",
-          strict: true,
-          schema: DRAFT_RESPONSE_SCHEMA,
-        },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseJsonSchema: DRAFT_RESPONSE_SCHEMA,
+        temperature: 0.3,
+        maxOutputTokens: 1200,
       },
-      plugins: [{ id: "response-healing" }],
-      temperature: 0.3,
-      max_tokens: 1200,
     }),
   });
 
   const text = await res.text().catch(() => "");
-  let json: any = null;
+  let json: unknown = null;
   if (text) {
     try {
       json = JSON.parse(text);
@@ -236,10 +289,14 @@ async function requestListingDraft(prompt: string) {
   }
 
   if (!res.ok) {
+    const root = asRecord(json);
+    const errorObj = asRecord(root.error);
+    const metadata = asRecord(errorObj.metadata);
     const rawMessage = trimText(
-      json?.error?.message ||
-        json?.error?.metadata?.raw ||
-        json?.message ||
+      errorObj.message ||
+        errorObj.status ||
+        metadata.raw ||
+        root.message ||
         text ||
         `Provider request failed with status ${res.status}`,
       400,
@@ -249,18 +306,30 @@ async function requestListingDraft(prompt: string) {
 
   const outputText = extractAssistantText(json);
   if (!outputText) {
-    throw new Error("The AI provider returned an empty response.");
+    const root = asRecord(json);
+    const candidates = Array.isArray(root.candidates) ? root.candidates : [];
+    const firstCandidate = asRecord(candidates[0]);
+    const promptFeedback = asRecord(root.promptFeedback);
+    const reason = trimText(
+      firstCandidate.finishReason || promptFeedback.blockReason || "",
+      120,
+    );
+    throw new Error(
+      reason
+        ? `Gemini returned an empty response (${reason}).`
+        : "Gemini returned an empty response.",
+    );
   }
 
-  let parsed: any = null;
+  let parsed: unknown = null;
   try {
     parsed = JSON.parse(outputText);
   } catch {
-    throw new Error("The AI provider returned an unreadable AI draft.");
+    throw new Error("Gemini returned an unreadable AI draft.");
   }
 
   return {
-    model: String(json?.model || model),
+    model: String(asRecord(json).modelVersion || model),
     draft: parsed,
   };
 }
@@ -272,35 +341,47 @@ Deno.serve(async (req) => {
   const { data: auth, error: authError } = await supabase.auth.getUser();
   if (authError || !auth.user) return unauth();
 
-  const body = await req.json().catch(() => ({}));
-  const category = trimText(body?.category, 20) as ListingCategory;
-  const deliveryType = trimText(body?.delivery_type, 20) as DeliveryType;
+  const body = asRecord(await req.json().catch(() => ({})));
+  const category = trimText(body.category, 20) as ListingCategory;
+  const deliveryType = trimText(body.delivery_type, 20) as DeliveryType;
 
-  if (!["product", "service"].includes(category)) return bad("Invalid category");
-  if (!["physical", "digital", "in_person"].includes(deliveryType)) return bad("Invalid delivery_type");
+  if (!["product", "service"].includes(category)) {
+    return bad("Invalid category");
+  }
+  if (!["physical", "digital", "in_person"].includes(deliveryType)) {
+    return bad("Invalid delivery_type");
+  }
 
-  const hasMeaningfulInput =
-    !!trimText(body?.title, 300) ||
-    !!trimText(body?.description, 2000) ||
-    !!trimText(body?.website_url, 300) ||
-    (Array.isArray(body?.media_summary) && body.media_summary.length > 0);
+  const hasMeaningfulInput = !!trimText(body.title, 300) ||
+    !!trimText(body.description, 2000) ||
+    !!trimText(body.website_url, 300) ||
+    (Array.isArray(body.media_summary) && body.media_summary.length > 0);
 
   if (!hasMeaningfulInput) {
-    return bad("Add at least a title, description, website URL, or media before using AI.");
+    return bad(
+      "Add at least a title, description, website URL, or media before using AI.",
+    );
   }
 
   try {
     const prompt = buildPrompt(body);
     const result = await requestListingDraft(prompt);
-    const fallbackCurrency = trimText(body?.local_currency, 12) || "USD";
+    const fallbackCurrency = trimText(body.local_currency, 12) || "USD";
     return ok({
       model: result.model,
       draft: normalizeDraft(result.draft, fallbackCurrency),
     });
-  } catch (error: any) {
-    const message = String(error?.message || error || "AI draft failed");
-    if (/missing env var/i.test(message) || /OPENROUTER_API_KEY/i.test(message)) {
-      return bad("AI is not configured yet. Add OPENROUTER_API_KEY to Supabase Edge Function secrets.");
+  } catch (error: unknown) {
+    const message = errorMessage(error, "AI draft failed");
+    if (
+      /missing env var/i.test(message) ||
+      /GEMINI_API_KEY|GOOGLE_API_KEY|GOOGLE_GENERATIVE_AI_API_KEY/i.test(
+        message,
+      )
+    ) {
+      return bad(
+        "AI is not configured yet. Add GEMINI_API_KEY to Supabase Edge Function secrets.",
+      );
     }
     return bad(message);
   }

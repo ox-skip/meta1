@@ -692,9 +692,11 @@ export default function SellTab() {
       } else if (
         rawMessage &&
         (
-          rawMessage.toLowerCase().includes("openai") ||
+          rawMessage.toLowerCase().includes("gemini") ||
+          rawMessage.toLowerCase().includes("api key") ||
           rawMessage.toLowerCase().includes("billing") ||
           rawMessage.toLowerCase().includes("quota") ||
+          rawMessage.toLowerCase().includes("rate limit") ||
           rawMessage.toLowerCase().includes("model") ||
           rawMessage.toLowerCase().includes("configured") ||
           rawMessage.toLowerCase().includes("deploy")
