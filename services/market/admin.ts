@@ -25,6 +25,35 @@ export type MarketAdminOverview = {
   }>;
 };
 
+export type MarketAdminWorkspace = {
+  ok: true;
+  generated_at: string;
+  admin: MarketAdminOverview["admin"];
+  modules: {
+    support?: {
+      disputes: any[];
+    };
+    moderation?: {
+      sellers: any[];
+      listings: any[];
+    };
+    verification?: {
+      requests: any[];
+    };
+    escrow?: {
+      orders: any[];
+      chains: any[];
+      stocks: any[];
+      audit_events: any[];
+    };
+  };
+};
+
+export type MarketAdminActionResult = {
+  ok: true;
+  [key: string]: any;
+};
+
 async function getAdminSessionToken() {
   return (await SecureStore.getItemAsync(ADMIN_SESSION_KEY)) || "";
 }
@@ -109,6 +138,14 @@ export async function loginAdmin(password: string) {
 
 export async function loadAdminOverview() {
   return await callAdminFn<MarketAdminOverview>("market-admin-overview");
+}
+
+export async function loadAdminWorkspace() {
+  return await callAdminFn<MarketAdminWorkspace>("market-admin-workspace");
+}
+
+export async function runAdminAction(body: Record<string, unknown>) {
+  return await callAdminFn<MarketAdminActionResult>("market-admin-action", body);
 }
 
 export async function logoutAdmin() {

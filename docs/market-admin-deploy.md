@@ -20,7 +20,9 @@ supabase db push --dry-run
 supabase db push
 ```
 
-This applies `supabase/migrations/20260414120000_market_admin_foundation.sql`.
+This applies the admin foundation and role-boundary migrations, including
+`supabase/migrations/20260414120000_market_admin_foundation.sql` and
+`supabase/migrations/20260505170000_market_admin_role_boundaries.sql`.
 
 ## 4. Deploy the new admin edge functions
 
@@ -29,6 +31,8 @@ Deploy only the new admin functions:
 ```powershell
 supabase functions deploy market-admin-login
 supabase functions deploy market-admin-overview
+supabase functions deploy market-admin-workspace
+supabase functions deploy market-admin-action
 supabase functions deploy market-admin-logout
 ```
 

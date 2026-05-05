@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const authFail = await requireAdmin(req);
+    const authFail = await requireAdmin(req, { requireSession: true, permissions: ["escrow.settle"] });
     if (authFail) return authFail;
 
     const admin = supabaseAdminClient();

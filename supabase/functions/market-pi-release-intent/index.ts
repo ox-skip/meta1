@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
   let adminMode = false;
   try {
-    const adminFail = await requireAdmin(req);
+    const adminFail = await requireAdmin(req, { requireSession: true, permissions: ["escrow.settle"] });
     adminMode = adminFail === null;
   } catch {
     adminMode = false;

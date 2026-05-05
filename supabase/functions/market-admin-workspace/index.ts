@@ -1,0 +1,312 @@
+import { adminError, getAdminContext, type AdminContext } from "../_shared/market/admin.ts";
+import { methodNotAllowed, ok } from "../_shared/market/http.ts";
+import { supabaseAdminClient } from "../_shared/market/supabase.ts";
+
+const DEFAULT_LIMIT = 30;
+
+function can(ctx: AdminContext, permission: string) {
+  return ctx.roleKey === "super_admin" || ctx.permissions.includes("*") || ctx.permissions.includes(permission);
+}
+
+function canAny(ctx: AdminContext, permissions: string[]) {
+  return permissions.some((permission) => can(ctx, permission));
+}
+
+function unique(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function byId(rows: any[] | null | undefined, key = "id") {
+  const map: Record<string, any> = {};
+  for (const row of rows ?? []) {
+    const id = String(row?.[key] ?? "");
+    if (id) map[id] = row;
+  }
+  return map;
+}
+
+async function loadProfiles(admin: any, ids: string[]) {
+  const list = unique(ids);
+  if (!list.length) return {};
+
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id,email,username,full_name,public_uid,created_at")
+    .in("id", list);
+  if (error) throw error;
+  return byId(data);
+}
+
+async function loadSellerProfiles(admin: any, ids: string[]) {
+  const list = unique(ids);
+  if (!list.length) return {};
+
+  const { data, error } = await admin
+    .from("market_seller_profiles")
+    .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+    .in("user_id", list);
+  if (error) throw error;
+  return byId(data, "user_id");
+}
+
+async function loadListingsByIds(admin: any, ids: string[]) {
+  const list = unique(ids);
+  if (!list.length) return {};
+
+  const { data, error } = await admin
+    .from("market_listings")
+    .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
+    .in("id", list);
+  if (error) throw error;
+  return byId(data);
+}
+
+async function loadOrdersByIds(admin: any, ids: string[]) {
+  const list = unique(ids);
+  if (!list.length) return {};
+
+  const { data, error } = await admin
+    .from("market_orders")
+    .select("id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,version,fee_amount,delivery_address,note,created_at,in_escrow_at,out_for_delivery_at,deliverable_uploaded_at,delivered_at,released_at,refunded_at,cancelled_at")
+    .in("id", list);
+  if (error) throw error;
+  return byId(data);
+}
+
+function userBundle(userId: string | null | undefined, profiles: Record<string, any>, sellers: Record<string, any>) {
+  const id = String(userId ?? "");
+  if (!id) return null;
+  return {
+    id,
+    profile: profiles[id] ?? null,
+    seller: sellers[id] ?? null,
+  };
+}
+
+async function loadSupport(admin: any) {
+  const { data: disputes, error } = await admin
+    .from("market_disputes")
+    .select("id,order_id,opened_by,reason,status,resolution,resolved_by,created_at,updated_at")
+    .in("status", ["OPEN", "UNDER_REVIEW"])
+    .order("created_at", { ascending: false })
+    .limit(DEFAULT_LIMIT);
+  if (error) throw error;
+
+  const orderIds = unique((disputes ?? []).map((row: any) => row.order_id));
+  const orders = await loadOrdersByIds(admin, orderIds);
+  const listingIds = unique(Object.values(orders).map((row: any) => row?.listing_id));
+  const listings = await loadListingsByIds(admin, listingIds);
+
+  const { data: deliverables, error: deliverableError } = orderIds.length
+    ? await admin.from("market_deliverables").select("id,order_id,uploaded_by,created_at").in("order_id", orderIds)
+    : { data: [], error: null };
+  if (deliverableError) throw deliverableError;
+  const deliverablesByOrder = byId(deliverables, "order_id");
+
+  const profileIds = unique([
+    ...(disputes ?? []).flatMap((row: any) => [row.opened_by, row.resolved_by]),
+    ...Object.values(orders).flatMap((row: any) => [row?.buyer_id, row?.seller_id]),
+    ...Object.values(listings).map((row: any) => row?.seller_id),
+  ]);
+  const profiles = await loadProfiles(admin, profileIds);
+  const sellers = await loadSellerProfiles(admin, profileIds);
+
+  return {
+    disputes: (disputes ?? []).map((dispute: any) => {
+      const order = orders[String(dispute.order_id)] ?? null;
+      const listing = order ? listings[String(order.listing_id)] ?? null : null;
+      return {
+        ...dispute,
+        order,
+        listing,
+        deliverable: deliverablesByOrder[String(dispute.order_id)] ?? null,
+        opened_by_user: userBundle(dispute.opened_by, profiles, sellers),
+        buyer: userBundle(order?.buyer_id, profiles, sellers),
+        seller: userBundle(order?.seller_id, profiles, sellers),
+      };
+    }),
+  };
+}
+
+async function loadModeration(admin: any) {
+  const [sellerRes, listingRes] = await Promise.all([
+    admin
+      .from("market_seller_profiles")
+      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_listings")
+      .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+  ]);
+
+  if (sellerRes.error) throw sellerRes.error;
+  if (listingRes.error) throw listingRes.error;
+
+  const profileIds = unique([
+    ...(sellerRes.data ?? []).map((row: any) => row.user_id),
+    ...(listingRes.data ?? []).map((row: any) => row.seller_id),
+  ]);
+  const profiles = await loadProfiles(admin, profileIds);
+  const sellers = await loadSellerProfiles(admin, profileIds);
+
+  return {
+    sellers: (sellerRes.data ?? []).map((seller: any) => ({
+      ...seller,
+      profile: profiles[String(seller.user_id)] ?? null,
+    })),
+    listings: (listingRes.data ?? []).map((listing: any) => ({
+      ...listing,
+      seller: userBundle(listing.seller_id, profiles, sellers),
+    })),
+  };
+}
+
+async function loadVerification(admin: any) {
+  const { data, error } = await admin
+    .from("market_verification_requests")
+    .select("id,user_id,status,note,admin_note,submitted_at,reviewed_at,reviewed_by,created_at,updated_at,provider,verification_type,provider_applicant_id,provider_external_user_id,provider_level_name,provider_review_status,provider_review_answer,provider_review_reject_type,provider_reject_labels,country_code,document_type,provider_last_event_type,provider_last_event_at,verified_at,last_error")
+    .order("updated_at", { ascending: false })
+    .limit(DEFAULT_LIMIT);
+  if (error) throw error;
+
+  const profileIds = unique((data ?? []).flatMap((row: any) => [row.user_id, row.reviewed_by]));
+  const profiles = await loadProfiles(admin, profileIds);
+  const sellers = await loadSellerProfiles(admin, profileIds);
+
+  return {
+    requests: (data ?? []).map((request: any) => ({
+      ...request,
+      user: userBundle(request.user_id, profiles, sellers),
+      reviewed_by_user: userBundle(request.reviewed_by, profiles, sellers),
+    })),
+  };
+}
+
+async function loadEscrow(admin: any) {
+  const [ordersRes, chainsRes, stocksRes, auditsRes] = await Promise.all([
+    admin
+      .from("market_orders")
+      .select("id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,version,fee_amount,created_at,in_escrow_at,out_for_delivery_at,deliverable_uploaded_at,delivered_at,released_at,refunded_at,cancelled_at")
+      .in("status", ["IN_ESCROW", "DISPUTED", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED", "DELIVERED"])
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_chain_config")
+      .select("id,chain,chain_id,escrow_address,confirmations_required,active,created_at,updated_at")
+      .order("chain", { ascending: true }),
+    admin
+      .from("market_stock_identities")
+      .select("id,store_id,slug,name,symbol,chain,token_address,pool_address,active,launch_guard_until,trading_paused_until,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_audit_logs")
+      .select("id,actor_id,actor_type,action,entity_type,entity_id,payload,created_at")
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+  ]);
+
+  if (ordersRes.error) throw ordersRes.error;
+  if (chainsRes.error) throw chainsRes.error;
+  if (stocksRes.error) throw stocksRes.error;
+  if (auditsRes.error) throw auditsRes.error;
+
+  const orderIds = unique((ordersRes.data ?? []).map((row: any) => row.id));
+  const listingIds = unique((ordersRes.data ?? []).map((row: any) => row.listing_id));
+  const profileIds = unique([
+    ...(ordersRes.data ?? []).flatMap((row: any) => [row.buyer_id, row.seller_id]),
+    ...(stocksRes.data ?? []).map((row: any) => row.store_id),
+    ...(auditsRes.data ?? []).map((row: any) => row.actor_id),
+  ]);
+
+  const [listings, profiles, sellers, escrowsRes, intentsRes, disputesRes] = await Promise.all([
+    loadListingsByIds(admin, listingIds),
+    loadProfiles(admin, profileIds),
+    loadSellerProfiles(admin, profileIds),
+    orderIds.length
+      ? admin.from("market_crypto_escrows").select("order_id,chain,buyer_wallet,seller_wallet,token_address,escrow_address,amount_units,amount_raw,deposited_tx_hash,released_tx_hash,refunded_tx_hash,deposited_at,released_at,refunded_at,order_key,created_at,updated_at").in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? admin.from("market_crypto_intents").select("id,order_id,intent_type,status,chain,from_wallet,to_wallet,amount_units,amount_raw,client_reference,tx_hash,failure_reason,created_at,updated_at").in("order_id", orderIds).order("created_at", { ascending: false }).limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? admin.from("market_disputes").select("id,order_id,status,resolution,created_at,updated_at").in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (escrowsRes.error) throw escrowsRes.error;
+  if (intentsRes.error) throw intentsRes.error;
+  if (disputesRes.error) throw disputesRes.error;
+
+  const escrows = byId(escrowsRes.data, "order_id");
+  const disputes = byId(disputesRes.data, "order_id");
+  const intentsByOrder: Record<string, any[]> = {};
+  for (const intent of intentsRes.data ?? []) {
+    const orderId = String(intent.order_id ?? "");
+    if (!orderId) continue;
+    intentsByOrder[orderId] = [...(intentsByOrder[orderId] ?? []), intent];
+  }
+
+  return {
+    orders: (ordersRes.data ?? []).map((order: any) => ({
+      ...order,
+      listing: listings[String(order.listing_id)] ?? null,
+      buyer: userBundle(order.buyer_id, profiles, sellers),
+      seller: userBundle(order.seller_id, profiles, sellers),
+      crypto_escrow: escrows[String(order.id)] ?? null,
+      crypto_intents: intentsByOrder[String(order.id)] ?? [],
+      dispute: disputes[String(order.id)] ?? null,
+    })),
+    chains: chainsRes.data ?? [],
+    stocks: (stocksRes.data ?? []).map((stock: any) => ({
+      ...stock,
+      store: userBundle(stock.store_id, profiles, sellers),
+    })),
+    audit_events: auditsRes.data ?? [],
+  };
+}
+
+Deno.serve(async (req) => {
+  if (req.method !== "POST") return methodNotAllowed(req);
+
+  try {
+    const ctx = await getAdminContext(req, { requireSession: true });
+    if (ctx instanceof Response) return ctx;
+
+    const admin = supabaseAdminClient();
+    const modules: Record<string, unknown> = {};
+
+    if (canAny(ctx, ["disputes.read", "disputes.resolve", "complaints.read", "complaints.respond"])) {
+      modules.support = await loadSupport(admin);
+    }
+
+    if (canAny(ctx, ["users.moderate", "users.delete", "listings.moderate", "listings.delete"])) {
+      modules.moderation = await loadModeration(admin);
+    }
+
+    if (canAny(ctx, ["verification.read", "verification.review"])) {
+      modules.verification = await loadVerification(admin);
+    }
+
+    if (canAny(ctx, ["escrow.read", "escrow.settle", "chain.read", "chain.admin"])) {
+      modules.escrow = await loadEscrow(admin);
+    }
+
+    return ok({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      admin: {
+        user_id: ctx.userId,
+        role_key: ctx.roleKey,
+        role_name: ctx.roleName,
+        permissions: ctx.permissions,
+      },
+      modules,
+    });
+  } catch (e) {
+    return adminError(e);
+  }
+});

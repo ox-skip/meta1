@@ -6,7 +6,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const blocked = await requireAdmin(req);
+    const blocked = await requireAdmin(req, { requireSession: true, permissions: ["chain.admin"] });
     if (blocked) return blocked;
 
     const admin = supabaseAdminClient();
