@@ -30,6 +30,11 @@ function adminNote(input: unknown) {
   return String(input ?? "").trim().slice(0, 1000) || null;
 }
 
+function adminPassword(input: unknown) {
+  const password = String(input ?? "");
+  return password.trim() ? password : null;
+}
+
 async function audit(admin: any, ctx: AdminContext, input: {
   action: string;
   entity_type: string;
@@ -324,6 +329,104 @@ async function stableChainAction(admin: any, ctx: AdminContext, req: Request, bo
   return ok({ ok: true, result: data });
 }
 
+async function resolveProfileByEmail(admin: any, emailInput: unknown) {
+  const email = String(emailInput ?? "").trim().toLowerCase();
+  if (!email || !email.includes("@")) throw new Error("valid user email is required");
+
+  const { data, error } = await admin
+    .from("profiles")
+    .select("id,email,username,full_name")
+    .ilike("email", email)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.id) throw new Error("No existing user profile found for that email. Ask the user to sign up first.");
+  return data;
+}
+
+async function loadAdminRole(admin: any, roleKey: string) {
+  const { data, error } = await admin
+    .from("market_admin_roles")
+    .select("key,name")
+    .eq("key", roleKey)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.key) throw new Error("Unknown admin role");
+  return data;
+}
+
+async function upsertAdminUser(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "admin.members.manage");
+  if (blocked) return blocked;
+
+  const roleKey = String(body.role_key ?? "").trim();
+  if (!roleKey) return bad("role_key required");
+  await loadAdminRole(admin, roleKey);
+
+  const target = body.user_id
+    ? { id: requireUuid("user_id", body.user_id), email: null }
+    : await resolveProfileByEmail(admin, body.email);
+
+  const isSelf = target.id === ctx.userId;
+  const isActive = body.is_active === undefined ? true : requireBoolean("is_active", body.is_active);
+  if (isSelf && roleKey !== ctx.roleKey) return bad("You cannot change your own admin role");
+  if (isSelf && !isActive) return bad("You cannot remove your own admin access");
+
+  const password = adminPassword(body.password);
+  const displayName = String(body.display_name ?? "").trim() || null;
+
+  const { data, error } = await admin.rpc("market_admin_upsert_user", {
+    p_target_user_id: target.id,
+    p_role_key: roleKey,
+    p_password: password,
+    p_display_name: displayName,
+    p_is_active: isActive,
+    p_actor_id: ctx.userId === "service-token" ? null : ctx.userId,
+  });
+  if (error) return bad(error.message);
+
+  const row = Array.isArray(data) ? data[0] : data;
+  await audit(admin, ctx, {
+    action: password ? "ADMIN_MEMBER_UPSERTED_PASSWORD_SET" : "ADMIN_MEMBER_UPSERTED",
+    entity_type: "market_admin_users",
+    entity_id: target.id,
+    payload: {
+      role_key: roleKey,
+      is_active: isActive,
+      email: target.email ?? body.email ?? null,
+      password_changed: Boolean(password),
+      note: adminNote(body.note),
+    },
+  });
+
+  return ok({ ok: true, admin_user: row });
+}
+
+async function setAdminUserActive(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "admin.members.manage");
+  if (blocked) return blocked;
+
+  const userId = requireUuid("user_id", body.user_id);
+  const isActive = requireBoolean("is_active", body.is_active);
+  if (userId === ctx.userId && !isActive) return bad("You cannot remove your own admin access");
+
+  const { data, error } = await admin
+    .from("market_admin_users")
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .select("user_id,role_key,is_active,display_name,updated_at,last_login_at,last_password_change_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: isActive ? "ADMIN_MEMBER_REACTIVATED" : "ADMIN_MEMBER_REMOVED",
+    entity_type: "market_admin_users",
+    entity_id: userId,
+    payload: { target_role_key: data.role_key, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, admin_user: data });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -344,6 +447,8 @@ Deno.serve(async (req) => {
     if (action === "settle_order") return await settleOrder(admin, ctx, req, body);
     if (action === "set_stock_trading_pause") return await setStockTradingPause(admin, ctx, req, body);
     if (action === "stable_chain_action") return await stableChainAction(admin, ctx, req, body);
+    if (action === "upsert_admin_user") return await upsertAdminUser(admin, ctx, body);
+    if (action === "set_admin_active") return await setAdminUserActive(admin, ctx, body);
 
     return bad("Unsupported admin action");
   } catch (e) {

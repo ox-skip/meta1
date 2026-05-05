@@ -6,7 +6,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const ctx = await getAdminContext(req, { requireSession: true, permissions: ["audit.read"] });
+    const ctx = await getAdminContext(req, { requireSession: true });
     if (ctx instanceof Response) return ctx;
 
     const admin = supabaseAdminClient();
@@ -93,6 +93,12 @@ Deno.serve(async (req) => {
           title: "Escrow and chain operations",
           description: "Track crypto settlement state, reconcile escrow events, and control chain-level operations.",
           permission: "escrow.settle",
+        },
+        {
+          key: "admins",
+          title: "Admin members and roles",
+          description: "Add admins, change roles, reset admin passwords, and remove admin access.",
+          permission: "admin.members.manage",
         },
       ],
     });

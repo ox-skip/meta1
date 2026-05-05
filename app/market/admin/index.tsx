@@ -38,7 +38,7 @@ const SUCCESS = "#34D399";
 const WARNING = "#FBBF24";
 const DANGER = "#F87171";
 
-type ModuleKey = "support" | "moderation" | "verification" | "escrow";
+type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "admins";
 
 function shortId(value?: string | null) {
   const id = String(value ?? "");
@@ -169,6 +169,10 @@ export default function MarketAdminIndex() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [actionNote, setActionNote] = useState("");
   const [workingKey, setWorkingKey] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminDisplayName, setAdminDisplayName] = useState("");
+  const [adminRoleKey, setAdminRoleKey] = useState("support_admin");
+  const [adminPassword, setAdminPassword] = useState("");
 
   const visibleModules = useMemo(() => {
     const permissions = overview?.admin.permissions ?? [];
@@ -752,6 +756,221 @@ export default function MarketAdminIndex() {
     );
   }
 
+  function renderAdmins() {
+    const adminData = workspace?.modules.admins;
+    const adminUsers = adminData?.users ?? [];
+    const roles = adminData?.roles ?? [];
+    const canManage = hasPermission("admin.members.manage");
+
+    async function submitAdminUser() {
+      const email = adminEmail.trim();
+      if (!email) {
+        setError("Enter the user's account email.");
+        return;
+      }
+      if (!adminRoleKey) {
+        setError("Choose an admin role.");
+        return;
+      }
+
+      await performAction(
+        `admin-upsert-${email}`,
+        {
+          action: "upsert_admin_user",
+          email,
+          role_key: adminRoleKey,
+          display_name: adminDisplayName,
+          password: adminPassword,
+          is_active: true,
+        },
+        true,
+      );
+      setAdminPassword("");
+    }
+
+    function loadAdminIntoForm(row: any) {
+      setAdminEmail(row.profile?.email ?? "");
+      setAdminDisplayName(row.display_name ?? row.profile?.full_name ?? row.profile?.username ?? "");
+      setAdminRoleKey(row.role_key ?? "support_admin");
+      setAdminPassword("");
+    }
+
+    return (
+      <View style={{ marginTop: 18, gap: 14 }}>
+        <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Add or edit admin</Text>
+          <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+            Admin passwords are separate from normal Supabase login passwords. Leave password blank when only changing role or display name.
+          </Text>
+
+          <View style={{ marginTop: 14, gap: 12 }}>
+            <TextInput
+              value={adminEmail}
+              onChangeText={setAdminEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="Existing user email"
+              placeholderTextColor="rgba(234,242,255,0.38)"
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                backgroundColor: PANEL,
+                color: TEXT,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                fontSize: 14,
+              }}
+            />
+            <TextInput
+              value={adminDisplayName}
+              onChangeText={setAdminDisplayName}
+              placeholder="Admin display name"
+              placeholderTextColor="rgba(234,242,255,0.38)"
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                backgroundColor: PANEL,
+                color: TEXT,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                fontSize: 14,
+              }}
+            />
+            <TextInput
+              value={adminPassword}
+              onChangeText={setAdminPassword}
+              secureTextEntry
+              placeholder="Admin password, required for new admin"
+              placeholderTextColor="rgba(234,242,255,0.38)"
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.12)",
+                backgroundColor: PANEL,
+                color: TEXT,
+                paddingHorizontal: 14,
+                paddingVertical: 13,
+                fontSize: 14,
+              }}
+            />
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              {roles.map((role: any) => {
+                const selected = adminRoleKey === role.key;
+                return (
+                  <Pressable
+                    key={role.key}
+                    onPress={() => setAdminRoleKey(role.key)}
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                      backgroundColor: selected ? "rgba(251,191,36,0.22)" : "rgba(255,255,255,0.05)",
+                      borderWidth: 1,
+                      borderColor: selected ? "rgba(251,191,36,0.55)" : "rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <Text style={{ color: selected ? WARNING : MUTED, fontWeight: "900", fontSize: 12 }}>{role.name ?? role.key}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {renderActionNote()}
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <ActionButton
+                icon="person-add-outline"
+                label="Save admin"
+                color={SUCCESS}
+                disabled={!canManage}
+                loading={workingKey === `admin-upsert-${adminEmail.trim()}`}
+                onPress={submitAdminUser}
+              />
+              <ActionButton
+                icon="refresh-outline"
+                label="Clear form"
+                color={ACCENT}
+                onPress={() => {
+                  setAdminEmail("");
+                  setAdminDisplayName("");
+                  setAdminRoleKey("support_admin");
+                  setAdminPassword("");
+                }}
+              />
+            </View>
+          </View>
+        </View>
+
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Admin members</Text>
+        {adminUsers.length ? adminUsers.map((adminUser: any) => {
+          const active = adminUser.is_active !== false;
+          const role = roles.find((item: any) => item.key === adminUser.role_key);
+          return (
+            <RecordCard key={adminUser.user_id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>
+                    {adminUser.display_name || adminUser.profile?.full_name || adminUser.profile?.username || adminUser.profile?.email || shortId(adminUser.user_id)}
+                  </Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{adminUser.profile?.email ?? shortId(adminUser.user_id)}</Text>
+                </View>
+                <Pill label={active ? "ACTIVE" : "REMOVED"} color={active ? SUCCESS : DANGER} />
+              </View>
+
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="Role" value={role?.name ?? adminUser.role_key} />
+                <InfoLine label="Last login" value={formatDate(adminUser.last_login_at)} />
+                <InfoLine label="Password changed" value={formatDate(adminUser.last_password_change_at)} />
+                <InfoLine label="Updated" value={formatDate(adminUser.updated_at)} />
+              </View>
+
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton
+                  icon="create-outline"
+                  label="Edit in form"
+                  color={ACCENT}
+                  disabled={!canManage}
+                  onPress={() => loadAdminIntoForm(adminUser)}
+                />
+                <ActionButton
+                  icon={active ? "person-remove-outline" : "person-add-outline"}
+                  label={active ? "Remove access" : "Reactivate"}
+                  color={active ? DANGER : SUCCESS}
+                  disabled={!canManage}
+                  loading={workingKey === `admin-active-${adminUser.user_id}`}
+                  onPress={() => performAction(`admin-active-${adminUser.user_id}`, { action: "set_admin_active", user_id: adminUser.user_id, is_active: !active }, true)}
+                />
+              </View>
+            </RecordCard>
+          );
+        }) : (
+          <EmptyState title="No admin members" subtitle="Add an existing signed-up user as an admin from the form above." />
+        )}
+
+        <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 18 }}>Role boundaries</Text>
+        {roles.length ? roles.map((role: any) => (
+          <RecordCard key={role.key}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <View style={{ flex: 1, minWidth: 220 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{role.name ?? role.key}</Text>
+                <Text style={{ marginTop: 5, color: MUTED, fontSize: 13, lineHeight: 20 }}>{role.description ?? "No description"}</Text>
+              </View>
+              <Pill label={`rank ${role.rank ?? 0}`} color={ACCENT} />
+            </View>
+            <Text style={{ marginTop: 10, color: WARNING, fontWeight: "800", fontSize: 12 }}>
+              {(role.permissions ?? []).join(", ")}
+            </Text>
+          </RecordCard>
+        )) : (
+          <EmptyState title="No roles" subtitle="Run the admin foundation migration to seed role definitions." />
+        )}
+      </View>
+    );
+  }
+
   function renderActiveModule() {
     const module = visibleModules.find((item) => item.key === currentModule);
     return (
@@ -768,6 +987,7 @@ export default function MarketAdminIndex() {
         {currentModule === "moderation" ? renderModeration() : null}
         {currentModule === "verification" ? renderVerification() : null}
         {currentModule === "escrow" ? renderEscrow() : null}
+        {currentModule === "admins" ? renderAdmins() : null}
       </View>
     );
   }

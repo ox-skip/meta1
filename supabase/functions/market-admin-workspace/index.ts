@@ -269,6 +269,37 @@ async function loadEscrow(admin: any) {
   };
 }
 
+async function loadAdminMembers(admin: any) {
+  const [adminsRes, rolesRes] = await Promise.all([
+    admin
+      .from("market_admin_users")
+      .select("user_id,role_key,is_active,display_name,notes,created_by,created_at,updated_at,last_login_at,last_password_change_at")
+      .order("updated_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_admin_roles")
+      .select("key,name,description,permissions,rank,created_at,updated_at")
+      .order("rank", { ascending: true }),
+  ]);
+
+  if (adminsRes.error) throw adminsRes.error;
+  if (rolesRes.error) throw rolesRes.error;
+
+  const profileIds = unique([
+    ...(adminsRes.data ?? []).flatMap((row: any) => [row.user_id, row.created_by]),
+  ]);
+  const profiles = await loadProfiles(admin, profileIds);
+
+  return {
+    users: (adminsRes.data ?? []).map((adminUser: any) => ({
+      ...adminUser,
+      profile: profiles[String(adminUser.user_id)] ?? null,
+      created_by_profile: profiles[String(adminUser.created_by)] ?? null,
+    })),
+    roles: rolesRes.data ?? [],
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -293,6 +324,10 @@ Deno.serve(async (req) => {
 
     if (canAny(ctx, ["escrow.read", "escrow.settle", "chain.read", "chain.admin"])) {
       modules.escrow = await loadEscrow(admin);
+    }
+
+    if (canAny(ctx, ["admin.members.manage", "admin.roles.read"])) {
+      modules.admins = await loadAdminMembers(admin);
     }
 
     return ok({

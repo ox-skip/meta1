@@ -5,6 +5,10 @@
 -- Important: public.market_admin_users is keyed by user_id, so one Supabase
 -- account can only have one active admin role at a time. To change the role,
 -- rerun this block with a different role_key.
+--
+-- Each admin user has their own password_hash row. Do not reuse the same
+-- password for multiple admins. After the dashboard admin-member tools are
+-- deployed, prefer adding/resetting admins from the Super Admin screen.
 
 WITH target_user AS (
   SELECT id
@@ -40,12 +44,14 @@ SET
   last_password_change_at = now();
 
 -- Optional role examples for separate accounts:
+-- Copy the block above and change the email, role_key, password, and
+-- display_name when you need to add another admin account manually.
+--
+-- Valid role_key values:
+-- super_admin
 -- operations_admin
 -- support_admin
 -- compliance_admin
---
--- Copy the block above and change the email, role_key, password, and
--- display_name when you need to add another admin account.
 
 -- Disable admin access for a user
 -- UPDATE public.market_admin_users

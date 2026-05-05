@@ -22,7 +22,8 @@ supabase db push
 
 This applies the admin foundation and role-boundary migrations, including
 `supabase/migrations/20260414120000_market_admin_foundation.sql` and
-`supabase/migrations/20260505170000_market_admin_role_boundaries.sql`.
+`supabase/migrations/20260505170000_market_admin_role_boundaries.sql`, plus the
+member-management helper migration.
 
 ## 4. Deploy the new admin edge functions
 
