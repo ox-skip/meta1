@@ -520,6 +520,7 @@ export default function MarketAdminIndex() {
   const [membershipOk, setMembershipOk] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [overview, setOverview] = useState<MarketAdminOverview | null>(null);
   const [workspace, setWorkspace] = useState<MarketAdminWorkspace | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
@@ -590,6 +591,7 @@ export default function MarketAdminIndex() {
 
   async function checkMembershipAndMaybeLoad() {
     setError(null);
+    setNotice(null);
     try {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
@@ -638,6 +640,7 @@ export default function MarketAdminIndex() {
   async function onUnlock() {
     setSubmitting(true);
     setError(null);
+    setNotice(null);
     try {
       await loginAdmin(password);
       setPassword("");
@@ -653,6 +656,7 @@ export default function MarketAdminIndex() {
   async function onLogout() {
     setCheckingSession(true);
     setError(null);
+    setNotice(null);
     try {
       await logoutAdmin();
       setOverview(null);
@@ -668,10 +672,16 @@ export default function MarketAdminIndex() {
     const execute = async () => {
       setWorkingKey(actionKey);
       setError(null);
+      setNotice(null);
       try {
-        await runAdminAction({ ...body, note: actionNote });
+        const result = await runAdminAction({ ...body, note: actionNote });
+        if ((result as any)?.warning) setNotice(String((result as any).warning));
         setActionNote("");
-        await loadUnlockedDashboard();
+        try {
+          await loadUnlockedDashboard();
+        } catch (e: any) {
+          setError(String(e?.message || e || "Action saved. Refresh the workspace to view the latest status."));
+        }
       } catch (e: any) {
         setError(String(e?.message || e || "Admin action failed."));
       } finally {
@@ -685,10 +695,21 @@ export default function MarketAdminIndex() {
       return;
     }
 
-    Alert.alert("Confirm admin action", "This will change live marketplace data.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Confirm", style: "destructive", onPress: execute },
-    ]);
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const browserConfirm = (globalThis as any)?.confirm;
+      const message = "This action changes marketplace access and activity.";
+      if (typeof browserConfirm === "function") {
+        resolve(Boolean(browserConfirm(message)));
+        return;
+      }
+
+      Alert.alert("Confirm action", message, [
+        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+        { text: "Confirm", style: "destructive", onPress: () => resolve(true) },
+      ], { cancelable: true, onDismiss: () => resolve(false) });
+    });
+
+    if (confirmed) await execute();
   }
 
   function renderModuleNavItem(module: MarketAdminOverview["modules"][number], compact = false) {
@@ -1774,6 +1795,11 @@ export default function MarketAdminIndex() {
               {error ? (
                 <View style={{ marginTop: 18, borderRadius: 8, padding: 16, backgroundColor: "rgba(248,113,113,0.12)", borderWidth: 1, borderColor: "rgba(248,113,113,0.25)" }}>
                   <Text style={{ color: "#FECACA", fontWeight: "800" }}>{error}</Text>
+                </View>
+              ) : null}
+              {notice ? (
+                <View style={{ marginTop: 18, borderRadius: 8, padding: 16, backgroundColor: "rgba(245,158,11,0.12)", borderWidth: 1, borderColor: "rgba(245,158,11,0.25)" }}>
+                  <Text style={{ color: "#FDE68A", fontWeight: "800" }}>{notice}</Text>
                 </View>
               ) : null}
 

@@ -173,23 +173,34 @@ async function banUser(admin: any, ctx: AdminContext, body: any) {
   const userId = requireUuid("user_id", body.user_id);
   if (userId === ctx.userId) return bad("You cannot ban your own admin account");
 
+  const nowIso = new Date().toISOString();
   const banDuration = String(body.ban_duration ?? "876000h").trim() || "876000h";
+
+  const { error: sellerError } = await admin
+    .from("market_seller_profiles")
+    .update({ active: false, updated_at: nowIso })
+    .eq("user_id", userId);
+  if (sellerError) return bad(sellerError.message);
+
+  const { error: listingError } = await admin
+    .from("market_listings")
+    .update({ is_active: false, updated_at: nowIso })
+    .eq("seller_id", userId);
+  if (listingError) return bad(listingError.message);
+
   const { data, error } = await admin.auth.admin.updateUserById(userId, {
     ban_duration: banDuration,
   });
-  if (error) return bad(error.message);
-
-  await admin.from("market_seller_profiles").update({ active: false, updated_at: new Date().toISOString() }).eq("user_id", userId);
-  await admin.from("market_listings").update({ is_active: false, updated_at: new Date().toISOString() }).eq("seller_id", userId);
+  const warning = error ? `Marketplace profile was banned, but login ban failed: ${error.message}` : null;
 
   await audit(admin, ctx, {
-    action: "USER_LOGIN_BANNED",
+    action: error ? "USER_MARKETPLACE_BANNED_AUTH_FAILED" : "USER_LOGIN_BANNED",
     entity_type: "profiles",
     entity_id: userId,
-    payload: { ban_duration: banDuration, note: adminNote(body.note) },
+    payload: { ban_duration: banDuration, auth_banned: !error, auth_error: error?.message ?? null, note: adminNote(body.note) },
   });
 
-  return ok({ ok: true, user: data.user ?? null });
+  return ok({ ok: true, user: data?.user ?? null, warning });
 }
 
 async function reviewVerification(admin: any, ctx: AdminContext, body: any) {
