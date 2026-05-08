@@ -1,5 +1,6 @@
--- Helper used by the admin dashboard to add/update admins while keeping
--- bcrypt hashing inside Postgres.
+-- Fix PL/pgSQL name resolution in market_admin_upsert_user.
+-- RETURNS TABLE exposes user_id as an output variable, so ON CONFLICT (user_id)
+-- can be ambiguous inside the function. Target the primary-key constraint instead.
 
 CREATE OR REPLACE FUNCTION public.market_admin_upsert_user(
   p_target_user_id uuid,
