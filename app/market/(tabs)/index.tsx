@@ -11,8 +11,10 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
@@ -33,6 +35,8 @@ import { formatCountryLabel } from "@/utils/countryNames";
 const BG0 = "#05040B";
 const BG1 = "#0A0620";
 const PURPLE = "#7C3AED";
+const AMBER = "#F59E0B";
+const TEAL = "#14B8A6";
 const CARD = "rgba(255,255,255,0.06)";
 const BORDER = "rgba(255,255,255,0.10)";
 const MUTED = "rgba(255,255,255,0.65)";
@@ -122,19 +126,23 @@ function SectionPill({
   active,
   onPress,
   icon,
+  stretch = true,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
+  stretch?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={{
-        flex: 1,
+        flex: stretch ? 1 : undefined,
+        minWidth: stretch ? undefined : 106,
         height: 46,
-        borderRadius: 999,
+        borderRadius: 16,
+        paddingHorizontal: stretch ? 8 : 14,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: active ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.06)",
@@ -158,7 +166,7 @@ function QuickAction({
   accent = PURPLE,
 }: {
   label: string;
-  subtitle: string;
+  subtitle?: string;
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   accent?: string;
@@ -168,7 +176,8 @@ function QuickAction({
       onPress={onPress}
       style={{
         flex: 1,
-        borderRadius: 18,
+        minWidth: 132,
+        borderRadius: 16,
         padding: 12,
         borderWidth: 1,
         borderColor: `${accent}66`,
@@ -179,7 +188,7 @@ function QuickAction({
         style={{
           width: 36,
           height: 36,
-          borderRadius: 13,
+          borderRadius: 12,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: `${accent}33`,
@@ -190,8 +199,44 @@ function QuickAction({
         <Ionicons name={icon} size={17} color="#fff" />
       </View>
       <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 13 }}>{label}</Text>
-      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.68)", fontSize: 11 }}>{subtitle}</Text>
+      {subtitle ? (
+        <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.68)", fontSize: 11 }}>{subtitle}</Text>
+      ) : null}
     </Pressable>
+  );
+}
+
+function MarketMetric({
+  label,
+  value,
+  icon,
+  tone = PURPLE,
+}: {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone?: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 104,
+        borderRadius: 14,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: `${tone}38`,
+        backgroundColor: "rgba(255,255,255,0.045)",
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+        <Ionicons name={icon} size={14} color={tone} />
+        <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "800", fontSize: 11 }}>{label}</Text>
+      </View>
+      <Text style={{ marginTop: 7, color: "#fff", fontWeight: "900", fontSize: 18 }} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -295,6 +340,8 @@ function CardBadge({
 }
 
 export default function MarketHome() {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [section, setSection] = useState<FeedSection>("all");
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
@@ -314,6 +361,10 @@ export default function MarketHome() {
   const [locatingCountry, setLocatingCountry] = useState(false);
 
   const main = section === "service" ? "service" : section === "product" ? "product" : null;
+  const isDesktop = width >= 980;
+  const pagePadding = width >= 820 ? 24 : 16;
+  const contentMaxWidth = width >= 1240 ? 1120 : undefined;
+  const mobileActionStack = width < 390;
   const categories = useMemo<CategoryItem[]>(
     () => (main ? getCategoriesByMain(main as MarketMainCategory) : []),
     [main],
@@ -511,8 +562,17 @@ export default function MarketHome() {
       return text.includes(query);
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
-  const listingColumns = section === "social" || directoryMode !== "listings" ? 1 : 2;
   const isListingDirectory = section !== "social" && directoryMode === "listings";
+  const responsiveListingColumns = width >= 1120 ? 3 : width >= 700 ? 2 : 1;
+  const listingColumns = isListingDirectory ? responsiveListingColumns : 1;
+  const listingCardWidth = listingColumns === 1 ? undefined : listingColumns === 2 ? "48.6%" : "31.7%";
+  const listingMediaHeight =
+    listingColumns === 1
+      ? Math.min(280, Math.max(210, Math.round(width * 0.58)))
+      : listingColumns === 2
+      ? 194
+      : 178;
+  const contentBottomPadding = isDesktop ? 38 : Math.max(122, insets.bottom + 102);
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
   const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
   const searchPlaceholder =
@@ -569,15 +629,15 @@ export default function MarketHome() {
     const categoryLabel = item.category === "service" ? "Service" : "Product";
     const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
     const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
-    const mediaHeight = 192;
 
     return (
       <Pressable
         onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
         style={{
-          width: "48.4%",
+          width: listingCardWidth as any,
+          marginHorizontal: listingColumns === 1 ? pagePadding : 0,
           marginTop: 12,
-          borderRadius: 20,
+          borderRadius: 18,
           overflow: "hidden",
           borderWidth: 1,
           borderColor: "rgba(255,255,255,0.08)",
@@ -589,7 +649,7 @@ export default function MarketHome() {
           elevation: 6,
         }}
       >
-        <View style={{ height: mediaHeight, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <View style={{ height: listingMediaHeight, backgroundColor: "rgba(255,255,255,0.06)" }}>
           {coverUrl ? (
             <MarketMediaView
               uri={coverUrl}
@@ -741,7 +801,15 @@ export default function MarketHome() {
     return (
       <Pressable
         onPress={() => router.push(`/market/profile/${item.market_username}` as any)}
-        style={{ borderRadius: 18, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, marginTop: 10 }}
+        style={{
+          marginHorizontal: pagePadding,
+          borderRadius: 16,
+          padding: 12,
+          backgroundColor: CARD,
+          borderWidth: 1,
+          borderColor: BORDER,
+          marginTop: 10,
+        }}
       >
         <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
           <View style={{ width: 46, height: 46, borderRadius: 23, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
@@ -768,8 +836,18 @@ export default function MarketHome() {
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
         keyExtractor={(it: any, idx) => String((it as any)?.id || (it as any)?.user_id || idx)}
         numColumns={listingColumns}
-        columnWrapperStyle={listingColumns === 2 ? { paddingHorizontal: 14, justifyContent: "space-between" } : undefined}
-        contentContainerStyle={{ paddingBottom: 28, paddingTop: 2 }}
+        columnWrapperStyle={
+          listingColumns > 1
+            ? {
+                paddingHorizontal: pagePadding,
+                justifyContent: "space-between",
+                alignSelf: "center",
+                width: "100%",
+                maxWidth: contentMaxWidth,
+              }
+            : undefined
+        }
+        contentContainerStyle={{ paddingBottom: contentBottomPadding, paddingTop: 2 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -790,7 +868,7 @@ export default function MarketHome() {
         }
         renderItem={section === "social" ? undefined : directoryMode === "listings" ? renderListing : (renderSellerCard as any)}
         ListHeaderComponent={
-          <View style={{ paddingHorizontal: 16 }}>
+          <View style={{ paddingHorizontal: pagePadding, alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
             <AppHeader
               title="Marketplace"
               subtitle={section === "social" ? "Community, official channels, and marketplace updates" : "Escrow-protected buying and selling"}
@@ -798,11 +876,17 @@ export default function MarketHome() {
               rightSlot={<NotificationBell />}
             />
 
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: 10, marginHorizontal: -pagePadding }}
+              contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 10 }}
+            >
               <SectionPill
                 icon="apps-outline"
                 label="All"
                 active={section === "all"}
+                stretch={false}
                 onPress={() => {
                   setSection("all");
                   setDirectoryMode("listings");
@@ -813,6 +897,7 @@ export default function MarketHome() {
                 icon="storefront-outline"
                 label="Products"
                 active={section === "product"}
+                stretch={false}
                 onPress={() => {
                   setSection("product");
                   setDirectoryMode("listings");
@@ -823,6 +908,7 @@ export default function MarketHome() {
                 icon="construct-outline"
                 label="Services"
                 active={section === "service"}
+                stretch={false}
                 onPress={() => {
                   setSection("service");
                   setDirectoryMode("listings");
@@ -833,16 +919,77 @@ export default function MarketHome() {
                 icon="people-outline"
                 label="Social"
                 active={section === "social"}
+                stretch={false}
                 onPress={() => setSection("social")}
               />
-            </View>
+            </ScrollView>
+
+            {section !== "social" ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  flexDirection: "row",
+                  gap: 10,
+                  alignItems: "center",
+                  borderRadius: 18,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.12)",
+                  backgroundColor: "rgba(255,255,255,0.07)",
+                }}
+              >
+                <Ionicons name="search-outline" size={19} color="rgba(255,255,255,0.78)" />
+                <TextInput
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder={searchPlaceholder}
+                  placeholderTextColor="rgba(255,255,255,0.45)"
+                  returnKeyType="search"
+                  onSubmitEditing={() =>
+                    router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })
+                  }
+                  style={{ flex: 1, minWidth: 0, color: "#fff", fontWeight: "800", fontSize: 14 }}
+                />
+                {q.trim() ? (
+                  <Pressable
+                    onPress={() => setQ("")}
+                    hitSlop={8}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <Ionicons name="close" size={17} color="#fff" />
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(124,58,237,0.28)",
+                    borderWidth: 1,
+                    borderColor: "rgba(124,58,237,0.45)",
+                  }}
+                >
+                  <Ionicons name="arrow-forward" size={17} color="#fff" />
+                </Pressable>
+              </View>
+            ) : null}
 
             {section === "social" ? (
               <>
                 <View
                   style={{
                     marginTop: 12,
-                    borderRadius: 24,
+                    borderRadius: 18,
                     padding: 16,
                     backgroundColor: CARD,
                     borderWidth: 1,
@@ -851,32 +998,39 @@ export default function MarketHome() {
                 >
                   <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>SELLER BOARD</Text>
                   <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
-                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>{heroSubtitle}</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }} numberOfLines={2}>
+                    {heroSubtitle}
+                  </Text>
+                </View>
 
-                  <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
-                    <QuickAction
-                      label="Open Seller Board"
-                      subtitle="Open the dedicated seller updates view."
-                      icon="chatbubbles-outline"
-                      onPress={() => router.push("/market/social" as any)}
-                    />
-                    <QuickAction
-                      label="Back To Shopping"
-                      subtitle="Return to listings and categories."
-                      icon="storefront-outline"
-                      accent="#0EA5E9"
-                      onPress={() => {
-                        setSection("all");
-                        setDirectoryMode("listings");
-                        setSelectedSlug(null);
-                      }}
-                    />
-                  </View>
+                <View
+                  style={{
+                    marginTop: 10,
+                    flexDirection: mobileActionStack ? "column" : "row",
+                    gap: 10,
+                  }}
+                >
+                  <QuickAction
+                    label="Seller Board"
+                    icon="chatbubbles-outline"
+                    accent={AMBER}
+                    onPress={() => router.push("/market/social" as any)}
+                  />
+                  <QuickAction
+                    label="Shopping"
+                    icon="storefront-outline"
+                    accent="#0EA5E9"
+                    onPress={() => {
+                      setSection("all");
+                      setDirectoryMode("listings");
+                      setSelectedSlug(null);
+                    }}
+                  />
                 </View>
 
                 <OfficialMarketSocials />
 
-                <View style={{ marginTop: 12, marginHorizontal: -16, backgroundColor: "#120E0C", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+                <View style={{ marginTop: 12, marginHorizontal: -pagePadding, backgroundColor: "#120E0C", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
                   <View
                     style={{
                       paddingHorizontal: 16,
@@ -918,7 +1072,7 @@ export default function MarketHome() {
                 <View
                   style={{
                     marginTop: 12,
-                    borderRadius: 24,
+                    borderRadius: 18,
                     padding: 16,
                     backgroundColor: CARD,
                     borderWidth: 1,
@@ -929,46 +1083,73 @@ export default function MarketHome() {
                     {section === "service" ? "SERVICES" : "PRODUCTS"}
                   </Text>
                   <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
-                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>{heroSubtitle}</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }} numberOfLines={2}>
+                    {heroSubtitle}
+                  </Text>
 
-                  <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
-                    <QuickAction
-                      label={section === "all" ? "Browse Products" : "Browse Categories"}
-                      subtitle={
-                        section === "service"
-                          ? "Jump by skill or service type."
-                          : section === "product"
-                          ? "Jump by product type."
-                          : "Open product categories or switch to services above."
-                      }
-                      icon={section === "all" ? "storefront-outline" : "grid-outline"}
-                      onPress={() => {
-                        if (section === "all") {
-                          setSection("product");
-                          setDirectoryMode("listings");
-                          setSelectedSlug(null);
-                          return;
-                        }
-                        router.push({
-                          pathname: "/market/category" as any,
-                          params: { mode: section === "service" ? "service" : "product" },
-                        });
-                      }}
+                  <View
+                    style={{
+                      marginTop: 14,
+                      flexDirection: mobileActionStack ? "column" : "row",
+                      gap: 10,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <MarketMetric
+                      label="In view"
+                      value={String(resultCount)}
+                      icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
                     />
-                    <QuickAction
-                      label="Digital Stock"
-                      subtitle="Open the separate stock market."
-                      icon="trending-up-outline"
-                      accent="#14B8A6"
-                      onPress={() => router.push("/market/stock" as any)}
+                    <MarketMetric
+                      label="Scope"
+                      value={directoryMode === "listings" ? (feedScope === "country" ? "Local" : "Global") : "Stores"}
+                      icon={feedScope === "country" ? "location-outline" : "earth-outline"}
+                      tone={AMBER}
+                    />
+                    <MarketMetric
+                      label="Verified"
+                      value={String(verifiedSellers.length)}
+                      icon="checkmark-circle-outline"
+                      tone="#60A5FA"
                     />
                   </View>
                 </View>
 
                 <View
                   style={{
+                    marginTop: 10,
+                    flexDirection: mobileActionStack ? "column" : "row",
+                    gap: 10,
+                  }}
+                >
+                  <QuickAction
+                    label={section === "all" ? "Products" : "Categories"}
+                    icon={section === "all" ? "storefront-outline" : "grid-outline"}
+                    onPress={() => {
+                      if (section === "all") {
+                        setSection("product");
+                        setDirectoryMode("listings");
+                        setSelectedSlug(null);
+                        return;
+                      }
+                      router.push({
+                        pathname: "/market/category" as any,
+                        params: { mode: section === "service" ? "service" : "product" },
+                      });
+                    }}
+                  />
+                  <QuickAction
+                    label="Stock Market"
+                    icon="trending-up-outline"
+                    accent={TEAL}
+                    onPress={() => router.push("/market/stock" as any)}
+                  />
+                </View>
+
+                <View
+                  style={{
                     marginTop: 12,
-                    borderRadius: 22,
+                    borderRadius: 18,
                     padding: 14,
                     borderWidth: 1,
                     borderColor: BORDER,
@@ -1001,30 +1182,6 @@ export default function MarketHome() {
                     </View>
                   </View>
 
-                  <View style={{ marginTop: 12, flexDirection: "row", gap: 10, alignItems: "center", borderRadius: 18, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.04)" }}>
-                    <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.75)" />
-                    <TextInput
-                      value={q}
-                      onChangeText={setQ}
-                      placeholder={searchPlaceholder}
-                      placeholderTextColor="rgba(255,255,255,0.45)"
-                      style={{ flex: 1, color: "#fff", fontWeight: "700" }}
-                    />
-                    <Pressable
-                      onPress={() => router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })}
-                      style={{
-                        borderRadius: 12,
-                        paddingHorizontal: 12,
-                        paddingVertical: 9,
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Open search</Text>
-                    </Pressable>
-                  </View>
-
                   <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                     <Chip
                       label="Listings"
@@ -1053,7 +1210,7 @@ export default function MarketHome() {
                   <View
                     style={{
                       marginTop: 12,
-                      borderRadius: 22,
+                      borderRadius: 18,
                       padding: 14,
                       borderWidth: 1,
                       borderColor: BORDER,
