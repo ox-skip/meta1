@@ -294,7 +294,7 @@ function SellerMini({ seller, compact = false }: { seller?: SellerCard | null; c
             flex: 1,
           }}
         >
-          {secondaryLabel ? `${primaryLabel} • ${secondaryLabel}` : primaryLabel}
+          {secondaryLabel ? `${primaryLabel} ï¿½ ${secondaryLabel}` : primaryLabel}
         </Text>
         <VerifiedTick verified={seller.is_verified} />
       </View>
