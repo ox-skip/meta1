@@ -429,7 +429,7 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
     <GlassPanel style={{ padding: 14 }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14, letterSpacing: -0.5 }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14, letterSpacing: 0 }}>
             Trust timeline
           </Text>
           <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
@@ -911,7 +911,7 @@ export default function MarketHome() {
                 color: TEXT,
                 fontWeight: "900",
                 fontSize: listingColumns === 1 ? 24 : 21,
-                letterSpacing: -0.5,
+                letterSpacing: 0,
               }}
             >
               {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
@@ -1009,7 +1009,7 @@ export default function MarketHome() {
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ color: TEXT, fontWeight: "900", flexShrink: 1, letterSpacing: -0.5 }} numberOfLines={1}>{item.business_name || item.display_name || "Business"}</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", flexShrink: 1, letterSpacing: 0 }} numberOfLines={1}>{item.business_name || item.display_name || "Business"}</Text>
               <VerifiedTick verified={item.is_verified} />
             </View>
             <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>@{item.market_username || "profile"}</Text>
