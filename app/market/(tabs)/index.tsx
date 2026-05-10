@@ -381,34 +381,6 @@ function GlassPanel({
   );
 }
 
-function SkeletonBlock({
-  width = "100%",
-  height,
-  radius = 12,
-  style,
-}: {
-  width?: number | string;
-  height: number;
-  radius?: number;
-  style?: any;
-}) {
-  return (
-    <View
-      style={[
-        {
-          width: width as any,
-          height,
-          borderRadius: radius,
-          backgroundColor: "rgba(255,255,255,0.07)",
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.06)",
-        },
-        style,
-      ]}
-    />
-  );
-}
-
 function TrustTimeline({ compact = false }: { compact?: boolean }) {
   const steps = [
     { label: "Paid", icon: "card-outline" },
@@ -530,10 +502,10 @@ export default function MarketHome() {
   const [locatingCountry, setLocatingCountry] = useState(false);
 
   const main = section === "service" ? "service" : section === "product" ? "product" : null;
-  const isDesktop = width >= 980;
-  const isTablet = width >= 700 && width < 980;
-  const desktopRailWidth = Platform.OS === "web" && isDesktop ? 228 : 0;
+  const hasDesktopTabs = Platform.OS === "web" && width >= 980;
+  const desktopRailWidth = hasDesktopTabs ? 228 : 0;
   const usableWidth = Math.max(320, width - desktopRailWidth);
+  const isDesktop = usableWidth >= 900;
   const pagePadding = isDesktop ? 28 : width >= 820 ? 24 : 16;
   const contentMaxWidth = isDesktop ? 1220 : width >= 1240 ? 1120 : undefined;
   const contentInnerWidth = Math.min(
