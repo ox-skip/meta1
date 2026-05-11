@@ -6,15 +6,14 @@ export function BaseSmartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setBaseSmartRuntime({
       openModal: async () => {
-        throw new Error("Base Smart Account is currently supported on web. Use WalletConnect on native app.");
+        throw new Error("Coinbase Smart Wallet is available on web. Use WalletConnect on mobile.");
       },
       disconnect: async () => undefined,
       switchNetwork: async () => {
-        throw new Error("Base Smart Account network switching is not available on native app.");
+        throw new Error("Coinbase Smart Wallet network switching is available on web.");
       },
     });
   }, []);
 
   return <>{children}</>;
 }
-

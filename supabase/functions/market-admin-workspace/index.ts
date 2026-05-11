@@ -83,14 +83,28 @@ function userBundle(userId: string | null | undefined, profiles: Record<string, 
   };
 }
 
-async function loadSupport(admin: any) {
-  const { data: disputes, error } = await admin
-    .from("market_disputes")
-    .select("id,order_id,opened_by,reason,status,resolution,resolved_by,created_at,updated_at")
-    .in("status", ["OPEN", "UNDER_REVIEW"])
-    .order("created_at", { ascending: false })
-    .limit(DEFAULT_LIMIT);
-  if (error) throw error;
+async function loadSupport(admin: any, ctx: AdminContext) {
+  const canUseTicketQueue = ctx.roleKey === "super_admin" || ctx.roleKey === "support_admin";
+  const [disputesRes, ticketsRes] = await Promise.all([
+    admin
+      .from("market_disputes")
+      .select("id,order_id,opened_by,reason,status,resolution,resolved_by,created_at,updated_at")
+      .in("status", ["OPEN", "UNDER_REVIEW"])
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    canUseTicketQueue
+      ? admin
+          .from("market_support_tickets")
+          .select("id,user_id,subject,category,priority,status,related_order_id,assigned_admin_id,last_message_at,resolved_at,created_at,updated_at")
+          .order("last_message_at", { ascending: false })
+          .limit(DEFAULT_LIMIT)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (disputesRes.error) throw disputesRes.error;
+  if (ticketsRes.error) throw ticketsRes.error;
+  const disputes = disputesRes.data ?? [];
+  const tickets = ticketsRes.data ?? [];
 
   const orderIds = unique((disputes ?? []).map((row: any) => row.order_id));
   const orders = await loadOrdersByIds(admin, orderIds);
@@ -103,10 +117,30 @@ async function loadSupport(admin: any) {
   if (deliverableError) throw deliverableError;
   const deliverablesByOrder = byId(deliverables, "order_id");
 
+  const ticketIds = unique((tickets ?? []).map((row: any) => row.id));
+  const { data: ticketMessages, error: ticketMessagesError } = ticketIds.length
+    ? await admin
+        .from("market_support_messages")
+        .select("id,ticket_id,sender_id,sender_kind,body,created_at")
+        .in("ticket_id", ticketIds)
+        .order("created_at", { ascending: true })
+        .limit(300)
+    : { data: [], error: null };
+  if (ticketMessagesError) throw ticketMessagesError;
+
+  const messagesByTicket: Record<string, any[]> = {};
+  for (const message of ticketMessages ?? []) {
+    const ticketId = String(message.ticket_id ?? "");
+    if (!ticketId) continue;
+    messagesByTicket[ticketId] = [...(messagesByTicket[ticketId] ?? []), message];
+  }
+
   const profileIds = unique([
     ...(disputes ?? []).flatMap((row: any) => [row.opened_by, row.resolved_by]),
     ...Object.values(orders).flatMap((row: any) => [row?.buyer_id, row?.seller_id]),
     ...Object.values(listings).map((row: any) => row?.seller_id),
+    ...(tickets ?? []).flatMap((row: any) => [row.user_id, row.assigned_admin_id]),
+    ...(ticketMessages ?? []).map((row: any) => row.sender_id),
   ]);
   const profiles = await loadProfiles(admin, profileIds);
   const sellers = await loadSellerProfiles(admin, profileIds);
@@ -125,6 +159,15 @@ async function loadSupport(admin: any) {
         seller: userBundle(order?.seller_id, profiles, sellers),
       };
     }),
+    tickets: (tickets ?? []).map((ticket: any) => ({
+      ...ticket,
+      user: userBundle(ticket.user_id, profiles, sellers),
+      assigned_admin: userBundle(ticket.assigned_admin_id, profiles, sellers),
+      messages: (messagesByTicket[String(ticket.id)] ?? []).map((message: any) => ({
+        ...message,
+        sender: userBundle(message.sender_id, profiles, sellers),
+      })),
+    })),
   };
 }
 
@@ -311,7 +354,7 @@ Deno.serve(async (req) => {
     const modules: Record<string, unknown> = {};
 
     if (canAny(ctx, ["disputes.read", "disputes.resolve", "complaints.read", "complaints.respond"])) {
-      modules.support = await loadSupport(admin);
+      modules.support = await loadSupport(admin, ctx);
     }
 
     if (canAny(ctx, ["users.moderate", "users.delete", "listings.moderate", "listings.delete"])) {

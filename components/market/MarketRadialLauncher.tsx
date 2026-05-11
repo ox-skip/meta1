@@ -33,8 +33,8 @@ type RadialAction = {
 };
 
 function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
-  if (mode === "base_smart") return "Base";
-  if (mode === "walletconnect") return "Connect";
+  if (mode === "base_smart") return "Coinbase";
+  if (mode === "walletconnect") return "WC";
   return "Wallet";
 }
 
@@ -55,8 +55,8 @@ export default function MarketRadialLauncher() {
 
   const compact = viewportWidth < 390;
   const launchSize = compact ? 68 : 76;
-  const actionSize = compact ? 58 : 64;
-  const plateSize = compact ? 238 : 266;
+  const actionSize = compact ? 56 : 62;
+  const plateSize = compact ? 262 : 292;
   const centerPad = (plateSize - launchSize) / 2;
   const baseLeft = Math.max(14, viewportWidth - launchSize - 18);
 
@@ -65,6 +65,7 @@ export default function MarketRadialLauncher() {
     if (!p.startsWith("/market")) return true;
     if (p.includes("/market/menu")) return true;
     if (p.includes("/market/wallet")) return true;
+    if (p.includes("/market/support")) return true;
     if (p.includes("/market/checkout/")) return true;
     if (Platform.OS === "web" && (p.endsWith("/market/sell") || p.includes("/market/sell?"))) return true;
     return false;
@@ -155,8 +156,8 @@ export default function MarketRadialLauncher() {
   const activeMode = wallet.connectedMode ?? wallet.walletMode;
   const activeModeLabel = walletModeLabel(activeMode);
   const openToLeft = baseLeft + dockOffset.x + launchSize / 2 > viewportWidth / 2;
-  const radius = compact ? 88 : 102;
-  const angles = openToLeft ? [-178, -150, -122, -94, -66, -38] : [-142, -114, -86, -58, -30, -2];
+  const radius = compact ? 98 : 114;
+  const angles = openToLeft ? [-184, -156, -128, -100, -72, -44, -16] : [-164, -136, -108, -80, -52, -24, 4];
 
   const actions = useMemo<RadialAction[]>(
     () => [
@@ -169,9 +170,9 @@ export default function MarketRadialLauncher() {
       },
       {
         key: "wallet",
-        label: "Wallet",
-        icon: "wallet-outline",
-        accent: TEAL,
+        label: connected ? activeModeLabel : "Wallet",
+        icon: activeMode === "base_smart" ? "ellipse" : activeMode === "walletconnect" ? "link-outline" : "wallet-outline",
+        accent: activeMode === "base_smart" ? BLUE : TEAL,
         onPress: () => setWalletOpen(true),
       },
       {
@@ -196,6 +197,13 @@ export default function MarketRadialLauncher() {
         onPress: () => router.push("/market/history" as any),
       },
       {
+        key: "support",
+        label: "Support",
+        icon: "help-buoy-outline",
+        accent: BLUE,
+        onPress: () => router.push("/market/support" as any),
+      },
+      {
         key: "privacy",
         label: balancesHidden ? "Show" : "Hide",
         icon: balancesHidden ? "eye-outline" : "eye-off-outline",
@@ -205,7 +213,7 @@ export default function MarketRadialLauncher() {
         },
       },
     ],
-    [balancesHidden, toggleBalancesHidden],
+    [activeMode, activeModeLabel, balancesHidden, connected, toggleBalancesHidden],
   );
 
   if (hidden) return null;

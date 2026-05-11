@@ -169,7 +169,7 @@ export function BaseSmartProvider({ children }: { children: React.ReactNode }) {
     }
     setBaseSmartRuntime({
       openModal: async () => {
-        throw new Error("Base Smart Account provider is unavailable.");
+        throw new Error("Coinbase Smart Wallet is unavailable.");
       },
     });
   }, []);
@@ -185,4 +185,3 @@ export function BaseSmartProvider({ children }: { children: React.ReactNode }) {
     </>
   );
 }
-

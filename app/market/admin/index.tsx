@@ -55,7 +55,7 @@ const MODULE_META: Record<ModuleKey, {
   support: {
     icon: "chatbubbles-outline",
     shortTitle: "Support",
-    eyebrow: "Disputes",
+    eyebrow: "Tickets and disputes",
     accent: "#F59E0B",
   },
   moderation: {
@@ -525,6 +525,7 @@ export default function MarketAdminIndex() {
   const [workspace, setWorkspace] = useState<MarketAdminWorkspace | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [actionNote, setActionNote] = useState("");
+  const [supportReplies, setSupportReplies] = useState<Record<string, string>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminDisplayName, setAdminDisplayName] = useState("");
@@ -558,7 +559,7 @@ export default function MarketAdminIndex() {
     const modules = workspace?.modules;
     switch (key) {
       case "support":
-        return modules?.support?.disputes?.length ?? 0;
+        return (modules?.support?.disputes?.length ?? 0) + (modules?.support?.tickets?.length ?? 0);
       case "moderation":
         return (modules?.moderation?.sellers?.length ?? 0) + (modules?.moderation?.listings?.length ?? 0);
       case "verification":
@@ -809,7 +810,21 @@ export default function MarketAdminIndex() {
   }
 
   function renderSupport() {
+    const allTickets = workspace?.modules.support?.tickets ?? [];
     const allDisputes = workspace?.modules.support?.disputes ?? [];
+    const supportTicketRole = overview?.admin.role_key === "super_admin" || overview?.admin.role_key === "support_admin";
+    const canRespond = supportTicketRole && hasPermission("complaints.respond");
+    const tickets = allTickets.filter((ticket: any) => matchesSearch(currentModuleSearch, [
+      ticket.id,
+      ticket.subject,
+      ticket.category,
+      ticket.priority,
+      ticket.status,
+      ticket.related_order_id,
+      personLabel(ticket.user),
+      personLabel(ticket.assigned_admin),
+      ...(ticket.messages ?? []).map((message: any) => message.body),
+    ]));
     const disputes = allDisputes.filter((dispute: any) => matchesSearch(currentModuleSearch, [
       dispute.id,
       dispute.order_id,
@@ -826,13 +841,140 @@ export default function MarketAdminIndex() {
       <View style={{ marginTop: 18, gap: 12 }}>
         <SectionHeader
           icon="chatbubbles-outline"
-          title="Dispute queue"
-          subtitle="Review active cases, compare order context, and make the ruling your role is allowed to make."
-          count={disputes.length}
+          title="Support queue"
+          subtitle="Review user tickets, answer marketplace reports, and keep open disputes in one role-bound workspace."
+          count={tickets.length + disputes.length}
         >
-          <SearchBox value={currentModuleSearch} onChangeText={setCurrentModuleSearch} placeholder="Search disputes by order, buyer, seller, status, or reason" />
+          <SearchBox value={currentModuleSearch} onChangeText={setCurrentModuleSearch} placeholder="Search support by user, subject, order, status, or reason" />
         </SectionHeader>
-        {renderActionNote()}
+
+        {supportTicketRole ? (
+          <>
+            {tickets.length ? tickets.map((ticket: any) => {
+              const messages = ticket.messages ?? [];
+              const recentMessages = messages.slice(-4);
+              const draft = supportReplies[ticket.id] ?? "";
+              const status = String(ticket.status ?? "OPEN").toUpperCase();
+              return (
+                <RecordCard key={ticket.id}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <View style={{ flex: 1, minWidth: 220 }}>
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{ticket.subject}</Text>
+                      <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                        {personLabel(ticket.user)} opened a {labelFromKey(String(ticket.category ?? "general"))} ticket.
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                      <Pill label={status} color={statusTone(status)} />
+                      <Pill label={String(ticket.priority ?? "NORMAL")} color={String(ticket.priority).toUpperCase() === "URGENT" ? DANGER : ACCENT} />
+                    </View>
+                  </View>
+
+                  <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                    <InfoLine label="User" value={personLabel(ticket.user)} />
+                    <InfoLine label="Order" value={ticket.related_order_id ? shortId(ticket.related_order_id) : "n/a"} />
+                    <InfoLine label="Assigned" value={ticket.assigned_admin ? personLabel(ticket.assigned_admin) : "Unassigned"} />
+                    <InfoLine label="Last message" value={formatDate(ticket.last_message_at)} />
+                  </View>
+
+                  <View style={{ marginTop: 14, gap: 8 }}>
+                    {recentMessages.length ? recentMessages.map((message: any) => {
+                      const fromAdmin = String(message.sender_kind ?? "").toUpperCase() === "ADMIN";
+                      return (
+                        <View
+                          key={message.id}
+                          style={{
+                            alignSelf: fromAdmin ? "flex-start" : "flex-end",
+                            maxWidth: "92%",
+                            borderRadius: 8,
+                            padding: 10,
+                            backgroundColor: fromAdmin ? "rgba(74,222,128,0.10)" : "rgba(245,158,11,0.11)",
+                            borderWidth: 1,
+                            borderColor: fromAdmin ? "rgba(74,222,128,0.22)" : "rgba(245,158,11,0.24)",
+                          }}
+                        >
+                          <Text style={{ color: fromAdmin ? SUCCESS : ACCENT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                            {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
+                          </Text>
+                          <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text>
+                        </View>
+                      );
+                    }) : (
+                      <Text style={{ color: MUTED, fontSize: 13 }}>No messages on this ticket.</Text>
+                    )}
+                  </View>
+
+                  <View style={{ marginTop: 14, gap: 10 }}>
+                    <AdminTextInput
+                      value={draft}
+                      onChangeText={(value) => setSupportReplies((prev) => ({ ...prev, [ticket.id]: value }))}
+                      placeholder="Reply to the user"
+                      multiline
+                    />
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <ActionButton
+                        icon="send-outline"
+                        label="Send reply"
+                        color={SUCCESS}
+                        disabled={!canRespond || !draft.trim()}
+                        loading={workingKey === `support-reply-${ticket.id}`}
+                        onPress={() => {
+                          const body = draft.trim();
+                          if (!body) return;
+                          setSupportReplies((prev) => ({ ...prev, [ticket.id]: "" }));
+                          void performAction(`support-reply-${ticket.id}`, { action: "support_reply", ticket_id: ticket.id, body });
+                        }}
+                      />
+                      <ActionButton
+                        icon="eye-outline"
+                        label="In progress"
+                        color={ACCENT}
+                        disabled={!canRespond || status === "IN_PROGRESS"}
+                        loading={workingKey === `support-progress-${ticket.id}`}
+                        onPress={() => performAction(`support-progress-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "IN_PROGRESS" })}
+                      />
+                      <ActionButton
+                        icon="checkmark-circle-outline"
+                        label="Resolve"
+                        color={SUCCESS}
+                        disabled={!canRespond || status === "RESOLVED"}
+                        loading={workingKey === `support-resolve-${ticket.id}`}
+                        onPress={() => performAction(`support-resolve-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "RESOLVED" }, true)}
+                      />
+                      <ActionButton
+                        icon="refresh-outline"
+                        label="Reopen"
+                        color={WARNING}
+                        disabled={!canRespond || status === "OPEN"}
+                        loading={workingKey === `support-reopen-${ticket.id}`}
+                        onPress={() => performAction(`support-reopen-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "OPEN" })}
+                      />
+                      {ticket.related_order_id ? (
+                        <ActionButton
+                          icon="receipt-outline"
+                          label="Open order"
+                          color={WARNING}
+                          onPress={() => openOrder(ticket.related_order_id)}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                </RecordCard>
+              );
+            }) : (
+              <EmptyState title={allTickets.length ? "No matching support tickets" : "No support tickets"} subtitle={allTickets.length ? "Clear the search or try a subject, user, status, or order ID." : "New user reports appear here for support admins."} />
+            )}
+          </>
+        ) : null}
+
+        <View style={{ marginTop: 8, gap: 12 }}>
+          <SectionHeader
+            icon="alert-circle-outline"
+            title="Dispute queue"
+            subtitle="Review active order disputes, evidence, buyer context, and seller context."
+            count={disputes.length}
+          />
+          {renderActionNote()}
         {disputes.length ? disputes.map((dispute: any) => {
           const order = dispute.order ?? {};
           const currency = String(order.currency ?? "").toUpperCase();
@@ -921,6 +1063,7 @@ export default function MarketAdminIndex() {
         }) : (
           <EmptyState title={allDisputes.length ? "No matching disputes" : "No open disputes"} subtitle={allDisputes.length ? "Clear the search or try a buyer, seller, order ID, or status." : "The support queue is clear for this role."} />
         )}
+        </View>
       </View>
     );
   }

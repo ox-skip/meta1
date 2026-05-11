@@ -11,7 +11,7 @@ import UnifiedWalletSheet from "@/components/market/wallet/UnifiedWalletSheet";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
 function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
-  if (mode === "base_smart") return "Base wallet";
+  if (mode === "base_smart") return "Coinbase";
   if (mode === "walletconnect") return "WalletConnect";
   return "Wallet";
 }
@@ -186,12 +186,12 @@ export default function UnifiedWalletLauncher() {
                   borderColor: connected ? "rgba(255,255,255,0.22)" : "rgba(45,212,191,0.28)",
                 }}
               >
-                <Ionicons name="wallet-outline" size={compact ? 17 : 18} color="#F8FAFC" />
+                <Ionicons name={activeMode === "base_smart" ? "ellipse" : activeMode === "walletconnect" ? "link-outline" : "wallet-outline"} size={compact ? 17 : 18} color="#F8FAFC" />
               </View>
 
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Wallet Hub</Text>
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: compact ? 11 : 12 }}>Wallet</Text>
                   <View
                     style={{
                       borderRadius: 999,
@@ -214,7 +214,7 @@ export default function UnifiedWalletLauncher() {
                     : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </Text>
                 <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
-                  {connected ? `${activeModeLabel} active` : "Tap to open wallet tools"}
+                  {connected ? `${activeModeLabel} active` : "Open wallet"}
                 </Text>
               </View>
 

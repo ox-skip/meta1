@@ -32,6 +32,7 @@ export type MarketAdminWorkspace = {
   modules: {
     support?: {
       disputes: any[];
+      tickets: any[];
     };
     moderation?: {
       sellers: any[];

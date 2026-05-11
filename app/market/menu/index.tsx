@@ -70,6 +70,12 @@ const MENU_SECTIONS: MenuSection[] = [
         icon: "notifications-outline",
         route: "/market/notification",
       },
+      {
+        title: "Support",
+        description: "Report order, payment, listing, or account issues.",
+        icon: "help-buoy-outline",
+        route: "/market/support",
+      },
     ],
   },
   {
@@ -548,6 +554,11 @@ export default function MarketMenuScreen() {
                   label="Orders"
                   icon="receipt-outline"
                   onPress={() => open("/market/(tabs)/orders")}
+                />
+                <QuickLaunch
+                  label="Support"
+                  icon="help-buoy-outline"
+                  onPress={() => open("/market/support")}
                 />
               </View>
 

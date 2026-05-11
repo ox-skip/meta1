@@ -10,6 +10,12 @@ function requirePermission(ctx: AdminContext, permission: string) {
   return can(ctx, permission) ? null : unauth();
 }
 
+function requireSupportTicketAccess(ctx: AdminContext, permission: string) {
+  const blocked = requirePermission(ctx, permission);
+  if (blocked) return blocked;
+  return ctx.roleKey === "super_admin" || ctx.roleKey === "support_admin" ? null : unauth();
+}
+
 function requireUuid(name: string, value: unknown) {
   const raw = String(value ?? "").trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
@@ -340,6 +346,95 @@ async function stableChainAction(admin: any, ctx: AdminContext, req: Request, bo
   return ok({ ok: true, result: data });
 }
 
+async function replySupportTicket(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireSupportTicketAccess(ctx, "complaints.respond");
+  if (blocked) return blocked;
+
+  const ticketId = requireUuid("ticket_id", body.ticket_id);
+  const message = String(body.body ?? "").trim().slice(0, 3000);
+  if (!message) return bad("Reply required");
+
+  const { data: ticket, error: ticketError } = await admin
+    .from("market_support_tickets")
+    .select("id,user_id,status,subject")
+    .eq("id", ticketId)
+    .maybeSingle();
+  if (ticketError) return bad(ticketError.message);
+  if (!ticket?.id) return bad("Support ticket not found");
+
+  const nowIso = new Date().toISOString();
+  const { data, error } = await admin
+    .from("market_support_messages")
+    .insert({
+      ticket_id: ticketId,
+      sender_id: ctx.userId,
+      sender_kind: "ADMIN",
+      body: message,
+    })
+    .select("id,ticket_id,sender_id,sender_kind,body,created_at")
+    .single();
+  if (error) return bad(error.message);
+
+  const nextStatus = String(ticket.status ?? "").toUpperCase() === "OPEN" ? "IN_PROGRESS" : ticket.status;
+  const { error: updateError } = await admin
+    .from("market_support_tickets")
+    .update({
+      assigned_admin_id: ctx.userId,
+      status: nextStatus,
+      last_message_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("id", ticketId);
+  if (updateError) return bad(updateError.message);
+
+  await audit(admin, ctx, {
+    action: "SUPPORT_TICKET_REPLIED",
+    entity_type: "market_support_tickets",
+    entity_id: ticketId,
+    payload: { user_id: ticket.user_id, subject: ticket.subject, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, message: data });
+}
+
+async function updateSupportTicketStatus(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireSupportTicketAccess(ctx, "complaints.respond");
+  if (blocked) return blocked;
+
+  const ticketId = requireUuid("ticket_id", body.ticket_id);
+  const status = String(body.status ?? "").trim().toUpperCase();
+  if (!["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(status)) return bad("Unsupported support status");
+
+  const priority = body.priority === undefined ? null : String(body.priority ?? "").trim().toUpperCase();
+  if (priority && !["LOW", "NORMAL", "HIGH", "URGENT"].includes(priority)) return bad("Unsupported support priority");
+
+  const nowIso = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    status,
+    assigned_admin_id: ctx.userId,
+    resolved_at: ["RESOLVED", "CLOSED"].includes(status) ? nowIso : null,
+    updated_at: nowIso,
+  };
+  if (priority) patch.priority = priority;
+
+  const { data, error } = await admin
+    .from("market_support_tickets")
+    .update(patch)
+    .eq("id", ticketId)
+    .select("id,user_id,subject,status,priority,assigned_admin_id,updated_at,resolved_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "SUPPORT_TICKET_STATUS_UPDATED",
+    entity_type: "market_support_tickets",
+    entity_id: ticketId,
+    payload: { status, priority, user_id: data.user_id, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, ticket: data });
+}
+
 async function resolveProfileByEmail(admin: any, emailInput: unknown) {
   const email = String(emailInput ?? "").trim().toLowerCase();
   if (!email || !email.includes("@")) throw new Error("valid user email is required");
@@ -458,6 +553,8 @@ Deno.serve(async (req) => {
     if (action === "settle_order") return await settleOrder(admin, ctx, req, body);
     if (action === "set_stock_trading_pause") return await setStockTradingPause(admin, ctx, req, body);
     if (action === "stable_chain_action") return await stableChainAction(admin, ctx, req, body);
+    if (action === "support_reply") return await replySupportTicket(admin, ctx, body);
+    if (action === "support_update_status") return await updateSupportTicketStatus(admin, ctx, body);
     if (action === "upsert_admin_user") return await upsertAdminUser(admin, ctx, body);
     if (action === "set_admin_active") return await setAdminUserActive(admin, ctx, body);
 

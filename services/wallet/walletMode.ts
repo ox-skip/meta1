@@ -59,7 +59,7 @@ export async function getWalletMode(): Promise<WalletMode> {
 export async function setWalletMode(next: WalletMode) {
   const safe = normalizeMode(next);
   if (safe === "base_smart" && !isBaseSmartSupported()) {
-    throw new Error("Base Smart Account is currently supported on web. Use WalletConnect on native app.");
+    throw new Error("Coinbase Smart Wallet is available on web. Use WalletConnect on mobile.");
   }
   modeState = safe;
   try {
@@ -83,4 +83,3 @@ export function subscribeWalletMode(listener: (mode: WalletMode) => void) {
     listeners.delete(listener);
   };
 }
-

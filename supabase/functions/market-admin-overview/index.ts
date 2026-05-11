@@ -10,9 +10,11 @@ Deno.serve(async (req) => {
     if (ctx instanceof Response) return ctx;
 
     const admin = supabaseAdminClient();
+    const canSeeSupportTickets = ctx.roleKey === "super_admin" || ctx.roleKey === "support_admin";
 
     const [
       disputesRes,
+      supportTicketsRes,
       verificationRes,
       ordersInEscrowRes,
       ordersDisputedRes,
@@ -24,6 +26,9 @@ Deno.serve(async (req) => {
       adminsRes,
     ] = await Promise.all([
       admin.from("market_disputes").select("id", { count: "exact", head: true }).in("status", ["OPEN", "UNDER_REVIEW"]),
+      canSeeSupportTickets
+        ? admin.from("market_support_tickets").select("id", { count: "exact", head: true }).in("status", ["OPEN", "IN_PROGRESS"])
+        : Promise.resolve({ count: 0, error: null }),
       admin.from("market_verification_requests").select("id", { count: "exact", head: true }).eq("status", "PENDING"),
       admin.from("market_orders").select("id", { count: "exact", head: true }).eq("status", "IN_ESCROW"),
       admin.from("market_orders").select("id", { count: "exact", head: true }).eq("status", "DISPUTED"),
@@ -37,6 +42,7 @@ Deno.serve(async (req) => {
 
     const failures = [
       disputesRes.error,
+      supportTicketsRes.error,
       verificationRes.error,
       ordersInEscrowRes.error,
       ordersDisputedRes.error,
@@ -59,6 +65,7 @@ Deno.serve(async (req) => {
       },
       metrics: {
         open_disputes: Number(disputesRes.count ?? 0),
+        open_support_tickets: Number(supportTicketsRes.count ?? 0),
         pending_verifications: Number(verificationRes.count ?? 0),
         orders_in_escrow: Number(ordersInEscrowRes.count ?? 0),
         disputed_orders: Number(ordersDisputedRes.count ?? 0),
@@ -72,9 +79,9 @@ Deno.serve(async (req) => {
       modules: [
         {
           key: "support",
-          title: "Disputes and complaints",
-          description: "Review complaints, see evidence, compare buyer and seller timelines, and issue the final ruling.",
-          permission: "disputes.resolve",
+          title: "Support and disputes",
+          description: "Review support tickets, respond to user reports, compare order context, and resolve active disputes.",
+          permission: "complaints.read",
         },
         {
           key: "moderation",

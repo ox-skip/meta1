@@ -50,7 +50,7 @@ function isAddress(value?: string | null) {
 }
 
 function walletModeLabel(mode: WalletMode) {
-  return mode === "base_smart" ? "Base wallet" : "WalletConnect";
+  return mode === "base_smart" ? "Coinbase Smart Wallet" : "WalletConnect";
 }
 
 export type UnifiedWalletStockPosition = {
@@ -255,7 +255,7 @@ export function useUnifiedWallet() {
   const ensureWalletModeAvailable = useCallback(
     (targetMode: WalletMode) => {
       if (targetMode === "base_smart" && !isBaseSmartSupported()) {
-        throw new Error("Base Smart Account is currently available on web.");
+        throw new Error("Coinbase Smart Wallet is available on web.");
       }
       if (connectedMode && connectedMode !== targetMode) {
         throw new Error(`Disconnect ${walletModeLabel(connectedMode)} before using ${walletModeLabel(targetMode)}.`);
@@ -271,7 +271,7 @@ export function useUnifiedWallet() {
     try {
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
-        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+        throw new Error("PI uses a saved payout address.");
       }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await ensureWalletAddressOnChain(chain);
@@ -290,7 +290,7 @@ export function useUnifiedWallet() {
     try {
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
-        throw new Error("PI network does not use EVM connect. Save your PI wallet address below.");
+        throw new Error("PI uses a saved payout address.");
       }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await replaceSavedWalletWithDevice(chain);

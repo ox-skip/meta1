@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import React, { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
 import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibility";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
 type UnifiedWalletData = ReturnType<typeof useUnifiedWallet>;
+type WalletMode = "base_smart" | "walletconnect";
 
 type Props = {
   wallet: UnifiedWalletData;
@@ -17,13 +19,26 @@ type Props = {
   onOpenHistory?: () => void;
 };
 
+const BG = "#07100D";
+const PANEL = "rgba(255,253,247,0.07)";
+const PANEL_ALT = "rgba(255,253,247,0.045)";
+const BORDER = "rgba(255,253,247,0.12)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.66)";
+const FAINT = "rgba(255,253,247,0.42)";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const BLUE = "#3B82F6";
+const ROSE = "#FB7185";
+const INK = "#061311";
+
 function isAddress(value?: string | null) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || ""));
 }
 
 function shortAddress(value?: string | null) {
   const v = String(value || "").trim();
-  if (!v) return "Not connected";
+  if (!v) return "Not set";
   if (isAddress(v)) return `${v.slice(0, 6)}...${v.slice(-4)}`;
   if (v.length <= 16) return v;
   return `${v.slice(0, 8)}...${v.slice(-6)}`;
@@ -36,12 +51,17 @@ function shortValue(value?: string | null) {
   return `${v.slice(0, 8)}...${v.slice(-6)}`;
 }
 
+function fmt(value: number, digits = 2) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: digits }) : "0";
+}
+
 function chainLabel(v?: string | null) {
   return String(v || "").toUpperCase().replace(/_/g, " ");
 }
 
-function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
-  if (mode === "base_smart") return "Base wallet";
+function walletModeLabel(mode?: WalletMode | null) {
+  if (mode === "base_smart") return "Coinbase Smart Wallet";
   if (mode === "walletconnect") return "WalletConnect";
   return "Wallet";
 }
@@ -53,9 +73,163 @@ function firstValidAddress(...values: Array<string | null | undefined>) {
   return "";
 }
 
+function BrandMark({ mode, size = 44 }: { mode: WalletMode; size?: number }) {
+  const base = mode === "base_smart";
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: base ? "#0052FF" : "rgba(59,130,246,0.16)",
+        borderWidth: 1,
+        borderColor: base ? "rgba(255,255,255,0.34)" : "rgba(59,130,246,0.55)",
+      }}
+    >
+      {base ? (
+        <Text style={{ color: "#fff", fontWeight: "900", fontSize: Math.max(16, size * 0.43) }}>B</Text>
+      ) : (
+        <Ionicons name="link-outline" size={Math.max(18, size * 0.46)} color="#93C5FD" />
+      )}
+    </View>
+  );
+}
+
+function Pill({ label, tone = TEAL }: { label: string; tone?: string }) {
+  return (
+    <View style={[styles.pill, { backgroundColor: `${tone}18`, borderColor: `${tone}3A` }]}>
+      <Text style={[styles.pillText, { color: tone }]}>{label}</Text>
+    </View>
+  );
+}
+
+function IconButton({
+  icon,
+  onPress,
+  disabled,
+  color = TEXT,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+  color?: string;
+}) {
+  return (
+    <Pressable onPress={onPress} disabled={disabled} style={[styles.iconButton, disabled ? styles.dimmed : undefined]}>
+      <Ionicons name={icon} size={17} color={color} />
+    </Pressable>
+  );
+}
+
+function ProviderCard({
+  mode,
+  active,
+  connected,
+  disabled,
+  supported,
+  busy,
+  onPress,
+}: {
+  mode: WalletMode;
+  active: boolean;
+  connected: boolean;
+  disabled?: boolean;
+  supported: boolean;
+  busy?: boolean;
+  onPress: () => void;
+}) {
+  const color = mode === "base_smart" ? BLUE : "#60A5FA";
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      accessibilityRole="button"
+      accessibilityLabel={walletModeLabel(mode)}
+      style={[
+        styles.providerCard,
+        active ? { borderColor: `${color}70`, backgroundColor: `${color}16` } : undefined,
+        disabled || busy ? styles.dimmed : undefined,
+      ]}
+    >
+      <View style={styles.providerTop}>
+        <BrandMark mode={mode} size={46} />
+        {active ? (
+          <View style={[styles.providerStatus, connected ? styles.providerConnected : styles.providerSelected]}>
+            {busy ? <ActivityIndicator size="small" color={connected ? "#BBF7D0" : color} /> : <Ionicons name={connected ? "checkmark" : "radio-button-on"} size={13} color={connected ? "#BBF7D0" : color} />}
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.providerTitle}>{mode === "base_smart" ? "Coinbase" : "WalletConnect"}</Text>
+      <Text style={styles.providerSubtitle}>{mode === "base_smart" ? "Smart Wallet" : "Mobile and browser wallets"}</Text>
+      {!supported ? <Text style={styles.providerUnavailable}>Web only</Text> : null}
+    </Pressable>
+  );
+}
+
+function StatTile({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <View style={[styles.statTile, { borderColor: `${tone}42`, backgroundColor: `${tone}13` }]}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.statValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function TokenButton({
+  label,
+  active,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.tokenButton, active ? styles.tokenActive : undefined, disabled ? styles.dimmed : undefined]}
+    >
+      <Text style={styles.tokenText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AddressRow({
+  icon,
+  label,
+  value,
+  onCopy,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  onCopy?: () => void;
+}) {
+  return (
+    <View style={styles.addressRow}>
+      <View style={styles.addressIcon}>
+        <Ionicons name={icon} size={16} color={TEAL} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.addressLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.addressValue}>{value}</Text>
+      </View>
+      {onCopy ? <IconButton icon="copy-outline" onPress={onCopy} /> : null}
+    </View>
+  );
+}
+
 export default function UnifiedWalletPanel({
   wallet,
   compact = false,
+  onOpenNgnWallet,
   onOpenCryptoWallet,
   onOpenHistory,
 }: Props) {
@@ -69,39 +243,63 @@ export default function UnifiedWalletPanel({
     setPiAddressInput(wallet.savedPiAddress || "");
   }, [wallet.savedPiAddress]);
 
-  const portfolio = wallet.portfolioPositions.slice(0, compact ? 3 : 5);
   const connected = Boolean(wallet.connectedAddress);
   const activeWalletMode = wallet.connectedMode ?? wallet.walletMode;
   const activeWalletModeLabel = walletModeLabel(activeWalletMode);
   const copyAddress = firstValidAddress(wallet.connectedAddress, wallet.savedAddress);
+  const portfolio = wallet.portfolioPositions.slice(0, compact ? 3 : 5);
+  const walletConnectBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "walletconnect");
+  const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
+  const canSendUsdc = isAddress(wallet.chain?.usdc_address || "");
   const canSendUsdt = isAddress(wallet.chain?.usdt_address || "");
+  const piChainSelected = String(wallet.chain?.chain || "").toLowerCase().includes("pi");
   const sendDisabled =
     wallet.sendBusy ||
     !wallet.chain?.active ||
     !sendTo.trim() ||
     !sendAmount.trim() ||
-    (sendToken === "USDT" && !canSendUsdt);
-  const piAddressTrimmed = piAddressInput.trim();
+    (sendToken === "USDC" ? !canSendUsdc : !canSendUsdt);
   const piSaveDisabled =
-    wallet.piSaving || piAddressTrimmed === String(wallet.savedPiAddress || "").trim();
-  const walletConnectBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "walletconnect");
-  const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
+    wallet.piSaving || piAddressInput.trim() === String(wallet.savedPiAddress || "").trim();
 
-  const doSend = async () => {
+  const primaryCtaIcon = connected ? "power-outline" : activeWalletMode === "base_smart" ? "ellipse" : "link-outline";
+
+  async function copyText(value: string, successMessage: string) {
+    if (!value) return;
+    try {
+      await Clipboard.setStringAsync(value);
+      Alert.alert("Copied", successMessage);
+    } catch {
+      Alert.alert("Copy failed", "Unable to copy right now.");
+    }
+  }
+
+  async function handleProviderPress(mode: WalletMode) {
+    if (mode === "base_smart" && !wallet.baseSmartSupported) return;
+    if (mode === "walletconnect" && walletConnectBlocked) return;
+    if (mode === "base_smart" && baseSmartBlocked) return;
+    if (activeWalletMode !== mode) await wallet.setWalletMode(mode);
+    if (!connected && !String(wallet.chain?.chain || "").toLowerCase().includes("pi")) {
+      await wallet.connectWallet();
+    }
+  }
+
+  async function doSend() {
     try {
       const out = await wallet.sendStableToken({
         symbol: sendToken,
         to: sendTo.trim(),
         amount: sendAmount.trim(),
       });
+      setSendTo("");
       setSendAmount("");
       Alert.alert("Transfer submitted", `Tx: ${out.txHash}`);
     } catch (e: any) {
       Alert.alert("Transfer failed", String(e?.message || e || "Unable to send crypto right now."));
     }
-  };
+  }
 
-  const savePiWallet = async () => {
+  async function savePiWallet() {
     try {
       const out = await wallet.savePiAddress(piAddressInput);
       setPiAddressInput(String(out?.address || ""));
@@ -109,606 +307,674 @@ export default function UnifiedWalletPanel({
     } catch (e: any) {
       Alert.alert("Save failed", String(e?.message || e || "Unable to save PI wallet address."));
     }
-  };
+  }
 
   return (
-    <View
-      style={{
-        borderRadius: 24,
-        padding: 14,
-        backgroundColor: "rgba(6,16,20,0.86)",
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
-      }}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <View>
-          <View
-            style={{
-              alignSelf: "flex-start",
-              borderRadius: 999,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              backgroundColor: connected ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.08)",
-              borderWidth: 1,
-              borderColor: connected ? "rgba(16,185,129,0.35)" : "rgba(255,255,255,0.12)",
-            }}
-          >
-            <Text style={{ color: "#F8FAFC", fontWeight: "900", fontSize: 10 }}>
-              {connected ? `Connected via ${activeWalletModeLabel}` : `${activeWalletModeLabel} ready`}
-            </Text>
-          </View>
-          <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 17 }}>Wallet Hub</Text>
-          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-            Stablecoins, PI wallet data, and market portfolio in one place.
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <BalanceVisibilityToggle
-            hidden={balancesHidden}
-            onPress={() => {
-              void toggleBalancesHidden();
-            }}
-            size={40}
-          />
-          <Pressable
-            onPress={wallet.refreshAll}
-            disabled={wallet.busy}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.14)",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              opacity: wallet.busy ? 0.6 : 1,
-            }}
-          >
-            <Ionicons name="refresh" size={18} color="#fff" />
-          </Pressable>
-        </View>
-      </View>
-
-      <View
-        style={{
-          marginTop: 12,
-          borderRadius: 20,
-          padding: 14,
-          backgroundColor: "rgba(13,148,136,0.16)",
-          borderWidth: 1,
-          borderColor: "rgba(45,212,191,0.28)",
-        }}
+    <View style={[styles.shell, compact ? styles.shellCompact : undefined]}>
+      <LinearGradient
+        colors={["rgba(45,212,191,0.18)", "rgba(59,130,246,0.10)", "rgba(244,183,93,0.12)"]}
+        start={{ x: 0.05, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
       >
-        <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 }}>TOTAL PORTFOLIO (USD APPROX)</Text>
-        <Text style={{ marginTop: 5, color: "#fff", fontWeight: "900", fontSize: 22 }}>
+        <View style={styles.heroTop}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+            <BrandMark mode={activeWalletMode ?? "walletconnect"} size={52} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.heroKicker}>{connected ? "Connected" : "Wallet"}</Text>
+              <Text numberOfLines={1} style={styles.heroTitle}>{activeWalletModeLabel}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <BalanceVisibilityToggle
+              hidden={balancesHidden}
+              onPress={() => {
+                void toggleBalancesHidden();
+              }}
+              size={40}
+            />
+            <IconButton icon="refresh" onPress={wallet.refreshAll} disabled={wallet.busy} />
+          </View>
+        </View>
+
+        <Text style={styles.balanceLabel}>Total value</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.balanceValue}>
+          {balancesHidden ? maskBalanceValue("$") : `$${fmt(wallet.overallUsdApprox)}`}
+        </Text>
+        <Text style={styles.balanceMeta}>
           {balancesHidden
-            ? maskBalanceValue("$")
-            : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            ? "Stable ****** / Stock ******"
+            : `Stable $${fmt(wallet.stableTotalUsd)} / Stock $${fmt(wallet.portfolioTotalUsdc)}`}
         </Text>
-        <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 11 }}>
-          {balancesHidden
-            ? "Stable $****** + Stock $******"
-            : `Stable $${wallet.stableTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} + Stock $${wallet.portfolioTotalUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
-        </Text>
-        <Text style={{ marginTop: 5, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
-          {connected ? `${activeWalletModeLabel} session active` : "Connect a wallet to sync the device session"}
-        </Text>
-      </View>
 
-      <View
-        style={{
-          marginTop: 10,
-          borderRadius: 14,
-          padding: 10,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          backgroundColor: "rgba(255,255,255,0.03)",
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>Stock Portfolio</Text>
-        {portfolio.length === 0 ? (
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
-            No stock holdings yet.
-          </Text>
-        ) : (
-          <View style={{ marginTop: 8, gap: 7 }}>
-            {portfolio.map((row) => (
-              <View key={`${row.stock_id}-${row.slug}`} style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-                <Text numberOfLines={1} style={{ color: "rgba(255,255,255,0.85)", fontWeight: "800", flex: 1 }}>
-                  {row.name} ({row.symbol || "STK"}) - {row.qty.toFixed(4)}
-                </Text>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
-                  {balancesHidden ? maskBalanceValue("$") : `$${row.value_usdc.toFixed(2)}`}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
+        <View style={styles.statusRow}>
+          <Pill label={wallet.chain ? chainLabel(wallet.chain.chain) : "No network"} tone={wallet.chain?.active ? TEAL : ROSE} />
+          <Pill label={connected ? shortAddress(wallet.connectedAddress) : "No session"} tone={connected ? TEAL : AMBER} />
+        </View>
+      </LinearGradient>
 
-      <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>USDC</Text>
-          <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
-            {balancesHidden ? "******" : wallet.usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-          </Text>
-        </View>
-        <View style={{ flex: 1, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>USDT</Text>
-          <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
-            {balancesHidden ? "******" : wallet.usdtBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-          </Text>
-        </View>
-      </View>
-      <View
-        style={{
-          marginTop: 8,
-          borderRadius: 14,
-          padding: 10,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          backgroundColor: "rgba(255,255,255,0.04)",
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
-        <Text style={{ color: "rgba(255,255,255,0.62)", fontSize: 10, fontWeight: "800" }}>PI WALLET</Text>
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortValue(wallet.savedPiAddress)}</Text>
-      </View>
-
-      <View
-        style={{
-          marginTop: 10,
-          borderRadius: 14,
-          padding: 10,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          backgroundColor: "rgba(255,255,255,0.04)",
-          gap: 6,
-        }}
-      >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 11 }}>Saved wallet</Text>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortAddress(wallet.savedAddress)}</Text>
-        </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 11 }}>Connected session</Text>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortAddress(wallet.connectedAddress)}</Text>
-        </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
-          <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "700", fontSize: 11 }}>Saved PI wallet</Text>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{shortValue(wallet.savedPiAddress)}</Text>
-        </View>
-      </View>
-
-      {!compact ? (
-        <View
-          style={{
-            marginTop: 10,
-            borderRadius: 14,
-            padding: 10,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.1)",
-            backgroundColor: "rgba(255,255,255,0.04)",
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>PI Wallet Address</Text>
-          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
-            Save the PI wallet address sellers use for PI settlements.
-          </Text>
-          <TextInput
-            value={piAddressInput}
-            onChangeText={setPiAddressInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="Enter PI wallet address"
-            placeholderTextColor="rgba(255,255,255,0.42)"
-            style={{
-              marginTop: 8,
-              height: 42,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.14)",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              color: "#fff",
-              fontWeight: "700",
-              fontSize: 12,
-              paddingHorizontal: 12,
-            }}
-          />
-          <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
-            <Pressable
-              onPress={savePiWallet}
-              disabled={piSaveDisabled}
-              style={{
-                flex: 1,
-                borderRadius: 12,
-                height: 40,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "rgba(45,212,191,0.4)",
-                backgroundColor: "rgba(45,212,191,0.2)",
-                opacity: piSaveDisabled ? 0.6 : 1,
-              }}
-            >
-              <Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 12 }}>
-                {wallet.piSaving ? "Saving..." : "Save PI Wallet"}
-              </Text>
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Wallets</Text>
+          {connected ? (
+            <Pressable onPress={wallet.disconnectWallet} disabled={wallet.busy} style={[styles.inlineAction, wallet.busy ? styles.dimmed : undefined]}>
+              <Ionicons name="power-outline" size={15} color={ROSE} />
             </Pressable>
-            <Pressable
-              onPress={async () => {
-                const value = String(wallet.savedPiAddress || "").trim();
-                if (!value) return;
-                try {
-                  await Clipboard.setStringAsync(value);
-                  Alert.alert("Copied", "PI wallet address copied.");
-                } catch {
-                  Alert.alert("Copy failed", "Unable to copy PI wallet address right now.");
-                }
-              }}
-              disabled={!wallet.savedPiAddress}
-              style={{
-                flex: 1,
-                borderRadius: 12,
-                height: 40,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
-                backgroundColor: "rgba(255,255,255,0.05)",
-                opacity: wallet.savedPiAddress ? 1 : 0.6,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Copy PI Wallet</Text>
-            </Pressable>
-          </View>
+          ) : null}
         </View>
-      ) : null}
-
-      <View style={{ marginTop: 10 }}>
-        <Text style={{ color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 11, marginBottom: 8 }}>
-          Wallet Engine
-        </Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Pressable
-            onPress={() => {
-              void wallet.setWalletMode("walletconnect");
-            }}
+        <View style={styles.providerGrid}>
+          <ProviderCard
+            mode="walletconnect"
+            active={activeWalletMode === "walletconnect"}
+            connected={wallet.connectedMode === "walletconnect"}
             disabled={walletConnectBlocked}
-            style={{
-              flex: 1,
-              borderRadius: 12,
-              minHeight: 46,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: activeWalletMode === "walletconnect" ? "rgba(96,165,250,0.45)" : "rgba(255,255,255,0.12)",
-              backgroundColor: activeWalletMode === "walletconnect" ? "rgba(59,130,246,0.16)" : "rgba(255,255,255,0.05)",
-              opacity: walletConnectBlocked ? 0.55 : 1,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Ionicons name="link-outline" size={14} color="#60A5FA" />
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>WalletConnect</Text>
-            </View>
-          </Pressable>
-          <Pressable
+            supported
+            busy={wallet.busy && activeWalletMode === "walletconnect"}
             onPress={() => {
-              void wallet.setWalletMode("base_smart");
+              void handleProviderPress("walletconnect");
             }}
+          />
+          <ProviderCard
+            mode="base_smart"
+            active={activeWalletMode === "base_smart"}
+            connected={wallet.connectedMode === "base_smart"}
             disabled={!wallet.baseSmartSupported || baseSmartBlocked}
-            style={{
-              flex: 1,
-              borderRadius: 12,
-              minHeight: 46,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: activeWalletMode === "base_smart" ? "rgba(45,212,191,0.45)" : "rgba(255,255,255,0.12)",
-              backgroundColor: activeWalletMode === "base_smart" ? "rgba(13,148,136,0.18)" : "rgba(255,255,255,0.05)",
-              opacity: !wallet.baseSmartSupported || baseSmartBlocked ? 0.55 : 1,
+            supported={wallet.baseSmartSupported}
+            busy={wallet.busy && activeWalletMode === "base_smart"}
+            onPress={() => {
+              void handleProviderPress("base_smart");
             }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Ionicons name="sparkles-outline" size={14} color="#2DD4BF" />
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Base wallet</Text>
-            </View>
-          </Pressable>
+          />
         </View>
-        {!wallet.baseSmartSupported ? (
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-            Base Smart Account is currently available on web.
+
+        <Pressable
+          onPress={connected ? wallet.disconnectWallet : wallet.connectWallet}
+          disabled={wallet.busy || !wallet.chain?.active || (!connected && piChainSelected)}
+          style={[styles.primaryAction, wallet.busy || !wallet.chain?.active || (!connected && piChainSelected) ? styles.dimmed : undefined]}
+        >
+          {wallet.busy ? (
+            <ActivityIndicator color={connected ? ROSE : INK} />
+          ) : (
+            <Ionicons name={primaryCtaIcon as keyof typeof Ionicons.glyphMap} size={18} color={connected ? ROSE : INK} />
+          )}
+          <Text style={[styles.primaryActionText, connected ? { color: ROSE } : undefined]}>
+            {connected ? "Disconnect" : activeWalletMode === "base_smart" ? "Coinbase" : "WalletConnect"}
           </Text>
-        ) : null}
-        {connected ? (
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
-            Disconnect {activeWalletModeLabel} before switching wallet engines.
-          </Text>
-        ) : null}
+        </Pressable>
       </View>
 
-      <View style={{ marginTop: 10 }}>
-        <Text style={{ color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 11, marginBottom: 8 }}>
-          Network
-        </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {wallet.chains.map((c) => {
-            const selected = wallet.chain?.chain === c.chain;
+      <View style={styles.statGrid}>
+        <StatTile label="USDC" value={balancesHidden ? "******" : fmt(wallet.usdcBalance, 6)} tone={TEAL} />
+        <StatTile label="USDT" value={balancesHidden ? "******" : fmt(wallet.usdtBalance, 6)} tone={AMBER} />
+        <StatTile
+          label={wallet.isNigeria ? "NGN" : "Stocks"}
+          value={balancesHidden ? "******" : wallet.isNigeria ? fmt(wallet.ngnBalance) : `$${fmt(wallet.portfolioTotalUsdc)}`}
+          tone={BLUE}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Network</Text>
+          <Text style={styles.sectionMeta}>{wallet.chains.length} available</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.networkStrip}>
+          {wallet.chains.map((chain) => {
+            const selected = wallet.chain?.chain === chain.chain;
             return (
               <Pressable
-                key={c.chain}
-                onPress={() => wallet.selectChain(c)}
-                disabled={!c.active}
-                style={{
-                  marginRight: 8,
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: selected ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.12)",
-                  backgroundColor: selected ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.05)",
-                  opacity: c.active ? 1 : 0.5,
-                }}
+                key={chain.chain}
+                onPress={() => wallet.selectChain(chain)}
+                disabled={!chain.active}
+                style={[styles.networkChip, selected ? styles.networkChipActive : undefined, !chain.active ? styles.dimmed : undefined]}
               >
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{chainLabel(c.chain)}</Text>
+                <Text style={styles.networkText}>{chainLabel(chain.chain)}</Text>
+                {selected ? <Ionicons name="checkmark-circle" size={14} color={TEAL} /> : null}
               </Pressable>
             );
           })}
         </ScrollView>
       </View>
 
-      <View style={{ marginTop: 10, gap: 8 }}>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Pressable
-            onPress={connected ? wallet.disconnectWallet : wallet.connectWallet}
-            disabled={wallet.busy || !wallet.chain?.active}
-            style={{
-              flex: 1,
-              borderRadius: 14,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: connected ? "rgba(248,113,113,0.16)" : "#F59E0B",
-              borderWidth: 1,
-              borderColor: connected ? "rgba(248,113,113,0.32)" : "#F59E0B",
-              opacity: wallet.busy || !wallet.chain?.active ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: connected ? "#FECACA" : "#061311", fontWeight: "900" }}>
-              {wallet.busy ? "Working..." : connected ? "Disconnect Wallet" : "Connect Wallet"}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={wallet.useConnectedWallet}
-            disabled={wallet.busy || !wallet.chain?.active || !connected}
-            style={{
-              flex: 1,
-              borderRadius: 14,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
-              opacity: wallet.busy || !wallet.chain?.active || !connected ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Use Connected</Text>
-          </Pressable>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Identity</Text>
+        <View style={styles.stack}>
+          <AddressRow
+            icon="wallet-outline"
+            label="Market wallet"
+            value={shortAddress(wallet.savedAddress)}
+            onCopy={wallet.savedAddress ? () => copyText(wallet.savedAddress, "Wallet address copied.") : undefined}
+          />
+          <AddressRow
+            icon="phone-portrait-outline"
+            label="Device session"
+            value={shortAddress(wallet.connectedAddress)}
+            onCopy={wallet.connectedAddress ? () => copyText(wallet.connectedAddress, "Connected wallet copied.") : undefined}
+          />
+          <AddressRow
+            icon="logo-usd"
+            label="PI payout"
+            value={shortValue(wallet.savedPiAddress)}
+            onCopy={wallet.savedPiAddress ? () => copyText(wallet.savedPiAddress, "PI wallet address copied.") : undefined}
+          />
         </View>
 
-        {connected ? (
-          <View
-            style={{
-              borderRadius: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              borderWidth: 1,
-              borderColor: "rgba(16,185,129,0.3)",
-              backgroundColor: "rgba(16,185,129,0.12)",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <Ionicons name="checkmark-circle" size={16} color="#6EE7B7" />
-            <Text style={{ color: "#D1FAE5", fontWeight: "800", fontSize: 11 }}>
-              Connected session: {activeWalletModeLabel}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
-        <Pressable
-          onPress={async () => {
-            if (!copyAddress) return;
-            try {
-              await Clipboard.setStringAsync(copyAddress);
-              Alert.alert("Copied", "Wallet address copied.");
-            } catch {
-              Alert.alert("Copy failed", "Unable to copy wallet address right now.");
-            }
-          }}
-          disabled={!copyAddress}
-          style={{
-            flex: 1,
-            borderRadius: 12,
-            height: 40,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.1)",
-            opacity: copyAddress ? 1 : 0.6,
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>Copy Address</Text>
-        </Pressable>
-        <Pressable
-          onPress={onOpenCryptoWallet}
-          style={{
-            flex: 1,
-            borderRadius: 12,
-            height: 40,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.1)",
-          }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>Open Crypto Wallet</Text>
-        </Pressable>
-      </View>
-
-      <View
-        style={{
-          marginTop: 10,
-          borderRadius: 14,
-          padding: 10,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.1)",
-          backgroundColor: "rgba(255,255,255,0.04)",
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>Send Crypto</Text>
-        <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.62)", fontSize: 11 }}>
-          Transfer USDC/USDT from your connected wallet.
-        </Text>
-
-        <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
+        <View style={styles.buttonRow}>
           <Pressable
-            onPress={() => setSendToken("USDC")}
-            style={{
-              flex: 1,
-              height: 36,
-              borderRadius: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: sendToken === "USDC" ? "rgba(124,58,237,0.5)" : "rgba(255,255,255,0.12)",
-              backgroundColor: sendToken === "USDC" ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.05)",
-            }}
+            onPress={wallet.useConnectedWallet}
+            disabled={wallet.busy || !wallet.chain?.active || !wallet.connectedAddress}
+            style={[styles.secondaryAction, wallet.busy || !wallet.chain?.active || !wallet.connectedAddress ? styles.dimmed : undefined]}
           >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>USDC</Text>
+            <Ionicons name="swap-horizontal-outline" size={15} color={TEXT} />
+            <Text style={styles.secondaryActionText}>Use session</Text>
           </Pressable>
           <Pressable
             onPress={() => {
-              if (!canSendUsdt) {
-                Alert.alert("USDT unavailable", "USDT is not configured on the selected network.");
-                return;
-              }
-              setSendToken("USDT");
+              if (copyAddress) void copyText(copyAddress, "Wallet address copied.");
             }}
-            style={{
-              flex: 1,
-              height: 36,
-              borderRadius: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 1,
-              borderColor: sendToken === "USDT" ? "rgba(45,212,191,0.5)" : "rgba(255,255,255,0.12)",
-              backgroundColor: sendToken === "USDT" ? "rgba(45,212,191,0.22)" : "rgba(255,255,255,0.05)",
-              opacity: canSendUsdt ? 1 : 0.55,
-            }}
+            disabled={!copyAddress}
+            style={[styles.secondaryAction, !copyAddress ? styles.dimmed : undefined]}
           >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>USDT</Text>
+            <Ionicons name="copy-outline" size={15} color={TEXT} />
+            <Text style={styles.secondaryActionText}>Copy</Text>
           </Pressable>
         </View>
+      </View>
 
+      {!compact ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>PI payout</Text>
+          <TextInput
+            value={piAddressInput}
+            onChangeText={setPiAddressInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="PI wallet address"
+            placeholderTextColor={FAINT}
+            style={styles.input}
+          />
+          <Pressable onPress={savePiWallet} disabled={piSaveDisabled} style={[styles.secondaryAction, piSaveDisabled ? styles.dimmed : undefined]}>
+            <Ionicons name="save-outline" size={15} color={TEXT} />
+            <Text style={styles.secondaryActionText}>{wallet.piSaving ? "Saving" : "Save PI wallet"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Transfer</Text>
+        <View style={styles.tokenRow}>
+          <TokenButton active={sendToken === "USDC"} label="USDC" disabled={!canSendUsdc} onPress={() => setSendToken("USDC")} />
+          <TokenButton active={sendToken === "USDT"} label="USDT" disabled={!canSendUsdt} onPress={() => setSendToken("USDT")} />
+        </View>
         <TextInput
           value={sendTo}
           onChangeText={setSendTo}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="Recipient wallet address (0x...)"
-          placeholderTextColor="rgba(255,255,255,0.42)"
-          style={{
-            marginTop: 8,
-            height: 42,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.14)",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            color: "#fff",
-            fontWeight: "700",
-            fontSize: 12,
-            paddingHorizontal: 12,
-          }}
+          placeholder="Recipient address"
+          placeholderTextColor={FAINT}
+          style={styles.input}
         />
         <TextInput
           value={sendAmount}
           onChangeText={setSendAmount}
           keyboardType="decimal-pad"
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={`Amount (${sendToken})`}
-          placeholderTextColor="rgba(255,255,255,0.42)"
-          style={{
-            marginTop: 8,
-            height: 42,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.14)",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            color: "#fff",
-            fontWeight: "700",
-            fontSize: 12,
-            paddingHorizontal: 12,
-          }}
+          placeholder={`Amount in ${sendToken}`}
+          placeholderTextColor={FAINT}
+          style={styles.input}
         />
-
-        <Pressable
-          onPress={doSend}
-          disabled={sendDisabled}
-          style={{
-            marginTop: 8,
-            borderRadius: 12,
-            height: 42,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(56,189,248,0.2)",
-            borderWidth: 1,
-            borderColor: "rgba(56,189,248,0.4)",
-            opacity: sendDisabled ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: "#E0F2FE", fontWeight: "900", fontSize: 12 }}>
-            {wallet.sendBusy ? "Sending..." : `Send ${sendToken}`}
-          </Text>
+        <Pressable onPress={doSend} disabled={sendDisabled} style={[styles.secondaryAction, styles.sendAction, sendDisabled ? styles.dimmed : undefined]}>
+          {wallet.sendBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="send" size={15} color={TEXT} />}
+          <Text style={styles.secondaryActionText}>Send {sendToken}</Text>
         </Pressable>
       </View>
 
-      {onOpenHistory ? (
-        <Pressable
-          onPress={onOpenHistory}
-          style={{
-            marginTop: 8,
-            borderRadius: 12,
-            height: 40,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(124,58,237,0.20)",
-            borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.45)",
-            flexDirection: "row",
-            gap: 8,
-          }}
-        >
-          <Ionicons name="time-outline" size={15} color="#fff" />
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Transaction History</Text>
-        </Pressable>
-      ) : null}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Portfolio</Text>
+          <Pill label={`$${fmt(wallet.portfolioTotalUsdc)}`} tone={AMBER} />
+        </View>
+        {portfolio.length ? (
+          <View style={styles.stack}>
+            {portfolio.map((row) => (
+              <View key={`${row.stock_id}-${row.slug}`} style={styles.holdingRow}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={styles.holdingTitle}>{row.name}</Text>
+                  <Text style={styles.holdingMeta}>{row.symbol || "STK"} - Qty {fmt(row.qty, 4)}</Text>
+                </View>
+                <Text style={styles.holdingValue}>{balancesHidden ? maskBalanceValue("$") : `$${fmt(row.value_usdc)}`}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyRow}>
+            <Ionicons name="bar-chart-outline" size={17} color={FAINT} />
+            <Text style={styles.emptyText}>No stock holdings yet.</Text>
+          </View>
+        )}
+      </View>
 
-      {!!wallet.error ? (
-        <Text style={{ marginTop: 10, color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>{wallet.error}</Text>
-      ) : null}
+      <View style={styles.footerActions}>
+        {onOpenNgnWallet ? (
+          <Pressable onPress={onOpenNgnWallet} style={styles.footerButton}>
+            <Ionicons name="cash-outline" size={15} color={TEXT} />
+            <Text style={styles.footerButtonText}>NGN</Text>
+          </Pressable>
+        ) : null}
+        {onOpenCryptoWallet ? (
+          <Pressable onPress={onOpenCryptoWallet} style={styles.footerButton}>
+            <Ionicons name="open-outline" size={15} color={TEXT} />
+            <Text style={styles.footerButtonText}>Wallet</Text>
+          </Pressable>
+        ) : null}
+        {onOpenHistory ? (
+          <Pressable onPress={onOpenHistory} style={styles.footerButton}>
+            <Ionicons name="time-outline" size={15} color={TEXT} />
+            <Text style={styles.footerButtonText}>History</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {!!wallet.error ? <Text style={styles.errorText}>{wallet.error}</Text> : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  shell: {
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(7,16,13,0.92)",
+    borderWidth: 1,
+    borderColor: BORDER,
+    gap: 10,
+  },
+  shellCompact: {
+    padding: 10,
+  },
+  hero: {
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,247,0.13)",
+    backgroundColor: BG,
+  },
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  heroKicker: {
+    color: TEAL,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  heroTitle: {
+    marginTop: 3,
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  balanceLabel: {
+    marginTop: 18,
+    color: FAINT,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  balanceValue: {
+    marginTop: 4,
+    color: TEXT,
+    fontSize: 34,
+    fontWeight: "900",
+  },
+  balanceMeta: {
+    marginTop: 4,
+    color: MUTED,
+    fontSize: 12,
+  },
+  statusRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  pill: {
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PANEL,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  section: {
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: PANEL,
+    borderWidth: 1,
+    borderColor: BORDER,
+    gap: 10,
+  },
+  sectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+  },
+  sectionTitle: {
+    color: TEXT,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  sectionMeta: {
+    color: FAINT,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  providerGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  providerCard: {
+    flex: 1,
+    minHeight: 126,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  providerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  providerStatus: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  providerConnected: {
+    backgroundColor: "rgba(34,197,94,0.18)",
+    borderColor: "rgba(34,197,94,0.38)",
+  },
+  providerSelected: {
+    backgroundColor: "rgba(59,130,246,0.14)",
+    borderColor: "rgba(59,130,246,0.35)",
+  },
+  providerTitle: {
+    marginTop: 12,
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  providerSubtitle: {
+    marginTop: 4,
+    color: MUTED,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  providerUnavailable: {
+    marginTop: 6,
+    color: AMBER,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  primaryAction: {
+    minHeight: 48,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: AMBER,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,247,0.18)",
+  },
+  primaryActionText: {
+    color: INK,
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  statTile: {
+    flexGrow: 1,
+    flexBasis: 96,
+    borderRadius: 8,
+    padding: 11,
+    borderWidth: 1,
+  },
+  statLabel: {
+    color: FAINT,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  statValue: {
+    marginTop: 5,
+    color: TEXT,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  networkStrip: {
+    gap: 8,
+    paddingRight: 2,
+  },
+  networkChip: {
+    minHeight: 38,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  networkChipActive: {
+    backgroundColor: "rgba(45,212,191,0.14)",
+    borderColor: "rgba(45,212,191,0.44)",
+  },
+  networkText: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  stack: {
+    gap: 8,
+  },
+  addressRow: {
+    minHeight: 58,
+    borderRadius: 8,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  addressIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(45,212,191,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.28)",
+  },
+  addressLabel: {
+    color: FAINT,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  addressValue: {
+    marginTop: 4,
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  secondaryAction: {
+    minHeight: 44,
+    flex: 1,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  secondaryActionText: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  input: {
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: PANEL_ALT,
+    color: TEXT,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  tokenRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tokenButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  tokenActive: {
+    backgroundColor: "rgba(45,212,191,0.14)",
+    borderColor: "rgba(45,212,191,0.42)",
+  },
+  tokenText: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  sendAction: {
+    backgroundColor: "rgba(56,189,248,0.16)",
+    borderColor: "rgba(56,189,248,0.36)",
+  },
+  holdingRow: {
+    borderRadius: 8,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  holdingTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  holdingMeta: {
+    marginTop: 3,
+    color: MUTED,
+    fontSize: 11,
+  },
+  holdingValue: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  emptyRow: {
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  emptyText: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  inlineAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(251,113,133,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251,113,133,0.28)",
+  },
+  footerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  footerButton: {
+    flexGrow: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+    backgroundColor: PANEL,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  footerButtonText: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  errorText: {
+    color: "#FDA4AF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  dimmed: {
+    opacity: 0.52,
+  },
+});

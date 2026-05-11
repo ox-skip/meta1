@@ -51,9 +51,17 @@ function getExpoAv() {
   }
 }
 const ExpoAV = getExpoAv();
-const Audio = ExpoAV?.Audio;
 const Video = ExpoAV?.Video;
 const ResizeMode = ExpoAV?.ResizeMode ?? { CONTAIN: "contain" };
+
+async function getAudioModule() {
+  try {
+    const mod = await import("expo-av");
+    return mod.Audio;
+  } catch {
+    return null;
+  }
+}
 
 type PendingMedia = {
   kind: "image" | "video" | "audio";
@@ -274,21 +282,25 @@ export default function DMChat() {
 
   async function toggleRecord() {
     if (!threadId) return;
-    if (!Audio) {
-      setErr("Audio recording is unavailable on this device.");
-      return;
-    }
-    if (recording) {
-      setRecordingBusy(true);
-      try {
-        await recording.stopAndUnloadAsync();
+    if (recordingBusy) return;
+
+    setRecordingBusy(true);
+    setErr(null);
+
+    try {
+      const Audio = await getAudioModule();
+      if (!Audio) throw new Error("Voice recording is unavailable on this device.");
+
+      if (recording) {
+        const currentRecording = recording;
+        await currentRecording.stopAndUnloadAsync();
+        const uri = currentRecording.getURI?.();
+        const status = await currentRecording.getStatusAsync().catch(() => null);
+        setRecording(null);
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
         }).catch(() => undefined);
-        const uri = recording.getURI();
-        const status = await recording.getStatusAsync();
-        setRecording(null);
         if (!uri) throw new Error("Recording failed");
         setPendingMedia({
           kind: "audio",
@@ -296,17 +308,11 @@ export default function DMChat() {
           mime_type: "audio/m4a",
           duration_sec: status?.durationMillis ? Math.round(status.durationMillis / 1000) : null,
         });
-      } catch (e: any) {
-        setErr(e?.message || "Audio capture failed");
-      } finally {
-        setRecordingBusy(false);
+        return;
       }
-      return;
-    }
 
-    try {
       const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) throw new Error("Microphone permission denied");
+      if (!perm.granted) throw new Error("Allow microphone access to record.");
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -316,16 +322,17 @@ export default function DMChat() {
       );
       setRecording(rec);
     } catch (e: any) {
-      setErr(e?.message || "Could not start recording");
+      setRecording(null);
+      setErr(e?.message || "Voice recording is unavailable on this device.");
+    } finally {
+      setRecordingBusy(false);
     }
   }
 
   async function onOpenAudio(url: string) {
-    if (!Audio) {
-      setErr("Audio playback is unavailable on this device.");
-      return;
-    }
     try {
+      const Audio = await getAudioModule();
+      if (!Audio) throw new Error("Audio playback is unavailable on this device.");
       if (audioSound) {
         await audioSound.unloadAsync();
       }

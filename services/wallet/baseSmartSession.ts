@@ -45,14 +45,14 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForOpenModal(timeoutMs: number) {
+async function waitForOpenModal(timeoutMs: number): Promise<BaseSmartRuntime["openModal"]> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const open = getBaseSmartSession().runtime.openModal;
     if (open) return open;
     await sleep(120);
   }
-  return null;
+  return undefined;
 }
 
 export function setBaseSmartRuntime(runtime: BaseSmartRuntime) {
@@ -135,7 +135,7 @@ export async function connectBaseSmartEvm(timeoutMs = 60_000, opts?: ConnectBase
   }
 
   if (!openModal) {
-    throw new Error("Base Smart Account is still initializing. Retry in a moment.");
+    throw new Error("Coinbase Smart Wallet is still initializing. Retry in a moment.");
   }
 
   await Promise.resolve(openModal());
@@ -147,7 +147,7 @@ export async function connectBaseSmartEvm(timeoutMs = 60_000, opts?: ConnectBase
     await sleep(200);
   }
 
-  throw new Error("Base Smart Account connection timed out. Approve the connection and retry.");
+  throw new Error("Coinbase Smart Wallet connection timed out. Approve the connection and retry.");
 }
 
 export async function getBaseSmartEip155Provider(timeoutMs = 60_000) {
@@ -171,7 +171,7 @@ export async function getBaseSmartEip155Provider(timeoutMs = 60_000) {
   }
 
   if (!provider || typeof provider.request !== "function") {
-    throw new Error("Base Smart provider is unavailable. Reconnect and try again.");
+    throw new Error("Coinbase Smart Wallet is unavailable. Reconnect and try again.");
   }
 
   return {
