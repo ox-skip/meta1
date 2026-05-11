@@ -59,6 +59,28 @@ export type MarketAdminActionResult = {
   [key: string]: any;
 };
 
+export type MarketSupportAiTriage = {
+  category: string;
+  priority: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  customer_goal: string;
+  urgency_reason: string;
+  key_facts: string[];
+  missing_evidence: string[];
+  risk_flags: string[];
+  recommended_next_action: string;
+  suggested_admin_reply: string;
+};
+
+export type MarketSupportAiTriageResult = {
+  ok: true;
+  ticket_id: string;
+  generated_at: string;
+  model?: string;
+  triage: MarketSupportAiTriage;
+};
+
 async function getAdminSessionToken() {
   return (await SecureStore.getItemAsync(ADMIN_SESSION_KEY)) || "";
 }
@@ -71,7 +93,7 @@ async function setAdminSessionToken(token: string) {
   await SecureStore.setItemAsync(ADMIN_SESSION_KEY, token);
 }
 
-async function callAdminFn<T>(name: string, body?: unknown): Promise<T> {
+async function callAdminFn<T>(name: string, body?: unknown, timeoutMs = 20000): Promise<T> {
   const jwt = await getSupabaseJwtOrThrow();
   const adminSession = await getAdminSessionToken();
   if (!adminSession) {
@@ -90,7 +112,7 @@ async function callAdminFn<T>(name: string, body?: unknown): Promise<T> {
       },
       body: JSON.stringify(body ?? {}),
     },
-    20000,
+    timeoutMs,
   );
 
   if (!res.ok || !json || (json as any)?.error) {
@@ -151,6 +173,14 @@ export async function loadAdminWorkspace() {
 
 export async function runAdminAction(body: Record<string, unknown>) {
   return await callAdminFn<MarketAdminActionResult>("market-admin-action", body);
+}
+
+export async function generateSupportAiTriage(ticketId: string) {
+  return await callAdminFn<MarketSupportAiTriageResult>(
+    "market-support-ai-triage",
+    { ticket_id: ticketId },
+    45000,
+  );
 }
 
 export async function logoutAdmin() {

@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/services/supabase";
 import {
   clearAdminSessionToken,
+  generateSupportAiTriage,
   hasStoredAdminSession,
   loadAdminOverview,
   loadAdminWorkspace,
@@ -26,6 +27,7 @@ import {
   runAdminAction,
   type MarketAdminOverview,
   type MarketAdminWorkspace,
+  type MarketSupportAiTriageResult,
 } from "@/services/market/admin";
 import {
   uploadSupportFiles,
@@ -267,6 +269,21 @@ function statusTone(status?: unknown) {
   if (["PENDING", "IN_REVIEW", "UNDER_REVIEW", "IN_ESCROW", "PROCESSING", "SUBMITTED"].includes(s)) return WARNING;
   if (["REJECTED", "REFUNDED", "DISPUTED", "FAILED", "CANCELLED", "EXPIRED"].includes(s)) return DANGER;
   return ACCENT;
+}
+
+function priorityTone(priority?: unknown) {
+  const p = String(priority ?? "").toUpperCase();
+  if (p === "URGENT") return DANGER;
+  if (p === "HIGH") return WARNING;
+  if (p === "LOW") return MUTED;
+  return SUCCESS;
+}
+
+function confidenceTone(confidence?: unknown) {
+  const c = String(confidence ?? "").toUpperCase();
+  if (c === "HIGH") return SUCCESS;
+  if (c === "MEDIUM") return WARNING;
+  return MUTED;
 }
 
 function ActionButton({
@@ -551,6 +568,7 @@ export default function MarketAdminIndex() {
   const [activeModule, setActiveModule] = useState<ModuleKey | null>(null);
   const [actionNote, setActionNote] = useState("");
   const [supportReplies, setSupportReplies] = useState<Record<string, string>>({});
+  const [supportAiResults, setSupportAiResults] = useState<Record<string, MarketSupportAiTriageResult>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminDisplayName, setAdminDisplayName] = useState("");
@@ -929,6 +947,30 @@ export default function MarketAdminIndex() {
     }
   }
 
+  async function runSupportAiTriage(ticket: any) {
+    const ticketId = String(ticket?.id || "");
+    if (!ticketId) return;
+    setWorkingKey(`support-ai-${ticketId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await generateSupportAiTriage(ticketId);
+      setSupportAiResults((prev) => ({ ...prev, [ticketId]: result }));
+      const suggestedReply = String(result.triage?.suggested_admin_reply || "").trim();
+      setSupportReplies((prev) => (
+        suggestedReply && !String(prev[ticketId] || "").trim()
+          ? { ...prev, [ticketId]: suggestedReply }
+          : prev
+      ));
+      setNotice("Gemini triage is ready. Review it before sending or changing priority.");
+    } catch (e: any) {
+      setError(String(e?.message || e || "Could not generate Gemini triage."));
+    } finally {
+      setWorkingKey(null);
+      setCheckingSession(false);
+    }
+  }
+
   function renderSupportPendingFiles(ticketId: string) {
     const files = supportFiles[ticketId] ?? [];
     if (!files.length) return null;
@@ -991,6 +1033,107 @@ export default function MarketAdminIndex() {
             <Ionicons name="open-outline" size={14} color={FAINT} />
           </Pressable>
         ))}
+      </View>
+    );
+  }
+
+  function renderSupportAiTriage(ticket: any, canRespond: boolean) {
+    const ticketId = String(ticket?.id || "");
+    const result = supportAiResults[ticketId];
+    const triage = result?.triage;
+    if (!triage) return null;
+
+    const currentPriority = String(ticket?.priority ?? "NORMAL").toUpperCase();
+    const currentStatus = String(ticket?.status ?? "OPEN").toUpperCase();
+    const suggestedReply = String(triage.suggested_admin_reply || "").trim();
+    const suggestedPriority = String(triage.priority || "NORMAL").toUpperCase();
+    const canApplyPriority = canRespond && suggestedPriority.length > 0 && suggestedPriority !== currentPriority;
+
+    const renderList = (title: string, values: string[], color: string) => {
+      const clean = values.map((value) => String(value || "").trim()).filter(Boolean);
+      if (!clean.length) return null;
+      return (
+        <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+          <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>{title}</Text>
+          {clean.map((value, index) => (
+            <View key={`${title}-${index}`} style={{ flexDirection: "row", gap: 7, alignItems: "flex-start" }}>
+              <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: color, marginTop: 7 }} />
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18, flex: 1 }}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      );
+    };
+
+    return (
+      <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER, gap: 12 }}>
+        <View style={{ borderLeftWidth: 3, borderLeftColor: SUCCESS, paddingLeft: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="sparkles-outline" size={16} color={SUCCESS} />
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Gemini triage</Text>
+              </View>
+              <Text style={{ marginTop: 5, color: FAINT, fontSize: 11, fontWeight: "800" }}>
+                {result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+              <Pill label={labelFromKey(triage.category)} color={ACCENT} />
+              <Pill label={suggestedPriority} color={priorityTone(suggestedPriority)} />
+              <Pill label={`${triage.confidence} confidence`} color={confidenceTone(triage.confidence)} />
+            </View>
+          </View>
+
+          {triage.summary ? (
+            <Text style={{ color: TEXT, fontSize: 13, lineHeight: 20 }}>{triage.summary}</Text>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            {triage.customer_goal ? <InfoLine label="Customer wants" value={triage.customer_goal} /> : null}
+            {triage.urgency_reason ? <InfoLine label="Urgency" value={triage.urgency_reason} /> : null}
+            {triage.recommended_next_action ? <InfoLine label="Next action" value={triage.recommended_next_action} /> : null}
+          </View>
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+            {renderList("Key facts", triage.key_facts ?? [], SUCCESS)}
+            {renderList("Missing evidence", triage.missing_evidence ?? [], WARNING)}
+            {renderList("Risk flags", triage.risk_flags ?? [], DANGER)}
+          </View>
+
+          {suggestedReply ? (
+            <View style={{ gap: 7 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Suggested reply</Text>
+              <Text style={{ color: MUTED, fontSize: 13, lineHeight: 20 }}>{suggestedReply}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <ActionButton
+              icon="create-outline"
+              label="Use reply"
+              color={SUCCESS}
+              disabled={!canRespond || !suggestedReply}
+              onPress={() => {
+                setSupportReplies((prev) => ({ ...prev, [ticketId]: suggestedReply }));
+                setNotice("Suggested reply copied into the support composer.");
+              }}
+            />
+            <ActionButton
+              icon="flag-outline"
+              label={`Set ${suggestedPriority}`}
+              color={priorityTone(suggestedPriority)}
+              disabled={!canApplyPriority}
+              loading={workingKey === `support-priority-${ticketId}`}
+              onPress={() => performAction(`support-priority-${ticketId}`, {
+                action: "support_update_status",
+                ticket_id: ticketId,
+                status: currentStatus,
+                priority: suggestedPriority,
+              })}
+            />
+          </View>
+        </View>
       </View>
     );
   }
@@ -1176,7 +1319,17 @@ export default function MarketAdminIndex() {
                       {selectedTicket.related_order_id ? (
                         <ActionButton icon="receipt-outline" label="Open order" color={WARNING} onPress={() => openOrder(selectedTicket.related_order_id)} />
                       ) : null}
+                      <ActionButton
+                        icon="sparkles-outline"
+                        label="Gemini triage"
+                        color={SUCCESS}
+                        disabled={!canRespond}
+                        loading={workingKey === `support-ai-${selectedTicket.id}`}
+                        onPress={() => void runSupportAiTriage(selectedTicket)}
+                      />
                     </View>
+
+                    {renderSupportAiTriage(selectedTicket, canRespond)}
 
                     <View style={{ marginTop: 14, gap: 8 }}>
                       {messages.length ? messages.map((message: any) => {
