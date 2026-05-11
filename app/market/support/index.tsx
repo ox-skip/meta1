@@ -106,6 +106,13 @@ function fileIcon(kind: string): keyof typeof Ionicons.glyphMap {
   return "document-attach-outline";
 }
 
+function messagePreview(message?: SupportMessage | null) {
+  const text = String(message?.body || "").replace(/\s+/g, " ").trim();
+  if (text) return text;
+  if (message?.attachments?.length) return "[Attachment]";
+  return "No message";
+}
+
 function Pill({ label, color }: { label: string; color: string }) {
   return (
     <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: `${color}18`, borderWidth: 1, borderColor: `${color}3A` }}>
@@ -325,27 +332,51 @@ function TicketCard({
   onPress: () => void;
 }) {
   const tone = statusColor(ticket.status);
+  const preview = messagePreview(ticket.latest_message);
   return (
     <Pressable
       onPress={onPress}
       style={{
-        borderRadius: 18,
-        padding: 14,
+        borderRadius: 16,
+        padding: 12,
         backgroundColor: selected ? "rgba(45,212,191,0.12)" : PANEL,
         borderWidth: 1,
         borderColor: selected ? "rgba(45,212,191,0.45)" : BORDER,
+        flexDirection: "row",
+        gap: 11,
+        alignItems: "flex-start",
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <Pill label={labelFromKey(ticket.status)} color={tone} />
-        <Pill label={labelFromKey(ticket.priority)} color={priorityColor(ticket.priority)} />
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 13,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${tone}18`,
+          borderWidth: 1,
+          borderColor: `${tone}42`,
+        }}
+      >
+        <Ionicons name="chatbubbles-outline" size={19} color={tone} />
       </View>
-      <Text numberOfLines={2} style={{ marginTop: 12, color: TEXT, fontSize: 15, fontWeight: "900", lineHeight: 20 }}>
-        {ticket.subject}
-      </Text>
-      <Text style={{ marginTop: 7, color: MUTED, fontSize: 12 }}>
-        {labelFromKey(ticket.category)} - {formatDate(ticket.last_message_at)}
-      </Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <Text numberOfLines={1} style={{ flex: 1, color: TEXT, fontSize: 15, fontWeight: "900" }}>
+            {ticket.subject}
+          </Text>
+          <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{formatDate(ticket.last_message_at)}</Text>
+        </View>
+        <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 17 }}>
+          {preview}
+        </Text>
+        <View style={{ marginTop: 9, flexDirection: "row", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
+          <Pill label={labelFromKey(ticket.status)} color={tone} />
+          <Pill label={labelFromKey(ticket.priority)} color={priorityColor(ticket.priority)} />
+          <Text style={{ color: FAINT, fontSize: 10, fontWeight: "800" }}>{labelFromKey(ticket.category)}</Text>
+        </View>
+      </View>
     </Pressable>
   );
 }
@@ -462,7 +493,7 @@ export default function MarketSupportScreen() {
       const preferred = String(preferredId ?? "").trim();
       if (preferred && rows.some((ticket) => ticket.id === preferred)) return preferred;
       if (current && rows.some((ticket) => ticket.id === current)) return current;
-      return rows[0]?.id ?? null;
+      return null;
     });
   }, []);
 

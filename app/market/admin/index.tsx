@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -536,6 +536,7 @@ function PermissionGroups({ permissions }: { permissions: string[] }) {
 
 export default function MarketAdminIndex() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ module?: string; ticket?: string }>();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 920;
   const [booting, setBooting] = useState(true);
@@ -568,6 +569,7 @@ export default function MarketAdminIndex() {
   const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
   const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
   const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
+  const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
 
   const visibleModules = useMemo(() => {
     const permissions = overview?.admin.permissions ?? [];
@@ -577,6 +579,13 @@ export default function MarketAdminIndex() {
   const currentModule = (activeModule ?? visibleModules[0]?.key ?? "support") as ModuleKey;
   const currentModuleMeta = MODULE_META[currentModule] ?? MODULE_META.support;
   const currentModuleSearch = moduleSearch[currentModule] ?? "";
+
+  useEffect(() => {
+    const moduleParam = String(params.module || "").trim().toLowerCase();
+    const ticketParam = String(params.ticket || "").trim();
+    if (moduleParam === "support") setActiveModule("support");
+    if (ticketParam) setSelectedSupportTicketId(ticketParam);
+  }, [params.module, params.ticket]);
 
   function setCurrentModuleSearch(value: string) {
     setModuleSearch((prev) => ({ ...prev, [currentModule]: value }));
@@ -1020,6 +1029,18 @@ export default function MarketAdminIndex() {
         if (supportStatusTab === "resolved") return status === "RESOLVED";
         return status === "CLOSED";
       });
+    const latestSupportMessage = (ticket: any) => {
+      const messages = Array.isArray(ticket?.messages) ? ticket.messages : [];
+      return messages.length ? messages[messages.length - 1] : null;
+    };
+    const supportMessagePreview = (ticket: any) => {
+      const latest = latestSupportMessage(ticket);
+      const text = String(latest?.body || "").replace(/\s+/g, " ").trim();
+      if (text) return text;
+      if (latest?.attachments?.length) return "[Attachment]";
+      return "Conversation is empty";
+    };
+    const selectedTicket = tickets.find((ticket: any) => String(ticket.id) === String(selectedSupportTicketId)) ?? null;
     const disputes = allDisputes.filter((dispute: any) => matchesSearch(currentModuleSearch, [
       dispute.id,
       dispute.order_id,
@@ -1057,148 +1078,199 @@ export default function MarketAdminIndex() {
         </SectionHeader>
 
         {supportTicketRole ? (
-          <>
-            {tickets.length ? tickets.map((ticket: any) => {
-              const messages = ticket.messages ?? [];
-              const recentMessages = messages.slice(-4);
-              const draft = supportReplies[ticket.id] ?? "";
-              const pendingFiles = supportFiles[ticket.id] ?? [];
-              const status = String(ticket.status ?? "OPEN").toUpperCase();
-              const ticketDmSlug = ticket.message_slug || dmSlugForUser(ticket.user);
-              return (
-                <RecordCard key={ticket.id}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                    <View style={{ flex: 1, minWidth: 220 }}>
-                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{ticket.subject}</Text>
-                      <View style={{ marginTop: 6, flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                        <Text style={{ color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                          {personLabel(ticket.user)} opened a {labelFromKey(String(ticket.category ?? "general"))} ticket.
-                        </Text>
-                        {ticketDmSlug ? (
-                          <Pressable
-                            onPress={() => openDmSlug(ticketDmSlug)}
-                            style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: "rgba(74,222,128,0.12)", borderWidth: 1, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", gap: 5 }}
-                          >
-                            <Ionicons name="chatbubble-ellipses-outline" size={13} color={SUCCESS} />
-                            <Text style={{ color: SUCCESS, fontSize: 11, fontWeight: "900" }}>DM</Text>
-                          </Pressable>
-                        ) : null}
+          <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 12, alignItems: "flex-start" }}>
+            <View style={{ width: isDesktop ? 430 : "100%", gap: 10 }}>
+              {tickets.length ? tickets.map((ticket: any) => {
+                const latest = latestSupportMessage(ticket);
+                const status = String(ticket.status ?? "OPEN").toUpperCase();
+                const selected = selectedTicket?.id === ticket.id;
+                return (
+                  <Pressable
+                    key={ticket.id}
+                    onPress={() => setSelectedSupportTicketId(ticket.id)}
+                    style={{
+                      borderRadius: 8,
+                      padding: 12,
+                      backgroundColor: selected ? "rgba(74,222,128,0.10)" : PANEL_ALT,
+                      borderWidth: 1,
+                      borderColor: selected ? "rgba(74,222,128,0.32)" : BORDER,
+                      flexDirection: "row",
+                      gap: 11,
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "rgba(245,158,11,0.12)",
+                        borderWidth: 1,
+                        borderColor: "rgba(245,158,11,0.28)",
+                      }}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={19} color={ACCENT} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>{ticket.subject}</Text>
+                          <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontSize: 12, fontWeight: "800" }}>
+                            {personLabel(ticket.user)}
+                          </Text>
+                        </View>
+                        <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{formatDate(latest?.created_at ?? ticket.last_message_at)}</Text>
+                      </View>
+                      <Text numberOfLines={1} style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                        {supportMessagePreview(ticket)}
+                      </Text>
+                      <View style={{ marginTop: 9, flexDirection: "row", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
+                        <Pill label={status} color={statusTone(status)} />
+                        <Pill label={String(ticket.priority ?? "NORMAL")} color={String(ticket.priority).toUpperCase() === "URGENT" ? DANGER : ACCENT} />
+                        {latest?.attachments?.length ? <Ionicons name="document-attach-outline" size={14} color={FAINT} /> : null}
                       </View>
                     </View>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
-                      <Pill label={status} color={statusTone(status)} />
-                      <Pill label={String(ticket.priority ?? "NORMAL")} color={String(ticket.priority).toUpperCase() === "URGENT" ? DANGER : ACCENT} />
+                  </Pressable>
+                );
+              }) : (
+                <EmptyState title={allTickets.length ? "No matching support tickets" : "Support queue is clear"} subtitle={allTickets.length ? "Clear the search or try a subject, user, status, or order ID." : "No tickets require this view."} />
+              )}
+            </View>
+
+            <View style={{ flex: 1, width: isDesktop ? undefined : "100%", minWidth: 0 }}>
+              {selectedTicket ? (() => {
+                const messages = selectedTicket.messages ?? [];
+                const draft = supportReplies[selectedTicket.id] ?? "";
+                const pendingFiles = supportFiles[selectedTicket.id] ?? [];
+                const status = String(selectedTicket.status ?? "OPEN").toUpperCase();
+                const ticketDmSlug = selectedTicket.message_slug || dmSlugForUser(selectedTicket.user);
+                return (
+                  <RecordCard>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <View style={{ flex: 1, minWidth: 220 }}>
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{selectedTicket.subject}</Text>
+                        <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                          {personLabel(selectedTicket.user)} - {labelFromKey(String(selectedTicket.category ?? "general"))}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                        <Pill label={status} color={statusTone(status)} />
+                        <Pill label={String(selectedTicket.priority ?? "NORMAL")} color={String(selectedTicket.priority).toUpperCase() === "URGENT" ? DANGER : ACCENT} />
+                      </View>
                     </View>
-                  </View>
 
-                  <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-                    <InfoLine label="User" value={personLabel(ticket.user)} />
-                    <InfoLine label="DM slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
-                    <InfoLine label="Order" value={ticket.related_order_id ? shortId(ticket.related_order_id) : "n/a"} />
-                    <InfoLine label="Assigned" value={ticket.assigned_admin ? personLabel(ticket.assigned_admin) : "Unassigned"} />
-                    <InfoLine label="Last message" value={formatDate(ticket.last_message_at)} />
-                  </View>
+                    <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                      <InfoLine label="User" value={personLabel(selectedTicket.user)} />
+                      <InfoLine label="DM slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
+                      <InfoLine label="Order" value={selectedTicket.related_order_id ? shortId(selectedTicket.related_order_id) : "n/a"} />
+                      <InfoLine label="Assigned" value={selectedTicket.assigned_admin ? personLabel(selectedTicket.assigned_admin) : "Unassigned"} />
+                      <InfoLine label="Last message" value={formatDate(selectedTicket.last_message_at)} />
+                    </View>
 
-                  <View style={{ marginTop: 14, gap: 8 }}>
-                    {recentMessages.length ? recentMessages.map((message: any) => {
-                      const fromAdmin = String(message.sender_kind ?? "").toUpperCase() === "ADMIN";
-                      return (
-                        <View
-                          key={message.id}
-                          style={{
-                            alignSelf: fromAdmin ? "flex-start" : "flex-end",
-                            maxWidth: "92%",
-                            borderRadius: 8,
-                            padding: 10,
-                            backgroundColor: fromAdmin ? "rgba(74,222,128,0.10)" : "rgba(245,158,11,0.11)",
-                            borderWidth: 1,
-                            borderColor: fromAdmin ? "rgba(74,222,128,0.22)" : "rgba(245,158,11,0.24)",
-                          }}
-                        >
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                            <Text style={{ color: fromAdmin ? SUCCESS : ACCENT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
-                              {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
-                            </Text>
-                            {!fromAdmin && message.message_slug ? (
-                              <Pressable onPress={() => openDmSlug(message.message_slug)} hitSlop={8}>
-                                <Ionicons name="chatbubble-ellipses-outline" size={14} color={ACCENT} />
-                              </Pressable>
-                            ) : null}
-                          </View>
-                          {message.body ? <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text> : null}
-                          {renderSupportAttachments(message.attachments)}
-                        </View>
-                      );
-                    }) : (
-                      <Text style={{ color: MUTED, fontSize: 13 }}>Conversation is empty.</Text>
-                    )}
-                  </View>
-
-                  <View style={{ marginTop: 14, gap: 10 }}>
-                    <AdminTextInput
-                      value={draft}
-                      onChangeText={(value) => setSupportReplies((prev) => ({ ...prev, [ticket.id]: value }))}
-                      placeholder="Reply to the user"
-                      multiline
-                    />
-                    {renderSupportPendingFiles(ticket.id)}
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                      <ActionButton
-                        icon="document-attach-outline"
-                        label="Attach proof"
-                        color={ACCENT}
-                        disabled={!canRespond}
-                        loading={supportPickingId === ticket.id}
-                        onPress={() => void pickSupportFiles(ticket.id)}
-                      />
-                      <ActionButton
-                        icon="send-outline"
-                        label="Send reply"
-                        color={SUCCESS}
-                        disabled={!canRespond || (!draft.trim() && !pendingFiles.length)}
-                        loading={workingKey === `support-reply-${ticket.id}`}
-                        onPress={() => void submitSupportReply(ticket, draft)}
-                      />
-                      <ActionButton
-                        icon="eye-outline"
-                        label="In progress"
-                        color={ACCENT}
-                        disabled={!canRespond || status === "IN_PROGRESS"}
-                        loading={workingKey === `support-progress-${ticket.id}`}
-                        onPress={() => performAction(`support-progress-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "IN_PROGRESS" })}
-                      />
-                      <ActionButton
-                        icon="checkmark-circle-outline"
-                        label="Resolve"
-                        color={SUCCESS}
-                        disabled={!canRespond || status === "RESOLVED"}
-                        loading={workingKey === `support-resolve-${ticket.id}`}
-                        onPress={() => performAction(`support-resolve-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "RESOLVED" }, true)}
-                      />
-                      <ActionButton
-                        icon="refresh-outline"
-                        label="Reopen"
-                        color={WARNING}
-                        disabled={!canRespond || status === "OPEN"}
-                        loading={workingKey === `support-reopen-${ticket.id}`}
-                        onPress={() => performAction(`support-reopen-${ticket.id}`, { action: "support_update_status", ticket_id: ticket.id, status: "OPEN" })}
-                      />
-                      {ticket.related_order_id ? (
-                        <ActionButton
-                          icon="receipt-outline"
-                          label="Open order"
-                          color={WARNING}
-                          onPress={() => openOrder(ticket.related_order_id)}
-                        />
+                    <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      {ticketDmSlug ? (
+                        <ActionButton icon="chatbubble-ellipses-outline" label="DM user" color={SUCCESS} onPress={() => openDmSlug(ticketDmSlug)} />
+                      ) : null}
+                      {selectedTicket.related_order_id ? (
+                        <ActionButton icon="receipt-outline" label="Open order" color={WARNING} onPress={() => openOrder(selectedTicket.related_order_id)} />
                       ) : null}
                     </View>
-                  </View>
-                </RecordCard>
-              );
-            }) : (
-              <EmptyState title={allTickets.length ? "No matching support tickets" : "Support queue is clear"} subtitle={allTickets.length ? "Clear the search or try a subject, user, status, or order ID." : "No tickets require this view."} />
-            )}
-          </>
+
+                    <View style={{ marginTop: 14, gap: 8 }}>
+                      {messages.length ? messages.map((message: any) => {
+                        const fromAdmin = String(message.sender_kind ?? "").toUpperCase() === "ADMIN";
+                        return (
+                          <View
+                            key={message.id}
+                            style={{
+                              alignSelf: fromAdmin ? "flex-start" : "flex-end",
+                              maxWidth: "92%",
+                              borderRadius: 8,
+                              padding: 10,
+                              backgroundColor: fromAdmin ? "rgba(74,222,128,0.10)" : "rgba(245,158,11,0.11)",
+                              borderWidth: 1,
+                              borderColor: fromAdmin ? "rgba(74,222,128,0.22)" : "rgba(245,158,11,0.24)",
+                            }}
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                              <Text style={{ color: fromAdmin ? SUCCESS : ACCENT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                                {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
+                              </Text>
+                              {!fromAdmin && message.message_slug ? (
+                                <Pressable onPress={() => openDmSlug(message.message_slug)} hitSlop={8}>
+                                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={ACCENT} />
+                                </Pressable>
+                              ) : null}
+                            </View>
+                            {message.body ? <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text> : null}
+                            {renderSupportAttachments(message.attachments)}
+                          </View>
+                        );
+                      }) : (
+                        <Text style={{ color: MUTED, fontSize: 13 }}>Conversation is empty.</Text>
+                      )}
+                    </View>
+
+                    <View style={{ marginTop: 14, gap: 10 }}>
+                      <AdminTextInput
+                        value={draft}
+                        onChangeText={(value) => setSupportReplies((prev) => ({ ...prev, [selectedTicket.id]: value }))}
+                        placeholder="Reply to the user"
+                        multiline
+                      />
+                      {renderSupportPendingFiles(selectedTicket.id)}
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        <ActionButton
+                          icon="document-attach-outline"
+                          label="Attach proof"
+                          color={ACCENT}
+                          disabled={!canRespond}
+                          loading={supportPickingId === selectedTicket.id}
+                          onPress={() => void pickSupportFiles(selectedTicket.id)}
+                        />
+                        <ActionButton
+                          icon="send-outline"
+                          label="Send reply"
+                          color={SUCCESS}
+                          disabled={!canRespond || (!draft.trim() && !pendingFiles.length)}
+                          loading={workingKey === `support-reply-${selectedTicket.id}`}
+                          onPress={() => void submitSupportReply(selectedTicket, draft)}
+                        />
+                        <ActionButton
+                          icon="eye-outline"
+                          label="In progress"
+                          color={ACCENT}
+                          disabled={!canRespond || status === "IN_PROGRESS"}
+                          loading={workingKey === `support-progress-${selectedTicket.id}`}
+                          onPress={() => performAction(`support-progress-${selectedTicket.id}`, { action: "support_update_status", ticket_id: selectedTicket.id, status: "IN_PROGRESS" })}
+                        />
+                        <ActionButton
+                          icon="checkmark-circle-outline"
+                          label="Resolve"
+                          color={SUCCESS}
+                          disabled={!canRespond || status === "RESOLVED"}
+                          loading={workingKey === `support-resolve-${selectedTicket.id}`}
+                          onPress={() => performAction(`support-resolve-${selectedTicket.id}`, { action: "support_update_status", ticket_id: selectedTicket.id, status: "RESOLVED" }, true)}
+                        />
+                        <ActionButton
+                          icon="refresh-outline"
+                          label="Reopen"
+                          color={WARNING}
+                          disabled={!canRespond || status === "OPEN"}
+                          loading={workingKey === `support-reopen-${selectedTicket.id}`}
+                          onPress={() => performAction(`support-reopen-${selectedTicket.id}`, { action: "support_update_status", ticket_id: selectedTicket.id, status: "OPEN" })}
+                        />
+                      </View>
+                    </View>
+                  </RecordCard>
+                );
+              })() : (
+                <EmptyState title="Select a support ticket" subtitle="Choose a case to read the thread and respond." />
+              )}
+            </View>
+          </View>
         ) : null}
 
         <View style={{ marginTop: 8, gap: 12 }}>

@@ -19,6 +19,7 @@ export type SupportTicket = {
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+  latest_message?: SupportMessage | null;
 };
 
 export type SupportAttachment = {
@@ -226,7 +227,34 @@ export async function fetchMySupportTickets(limit = 50) {
     .limit(limit);
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as SupportTicket[];
+  const tickets = (data ?? []) as SupportTicket[];
+  const ticketIds = tickets.map((ticket) => ticket.id).filter(Boolean);
+  if (!ticketIds.length) return tickets;
+
+  const { data: messageRows, error: messageError } = await supabase
+    .from("market_support_messages")
+    .select(MESSAGE_COLUMNS)
+    .in("ticket_id", ticketIds)
+    .order("created_at", { ascending: false })
+    .limit(Math.max(80, Math.min(ticketIds.length * 4, 300)));
+
+  if (messageError) throw new Error(messageError.message);
+
+  const latestByTicket = new Map<string, SupportMessage>();
+  ((messageRows ?? []) as SupportMessage[]).forEach((message) => {
+    if (!latestByTicket.has(message.ticket_id)) {
+      latestByTicket.set(message.ticket_id, message);
+    }
+  });
+
+  const attachmentMap = await fetchAttachmentsForMessages(Array.from(latestByTicket.values()).map((message) => message.id));
+  return tickets.map((ticket) => {
+    const latest = latestByTicket.get(ticket.id) ?? null;
+    return {
+      ...ticket,
+      latest_message: latest ? { ...latest, attachments: attachmentMap.get(latest.id) ?? [] } : null,
+    };
+  });
 }
 
 export async function fetchSupportMessages(ticketId: string, limit = 120) {

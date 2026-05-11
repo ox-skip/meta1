@@ -273,7 +273,7 @@ BEGIN
         'support_message',
         'New support message',
         v_preview,
-        '/market/admin',
+        '/market/admin?module=support&ticket=' || NEW.ticket_id::text,
         'market_support_ticket',
         NEW.ticket_id::text,
         NEW.sender_id,
