@@ -5,7 +5,7 @@ const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
 const BORDER = "rgba(255,253,247,0.12)";
 const TEAL = "#2DD4BF";
-const INK = "#07100D";
+const INK = "#090D0B";
 
 export function WatermarkedWeb({ url }: { url: string }) {
   return (

@@ -136,7 +136,7 @@ export default function MarketQuickDockToggle() {
         }}
       >
         <LinearGradient
-          colors={expanded ? ["#2B1D10", "#15110C"] : ["#1A120D", "#2C2118"]}
+          colors={expanded ? ["#171A13", "#10130E", "#060807"] : ["#10130E", "#060807"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
@@ -144,7 +144,7 @@ export default function MarketQuickDockToggle() {
           height: compact ? 42 : 46,
           borderRadius: 999,
           borderWidth: 1,
-            borderColor: "rgba(245,158,11,0.28)",
+            borderColor: "rgba(45,212,191,0.28)",
             paddingHorizontal: 10,
             flexDirection: "row",
             alignItems: "center",
@@ -152,17 +152,17 @@ export default function MarketQuickDockToggle() {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="grid-outline" size={compact ? 13 : 14} color="#F59E0B" />
+            <Ionicons name="grid-outline" size={compact ? 13 : 14} color="#2DD4BF" />
             <Ionicons name="wallet-outline" size={compact ? 13 : 14} color="#F8FAFC" />
           </View>
-          <Ionicons name={expanded ? "chevron-down" : "chevron-up"} size={compact ? 14 : 16} color="#FFF7ED" />
+          <Ionicons name={expanded ? "chevron-down" : "chevron-up"} size={compact ? 14 : 16} color="#FFFDF7" />
         </LinearGradient>
       </Pressable>
       <Text
         style={{
           marginTop: 6,
           textAlign: "center",
-          color: "rgba(255,247,237,0.72)",
+          color: "rgba(255,253,247,0.68)",
           fontSize: 10,
           fontWeight: "800",
         }}

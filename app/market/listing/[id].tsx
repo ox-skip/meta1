@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -31,9 +31,10 @@ import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPrev
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 import { resolveUserCountry, type UserCountry } from "@/utils/country";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const BRAND = "#2DD4BF";
 
 const LISTINGS_TABLE = "market_listings";
 const IMAGES_TABLE = "market_listing_images";
@@ -558,7 +559,7 @@ export default function ListingDetails() {
   if (loading) {
     return (
       <LinearGradient
-        colors={[BG1, BG0]}
+        colors={[BG2, BG1, BG0]}
         start={{ x: 0.15, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
@@ -575,7 +576,7 @@ export default function ListingDetails() {
   if (!listing) {
     return (
       <LinearGradient
-        colors={[BG1, BG0]}
+        colors={[BG2, BG1, BG0]}
         start={{ x: 0.15, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
@@ -586,7 +587,7 @@ export default function ListingDetails() {
           {!!err && <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{err}</Text>}
           <Pressable
             onPress={() => router.back()}
-            style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: PURPLE }}
+            style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: BRAND, borderWidth: 1, borderColor: BRAND }}
           >
             <Text style={{ color: "#fff", fontWeight: "900" }}>Go back</Text>
           </Pressable>
@@ -648,7 +649,7 @@ export default function ListingDetails() {
 
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
+      colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
@@ -746,9 +747,9 @@ export default function ListingDetails() {
             marginTop: 14,
             borderRadius: 22,
             padding: 16,
-            backgroundColor: "rgba(124,58,237,0.12)",
+            backgroundColor: "rgba(45,212,191,0.12)",
             borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.40)",
+            borderColor: "rgba(45,212,191,0.40)",
           }}
         >
           <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>
@@ -995,8 +996,8 @@ export default function ListingDetails() {
                   paddingVertical: 12,
                   paddingHorizontal: 12,
                   borderWidth: 1,
-                  borderColor: "rgba(124,58,237,0.35)",
-                  backgroundColor: "rgba(124,58,237,0.12)",
+                  borderColor: "rgba(45,212,191,0.35)",
+                  backgroundColor: "rgba(45,212,191,0.12)",
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
@@ -1114,7 +1115,7 @@ export default function ListingDetails() {
                   {seller?.business_name || seller?.display_name || "Seller"}
                 </Text>
                 {seller?.is_verified ? (
-                  <Ionicons name="checkmark-circle" size={16} color="#3B82F6" />
+                  <Ionicons name="checkmark-circle" size={16} color="#38BDF8" />
                 ) : null}
               </View>
               <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
@@ -1153,9 +1154,9 @@ export default function ListingDetails() {
                 borderRadius: 16,
                 paddingVertical: 12,
                 alignItems: "center",
-                backgroundColor: "rgba(124,58,237,0.20)",
+                backgroundColor: "rgba(45,212,191,0.20)",
                 borderWidth: 1,
-                borderColor: "rgba(124,58,237,0.45)",
+                borderColor: "rgba(45,212,191,0.45)",
                 flexDirection: "row",
                 gap: 8,
                 justifyContent: "center",
@@ -1270,7 +1271,7 @@ export default function ListingDetails() {
                 borderRadius: 14,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(124,58,237,0.85)",
+                backgroundColor: "rgba(45,212,191,0.85)",
                 borderWidth: 1,
                 borderColor: "rgba(255,255,255,0.2)",
                 opacity: commentBusy ? 0.7 : 1,
@@ -1332,7 +1333,7 @@ export default function ListingDetails() {
           paddingHorizontal: 16,
           paddingTop: 10,
           paddingBottom: Math.max(insets.bottom, 16),
-          backgroundColor: "rgba(5,4,11,0.92)",
+          backgroundColor: "rgba(6,8,7,0.92)",
           borderTopWidth: 1,
           borderTopColor: "rgba(255,255,255,0.08)",
         }}
@@ -1344,9 +1345,9 @@ export default function ListingDetails() {
             borderRadius: 22,
             paddingVertical: 16,
             alignItems: "center",
-            backgroundColor: isOutOfStock ? "rgba(255,255,255,0.2)" : PURPLE,
+            backgroundColor: isOutOfStock ? "rgba(255,255,255,0.2)" : BRAND,
             borderWidth: 1,
-            borderColor: isOutOfStock ? "rgba(255,255,255,0.28)" : PURPLE,
+            borderColor: isOutOfStock ? "rgba(255,255,255,0.28)" : BRAND,
             opacity: isOutOfStock || buyBusy ? 0.85 : 1,
           }}
         >

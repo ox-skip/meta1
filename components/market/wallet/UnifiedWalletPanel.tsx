@@ -19,7 +19,7 @@ type Props = {
   onOpenHistory?: () => void;
 };
 
-const BG = "#07100D";
+const BG = "#090D0B";
 const PANEL = "rgba(255,253,247,0.07)";
 const PANEL_ALT = "rgba(255,253,247,0.045)";
 const BORDER = "rgba(255,253,247,0.12)";
@@ -28,7 +28,7 @@ const MUTED = "rgba(255,253,247,0.66)";
 const FAINT = "rgba(255,253,247,0.42)";
 const TEAL = "#2DD4BF";
 const AMBER = "#F4B75D";
-const BLUE = "#3B82F6";
+const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
 const INK = "#061311";
 
@@ -83,15 +83,15 @@ function BrandMark({ mode, size = 44 }: { mode: WalletMode; size?: number }) {
         borderRadius: size / 2,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: base ? "#0052FF" : "rgba(59,130,246,0.16)",
+        backgroundColor: base ? "#0052FF" : "rgba(56,189,248,0.16)",
         borderWidth: 1,
-        borderColor: base ? "rgba(255,255,255,0.34)" : "rgba(59,130,246,0.55)",
+        borderColor: base ? "rgba(255,255,255,0.34)" : "rgba(56,189,248,0.55)",
       }}
     >
       {base ? (
         <Text style={{ color: "#fff", fontWeight: "900", fontSize: Math.max(16, size * 0.43) }}>B</Text>
       ) : (
-        <Ionicons name="link-outline" size={Math.max(18, size * 0.46)} color="#93C5FD" />
+        <Ionicons name="link-outline" size={Math.max(18, size * 0.46)} color={BLUE} />
       )}
     </View>
   );
@@ -140,7 +140,7 @@ function ProviderCard({
   busy?: boolean;
   onPress: () => void;
 }) {
-  const color = mode === "base_smart" ? BLUE : "#60A5FA";
+  const color = mode === "base_smart" ? TEAL : BLUE;
   return (
     <Pressable
       onPress={onPress}
@@ -312,7 +312,7 @@ export default function UnifiedWalletPanel({
   return (
     <View style={[styles.shell, compact ? styles.shellCompact : undefined]}>
       <LinearGradient
-        colors={["rgba(45,212,191,0.18)", "rgba(59,130,246,0.10)", "rgba(244,183,93,0.12)"]}
+        colors={["rgba(45,212,191,0.18)", "rgba(56,189,248,0.10)", "rgba(244,183,93,0.12)"]}
         start={{ x: 0.05, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.hero}
@@ -717,8 +717,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(34,197,94,0.38)",
   },
   providerSelected: {
-    backgroundColor: "rgba(59,130,246,0.14)",
-    borderColor: "rgba(59,130,246,0.35)",
+    backgroundColor: "rgba(56,189,248,0.14)",
+    borderColor: "rgba(56,189,248,0.35)",
   },
   providerTitle: {
     marginTop: 12,
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
-    backgroundColor: AMBER,
+    backgroundColor: TEAL,
     borderWidth: 1,
     borderColor: "rgba(255,253,247,0.18)",
   },

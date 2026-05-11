@@ -61,7 +61,7 @@ export default function MarketProfileCompletionPrompt() {
         primaryLabel: "Create profile",
         primaryRoute: "/market/profile/create",
         icon: "storefront-outline" as const,
-        accent: "#38BDF8",
+        accent: "#2DD4BF",
       };
     }
 
@@ -74,7 +74,7 @@ export default function MarketProfileCompletionPrompt() {
         primaryLabel: "Verify now",
         primaryRoute: "/market/verification/apply",
         icon: "shield-checkmark-outline" as const,
-        accent: "#60A5FA",
+        accent: "#2DD4BF",
       };
     }
 
@@ -195,7 +195,7 @@ export default function MarketProfileCompletionPrompt() {
     <Modal animationType="fade" onRequestClose={() => undefined} transparent visible={visible}>
       <View style={styles.backdrop}>
         <LinearGradient
-          colors={["#071220", "#0B1020"]}
+          colors={["#171A13", "#10130E", "#060807"]}
           start={{ x: 0.12, y: 0 }}
           end={{ x: 0.9, y: 1 }}
           style={styles.card}
@@ -247,7 +247,7 @@ export default function MarketProfileCompletionPrompt() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(2,6,23,0.72)",
+    backgroundColor: "rgba(2,6,4,0.72)",
     alignItems: "center",
     justifyContent: "center",
     padding: 18,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pillText: {
-    color: "#E2E8F0",
+    color: "#CCFBF1",
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",

@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
@@ -34,12 +34,13 @@ import {
 } from "@/services/dm/dmService";
 import { supabase } from "@/services/supabase";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.62)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const BRAND = "#2DD4BF";
+const CARD = "rgba(255,253,247,0.065)";
+const BORDER = "rgba(255,253,247,0.12)";
+const MUTED = "rgba(255,253,247,0.68)";
 
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -396,7 +397,7 @@ export default function DMChat() {
 
   if (loading) {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <AppHeader title="Chat" />
         <ActivityIndicator />
         <Text style={{ marginTop: 10, color: MUTED }}>Opening chat...</Text>
@@ -406,14 +407,14 @@ export default function DMChat() {
 
   if (err && !threadId) {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
+      <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
         <AppHeader title="Chat" />
         <View style={{ marginTop: 16, borderRadius: 22, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
           <Text style={{ color: "#fff", fontWeight: "900" }}>Could not open chat</Text>
           <Text style={{ marginTop: 8, color: MUTED }}>{err}</Text>
           <Pressable
             onPress={() => router.back()}
-            style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: PURPLE }}
+            style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: BRAND, borderWidth: 1, borderColor: BRAND }}
           >
             <Text style={{ color: "#fff", fontWeight: "900" }}>Go back</Text>
           </Pressable>
@@ -423,7 +424,7 @@ export default function DMChat() {
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingTop: Math.max(insets.top, 14) }}>
+    <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, paddingTop: Math.max(insets.top, 14) }}>
       <AppHeader title="Chat" />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={{ paddingHorizontal: 16 }}>
@@ -495,12 +496,12 @@ export default function DMChat() {
             paddingBottom: Math.max(insets.bottom, 12),
             borderTopWidth: 1,
             borderTopColor: "rgba(255,255,255,0.08)",
-            backgroundColor: "rgba(5,4,11,0.92)",
+            backgroundColor: "rgba(6,8,7,0.92)",
           }}
         >
           {replyTo ? (
             <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", backgroundColor: "rgba(255,255,255,0.06)", padding: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={{ width: 3, height: "100%", backgroundColor: PURPLE, borderRadius: 3 }} />
+              <View style={{ width: 3, height: "100%", backgroundColor: BRAND, borderRadius: 3 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Replying</Text>
                 <Text numberOfLines={1} style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
@@ -596,7 +597,7 @@ export default function DMChat() {
                 width: 42,
                 height: 42,
                 borderRadius: 14,
-                backgroundColor: PURPLE,
+                backgroundColor: BRAND,
                 borderWidth: 1,
                 borderColor: "rgba(255,255,255,0.2)",
                 alignItems: "center",
@@ -637,7 +638,7 @@ export default function DMChat() {
                 <Text style={{ color: "#fff", fontWeight: "800" }}>Video playback is unavailable on this device.</Text>
                 <Pressable
                   onPress={() => Linking.openURL(videoViewer)}
-                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: "rgba(124,58,237,0.35)" }}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: "rgba(45,212,191,0.35)" }}
                 >
                   <Text style={{ color: "#fff", fontWeight: "900" }}>Open video URL</Text>
                 </Pressable>
@@ -649,9 +650,9 @@ export default function DMChat() {
 
       <Modal visible={!!audioViewer} transparent animationType="fade" onRequestClose={closeAudio}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "center", padding: 24 }}>
-          <View style={{ borderRadius: 18, padding: 16, backgroundColor: "#0B0F17", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
+          <View style={{ borderRadius: 18, padding: 16, backgroundColor: "#090D0B", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Audio</Text>
-            <Pressable onPress={toggleAudio} style={{ marginTop: 14, paddingVertical: 12, borderRadius: 12, backgroundColor: PURPLE, alignItems: "center" }}>
+            <Pressable onPress={toggleAudio} style={{ marginTop: 14, paddingVertical: 12, borderRadius: 12, backgroundColor: BRAND, alignItems: "center" }}>
               <Text style={{ color: "#fff", fontWeight: "900" }}>{audioPlaying ? "Pause" : "Play"}</Text>
             </Pressable>
             <Pressable onPress={closeAudio} style={{ marginTop: 10, paddingVertical: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center" }}>
@@ -723,13 +724,13 @@ function MessageBubble({
           style={{
             padding: 12,
             borderRadius: 16,
-            backgroundColor: mine ? "rgba(124,58,237,0.35)" : "rgba(255,255,255,0.08)",
+            backgroundColor: mine ? "rgba(45,212,191,0.35)" : "rgba(255,255,255,0.08)",
             borderWidth: 1,
-            borderColor: mine ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.10)",
+            borderColor: mine ? "rgba(45,212,191,0.55)" : "rgba(255,255,255,0.10)",
           }}
         >
           {message.reply_to ? (
-            <View style={{ marginBottom: 8, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: PURPLE }}>
+            <View style={{ marginBottom: 8, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: BRAND }}>
               <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11 }}>
                 Replying to {message.reply_to.sender_id === message.sender_id ? "self" : "message"}
               </Text>

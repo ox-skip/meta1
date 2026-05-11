@@ -16,9 +16,9 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 type Tone = "mint" | "cyan" | "amber" | "red" | "plain";
 
 export const STOCK = {
-  bgTop: "#061411",
-  bgMid: "#0B1F1A",
-  bgBottom: "#050807",
+  bgTop: "#171A13",
+  bgMid: "#10130E",
+  bgBottom: "#060807",
   panel: "rgba(255,255,255,0.075)",
   panelStrong: "rgba(255,255,255,0.115)",
   panelSoft: "rgba(255,255,255,0.045)",
@@ -27,17 +27,17 @@ export const STOCK = {
   ink: "#F8FAFC",
   muted: "rgba(248,250,252,0.68)",
   faint: "rgba(248,250,252,0.46)",
-  mint: "#34D399",
-  cyan: "#22D3EE",
-  amber: "#F59E0B",
+  mint: "#2DD4BF",
+  cyan: "#38BDF8",
+  amber: "#F4B75D",
   red: "#FB7185",
   modal: "#07110F",
 };
 
 const toneMap: Record<Tone, { ink: string; bg: string; border: string }> = {
-  mint: { ink: "#D1FAE5", bg: "rgba(52,211,153,0.16)", border: "rgba(52,211,153,0.42)" },
+  mint: { ink: "#CCFBF1", bg: "rgba(45,212,191,0.16)", border: "rgba(94,234,212,0.42)" },
   cyan: { ink: "#CFFAFE", bg: "rgba(34,211,238,0.14)", border: "rgba(34,211,238,0.38)" },
-  amber: { ink: "#FEF3C7", bg: "rgba(245,158,11,0.16)", border: "rgba(245,158,11,0.42)" },
+  amber: { ink: "#FEF3C7", bg: "rgba(244,183,93,0.16)", border: "rgba(244,183,93,0.42)" },
   red: { ink: "#FFE4E6", bg: "rgba(251,113,133,0.14)", border: "rgba(251,113,133,0.4)" },
   plain: { ink: STOCK.ink, bg: "rgba(255,255,255,0.06)", border: STOCK.border },
 };

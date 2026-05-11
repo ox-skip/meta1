@@ -13,7 +13,7 @@ const PANEL_STRONG = "rgba(255,253,247,0.105)";
 const BORDER = "rgba(255,253,247,0.12)";
 const BORDER_TOP = "rgba(255,253,247,0.22)";
 const TEAL = "#2DD4BF";
-const INK = "#07100D";
+const INK = "#090D0B";
 
 function normalizeUrl(input: string) {
   const s = input.trim();

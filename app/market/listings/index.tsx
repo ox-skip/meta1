@@ -24,12 +24,13 @@ import { supabase } from "@/services/supabase";
 import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.65)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const BRAND = "#2DD4BF";
+const CARD = "rgba(255,253,247,0.065)";
+const BORDER = "rgba(255,253,247,0.12)";
+const MUTED = "rgba(255,253,247,0.68)";
 
 const LISTINGS_TABLE = "market_listings";
 const IMAGES_TABLE = "market_listing_images";
@@ -540,9 +541,9 @@ export default function ListingsFeed() {
           paddingHorizontal: 12,
           paddingVertical: 10,
           borderRadius: 999,
-          backgroundColor: active ? "rgba(124,58,237,0.18)" : "rgba(255,255,255,0.06)",
+          backgroundColor: active ? "rgba(45,212,191,0.18)" : "rgba(255,255,255,0.06)",
           borderWidth: 1,
-          borderColor: active ? "rgba(124,58,237,0.40)" : BORDER,
+          borderColor: active ? "rgba(45,212,191,0.40)" : BORDER,
         }}
       >
         <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{label}</Text>
@@ -560,9 +561,9 @@ export default function ListingsFeed() {
       onPress: () => void;
       tone?: "purple" | "neutral";
     }) => {
-      const bg = tone === "purple" ? (active ? PURPLE : "rgba(255,255,255,0.06)") : active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)";
+      const bg = tone === "purple" ? (active ? BRAND : "rgba(255,255,255,0.06)") : active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)";
       const bd =
-        tone === "purple" ? (active ? PURPLE : BORDER) : active ? "rgba(255,255,255,0.22)" : BORDER;
+        tone === "purple" ? (active ? BRAND : BORDER) : active ? "rgba(255,255,255,0.22)" : BORDER;
       return (
         <Pressable
           onPress={onPress}
@@ -696,9 +697,9 @@ export default function ListingsFeed() {
                 borderRadius: 14,
                 paddingVertical: 10,
                 alignItems: "center",
-                backgroundColor: PURPLE,
+                backgroundColor: BRAND,
                 borderWidth: 1,
-                borderColor: PURPLE,
+                borderColor: BRAND,
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900" }}>Retry</Text>
@@ -773,9 +774,9 @@ export default function ListingsFeed() {
               paddingVertical: 12,
               paddingHorizontal: 16,
               alignItems: "center",
-              backgroundColor: PURPLE,
+              backgroundColor: BRAND,
               borderWidth: 1,
-              borderColor: PURPLE,
+              borderColor: BRAND,
               alignSelf: "stretch",
             }}
           >
@@ -783,7 +784,7 @@ export default function ListingsFeed() {
           </Pressable>
 
           <Pressable onPress={() => router.push("/market/(tabs)" as any)} style={{ marginTop: 12 }}>
-            <Text style={{ color: "#C4B5FD", fontWeight: "900" }}>Back to Marketplace</Text>
+            <Text style={{ color: "#CCFBF1", fontWeight: "900" }}>Back to Marketplace</Text>
           </Pressable>
         </View>
       </View>
@@ -933,13 +934,13 @@ export default function ListingsFeed() {
                     ? "rgba(239,68,68,0.18)"
                     : item.is_active
                     ? "rgba(255,255,255,0.08)"
-                    : PURPLE,
+                    : BRAND,
                   borderWidth: 1,
                   borderColor: cannotEnableOutOfStock
                     ? "rgba(239,68,68,0.38)"
                     : item.is_active
                     ? "rgba(255,255,255,0.12)"
-                    : PURPLE,
+                    : BRAND,
                   opacity: busy || cannotEnableOutOfStock ? 0.6 : 1,
                 }}
               >
@@ -979,14 +980,14 @@ export default function ListingsFeed() {
   // While redirecting away, avoid flicker
   if (mode === "invalid") {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator />
       </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
+    <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketListings} />
       {loading ? (
         <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>

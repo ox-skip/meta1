@@ -87,7 +87,7 @@ export function AudioPreview({
           backgroundColor: "#2DD4BF",
         }}
       >
-        {loading ? <ActivityIndicator color="#07100D" /> : <Text style={{ color: "#07100D", fontWeight: "900" }}>{playing ? "Pause" : "Play preview"}</Text>}
+        {loading ? <ActivityIndicator color="#090D0B" /> : <Text style={{ color: "#090D0B", fontWeight: "900" }}>{playing ? "Pause" : "Play preview"}</Text>}
       </Pressable>
 
       <Text style={{ marginTop: 10, color: "rgba(255,253,247,0.70)", fontWeight: "900" }}>

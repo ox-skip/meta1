@@ -74,5 +74,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: "#2DD4BF",
   },
-  openBtnText: { color: "#07100D", fontWeight: "900" },
+  openBtnText: { color: "#090D0B", fontWeight: "900" },
 });

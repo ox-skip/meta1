@@ -118,6 +118,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.08)",
     borderColor: "rgba(255,255,255,0.12)",
   },
-  btnText: { color: "#07100D", fontWeight: "900" },
+  btnText: { color: "#090D0B", fontWeight: "900" },
   btnTextLocked: { color: "rgba(255,255,255,0.60)" },
 });

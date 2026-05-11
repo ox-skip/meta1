@@ -30,7 +30,7 @@ export default function UnifiedWalletSheet({
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.62)", justifyContent: "flex-end" }}>
         <Pressable style={{ flex: 1 }} onPress={onClose} />
         <LinearGradient
-          colors={["#07100D", "#08141A", "#160B06"]}
+          colors={["#171A13", "#10130E", "#060807"]}
           start={{ x: 0.08, y: 0 }}
           end={{ x: 0.94, y: 1 }}
           style={{
@@ -45,7 +45,16 @@ export default function UnifiedWalletSheet({
             borderColor: "rgba(255,253,247,0.12)",
           }}
         >
-          <View style={{ alignSelf: "center", width: 42, height: 4, borderRadius: 999, backgroundColor: "rgba(255,253,247,0.18)", marginBottom: 10 }} />
+          <View
+            style={{
+              alignSelf: "center",
+              width: 42,
+              height: 4,
+              borderRadius: 999,
+              backgroundColor: "rgba(255,253,247,0.18)",
+              marginBottom: 10,
+            }}
+          />
           <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 8 }}>
             <Pressable
               onPress={onClose}

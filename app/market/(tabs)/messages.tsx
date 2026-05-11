@@ -8,12 +8,13 @@ import AppHeader from "@/components/common/AppHeader";
 import { InboxThread, listInboxThreads } from "@/services/dm/dmService";
 import { supabase } from "@/services/supabase";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.62)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const BRAND = "#2DD4BF";
+const CARD = "rgba(255,253,247,0.065)";
+const BORDER = "rgba(255,253,247,0.12)";
+const MUTED = "rgba(255,253,247,0.68)";
 const BUCKET_SELLERS = "market-sellers";
 
 function timeLabel(ts: string | null) {
@@ -69,7 +70,7 @@ export default function MessagesTab() {
   const rows = useMemo(() => threads, [threads]);
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+    <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
       <AppHeader title="Messages" subtitle="Direct messages from buyers and sellers" />
       <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -109,9 +110,9 @@ export default function MessagesTab() {
                 borderRadius: 18,
                 paddingVertical: 12,
                 alignItems: "center",
-                backgroundColor: PURPLE,
+                backgroundColor: BRAND,
                 borderWidth: 1,
-                borderColor: PURPLE,
+                borderColor: BRAND,
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900" }}>Retry</Text>
@@ -128,9 +129,9 @@ export default function MessagesTab() {
                 borderRadius: 18,
                 paddingVertical: 12,
                 alignItems: "center",
-                backgroundColor: PURPLE,
+                backgroundColor: BRAND,
                 borderWidth: 1,
-                borderColor: PURPLE,
+                borderColor: BRAND,
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900" }}>Browse Market</Text>
@@ -209,7 +210,7 @@ export default function MessagesTab() {
                   </View>
 
                   {t.unread ? (
-                    <View style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: PURPLE }} />
+                    <View style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: BRAND }} />
                   ) : null}
                 </Pressable>
               );

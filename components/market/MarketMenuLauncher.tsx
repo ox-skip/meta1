@@ -7,9 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMarketQuickDockExpanded } from "@/components/market/quickDockState";
 
-const ACCENT = "#F59E0B";
-const TEXT = "#FFF7ED";
-const MUTED = "rgba(255,247,237,0.7)";
+const ACCENT = "#2DD4BF";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
 
 export default function MarketMenuLauncher() {
   const pathname = usePathname();
@@ -137,7 +137,7 @@ export default function MarketMenuLauncher() {
         }}
       >
         <LinearGradient
-          colors={["#342514", "#17120D"]}
+          colors={["#171A13", "#10130E", "#060807"]}
           start={{ x: 0.12, y: 0 }}
           end={{ x: 0.92, y: 1 }}
           style={{
@@ -145,7 +145,7 @@ export default function MarketMenuLauncher() {
             height: compact ? 50 : 56,
             borderRadius: compact ? 18 : 22,
             borderWidth: 1,
-            borderColor: "rgba(245,158,11,0.34)",
+            borderColor: "rgba(45,212,191,0.34)",
             paddingHorizontal: compact ? 12 : 14,
             flexDirection: "row",
             alignItems: "center",
@@ -159,9 +159,9 @@ export default function MarketMenuLauncher() {
               borderRadius: compact ? 10 : 12,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(245,158,11,0.16)",
+              backgroundColor: "rgba(45,212,191,0.16)",
               borderWidth: 1,
-              borderColor: "rgba(245,158,11,0.24)",
+              borderColor: "rgba(45,212,191,0.24)",
             }}
           >
             <Ionicons name="grid-outline" size={compact ? 15 : 17} color={ACCENT} />

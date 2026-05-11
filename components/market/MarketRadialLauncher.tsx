@@ -20,7 +20,7 @@ const AMBER = "#F4B75D";
 const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
 const LIME = "#A3E635";
-const INK = "#07100D";
+const INK = "#090D0B";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 

@@ -21,8 +21,9 @@ import { friendlyMarketError } from "@/utils/marketUx";
 import { resolveUserCountry, type UserCountry } from "@/utils/country";
 import { getRpcUrlForChain } from "@/utils/aaWallet";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
 
 function shouldExitCheckoutForStatus(status: unknown) {
   const s = String(status ?? "").trim().toUpperCase();
@@ -154,9 +155,9 @@ function Pill({
             width: 46,
             height: 46,
             borderRadius: 18,
-            backgroundColor: "rgba(124,58,237,0.25)",
+            backgroundColor: "rgba(45,212,191,0.25)",
             borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.35)",
+            borderColor: "rgba(45,212,191,0.35)",
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -682,7 +683,7 @@ export default function Checkout() {
 
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
+      colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
@@ -719,9 +720,9 @@ export default function Checkout() {
           style={{
             borderRadius: 20,
             padding: 14,
-            backgroundColor: "rgba(124,58,237,0.14)",
+            backgroundColor: "rgba(45,212,191,0.14)",
             borderWidth: 1,
-            borderColor: "rgba(124,58,237,0.35)",
+            borderColor: "rgba(45,212,191,0.35)",
           }}
         >
           <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 11 }}>ORDER AMOUNT</Text>
@@ -1037,8 +1038,8 @@ export default function Checkout() {
                       paddingHorizontal: 12,
                       paddingVertical: 8,
                       borderWidth: 1,
-                      borderColor: selected ? "rgba(124,58,237,0.55)" : "rgba(255,255,255,0.12)",
-                      backgroundColor: selected ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.05)",
+                      borderColor: selected ? "rgba(45,212,191,0.55)" : "rgba(255,255,255,0.12)",
+                      backgroundColor: selected ? "rgba(45,212,191,0.2)" : "rgba(255,255,255,0.05)",
                       opacity: c.active ? 1 : 0.5,
                     }}
                   >
@@ -1079,8 +1080,8 @@ export default function Checkout() {
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: "rgba(124,58,237,0.5)",
-                  backgroundColor: "rgba(124,58,237,0.2)",
+                  borderColor: "rgba(45,212,191,0.5)",
+                  backgroundColor: "rgba(45,212,191,0.2)",
                 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "900" }}>Open Crypto Wallet</Text>
@@ -1111,8 +1112,8 @@ export default function Checkout() {
                   alignItems: "center",
                   justifyContent: "center",
                   borderWidth: 1,
-                  borderColor: "rgba(124,58,237,0.5)",
-                  backgroundColor: "rgba(124,58,237,0.2)",
+                  borderColor: "rgba(45,212,191,0.5)",
+                  backgroundColor: "rgba(45,212,191,0.2)",
                 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "900" }}>Open Crypto Wallet</Text>
