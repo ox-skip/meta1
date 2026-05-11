@@ -2,10 +2,8 @@ import { Stack } from "expo-router";
 import React from "react";
 import { View } from "react-native";
 
-import MarketMenuLauncher from "@/components/market/MarketMenuLauncher";
 import MarketProfileCompletionPrompt from "@/components/market/MarketProfileCompletionPrompt";
-import MarketQuickDockToggle from "@/components/market/MarketQuickDockToggle";
-import UnifiedWalletLauncher from "@/components/market/wallet/UnifiedWalletLauncher";
+import MarketRadialLauncher from "@/components/market/MarketRadialLauncher";
 
 export default function MarketLayout() {
   return (
@@ -27,9 +25,7 @@ export default function MarketLayout() {
         <Stack.Screen name="stocks/index" />
       </Stack>
       <MarketProfileCompletionPrompt />
-      <MarketQuickDockToggle />
-      <MarketMenuLauncher />
-      <UnifiedWalletLauncher />
+      <MarketRadialLauncher />
     </View>
   );
 }

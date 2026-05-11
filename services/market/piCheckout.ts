@@ -364,9 +364,7 @@ async function cancelPiPayment(
     }
 
     await callFn("market-pi-payment-cancel", body);
-  } catch {
-    // best-effort cancel
-  }
+  } catch {}
 }
 
 async function createPiPayment(intent: PiPaymentIntent, checkoutToken?: string | null) {

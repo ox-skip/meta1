@@ -1947,7 +1947,7 @@ export default function SellTab() {
               <Label>Center</Label>
               <View style={{ marginTop: 8, borderRadius: 18, padding: 12, backgroundColor: "rgba(9,13,11,0.48)", borderWidth: 1, borderColor: BORDER }}>
                 <Text style={{ color: TEXT, fontWeight: "800" }}>
-                  {availabilityCenter?.label || "No center set yet"}
+                  {availabilityCenter?.label || "No center selected"}
                 </Text>
                 {availabilityCenter ? (
                   <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>

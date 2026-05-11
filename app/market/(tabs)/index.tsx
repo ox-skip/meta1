@@ -1318,10 +1318,10 @@ export default function MarketHome() {
             <Ionicons name="sparkles-outline" size={18} color={TEAL} />
           </View>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: compact ? 13 : 15 }}>
-            Fresh marketplace shelf
+            Featured media listings
           </Text>
           <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>
-            Listings with media will appear here as buyers browse.
+            No media listings available for this view.
           </Text>
         </View>
       );

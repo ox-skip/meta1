@@ -284,7 +284,7 @@ export default function ListingDetails() {
     const kind = previewKind(item.kind);
     if (kind === "link") {
       const url = String(item.link_url || item.public_url || "");
-      if (!url) return setErr("No preview URL available yet.");
+      if (!url) return setErr("Preview is unavailable.");
       setPreviewPayload({
         kind: "link",
         access: "preview",

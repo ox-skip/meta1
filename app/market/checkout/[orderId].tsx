@@ -740,12 +740,12 @@ export default function Checkout() {
         <MarketPolicyPanel
           title="Checkout flow"
           blocks={checkoutPolicy.flow}
-          emptyText={checkoutPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+          emptyText={checkoutPolicyLoading ? "Loading policy..." : "Policy unavailable."}
         />
         <MarketPolicyPanel
           title="Safety and complaints"
           blocks={checkoutPolicy.safety}
-          emptyText={checkoutPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+          emptyText={checkoutPolicyLoading ? "Loading policy..." : "Policy unavailable."}
         />
 
         <View
@@ -819,7 +819,7 @@ export default function Checkout() {
             </Text>
           ) : (
             <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-              No delivery location set yet.
+              No delivery location selected.
             </Text>
           )}
         </View>

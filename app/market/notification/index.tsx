@@ -228,7 +228,7 @@ export default function MarketNotificationInbox() {
           <View style={{ marginTop: 14, borderRadius: 20, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
             <Text style={{ color: "#fff", fontWeight: "900" }}>No notifications here</Text>
             <Text style={{ marginTop: 6, color: MUTED }}>
-              {filterMode === "unread" ? "There are no unread alerts right now." : "Important account activity will appear here."}
+              {filterMode === "unread" ? "There are no unread alerts right now." : "No account alerts available."}
             </Text>
           </View>
         ) : (

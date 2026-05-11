@@ -275,7 +275,7 @@ export default function DMChat() {
   async function toggleRecord() {
     if (!threadId) return;
     if (!Audio) {
-      setErr("Audio recording needs a dev build with expo-av.");
+      setErr("Audio recording is unavailable on this device.");
       return;
     }
     if (recording) {
@@ -322,7 +322,7 @@ export default function DMChat() {
 
   async function onOpenAudio(url: string) {
     if (!Audio) {
-      setErr("Audio playback needs a dev build with expo-av.");
+      setErr("Audio playback is unavailable on this device.");
       return;
     }
     try {
@@ -627,7 +627,7 @@ export default function DMChat() {
               />
             ) : (
               <View style={{ padding: 20, alignItems: "center", gap: 12 }}>
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Video player needs a dev build with expo-av.</Text>
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Video playback is unavailable on this device.</Text>
                 <Pressable
                   onPress={() => Linking.openURL(videoViewer)}
                   style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: "rgba(124,58,237,0.35)" }}

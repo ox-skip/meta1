@@ -1261,7 +1261,7 @@ async function pickAndUpload(access: "preview" | "final") {
             <MarketPolicyPanel
               title="Order guidance"
               blocks={orderPolicy.status_guidance}
-              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
               onAction={(action) => {
                 void onPolicyAction(action);
               }}
@@ -1578,7 +1578,7 @@ async function pickAndUpload(access: "preview" | "final") {
                   ) : null}
 
                   {previewItems.length === 0 ? (
-                    <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.60)" }}>No preview files uploaded yet.</Text>
+                    <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.60)" }}>No preview files available.</Text>
                   ) : (
                     <View style={{ marginTop: 12, gap: 10 }}>
                       {previewItems.map((d) => (
@@ -1816,12 +1816,12 @@ async function pickAndUpload(access: "preview" | "final") {
             <MarketPolicyPanel
               title="Progress"
               blocks={orderPolicy.progress}
-              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
             />
             <MarketPolicyPanel
               title="Safety and complaints"
               blocks={orderPolicy.safety}
-              emptyText={orderPolicyLoading ? "Loading live policy..." : "Policy will appear here."}
+              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
               onAction={(action) => {
                 void onPolicyAction(action);
               }}

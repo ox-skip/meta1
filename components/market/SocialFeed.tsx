@@ -1113,10 +1113,10 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         >
           <Ionicons name="chatbubbles-outline" size={22} color={TEAL} />
           <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 17 }}>
-            {profileUserId ? "No posts yet" : "No updates yet"}
+            {profileUserId ? "No posts available" : "No updates available"}
           </Text>
           <Text style={{ marginTop: 6, color: MUTED, lineHeight: 19 }}>
-            {profileUserId ? "This seller has not posted yet." : "Seller updates will appear here."}
+            {profileUserId ? "This seller has no published posts." : "No seller updates match this view."}
           </Text>
         </View>
       </View>
@@ -1243,8 +1243,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 14, gap: 10 }}>
               {comments.length === 0 ? (
                 <View style={{ borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL, padding: 14 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900" }}>No comments yet</Text>
-                  <Text style={{ marginTop: 5, color: MUTED }}>Start the conversation.</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>No comments available</Text>
+                  <Text style={{ marginTop: 5, color: MUTED }}>Be the first to comment.</Text>
                 </View>
               ) : (
                 comments.map((comment) => {

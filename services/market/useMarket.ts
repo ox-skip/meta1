@@ -32,7 +32,7 @@ export function useMarket() {
   };
 
   const placeOrder = async (_listing_id: string, _payment_method: "wallet" | "crypto") => {
-    const msg = "Order flow is handled by checkout services in this build.";
+    const msg = "Open checkout to place this order.";
     setError(msg);
     throw new Error(msg);
   };
@@ -54,7 +54,7 @@ export function useMarket() {
   };
 
   const approve = async (_order_id: string) => {
-    const msg = "Order approval flow is handled by checkout services in this build.";
+    const msg = "Open the order details to approve this order.";
     setError(msg);
     throw new Error(msg);
   };
