@@ -25,6 +25,7 @@ import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
+import { fetchJsonWithTimeout, getSupabaseAnonKeyOrThrow, getSupabaseFunctionsBaseUrl } from "@/services/net";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -53,6 +54,10 @@ const FAINT = "rgba(255,253,247,0.44)";
 const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
 const LISTING_FETCH_LIMIT = 500;
+const LISTING_RICH_SELECT =
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)";
+const LISTING_BASIC_SELECT =
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty";
 
 type SortBy = "newest" | "price_low" | "price_high";
 type FeedSection = "all" | "product" | "service" | "social";
@@ -63,6 +68,7 @@ type ListingRow = {
   id: string;
   seller_id: string;
   title: string | null;
+  description?: string | null;
   price_amount: number | string | null;
   currency: string | null;
   delivery_type: string | null;
@@ -90,6 +96,43 @@ type SellerCard = {
 
 function listingAvailability(row: ListingRow) {
   return row.availability ?? row.payment_options?.availability ?? null;
+}
+
+function cleanListingSearch(value: string) {
+  return value.trim().replace(/[%,]/g, " ").replace(/\s+/g, " ").slice(0, 90);
+}
+
+function normalizeListingRow(row: any): ListingRow | null {
+  const id = String(row?.id || "").trim();
+  if (!id) return null;
+  const cover = row?.cover ?? row?.cover_image ?? null;
+  const images = Array.isArray(row?.images)
+    ? row.images
+    : Array.isArray(row?.market_listing_images)
+    ? row.market_listing_images
+    : null;
+
+  return {
+    id,
+    seller_id: String(row?.seller_id || ""),
+    title: row?.title ?? null,
+    description: row?.description ?? null,
+    price_amount: row?.price_amount ?? null,
+    currency: row?.currency ?? null,
+    delivery_type: row?.delivery_type ?? null,
+    category: row?.category ?? null,
+    sub_category: row?.sub_category ?? null,
+    created_at: row?.created_at ?? null,
+    payment_options: row?.payment_options ?? null,
+    availability: row?.availability ?? row?.payment_options?.availability ?? null,
+    stock_qty: typeof row?.stock_qty === "number" ? row.stock_qty : row?.stock_qty ?? null,
+    cover,
+    images,
+  };
+}
+
+function normalizeListingRows(rows: any[]) {
+  return rows.map(normalizeListingRow).filter(Boolean) as ListingRow[];
 }
 
 function publicSellerLogo(path?: string | null) {
@@ -651,31 +694,133 @@ export default function MarketHome() {
     setVerifiedSellers(verified);
   }
 
+  async function fetchListingImagesFor(rows: ListingRow[]) {
+    const listingIds = Array.from(new Set(rows.map((row) => row.id).filter(Boolean)));
+    if (!listingIds.length) return rows;
+
+    const readImages = async (source: "market_listing_images_public" | "market_listing_images") => {
+      const { data, error } = await supabase
+        .from(source)
+        .select("listing_id,public_url,storage_path,sort_order,meta")
+        .in("listing_id", listingIds)
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    };
+
+    try {
+      let imageRows: any[] = [];
+      try {
+        imageRows = await readImages("market_listing_images_public");
+      } catch {
+        imageRows = await readImages("market_listing_images");
+      }
+
+      const imagesByListing = new Map<string, any[]>();
+      imageRows.forEach((image) => {
+        const listingId = String(image?.listing_id || "");
+        if (!listingId) return;
+        imagesByListing.set(listingId, [...(imagesByListing.get(listingId) ?? []), image]);
+      });
+
+      return rows.map((row) => {
+        const images = imagesByListing.get(row.id) ?? [];
+        return {
+          ...row,
+          cover: row.cover ?? images[0] ?? null,
+          images: row.images?.length ? row.images : images,
+        };
+      });
+    } catch {
+      return rows;
+    }
+  }
+
+  async function fetchListingsDirect() {
+    const term = cleanListingSearch(q);
+
+    const runQuery = async (selectClause: string, useDeletedFilter: boolean) => {
+      let query = supabase
+        .from(LISTINGS_TABLE)
+        .select(selectClause)
+        .eq("is_active", true)
+        .order(sortBy === "newest" ? "created_at" : "price_amount", { ascending: sortBy === "price_low" })
+        .limit(LISTING_FETCH_LIMIT);
+
+      if (useDeletedFilter) query = query.is("deleted_at", null);
+      if (main) query = query.eq("category", main);
+      if (selectedSlug) query = query.eq("sub_category", selectedSlug);
+      if (term && directoryMode === "listings") {
+        query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return normalizeListingRows((data ?? []) as any[]);
+    };
+
+    const attempts: Array<[string, boolean]> = [
+      [LISTING_RICH_SELECT, true],
+      [LISTING_RICH_SELECT, false],
+      [LISTING_BASIC_SELECT, false],
+    ];
+    let lastError: any = null;
+    for (const [selectClause, useDeletedFilter] of attempts) {
+      try {
+        const rows = await runQuery(selectClause, useDeletedFilter);
+        return selectClause === LISTING_BASIC_SELECT ? await fetchListingImagesFor(rows) : rows;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError;
+  }
+
+  async function fetchListingsFromFeedFunction() {
+    const url = new URL(`${getSupabaseFunctionsBaseUrl()}/market-listings-feed`);
+    const term = cleanListingSearch(q);
+    url.searchParams.set("limit", String(LISTING_FETCH_LIMIT));
+    url.searchParams.set("sort", sortBy);
+    if (main) url.searchParams.set("category", main);
+    if (selectedSlug) url.searchParams.set("sub_category", selectedSlug);
+    if (term && directoryMode === "listings") url.searchParams.set("q", term);
+
+    const headers: Record<string, string> = {
+      apikey: getSupabaseAnonKeyOrThrow(),
+    };
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const { res, json, text } = await fetchJsonWithTimeout(url.toString(), { method: "GET", headers }, 20000);
+    if (!res.ok || (json as any)?.error) {
+      throw new Error(String((json as any)?.error || text || "Listings feed failed"));
+    }
+    return normalizeListingRows(((json as any)?.items ?? []) as any[]);
+  }
+
   async function loadListings(countryOverride?: UserCountry | null) {
     setLoading(true);
     setErr(null);
     try {
       const effectiveCountry = countryOverride === undefined ? userCountry : countryOverride;
-      let query = supabase
-        .from(LISTINGS_TABLE)
-        .select(
-          "id,seller_id,title,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)"
-        )
-        .eq("is_active", true)
-        .is("deleted_at", null)
-        .order(sortBy === "newest" ? "created_at" : "price_amount", { ascending: sortBy === "price_low" })
-        .limit(LISTING_FETCH_LIMIT);
-
-      if (main) query = query.eq("category", main);
-      if (selectedSlug) query = query.eq("sub_category", selectedSlug);
-      if (q.trim() && directoryMode === "listings") {
-        query = query.or(`title.ilike.%${q.trim()}%,description.ilike.%${q.trim()}%`);
+      let fetched: ListingRow[] = [];
+      try {
+        fetched = await fetchListingsFromFeedFunction();
+        const needsCountryFields =
+          feedScope === "country" &&
+          effectiveCountry &&
+          fetched.length > 0 &&
+          fetched.every((row) => row.availability == null && row.payment_options == null);
+        if (needsCountryFields) {
+          const directRows = await fetchListingsDirect();
+          if (directRows.length) fetched = directRows;
+        }
+      } catch {
+        fetched = await fetchListingsDirect();
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const items = ((data ?? []) as ListingRow[]).filter((r) => {
+      const items = fetched.filter((r) => {
         const exp = r.payment_options?.expires_at;
         if (!exp) return true;
         const t = new Date(exp).getTime();
@@ -686,7 +831,7 @@ export default function MarketHome() {
           ? items
           : effectiveCountry
           ? items.filter((r) =>
-              listingMatchesCountry(listingAvailability(r), effectiveCountry, true),
+              listingMatchesCountry(listingAvailability(r), effectiveCountry, false),
             )
           : items;
       const scoped = scopedBase;
@@ -1709,7 +1854,7 @@ export default function MarketHome() {
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
               {feedScope === "country"
-                ? "Showing listings available in your current country, including worldwide offers."
+                ? "Showing listings specifically available in your current country."
                 : "Showing every listing currently available in the marketplace."}
             </Text>
           </View>
@@ -1769,7 +1914,7 @@ export default function MarketHome() {
             <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }}>
               {feedScope === "country"
                 ? userCountry
-                  ? "Local listings include offers for your country plus worldwide listings."
+                  ? "Only listings matched to your country are shown here."
                   : "Showing Global while your country is being detected."
                 : "Global feed shows listings from every country."}
             </Text>
