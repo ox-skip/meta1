@@ -42,7 +42,6 @@ export function AudioPreview({
           setPlaying(!!st.isPlaying);
           setPos(Math.floor((st.positionMillis ?? 0) / 1000));
 
-          // Stop at preview limit
           if ((st.positionMillis ?? 0) >= previewSeconds * 1000) {
             sound.pauseAsync();
             sound.setPositionAsync(0);
@@ -63,10 +62,19 @@ export function AudioPreview({
   }
 
   return (
-    <View style={{ marginTop: 10, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
+    <View
+      style={{
+        marginTop: 10,
+        borderRadius: 18,
+        padding: 14,
+        backgroundColor: "rgba(255,253,247,0.06)",
+        borderWidth: 1,
+        borderColor: "rgba(255,253,247,0.12)",
+      }}
+    >
       <Text style={{ color: "#fff", fontWeight: "900" }}>Audio preview</Text>
-      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-        Plays up to {previewSeconds}s. Release to unlock full delivery.
+      <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.65)" }}>
+        Plays up to {previewSeconds}s.
       </Text>
 
       <Pressable
@@ -76,13 +84,13 @@ export function AudioPreview({
           borderRadius: 14,
           paddingVertical: 12,
           alignItems: "center",
-          backgroundColor: "rgba(124,58,237,0.85)",
+          backgroundColor: "#2DD4BF",
         }}
       >
-        {loading ? <ActivityIndicator /> : <Text style={{ color: "#fff", fontWeight: "900" }}>{playing ? "Pause" : "Play preview"}</Text>}
+        {loading ? <ActivityIndicator color="#07100D" /> : <Text style={{ color: "#07100D", fontWeight: "900" }}>{playing ? "Pause" : "Play preview"}</Text>}
       </Pressable>
 
-      <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.70)", fontWeight: "900" }}>
+      <Text style={{ marginTop: 10, color: "rgba(255,253,247,0.70)", fontWeight: "900" }}>
         {pos}s / {previewSeconds}s
       </Text>
     </View>

@@ -798,7 +798,7 @@ export default function MarketHome() {
       : "Discover trusted listings";
   const heroSubtitle =
     section === "social"
-      ? "Follow updates, discover official channels, and jump into the full social feed when you need it."
+      ? "Browse fresh seller updates, launches, and media from the marketplace."
       : section === "service"
       ? "Browse service providers, compare offers, and move into escrow-backed checkout when you're ready."
       : section === "product"
@@ -1875,9 +1875,9 @@ export default function MarketHome() {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Seller board</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Social feed</Text>
               <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                Storefront updates, launches, and media from sellers you follow.
+                Storefront updates, launches, and media from marketplace sellers.
               </Text>
             </View>
             <Pressable
@@ -1891,7 +1891,7 @@ export default function MarketHome() {
                 paddingVertical: 10,
               }}
             >
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open board</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open feed</Text>
             </Pressable>
           </View>
 
@@ -1906,7 +1906,7 @@ export default function MarketHome() {
       <>
         <AppHeader
           title="Marketplace"
-          subtitle={section === "social" ? "Community, official channels, and marketplace updates" : "Escrow-protected buying and selling"}
+          subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
           rightSlot={<NotificationBell />}
           bordered={false}
@@ -1936,7 +1936,7 @@ export default function MarketHome() {
       <>
         <AppHeader
           title="Marketplace"
-          subtitle={section === "social" ? "Community, official channels, and marketplace updates" : "Escrow-protected buying and selling"}
+          subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
           rightSlot={<NotificationBell />}
           bordered={false}

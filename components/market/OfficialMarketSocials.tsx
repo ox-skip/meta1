@@ -3,9 +3,12 @@ import { Image, Linking, Pressable, Text, View } from "react-native";
 
 import { useOfficialSocialLinks } from "@/hooks/market/useOfficialSocialLinks";
 
-const BORDER = "rgba(255,255,255,0.10)";
-const CARD = "rgba(255,255,255,0.06)";
-const MUTED = "rgba(255,255,255,0.66)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const BORDER = "rgba(255,253,247,0.12)";
+const CARD = "rgba(255,253,247,0.065)";
+const TEAL = "#2DD4BF";
+const INK = "#07100D";
 
 function extractHost(url: string) {
   try {
@@ -59,10 +62,8 @@ export default function OfficialMarketSocials() {
     >
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>BestCity official community</Text>
-          <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>
-            Follow official channels for announcements.
-          </Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Official channels</Text>
+          <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>Verified links from the marketplace.</Text>
         </View>
         <View
           style={{
@@ -73,11 +74,11 @@ export default function OfficialMarketSocials() {
             justifyContent: "center",
             paddingHorizontal: 10,
             borderWidth: 1,
-            borderColor: "rgba(29,155,240,0.30)",
-            backgroundColor: "rgba(29,155,240,0.12)",
+            borderColor: "rgba(45,212,191,0.34)",
+            backgroundColor: "rgba(45,212,191,0.14)",
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{items.length}</Text>
+          <Text style={{ color: TEAL, fontWeight: "900", fontSize: 12 }}>{items.length}</Text>
         </View>
       </View>
 
@@ -92,7 +93,7 @@ export default function OfficialMarketSocials() {
                   borderRadius: 25,
                   borderWidth: 1,
                   borderColor: BORDER,
-                  backgroundColor: "rgba(255,255,255,0.05)",
+                  backgroundColor: "rgba(255,253,247,0.05)",
                 }}
               />
             ))
@@ -114,13 +115,13 @@ export default function OfficialMarketSocials() {
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: pressed ? "rgba(29,155,240,0.20)" : "rgba(255,255,255,0.04)",
+                    borderColor: "rgba(255,253,247,0.14)",
+                    backgroundColor: pressed ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.04)",
                     overflow: "hidden",
                   })}
                 >
                   {broken ? (
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>{item.fallback}</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{item.fallback}</Text>
                   ) : (
                     <Image
                       source={{ uri: item.logoUrl }}
@@ -131,7 +132,7 @@ export default function OfficialMarketSocials() {
                           [item.id]: true,
                         }))
                       }
-                      style={{ width: 22, height: 22, borderRadius: 11 }}
+                      style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: INK }}
                       resizeMode="contain"
                     />
                   )}

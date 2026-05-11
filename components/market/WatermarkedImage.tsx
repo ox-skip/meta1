@@ -6,33 +6,40 @@ const WatermarkIcon = require("../../assets/images/icon.png");
 export function WatermarkedImage({
   uri,
   height = 280,
-  label = "BestCity Preview",
+  label = "Preview",
 }: {
   uri: string;
   height?: number;
   label?: string;
 }) {
   return (
-    <View style={{ width: "100%", height, borderRadius: 18, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.06)" }}>
+    <View
+      style={{
+        width: "100%",
+        height,
+        borderRadius: 18,
+        overflow: "hidden",
+        backgroundColor: "rgba(255,253,247,0.06)",
+      }}
+    >
       <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
 
-      {/* Watermark overlay */}
       <View
         pointerEvents="none"
         style={{
           position: "absolute",
-          inset: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Image source={WatermarkIcon} style={{ width: 88, height: 88, opacity: 0.20 }} />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", fontWeight: "900" }}>
-          {label}
-        </Text>
+        <Image source={WatermarkIcon} style={{ width: 88, height: 88, opacity: 0.2 }} />
+        <Text style={{ marginTop: 10, color: "rgba(255,253,247,0.55)", fontWeight: "900" }}>{label}</Text>
       </View>
 
-      {/* Footer watermark strip */}
       <View
         pointerEvents="none"
         style={{
@@ -45,9 +52,7 @@ export function WatermarkedImage({
           backgroundColor: "rgba(0,0,0,0.35)",
         }}
       >
-        <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "900", fontSize: 12 }}>
-          BestCity • Preview Only • Release to unlock final delivery
-        </Text>
+        <Text style={{ color: "rgba(255,253,247,0.85)", fontWeight: "900", fontSize: 12 }}>Preview access</Text>
       </View>
     </View>
   );

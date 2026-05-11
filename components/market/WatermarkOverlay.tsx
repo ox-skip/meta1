@@ -2,16 +2,16 @@ import React, { useMemo } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
 type Props = {
-  label?: string;              // e.g. "Preview • @buyer • orderId"
-  opacity?: number;            // 0..1
-  tileSize?: number;           // px
-  rotateDeg?: number;          // tilt watermark
+  label?: string;
+  opacity?: number;
+  tileSize?: number;
+  rotateDeg?: number;
 };
 
 const ICON = require("../../assets/images/icon.png");
 
 export default function WatermarkOverlay({
-  label = "BestCity Preview",
+  label = "Preview",
   opacity = 0.12,
   tileSize = 44,
   rotateDeg = -18,
@@ -20,14 +20,7 @@ export default function WatermarkOverlay({
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { opacity }]}>
-      <View
-        style={[
-          styles.wrap,
-          {
-            transform: [{ rotate: `${rotateDeg}deg` }],
-          },
-        ]}
-      >
+      <View style={[styles.wrap, { transform: [{ rotate: `${rotateDeg}deg` }] }]}>
         {tiles.map((_, i) => (
           <View key={i} style={styles.tile}>
             <Image source={ICON} style={{ width: tileSize, height: tileSize, opacity: 0.95 }} />

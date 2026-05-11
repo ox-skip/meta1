@@ -1,53 +1,80 @@
-import React from "react";
-import { Platform, Text, View, Pressable } from "react-native";
-import { WebView } from "react-native-webview";
 import * as Linking from "expo-linking";
+import React from "react";
+import { Image, Platform, Pressable, Text, View } from "react-native";
+import { WebView } from "react-native-webview";
 
 const WatermarkIcon = require("../../assets/images/icon.png");
+
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const BORDER = "rgba(255,253,247,0.12)";
+const TEAL = "#2DD4BF";
+const INK = "#07100D";
 
 export function WatermarkedWeb({ url }: { url: string }) {
   if (Platform.OS === "web") {
     return (
-      <View style={{ padding: 14, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Website preview</Text>
-        <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{url}</Text>
+      <View
+        style={{
+          padding: 14,
+          borderRadius: 18,
+          backgroundColor: "rgba(255,253,247,0.06)",
+          borderWidth: 1,
+          borderColor: BORDER,
+        }}
+      >
+        <Text style={{ color: TEXT, fontWeight: "900" }}>Website preview</Text>
+        <Text style={{ marginTop: 6, color: MUTED }}>Open the site to continue.</Text>
         <Pressable
-          onPress={() => window.open(url, "_blank")}
-          style={{ marginTop: 12, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(124,58,237,0.85)" }}
+          onPress={() => window.open(url, "_blank", "noopener,noreferrer")}
+          style={{
+            marginTop: 12,
+            borderRadius: 14,
+            paddingVertical: 12,
+            alignItems: "center",
+            backgroundColor: TEAL,
+          }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Open preview</Text>
+          <Text style={{ color: INK, fontWeight: "900" }}>Open website</Text>
         </Pressable>
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-          Watermark is best-effort on web (screenshots can’t be fully blocked).
-        </Text>
       </View>
     );
   }
 
   return (
-    <View style={{ height: 420, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
+    <View
+      style={{
+        height: 420,
+        borderRadius: 18,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: BORDER,
+        backgroundColor: "#020302",
+      }}
+    >
       <WebView source={{ uri: url }} />
       <View pointerEvents="none" style={{ position: "absolute", top: 14, right: 14, alignItems: "center" }}>
         <View style={{ padding: 10, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.35)", alignItems: "center" }}>
-          <View style={{ width: 44, height: 44, opacity: 0.35 }}>
-            <View style={{ flex: 1 }}>
-              {/* icon */}
-              <View style={{ flex: 1 }}>
-                {/* use Image for icon */}
-              </View>
-            </View>
-          </View>
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", fontWeight: "900", fontSize: 12 }}>
-            BestCity Preview
+          <Image source={WatermarkIcon} style={{ width: 34, height: 34, opacity: 0.35 }} />
+          <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.75)", fontWeight: "900", fontSize: 12 }}>
+            Preview
           </Text>
         </View>
       </View>
 
       <Pressable
         onPress={() => Linking.openURL(url)}
-        style={{ position: "absolute", left: 14, bottom: 14, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "rgba(124,58,237,0.90)" }}
+        style={{
+          position: "absolute",
+          left: 14,
+          bottom: 14,
+          borderRadius: 14,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          backgroundColor: TEAL,
+        }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open in browser</Text>
+        <Text style={{ color: INK, fontWeight: "900", fontSize: 12 }}>Open website</Text>
       </Pressable>
     </View>
   );

@@ -5,15 +5,15 @@ import WatermarkOverlay from "./WatermarkOverlay";
 import { useSecureScreen } from "@/hooks/useSecureScreen";
 
 type Props = {
-  uri: string;                 // should be a PREVIEW clip URL (not full file)
-  locked?: boolean;            // if true, disable playback
+  uri: string;
+  locked?: boolean;
   watermarkLabel?: string;
 };
 
 export default function PreviewAudio({
   uri,
   locked = true,
-  watermarkLabel = "BestCity Preview",
+  watermarkLabel = "Preview",
 }: Props) {
   useSecureScreen(true);
 
@@ -74,9 +74,9 @@ export default function PreviewAudio({
     <View style={styles.card}>
       <WatermarkOverlay label={watermarkLabel} opacity={0.10} />
 
-      <Text style={styles.title}>Audio Preview</Text>
+      <Text style={styles.title}>Audio preview</Text>
       <Text style={styles.sub}>
-        {locked ? "Locked until escrow is released." : "Preview clip (not the full file)."}
+        {locked ? "Preview unavailable." : "Ready to play."}
       </Text>
 
       <Pressable
@@ -87,7 +87,7 @@ export default function PreviewAudio({
           locked ? styles.btnLocked : null,
         ]}
       >
-        {loading ? <ActivityIndicator /> : <Text style={styles.btnText}>{playing ? "Stop" : "Play"}</Text>}
+        {loading ? <ActivityIndicator /> : <Text style={[styles.btnText, locked ? styles.btnTextLocked : null]}>{playing ? "Stop" : "Play"}</Text>}
       </Pressable>
     </View>
   );
@@ -110,13 +110,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: 14,
     alignItems: "center",
-    backgroundColor: "rgba(124,58,237,0.85)",
+    backgroundColor: "#2DD4BF",
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,1)",
+    borderColor: "rgba(45,212,191,0.45)",
   },
   btnLocked: {
     backgroundColor: "rgba(255,255,255,0.08)",
     borderColor: "rgba(255,255,255,0.12)",
   },
-  btnText: { color: "#fff", fontWeight: "900" },
+  btnText: { color: "#07100D", fontWeight: "900" },
+  btnTextLocked: { color: "rgba(255,255,255,0.60)" },
 });

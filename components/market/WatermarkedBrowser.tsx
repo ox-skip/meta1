@@ -1,9 +1,19 @@
+import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, Text, TextInput, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { WebView } from "react-native-webview";
 
 const WatermarkIcon = require("../../assets/images/icon.png");
+
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.42)";
+const PANEL = "rgba(255,253,247,0.065)";
+const PANEL_STRONG = "rgba(255,253,247,0.105)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.22)";
+const TEAL = "#2DD4BF";
+const INK = "#07100D";
 
 function normalizeUrl(input: string) {
   const s = input.trim();
@@ -71,55 +81,79 @@ export function WatermarkedBrowser({
 
   function shouldStart(req: any) {
     const url: string = req?.url ?? "";
-    if (!url) return false;
-
-    // block weird schemes
-    if (!/^https?:\/\//i.test(url)) return false;
-
+    if (!url || !/^https?:\/\//i.test(url)) return false;
     if (!lockToInitialHost) return true;
-
-    const h = hostOf(url);
-    return allowedHosts.includes(h);
+    return allowedHosts.includes(hostOf(url));
   }
 
   return (
-    <View style={{ marginTop: 12, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-      {/* Top bar (NO URL displayed) */}
+    <View
+      style={{
+        marginTop: 12,
+        flex: 1,
+        minHeight: 440,
+        borderRadius: 22,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: BORDER_TOP,
+        backgroundColor: "#050706",
+      }}
+    >
       <View
         style={{
           padding: 12,
-          backgroundColor: "rgba(0,0,0,0.35)",
+          backgroundColor: "rgba(8,12,10,0.94)",
           borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.10)",
+          borderBottomColor: BORDER,
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>{title}</Text>
-        <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-          Watermarked preview - URL hidden in-app - Best-effort protection
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>
+              {title}
+            </Text>
+            <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>Secure preview</Text>
+          </View>
+
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(45,212,191,0.12)",
+              borderWidth: 1,
+              borderColor: "rgba(45,212,191,0.32)",
+            }}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color={TEAL} />
+          </View>
+        </View>
 
         {allowGoogleSearch ? (
           <View
             style={{
               marginTop: 10,
               flexDirection: "row",
-              gap: 10,
+              gap: 8,
               alignItems: "center",
-              borderRadius: 14,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              borderRadius: 16,
+              paddingLeft: 12,
+              paddingRight: 6,
+              paddingVertical: 6,
+              backgroundColor: PANEL,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
+              borderColor: BORDER,
             }}
           >
-            <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.75)" />
+            <Ionicons name="search-outline" size={18} color={MUTED} />
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Search domain or keywords..."
-              placeholderTextColor="rgba(255,255,255,0.40)"
-              style={{ flex: 1, color: "#fff", fontWeight: "800" }}
+              placeholder="Search or enter website"
+              placeholderTextColor={FAINT}
+              style={{ flex: 1, minHeight: 38, color: TEXT, fontWeight: "800" }}
               returnKeyType="search"
               onSubmitEditing={onSubmitSearch}
               autoCapitalize="none"
@@ -127,72 +161,36 @@ export function WatermarkedBrowser({
             />
             <Pressable
               onPress={onSubmitSearch}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 10,
-                borderRadius: 12,
-                backgroundColor: "rgba(124,58,237,0.85)",
-              }}
+              accessibilityRole="button"
+              accessibilityLabel="Open website"
+              style={({ pressed }) => ({
+                width: 38,
+                height: 38,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: TEAL,
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              })}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Go</Text>
+              <Ionicons name="arrow-forward" size={18} color={INK} />
             </Pressable>
           </View>
         ) : null}
 
-        {/* Navigation controls */}
-        <View style={{ marginTop: 10, flexDirection: "row", gap: 10 }}>
-          <Pressable
-            onPress={() => webRef.current?.goBack()}
-            disabled={!canBack}
-            style={{
-              flex: 1,
-              borderRadius: 14,
-              paddingVertical: 10,
-              alignItems: "center",
-              backgroundColor: canBack ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
-              opacity: canBack ? 1 : 0.6,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Back</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => webRef.current?.goForward()}
+        <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
+          <BrowserButton icon="chevron-back" label="Back" disabled={!canBack} onPress={() => webRef.current?.goBack()} />
+          <BrowserButton
+            icon="chevron-forward"
+            label="Forward"
             disabled={!canForward}
-            style={{
-              flex: 1,
-              borderRadius: 14,
-              paddingVertical: 10,
-              alignItems: "center",
-              backgroundColor: canForward ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
-              opacity: canForward ? 1 : 0.6,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Forward</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => webRef.current?.reload()}
-            style={{
-              borderRadius: 14,
-              paddingVertical: 10,
-              paddingHorizontal: 14,
-              alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.08)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Reload</Text>
-          </Pressable>
+            onPress={() => webRef.current?.goForward()}
+          />
+          <BrowserButton icon="refresh" label="Reload" onPress={() => webRef.current?.reload()} />
         </View>
       </View>
 
-      <View style={{ height: 440, backgroundColor: "rgba(255,255,255,0.03)" }}>
+      <View style={{ flex: 1, minHeight: 300, backgroundColor: "#020302" }}>
         <WebView
           ref={webRef}
           source={{ uri: initial }}
@@ -212,15 +210,27 @@ export function WatermarkedBrowser({
         />
 
         {loading ? (
-          <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>
-              Loading preview...
-            </Text>
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(2,3,2,0.72)",
+            }}
+          >
+            <ActivityIndicator color={TEAL} />
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading preview</Text>
           </View>
         ) : null}
 
-        <View pointerEvents="none" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        <View
+          pointerEvents="none"
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, overflow: "hidden" }}
+        >
           {Array.from({ length: 9 }).map((_, row) => (
             <View
               key={`wm-browser-row-${row}`}
@@ -237,19 +247,10 @@ export function WatermarkedBrowser({
                   style={{
                     width: 140,
                     transform: [{ rotate: "-24deg" }],
-                    opacity: 0.16,
+                    opacity: 0.15,
                   }}
                 >
-                  <Text
-                    style={{
-                      color: "rgba(255,255,255,0.42)",
-                      fontSize: 10,
-                      fontWeight: "900",
-                      letterSpacing: 0.9,
-                    }}
-                  >
-                    BESTCITY PREVIEW
-                  </Text>
+                  <Text style={{ color: "rgba(255,253,247,0.40)", fontSize: 10, fontWeight: "900" }}>PREVIEW</Text>
                 </View>
               ))}
             </View>
@@ -260,5 +261,40 @@ export function WatermarkedBrowser({
         </View>
       </View>
     </View>
+  );
+}
+
+function BrowserButton({
+  icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        flex: 1,
+        height: 42,
+        borderRadius: 15,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: disabled ? "rgba(255,253,247,0.035)" : PANEL_STRONG,
+        borderWidth: 1,
+        borderColor: BORDER,
+        opacity: disabled ? 0.48 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
+      })}
+    >
+      <Ionicons name={icon} size={18} color={disabled ? FAINT : TEXT} />
+    </Pressable>
   );
 }

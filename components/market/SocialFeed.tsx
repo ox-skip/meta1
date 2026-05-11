@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -59,7 +59,7 @@ type FeedComment = {
 type LocalAsset = {
   uri: string;
   mimeType: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
 };
 
 type Props = {
@@ -70,22 +70,21 @@ type Props = {
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-const TIMELINE_BG = "#120E0C";
-const SURFACE = "#17120D";
-const SURFACE_ALT = "#211810";
-const CARD = "#2A1F15";
-const BORDER = "rgba(245,158,11,0.18)";
-const BORDER_SOFT = "rgba(255,255,255,0.08)";
-const TEXT = "#FBF7F2";
-const MUTED = "rgba(251,247,242,0.68)";
-const ACCENT = "#F59E0B";
-const ACCENT_BG = "rgba(245,158,11,0.16)";
-const LIKE = "#FB7185";
-const LIKE_BG = "rgba(251,113,133,0.16)";
-const MEDIA = "#14B8A6";
-const MEDIA_BG = "rgba(20,184,166,0.16)";
-const GOLD = "#FBBF24";
-const GOLD_BG = "rgba(251,191,36,0.16)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const SURFACE = "#0D120F";
+const PANEL = "rgba(255,253,247,0.065)";
+const PANEL_STRONG = "rgba(255,253,247,0.095)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const INK = "#090D0B";
 const SOCIAL_BUCKET = "market-social";
 
 function fileExtFromMime(mime: string) {
@@ -95,12 +94,14 @@ function fileExtFromMime(mime: string) {
   if (m.includes("heic")) return "heic";
   if (m.includes("mp4")) return "mp4";
   if (m.includes("quicktime")) return "mov";
+  if (m.includes("m4a")) return "m4a";
+  if (m.includes("aac")) return "aac";
   if (m.includes("mpeg")) return "mp3";
   if (m.includes("wav")) return "wav";
-  return "bin";
+  return "jpg";
 }
 
-function pickKind(mime: string): "image" | "video" | "audio" | "file" {
+function pickKind(mime: string): FeedMedia["kind"] {
   const m = mime.toLowerCase();
   if (m.startsWith("image/")) return "image";
   if (m.startsWith("video/")) return "video";
@@ -108,30 +109,26 @@ function pickKind(mime: string): "image" | "video" | "audio" | "file" {
   return "file";
 }
 
-function safePublicUrl(bucket: string, storagePath: string | null, publicUrl: string | null) {
-  if (publicUrl) return publicUrl;
+function publicUrl(bucket: string, storagePath: string | null, existing: string | null) {
+  if (existing) return existing;
   if (!storagePath) return null;
   return supabase.storage.from(bucket).getPublicUrl(storagePath).data.publicUrl;
 }
 
-function isSocialSetupError(error: unknown) {
-  const msg = String((error as any)?.message || error || "").toLowerCase();
-  const mentionsSocial =
-    msg.includes("market_social_") ||
-    msg.includes("market_profile_follows") ||
-    msg.includes("market-social");
-  const isSetupFailure =
-    msg.includes("does not exist") ||
-    msg.includes("relation") ||
-    msg.includes("schema cache") ||
-    msg.includes("bucket") ||
-    msg.includes("row-level security") ||
-    msg.includes("policy");
-  return mentionsSocial && isSetupFailure;
-}
-
-function socialSetupMessage(action: string) {
-  return `Seller board isn't fully provisioned yet. Run the latest market migration and reload before you ${action}.`;
+function friendlySocialError(error: unknown, fallback = "Social feed is unavailable right now.") {
+  const msg = String((error as any)?.message || error || "").trim();
+  if (!msg) return fallback;
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("does not exist") ||
+    lower.includes("schema cache") ||
+    lower.includes("row-level security") ||
+    lower.includes("policy") ||
+    lower.includes("bucket")
+  ) {
+    return fallback;
+  }
+  return msg;
 }
 
 function formatRelativeTime(dateString: string) {
@@ -162,35 +159,35 @@ function formatCount(value: number) {
   return `${(value / 1_000_000).toFixed(1).replace(".0", "")}M`;
 }
 
-function getDisplayName(profile?: FeedProfile) {
-  return profile?.business_name || profile?.display_name || "Business";
+function getDisplayName(profile?: FeedProfile | null) {
+  return profile?.business_name || profile?.display_name || "Seller";
 }
 
-function getHandle(profile?: FeedProfile) {
-  return profile?.market_username || "store";
+function getHandle(profile?: FeedProfile | null) {
+  return profile?.market_username || "seller";
 }
 
 function getInitial(label: string) {
-  return label.trim().charAt(0).toUpperCase() || "B";
+  return label.trim().charAt(0).toUpperCase() || "S";
 }
 
-function mediaIcon(kind: FeedMedia["kind"]): IconName {
+function mediaIcon(kind: FeedMedia["kind"] | LocalAsset["kind"]): IconName {
   if (kind === "video") return "videocam-outline";
-  if (kind === "audio") return "musical-notes-outline";
+  if (kind === "audio") return "mic-outline";
   if (kind === "file") return "document-outline";
-  return "images-outline";
+  return "image-outline";
 }
 
-function previewTitle(kind: FeedMedia["kind"]) {
-  if (kind === "video") return "Video preview";
-  if (kind === "audio") return "Audio preview";
-  if (kind === "file") return "File preview";
-  return "Image preview";
+function previewTitle(kind: FeedMedia["kind"] | LocalAsset["kind"]) {
+  if (kind === "video") return "Video";
+  if (kind === "audio") return "Voice note";
+  if (kind === "file") return "File";
+  return "Image";
 }
 
 function buildPreviewPayload(input: {
   uri: string;
-  kind: FeedMedia["kind"];
+  kind: FeedMedia["kind"] | LocalAsset["kind"];
   mimeType?: string | null;
 }): PreviewPayload {
   return {
@@ -202,80 +199,79 @@ function buildPreviewPayload(input: {
   };
 }
 
-function SellerBadge({ verified }: { verified?: boolean | null }) {
+function VerifiedMark({ verified }: { verified?: boolean | null }) {
   if (!verified) return null;
-  return <Ionicons name="checkmark-circle" size={17} color="#3B82F6" />;
+  return <Ionicons name="checkmark-circle" size={16} color={BLUE} />;
 }
 
-function MetricChip({ icon, label }: { icon: IconName; label: string }) {
+function Avatar({ profile, size = 42 }: { profile?: FeedProfile | null; size?: number }) {
+  const name = getDisplayName(profile);
+  const avatar = profile?.logo_path
+    ? supabase.storage.from("market-sellers").getPublicUrl(profile.logo_path).data.publicUrl
+    : null;
+
   return (
     <View
       style={{
-        flexDirection: "row",
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        overflow: "hidden",
         alignItems: "center",
-        gap: 8,
-        borderRadius: 999,
+        justifyContent: "center",
+        backgroundColor: "rgba(255,253,247,0.09)",
         borderWidth: 1,
         borderColor: BORDER,
-        backgroundColor: "rgba(255,255,255,0.03)",
-        paddingHorizontal: 12,
-        paddingVertical: 8,
       }}
     >
-      <Ionicons name={icon} size={14} color={ACCENT} />
-      <Text style={{ color: TEXT, fontWeight: "700", fontSize: 12 }}>{label}</Text>
+      {avatar ? (
+        <Image source={{ uri: avatar }} style={{ width: size, height: size }} />
+      ) : (
+        <Text style={{ color: TEXT, fontWeight: "900" }}>{getInitial(name)}</Text>
+      )}
     </View>
   );
 }
 
-function ActionButton({
+function IconButton({
   icon,
   label,
-  count,
   onPress,
-  highlighted = false,
-  highlightColor = ACCENT,
-  highlightBackground = ACCENT_BG,
-  disabled = false,
+  active,
+  disabled,
+  tone = TEAL,
 }: {
   icon: IconName;
   label: string;
-  count?: number;
   onPress: () => void;
-  highlighted?: boolean;
-  highlightColor?: string;
-  highlightBackground?: string;
+  active?: boolean;
   disabled?: boolean;
+  tone?: string;
 }) {
-  const color = highlighted ? highlightColor : MUTED;
-  const badgeBg = highlighted ? highlightBackground : "transparent";
-  const displayLabel = typeof count === "number" && count > 0 ? formatCount(count) : label;
-
   return (
     <Pressable
-      disabled={disabled}
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed }) => ({
-        flexDirection: "row",
+        height: 38,
+        minWidth: 38,
+        borderRadius: 15,
+        paddingHorizontal: label ? 11 : 0,
         alignItems: "center",
-        gap: 8,
-        minWidth: 84,
-        opacity: disabled ? 0.45 : pressed ? 0.82 : 1,
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 7,
+        backgroundColor: active ? `${tone}24` : "rgba(255,253,247,0.07)",
+        borderWidth: 1,
+        borderColor: active ? `${tone}55` : BORDER,
+        opacity: disabled ? 0.45 : 1,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
       })}
     >
-      <View
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: badgeBg,
-        }}
-      >
-        <Ionicons name={icon} size={18} color={color} />
-      </View>
-      <Text style={{ color, fontWeight: "700", fontSize: 13 }}>{displayLabel}</Text>
+      <Ionicons name={icon} size={17} color={active ? tone : MUTED} />
+      {label ? <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>{label}</Text> : null}
     </Pressable>
   );
 }
@@ -283,14 +279,21 @@ function ActionButton({
 export default function SocialFeed({ profileUserId, hideComposer = false, mode = "inline" }: Props) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const isContained = mode === "contained";
+  const isWide = width >= 760;
+  const mediaHeight = isWide ? 360 : 280;
+  const assetSize = isWide ? 92 : 78;
 
   const [meId, setMeId] = useState<string | null>(null);
+  const [selfProfile, setSelfProfile] = useState<FeedProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [body, setBody] = useState("");
   const [assets, setAssets] = useState<LocalAsset[]>([]);
+  const [recording, setRecording] = useState<any>(null);
+  const [recordingBusy, setRecordingBusy] = useState(false);
   const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -304,82 +307,83 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+
   const postingLockRef = useRef(false);
   const pendingPostIdsRef = useRef(new Set<string>());
 
-  const isContained = mode === "contained";
-  const isTablet = width >= 768;
-  const showLeftRail = isContained && width >= 1024;
-  const showRightRail = isContained && width >= 1280;
-  const showRailLabels = isContained && width >= 1180;
-  const thumbSize = isTablet ? 108 : 88;
-
-  const myProfile = meId ? profileMap[meId] : undefined;
-  const myAvatar = myProfile?.logo_path
-    ? supabase.storage.from("market-sellers").getPublicUrl(myProfile.logo_path).data.publicUrl
-    : null;
-  const totalMedia = Object.values(mediaMap).reduce((sum, list) => sum + list.length, 0);
-  const activeProfiles = Array.from(new Set(posts.map((post) => post.author_id)))
-    .map((authorId) => profileMap[authorId])
-    .filter((profile): profile is FeedProfile => !!profile)
-    .slice(0, 5);
-
   useEffect(() => {
+    let alive = true;
     (async () => {
       const { data } = await supabase.auth.getUser();
-      setMeId(data?.user?.id ?? null);
+      const uid = data?.user?.id ?? null;
+      if (!alive) return;
+      setMeId(uid);
+
+      if (uid) {
+        const { data: profile } = await supabase
+          .from("market_seller_public_profiles")
+          .select("user_id,market_username,display_name,business_name,logo_path,is_verified")
+          .eq("user_id", uid)
+          .maybeSingle();
+        if (alive) setSelfProfile((profile as FeedProfile) ?? null);
+      }
     })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  async function fetchPosts() {
+  useEffect(() => {
+    return () => {
+      const rec = recording;
+      if (rec) {
+        rec.stopAndUnloadAsync?.().catch(() => undefined);
+      }
+    };
+  }, [recording]);
+
+  const loadProfiles = useCallback(async (authorIds: string[]) => {
+    const ids = Array.from(new Set(authorIds.filter(Boolean)));
+    if (!ids.length) return {};
+
+    const { data, error: profileErr } = await supabase
+      .from("market_seller_public_profiles")
+      .select("user_id,market_username,display_name,business_name,logo_path,is_verified")
+      .in("user_id", ids);
+
+    if (profileErr) throw profileErr;
+
+    const next: Record<string, FeedProfile> = {};
+    ((data ?? []) as FeedProfile[]).forEach((profile) => {
+      next[profile.user_id] = profile;
+    });
+    return next;
+  }, []);
+
+  const fetchPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      const targetAuthorIds = new Set<string>();
-
-      if (profileUserId) {
-        targetAuthorIds.add(profileUserId);
-      } else {
-        const { data: auth } = await supabase.auth.getUser();
-        const uid = auth?.user?.id;
-        if (uid) {
-          targetAuthorIds.add(uid);
-          const { data: follows, error: followsErr } = await supabase
-            .from("market_profile_follows")
-            .select("followed_id")
-            .eq("follower_id", uid);
-          if (followsErr) throw followsErr;
-          (follows ?? []).forEach((row: any) => targetAuthorIds.add(String(row.followed_id)));
-        }
-      }
-
-      if (!targetAuthorIds.size) {
-        setPosts([]);
-        setMediaMap({});
-        setProfileMap({});
-        setReactionCounts({});
-        setMyLikes({});
-        setCommentCounts({});
-        return;
-      }
-
-      const authorIds = Array.from(targetAuthorIds);
-      const { data: postRows, error: postErr } = await supabase
+      let query = supabase
         .from("market_social_posts")
         .select("id,author_id,body,created_at")
-        .in("author_id", authorIds)
         .order("created_at", { ascending: false })
-        .limit(120);
+        .limit(80);
 
+      if (profileUserId) query = query.eq("author_id", profileUserId);
+
+      const { data: postRows, error: postErr } = await query;
       if (postErr) throw postErr;
 
       const feedPosts = (postRows ?? []) as FeedPost[];
       setPosts(feedPosts);
 
       const postIds = feedPosts.map((post) => post.id);
-      const authorSet = Array.from(new Set(feedPosts.map((post) => post.author_id)));
+      const authorIds = Array.from(new Set(feedPosts.map((post) => post.author_id)));
 
-      const [mediaRes, profilesRes] = await Promise.all([
+      const [mediaRes, profiles] = await Promise.all([
         postIds.length
           ? supabase
               .from("market_social_media")
@@ -387,28 +391,18 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               .in("post_id", postIds)
               .order("sort_order", { ascending: true })
           : Promise.resolve({ data: [] } as any),
-        authorSet.length
-          ? supabase
-              .from("market_seller_public_profiles")
-              .select("user_id,market_username,display_name,business_name,logo_path,is_verified")
-              .in("user_id", authorSet)
-          : Promise.resolve({ data: [] } as any),
+        loadProfiles(authorIds),
       ]);
+
       if ((mediaRes as any)?.error) throw (mediaRes as any).error;
-      if ((profilesRes as any)?.error) throw (profilesRes as any).error;
+      setProfileMap(profiles);
 
       const nextMediaMap: Record<string, FeedMedia[]> = {};
-      (mediaRes.data ?? []).forEach((item: FeedMedia) => {
+      ((mediaRes.data ?? []) as FeedMedia[]).forEach((item) => {
         if (!nextMediaMap[item.post_id]) nextMediaMap[item.post_id] = [];
         nextMediaMap[item.post_id].push(item);
       });
       setMediaMap(nextMediaMap);
-
-      const nextProfileMap: Record<string, FeedProfile> = {};
-      (profilesRes.data ?? []).forEach((profile: FeedProfile) => {
-        nextProfileMap[profile.user_id] = profile;
-      });
-      setProfileMap(nextProfileMap);
 
       if (!postIds.length) {
         setReactionCounts({});
@@ -424,6 +418,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
           : Promise.resolve({ data: [] } as any),
         supabase.from("market_social_comments").select("post_id").in("post_id", postIds),
       ]);
+
       if ((reactionRes as any)?.error) throw (reactionRes as any).error;
       if ((myReactionRes as any)?.error) throw (myReactionRes as any).error;
       if ((commentRes as any)?.error) throw (commentRes as any).error;
@@ -448,32 +443,35 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       });
       setCommentCounts(nextCommentCounts);
     } catch (e: any) {
-      setError(isSocialSetupError(e) ? socialSetupMessage("load seller posts") : e?.message || "Could not load seller posts");
+      setError(friendlySocialError(e));
       setPosts([]);
+      setMediaMap({});
     } finally {
       setLoading(false);
     }
-  }
+  }, [loadProfiles, meId, profileUserId]);
 
   useEffect(() => {
-    fetchPosts();
-  }, [profileUserId, meId]);
+    void fetchPosts();
+  }, [fetchPosts]);
 
   useEffect(() => {
     const ch = supabase
-      .channel(`market-social-feed-${profileUserId || "home"}`)
+      .channel(`market-social-feed-${profileUserId || "all"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "market_social_posts" }, (payload) => {
         const row = payload.new as any;
         const oldRow = payload.old as any;
 
         if (payload.eventType === "INSERT" && row?.id) {
           if (pendingPostIdsRef.current.has(String(row.id))) return;
-          setPosts((prev) => {
-            if (prev.some((post) => post.id === row.id)) return prev;
-            if (profileUserId && row.author_id !== profileUserId) return prev;
-            return [row as FeedPost, ...prev];
-          });
-        } else if (payload.eventType === "DELETE" && oldRow?.id) {
+          if (profileUserId && row.author_id !== profileUserId) return;
+          setPosts((prev) => (prev.some((post) => post.id === row.id) ? prev : [row as FeedPost, ...prev]));
+          void loadProfiles([String(row.author_id)]).then((profiles) =>
+            setProfileMap((prev) => ({ ...prev, ...profiles })),
+          );
+        }
+
+        if (payload.eventType === "DELETE" && oldRow?.id) {
           setPosts((prev) => prev.filter((post) => post.id !== oldRow.id));
         }
       })
@@ -483,47 +481,22 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         if (!postId) return;
 
         setMediaMap((prev) => {
+          const current = prev[postId] ?? [];
+
           if (payload.eventType === "INSERT" && payload.new) {
             const incoming = payload.new as FeedMedia;
-            const current = prev[postId] ?? [];
             if (current.some((item) => item.id === incoming.id)) return prev;
-
-            return {
-              ...prev,
-              [postId]: [...current, incoming].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
-            };
-          }
-
-          if (payload.eventType === "UPDATE" && payload.new) {
-            const incoming = payload.new as FeedMedia;
-            const current = prev[postId] ?? [];
-            const next = current.some((item) => item.id === incoming.id)
-              ? current
-                  .map((item) => (item.id === incoming.id ? incoming : item))
-                  .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-              : [...current, incoming].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-
-            return {
-              ...prev,
-              [postId]: next,
-            };
+            return { ...prev, [postId]: [...current, incoming].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) };
           }
 
           if (payload.eventType === "DELETE" && payload.old) {
-            const current = prev[postId] ?? [];
             const next = current.filter((item) => item.id !== String(payload.old.id));
-            if (next.length === current.length) return prev;
-
-            if (next.length === 0) {
+            if (!next.length) {
               const trimmed = { ...prev };
               delete trimmed[postId];
               return trimmed;
             }
-
-            return {
-              ...prev,
-              [postId]: next,
-            };
+            return { ...prev, [postId]: next };
           }
 
           return prev;
@@ -533,63 +506,55 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const row = (payload.new ?? payload.old) as any;
         const postId = String(row?.post_id || "");
         if (!postId) return;
-
-        setReactionCounts((prev) => {
-          const next = { ...prev };
-          if (payload.eventType === "INSERT") next[postId] = (next[postId] ?? 0) + 1;
-          if (payload.eventType === "DELETE") next[postId] = Math.max(0, (next[postId] ?? 0) - 1);
-          return next;
-        });
+        setReactionCounts((prev) => ({
+          ...prev,
+          [postId]: Math.max(0, (prev[postId] ?? 0) + (payload.eventType === "DELETE" ? -1 : 1)),
+        }));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "market_social_comments" }, (payload) => {
         const row = (payload.new ?? payload.old) as any;
         const postId = String(row?.post_id || "");
         if (!postId) return;
-
-        setCommentCounts((prev) => {
-          const next = { ...prev };
-          if (payload.eventType === "INSERT") next[postId] = (next[postId] ?? 0) + 1;
-          if (payload.eventType === "DELETE") next[postId] = Math.max(0, (next[postId] ?? 0) - 1);
-          return next;
-        });
-
-        if (commentsOpenPost?.id === postId) loadComments(postId);
+        setCommentCounts((prev) => ({
+          ...prev,
+          [postId]: Math.max(0, (prev[postId] ?? 0) + (payload.eventType === "DELETE" ? -1 : 1)),
+        }));
+        if (commentsOpenPost?.id === postId) void loadComments(postId);
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [profileUserId, commentsOpenPost?.id]);
+  }, [commentsOpenPost?.id, loadProfiles, profileUserId]);
 
   async function chooseMedia() {
+    if (assets.length >= 4) {
+      setError("Remove an attachment before adding another.");
+      return;
+    }
+
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      setError("Photo/video permission is required.");
+      setError("Allow photo access to attach media.");
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       allowsMultipleSelection: true,
-      selectionLimit: 4,
-      quality: 0.9,
+      selectionLimit: Math.max(1, 4 - assets.length),
+      quality: 0.88,
     });
 
     if (result.canceled) return;
 
-    const pickedAssets = (result.assets ?? []) as Array<{
-      uri?: string;
-      mimeType?: string | null;
-      type?: string | null;
-    }>;
-
-    const next = pickedAssets
+    const next = (result.assets ?? [])
       .filter((item) => !!item.uri)
       .map((item) => {
         const mime = item.mimeType || (item.type === "video" ? "video/mp4" : "image/jpeg");
         return {
-          uri: item.uri || "",
+          uri: item.uri,
           mimeType: mime,
           kind: item.type === "video" ? "video" : "image",
         } as LocalAsset;
@@ -598,12 +563,56 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     setAssets((prev) => [...prev, ...next].slice(0, 4));
   }
 
-  async function uploadAsset(userId: string, postId: string, asset: LocalAsset, idx: number): Promise<FeedMedia> {
-    const ext = fileExtFromMime(asset.mimeType);
-    const path = `${userId}/${postId}/${Date.now()}-${idx}.${ext}`;
-    const publicUrl = safePublicUrl(SOCIAL_BUCKET, path, null);
+  async function toggleRecording() {
+    if (recordingBusy) return;
+    if (assets.length >= 4 && !recording) {
+      setError("Remove an attachment before recording.");
+      return;
+    }
 
-    await uploadToSupabaseStorage({
+    setRecordingBusy(true);
+    setError(null);
+
+    try {
+      const mod = await import("expo-av");
+      const Audio = mod.Audio;
+
+      if (recording) {
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI?.();
+        setRecording(null);
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => undefined);
+        if (uri) {
+          const audioAsset: LocalAsset = { uri, mimeType: "audio/m4a", kind: "audio" };
+          setAssets((prev) => [...prev, audioAsset].slice(0, 4));
+        }
+        return;
+      }
+
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        setError("Allow microphone access to record.");
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setRecording(rec);
+    } catch (e: any) {
+      setRecording(null);
+      setError(friendlySocialError(e, "Voice recording is unavailable on this device."));
+    } finally {
+      setRecordingBusy(false);
+    }
+  }
+
+  async function uploadAsset(userId: string, postId: string, asset: LocalAsset, index: number): Promise<FeedMedia> {
+    const ext = fileExtFromMime(asset.mimeType);
+    const path = `${userId}/${postId}/${Date.now()}-${index}.${ext}`;
+    const { publicUrl: uploadedUrl } = await uploadToSupabaseStorage({
       bucket: SOCIAL_BUCKET,
       path,
       localUri: asset.uri,
@@ -611,29 +620,28 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       upsert: false,
     });
 
-    const { data: inserted, error: mediaErr } = await supabase
+    const { data, error: mediaErr } = await supabase
       .from("market_social_media")
       .insert({
         post_id: postId,
         kind: pickKind(asset.mimeType),
         storage_path: path,
-        public_url: publicUrl,
+        public_url: uploadedUrl,
         mime_type: asset.mimeType,
-        sort_order: idx,
+        sort_order: index,
       })
       .select("id,post_id,kind,storage_path,public_url,mime_type,sort_order")
       .single();
 
     if (mediaErr) throw mediaErr;
-    return { ...(inserted as FeedMedia), public_url: (inserted as any)?.public_url ?? publicUrl };
+    return data as FeedMedia;
   }
 
   async function submitPost() {
     const cleanBody = body.trim();
-    let createdPostId: string | null = null;
-    if (!cleanBody && assets.length === 0) return;
+    if (!cleanBody && !assets.length) return;
     if (!meId) {
-      setError("Please sign in to post.");
+      setError("Sign in to post.");
       return;
     }
     if (postingLockRef.current) return;
@@ -641,8 +649,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     postingLockRef.current = true;
     setPosting(true);
     setError(null);
+
     try {
-      const { data: inserted, error: postErr } = await supabase
+      const { data, error: postErr } = await supabase
         .from("market_social_posts")
         .insert({ author_id: meId, body: cleanBody || null })
         .select("id,author_id,body,created_at")
@@ -650,57 +659,35 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
       if (postErr) throw postErr;
 
-      const created = inserted as FeedPost;
-      createdPostId = created.id;
+      const created = data as FeedPost;
       pendingPostIdsRef.current.add(created.id);
-      setPosts((prev) => prev.filter((post) => post.id !== created.id));
+      setPosts((prev) => [created, ...prev.filter((post) => post.id !== created.id)]);
+      setProfileMap((prev) => (selfProfile ? { ...prev, [selfProfile.user_id]: selfProfile } : prev));
 
-      const createdMedia: FeedMedia[] = [];
-      const failedUploads: string[] = [];
-      for (let i = 0; i < assets.length; i += 1) {
+      const uploaded: FeedMedia[] = [];
+      const failed: string[] = [];
+      for (let index = 0; index < assets.length; index += 1) {
         try {
-          createdMedia.push(await uploadAsset(meId, created.id, assets[i], i));
-        } catch (uploadError: any) {
-          failedUploads.push(String(uploadError?.message || "Attachment upload failed"));
+          uploaded.push(await uploadAsset(meId, created.id, assets[index], index));
+        } catch (e: any) {
+          failed.push(String(e?.message || "Upload failed"));
         }
       }
 
-      if (createdMedia.length) {
-        setMediaMap((prev) => ({ ...prev, [created.id]: createdMedia }));
-      }
-      setPosts((prev) => [created, ...prev.filter((post) => post.id !== created.id)]);
+      if (uploaded.length) setMediaMap((prev) => ({ ...prev, [created.id]: uploaded }));
       pendingPostIdsRef.current.delete(created.id);
-
       setBody("");
       setAssets([]);
 
-      if (failedUploads.length) {
-        if (!cleanBody && createdMedia.length === 0) {
-          await supabase.from("market_social_posts").delete().eq("id", created.id);
-          setPosts((prev) => prev.filter((post) => post.id !== created.id));
-          setMediaMap((prev) => {
-            const next = { ...prev };
-            delete next[created.id];
-            return next;
-          });
-          pendingPostIdsRef.current.delete(created.id);
-          setError("We could not upload that attachment. Try a smaller photo/video or upload it again.");
-          return;
-        }
-
-        const firstFailure = String(failedUploads[0] || "");
-        if (firstFailure.toLowerCase().includes("row-level security")) {
-          setError(socialSetupMessage("attach media"));
-        } else {
-          setError(
-            `Post published, but ${failedUploads.length} attachment${failedUploads.length === 1 ? "" : "s"} failed to upload.`,
-          );
-        }
+      if (failed.length) {
+        setError(
+          uploaded.length || cleanBody
+            ? `Post published, but ${failed.length} attachment${failed.length === 1 ? "" : "s"} failed.`
+            : "Attachment upload failed.",
+        );
       }
     } catch (e: any) {
-      if (createdPostId) pendingPostIdsRef.current.delete(createdPostId);
-      const msg = String(e?.message || "Could not publish post");
-      setError(isSocialSetupError(e) ? socialSetupMessage("publish updates") : msg);
+      setError(friendlySocialError(e, "Could not publish post."));
     } finally {
       postingLockRef.current = false;
       setPosting(false);
@@ -709,7 +696,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   async function toggleLike(postId: string) {
     if (!meId) {
-      setError("Please sign in to react.");
+      setError("Sign in to react.");
       return;
     }
 
@@ -738,15 +725,22 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   async function loadComments(postId: string) {
-    const { data, error } = await supabase
+    const { data, error: commentErr } = await supabase
       .from("market_social_comments")
-      .select("id,post_id,user_id,body,created_at,profiles(username,full_name)")
+      .select("id,post_id,user_id,body,created_at")
       .eq("post_id", postId)
       .order("created_at", { ascending: false })
-      .limit(120);
-    if (error) throw error;
+      .limit(100);
+    if (commentErr) throw commentErr;
 
-    setComments((data ?? []) as FeedComment[]);
+    const rows = (data ?? []) as FeedComment[];
+    setComments(rows);
+
+    const commenterIds = rows.map((comment) => comment.user_id).filter((userId) => !profileMap[userId]);
+    if (commenterIds.length) {
+      const profiles = await loadProfiles(commenterIds);
+      setProfileMap((prev) => ({ ...prev, ...profiles }));
+    }
   }
 
   async function openComments(post: FeedPost) {
@@ -754,8 +748,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     setCommentText("");
     try {
       await loadComments(post.id);
-    } catch (e: any) {
-      setError(isSocialSetupError(e) ? socialSetupMessage("open comments") : String(e?.message || "Could not load comments"));
+    } catch (e) {
+      setError(friendlySocialError(e, "Could not load comments."));
     }
   }
 
@@ -766,53 +760,46 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
     setCommentBusy(true);
     try {
-      const { data: inserted, error } = await supabase
+      const { data, error: insertErr } = await supabase
         .from("market_social_comments")
         .insert({ post_id: commentsOpenPost.id, user_id: meId, body: text })
         .select("id,post_id,user_id,body,created_at")
         .single();
-      if (error) throw error;
+      if (insertErr) throw insertErr;
 
-      if (inserted) setComments((prev) => [inserted as FeedComment, ...prev]);
+      if (data) setComments((prev) => [data as FeedComment, ...prev]);
+      setCommentCounts((prev) => ({ ...prev, [commentsOpenPost.id]: (prev[commentsOpenPost.id] ?? 0) + 1 }));
       setCommentText("");
-    } catch (e: any) {
-      setError(isSocialSetupError(e) ? socialSetupMessage("comment") : String(e?.message || "Could not post comment"));
+    } catch (e) {
+      setError(friendlySocialError(e, "Could not post comment."));
     } finally {
       setCommentBusy(false);
     }
   }
 
   function openMediaPreview(media: FeedMedia) {
-    const uri = safePublicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
+    const uri = publicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
     if (!uri) return;
-
-    setPreviewPayload(
-      buildPreviewPayload({
-        uri,
-        mimeType: media.mime_type || "",
-        kind: media.kind,
-      }),
-    );
+    setPreviewPayload(buildPreviewPayload({ uri, mimeType: media.mime_type, kind: media.kind }));
   }
 
-  function renderMediaCard(media: FeedMedia, height: number, overlayText?: string) {
-    const uri = safePublicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
+  function openLocalPreview(asset: LocalAsset) {
+    setPreviewPayload(buildPreviewPayload({ uri: asset.uri, mimeType: asset.mimeType, kind: asset.kind }));
+  }
+
+  function renderMediaTile(media: FeedMedia, height: number, overlayText?: string) {
+    const uri = publicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
     const isImage = media.kind === "image";
 
     return (
-      <Pressable
-        key={media.id}
-        disabled={!uri}
-        onPress={() => openMediaPreview(media)}
-        style={{ flex: 1 }}
-      >
+      <Pressable key={media.id} disabled={!uri} onPress={() => openMediaPreview(media)} style={{ flex: 1 }}>
         <View
           style={{
             height,
             borderRadius: 18,
             borderWidth: 1,
             borderColor: BORDER,
-            backgroundColor: CARD,
+            backgroundColor: "rgba(255,253,247,0.06)",
             overflow: "hidden",
             alignItems: "center",
             justifyContent: "center",
@@ -822,11 +809,23 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
           ) : (
             <View style={{ alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }}>
-              <Ionicons name={mediaIcon(media.kind)} size={30} color={TEXT} />
-              <Text style={{ marginTop: 10, color: TEXT, fontWeight: "800", fontSize: 13 }}>
-                {media.kind.toUpperCase()}
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 20,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: media.kind === "audio" ? `${AMBER}24` : `${TEAL}20`,
+                  borderWidth: 1,
+                  borderColor: media.kind === "audio" ? `${AMBER}50` : `${TEAL}46`,
+                }}
+              >
+                <Ionicons name={mediaIcon(media.kind)} size={23} color={media.kind === "audio" ? AMBER : TEAL} />
+              </View>
+              <Text style={{ marginTop: 9, color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                {previewTitle(media.kind)}
               </Text>
-              <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>Tap to preview</Text>
             </View>
           )}
 
@@ -840,7 +839,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 left: 0,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(2,6,23,0.52)",
+                backgroundColor: "rgba(9,13,11,0.62)",
               }}
             >
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>{overlayText}</Text>
@@ -854,44 +853,24 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   function renderMediaGrid(media: FeedMedia[]) {
     const visible = media.slice(0, 4);
     const remainder = media.length - visible.length;
+    if (!visible.length) return null;
 
-    if (visible.length === 0) return null;
-
-    if (visible.length === 1) {
-      return renderMediaCard(visible[0], isTablet ? 360 : 280, remainder > 0 ? `+${remainder}` : undefined);
-    }
-
-    if (visible.length === 3) {
-      return (
-        <View style={{ gap: 6 }}>
-          {renderMediaCard(visible[0], isTablet ? 250 : 210)}
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            {visible.slice(1).map((item, index) =>
-              renderMediaCard(item, isTablet ? 170 : 135, index === 1 && remainder > 0 ? `+${remainder}` : undefined)
-            )}
-          </View>
-        </View>
-      );
-    }
+    if (visible.length === 1) return renderMediaTile(visible[0], mediaHeight, remainder ? `+${remainder}` : undefined);
 
     if (visible.length === 2) {
       return (
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {visible.map((item, index) =>
-            renderMediaCard(item, isTablet ? 250 : 210, index === 1 && remainder > 0 ? `+${remainder}` : undefined)
-          )}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {visible.map((item, index) => renderMediaTile(item, isWide ? 260 : 190, index === 1 && remainder ? `+${remainder}` : undefined))}
         </View>
       );
     }
 
     return (
-      <View style={{ gap: 6 }}>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {visible.slice(0, 2).map((item) => renderMediaCard(item, isTablet ? 170 : 135))}
-        </View>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          {visible.slice(2).map((item, index) =>
-            renderMediaCard(item, isTablet ? 170 : 135, index === 1 && remainder > 0 ? `+${remainder}` : undefined)
+      <View style={{ gap: 8 }}>
+        {renderMediaTile(visible[0], isWide ? 250 : 190)}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {visible.slice(1).map((item, index) =>
+            renderMediaTile(item, isWide ? 150 : 116, index === visible.slice(1).length - 1 && remainder ? `+${remainder}` : undefined),
           )}
         </View>
       </View>
@@ -899,90 +878,69 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   function renderComposer() {
-    const composerName = getDisplayName(myProfile);
-    const avatarSize = isContained ? 48 : 44;
+    if (hideComposer) return null;
+
+    const canPost = !!body.trim() || assets.length > 0;
+
+    if (!meId) {
+      return (
+        <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: SURFACE }}>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>Sign in to post</Text>
+          <Text style={{ marginTop: 5, color: MUTED, lineHeight: 18 }}>
+            You can browse updates now. Sign in when you want to publish or comment.
+          </Text>
+        </View>
+      );
+    }
 
     return (
-      <View
-        style={{
-          paddingHorizontal: 16,
-          paddingTop: isContained ? 12 : 14,
-          paddingBottom: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: BORDER_SOFT,
-          backgroundColor: SURFACE,
-        }}
-      >
+      <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: SURFACE }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-          <View
-            style={{
-              width: avatarSize,
-              height: avatarSize,
-              borderRadius: avatarSize / 2,
-              overflow: "hidden",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: isContained ? "rgba(255,255,255,0.10)" : ACCENT_BG,
-            }}
-          >
-            {myAvatar ? (
-              <Image source={{ uri: myAvatar }} style={{ width: avatarSize, height: avatarSize }} />
-            ) : (
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: isContained ? 16 : 15 }}>
-                {getInitial(composerName)}
-              </Text>
-            )}
-          </View>
+          <Avatar profile={selfProfile} size={44} />
 
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <TextInput
               value={body}
               onChangeText={setBody}
               multiline
-              placeholder={profileUserId ? "Share a storefront update, offer, or restock note" : "Post a launch, promo, or seller update"}
-              placeholderTextColor="rgba(255,255,255,0.34)"
+              placeholder="Share an update..."
+              placeholderTextColor={FAINT}
               textAlignVertical="top"
               style={{
-                minHeight: isContained ? 64 : 72,
+                minHeight: 62,
                 color: TEXT,
-                fontSize: isContained ? (isTablet ? 22 : 18) : 17,
-                lineHeight: isContained ? (isTablet ? 30 : 24) : 24,
+                fontSize: 16,
+                lineHeight: 23,
                 paddingHorizontal: 0,
-                paddingVertical: 6,
+                paddingVertical: 4,
               }}
             />
 
             {assets.length ? (
-              <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
                 {assets.map((asset, index) => (
-                  <Pressable
-                    key={`${asset.uri}-${index}`}
-                    onPress={() =>
-                      setPreviewPayload(
-                        buildPreviewPayload({
-                          uri: asset.uri,
-                          mimeType: asset.mimeType,
-                          kind: asset.kind,
-                        }),
-                      )
-                    }
-                  >
+                  <Pressable key={`${asset.uri}-${index}`} onPress={() => openLocalPreview(asset)}>
                     <View
                       style={{
-                        width: thumbSize,
-                        height: thumbSize,
+                        width: assetSize,
+                        height: assetSize,
                         borderRadius: 18,
                         overflow: "hidden",
                         borderWidth: 1,
                         borderColor: BORDER,
-                        backgroundColor: CARD,
+                        backgroundColor: PANEL_STRONG,
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
                       {asset.kind === "image" ? (
-                        <Image source={{ uri: asset.uri }} style={{ width: thumbSize, height: thumbSize }} />
+                        <Image source={{ uri: asset.uri }} style={{ width: assetSize, height: assetSize }} />
                       ) : (
-                        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                          <Ionicons name="videocam-outline" size={24} color={TEXT} />
+                        <View style={{ alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name={mediaIcon(asset.kind)} size={24} color={asset.kind === "audio" ? AMBER : TEAL} />
+                          <Text style={{ marginTop: 6, color: MUTED, fontSize: 11, fontWeight: "800" }}>
+                            {asset.kind === "audio" ? "Voice" : "Video"}
+                          </Text>
                         </View>
                       )}
 
@@ -1011,100 +969,49 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             <View
               style={{
                 marginTop: 12,
-                paddingTop: 12,
-                borderTopWidth: 1,
-                borderTopColor: BORDER_SOFT,
-                flexDirection: isTablet ? "row" : "column",
-                alignItems: isTablet ? "center" : "stretch",
+                flexDirection: "row",
+                alignItems: "center",
                 justifyContent: "space-between",
-                gap: 12,
+                gap: 10,
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Pressable
-                  onPress={chooseMedia}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: ACCENT_BG,
-                  }}
-                >
-                  <Ionicons name="image-outline" size={18} color={ACCENT} />
-                </Pressable>
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Ionicons name="sparkles-outline" size={18} color={ACCENT} />
-                </View>
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <Ionicons name="location-outline" size={18} color={ACCENT} />
-                </View>
-                <Text style={{ color: MUTED, fontSize: 12 }}>
-                  {assets.length ? `${assets.length}/4 attached` : "Attach image or video"}
-                </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <IconButton icon="image-outline" label="" onPress={chooseMedia} disabled={posting} tone={TEAL} />
+                <IconButton
+                  icon={recording ? "stop-circle-outline" : "mic-outline"}
+                  label=""
+                  onPress={toggleRecording}
+                  active={!!recording}
+                  disabled={posting || recordingBusy}
+                  tone={recording ? ROSE : AMBER}
+                />
+                <Text style={{ color: FAINT, fontSize: 12 }}>{assets.length}/4</Text>
               </View>
 
-              <View
-                style={{
-                  flexDirection: "row",
+              <Pressable
+                disabled={posting || !canPost}
+                onPress={submitPost}
+                style={({ pressed }) => ({
+                  minWidth: 92,
+                  height: 40,
+                  borderRadius: 16,
                   alignItems: "center",
-                  justifyContent: isTablet ? "flex-end" : "space-between",
-                  gap: 12,
-                }}
+                  justifyContent: "center",
+                  backgroundColor: posting || !canPost ? "rgba(255,253,247,0.14)" : TEAL,
+                  opacity: posting || !canPost ? 0.7 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
               >
-                <View
-                  style={{
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: BORDER,
-                    backgroundColor: ACCENT_BG,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                  }}
-                >
-                  <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>
-                    {profileUserId ? "Store board" : "Following sellers"}
-                  </Text>
-                </View>
-
-                <Pressable
-                  disabled={posting || (!body.trim() && assets.length === 0)}
-                  onPress={submitPost}
-                  style={{
-                    minWidth: 96,
-                    height: 40,
-                    borderRadius: 20,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor:
-                      posting || (!body.trim() && assets.length === 0) ? "rgba(255,255,255,0.18)" : ACCENT,
-                  }}
-                >
-                  <Text style={{ color: "#17120D", fontWeight: "900" }}>{posting ? "Publishing..." : "Publish"}</Text>
-                </Pressable>
-              </View>
+                {posting ? (
+                  <ActivityIndicator color={TEXT} />
+                ) : (
+                  <Text style={{ color: canPost ? INK : MUTED, fontWeight: "900" }}>Post</Text>
+                )}
+              </Pressable>
             </View>
 
-            {error ? <Text style={{ marginTop: 10, color: "#FCA5A5", fontSize: 12 }}>{error}</Text> : null}
+            {recording ? <Text style={{ marginTop: 8, color: ROSE, fontWeight: "900", fontSize: 12 }}>Recording...</Text> : null}
+            {error ? <Text style={{ marginTop: 8, color: ROSE, fontSize: 12, lineHeight: 17 }}>{error}</Text> : null}
           </View>
         </View>
       </View>
@@ -1113,135 +1020,69 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderPost(post: FeedPost) {
     const author = profileMap[post.author_id];
+    const media = mediaMap[post.id] ?? [];
+    const liked = !!myLikes[post.id];
     const authorName = getDisplayName(author);
     const authorHandle = getHandle(author);
-    const isOwnedByMe = !!meId && post.author_id === meId;
-    const authorAvatar = author?.logo_path
-      ? supabase.storage.from("market-sellers").getPublicUrl(author.logo_path).data.publicUrl
-      : null;
-    const media = mediaMap[post.id] ?? [];
 
     return (
       <View
         style={{
-          paddingHorizontal: 16,
-          paddingTop: 14,
-          paddingBottom: 14,
+          padding: 14,
           borderBottomWidth: 1,
-          borderBottomColor: BORDER_SOFT,
+          borderBottomColor: BORDER,
           backgroundColor: SURFACE,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-          <View
-            style={{
-              width: isContained ? 48 : 46,
-              height: isContained ? 48 : 46,
-              borderRadius: isContained ? 24 : 23,
-              overflow: "hidden",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.08)",
-            }}
-          >
-            {authorAvatar ? (
-              <Image
-                source={{ uri: authorAvatar }}
-                style={{ width: isContained ? 48 : 46, height: isContained ? 48 : 46 }}
-              />
-            ) : (
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{getInitial(authorName)}</Text>
-            )}
-          </View>
+          <Avatar profile={author} size={44} />
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: isTablet ? "row" : "column", alignItems: isTablet ? "center" : "flex-start", gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Pressable
                 disabled={!author?.market_username}
                 onPress={() => author?.market_username && router.push(`/market/profile/${author.market_username}` as any)}
-                style={{ flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "100%" }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1, minWidth: 0 }}
               >
-                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 15, flexShrink: 1 }}>
                   {authorName}
                 </Text>
-                <SellerBadge verified={author?.is_verified} />
+                <VerifiedMark verified={author?.is_verified} />
               </Pressable>
-
-              {isOwnedByMe ? (
-                <View
-                  style={{
-                    borderRadius: 999,
-                    backgroundColor: GOLD_BG,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                  }}
-                >
-                  <Text style={{ color: GOLD, fontWeight: "800", fontSize: 11 }}>Your post</Text>
-                </View>
-              ) : null}
-
-              {media.length ? (
-                <View
-                  style={{
-                    borderRadius: 999,
-                    backgroundColor: ACCENT_BG,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                  }}
-                >
-                  <Text style={{ color: ACCENT, fontWeight: "800", fontSize: 11 }}>
-                    {media.length > 1 ? `${media.length} attachments` : "Attachment"}
-                  </Text>
-                </View>
-              ) : null}
-
-              <Text numberOfLines={1} style={{ color: MUTED, fontSize: 13 }}>
-                @{authorHandle} | {formatRelativeTime(post.created_at)}
-              </Text>
+              <Text style={{ color: FAINT, fontSize: 12 }}>{formatRelativeTime(post.created_at)}</Text>
             </View>
+            <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontSize: 12 }}>
+              @{authorHandle}
+            </Text>
 
             {post.body ? (
-              <Text
-                style={{
-                  marginTop: 8,
-                  color: TEXT,
-                  fontSize: isContained ? 16 : 15,
-                  lineHeight: isContained ? 24 : 22,
-                }}
-              >
-                {post.body}
-              </Text>
+              <Text style={{ marginTop: 9, color: TEXT, fontSize: 15, lineHeight: 22 }}>{post.body}</Text>
             ) : null}
 
             {media.length ? <View style={{ marginTop: 12 }}>{renderMediaGrid(media)}</View> : null}
 
-            <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <ActionButton
-                icon="chatbubble-outline"
-                label="Comment"
-                count={commentCounts[post.id] ?? 0}
-                onPress={() => openComments(post)}
-              />
-
-              <ActionButton
-                icon={myLikes[post.id] ? "heart" : "heart-outline"}
-                label="Like"
-                count={reactionCounts[post.id] ?? 0}
+            <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <IconButton
+                icon={liked ? "heart" : "heart-outline"}
+                label={reactionCounts[post.id] ? formatCount(reactionCounts[post.id]) : "Like"}
                 onPress={() => toggleLike(post.id)}
-                highlighted={!!myLikes[post.id]}
-                highlightColor={LIKE}
-                highlightBackground={LIKE_BG}
+                active={liked}
+                tone={ROSE}
               />
-
-              <ActionButton
-                icon="images-outline"
-                label={media.length > 1 ? `${media.length} media` : "Media"}
-                onPress={() => media[0] && openMediaPreview(media[0])}
-                highlighted={media.length > 0}
-                highlightColor={MEDIA}
-                highlightBackground={MEDIA_BG}
-                disabled={!media.length}
+              <IconButton
+                icon="chatbubble-outline"
+                label={commentCounts[post.id] ? formatCount(commentCounts[post.id]) : "Comment"}
+                onPress={() => openComments(post)}
+                tone={BLUE}
               />
+              {media.length ? (
+                <IconButton
+                  icon="expand-outline"
+                  label="Open"
+                  onPress={() => openMediaPreview(media[0])}
+                  tone={TEAL}
+                />
+              ) : null}
             </View>
           </View>
         </View>
@@ -1251,34 +1092,62 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderLoadingState() {
     return (
-      <View style={{ paddingVertical: 28, alignItems: "center" }}>
-        <ActivityIndicator color={ACCENT} />
-        <Text style={{ marginTop: 10, color: MUTED }}>Loading seller posts...</Text>
+      <View style={{ paddingVertical: 28, alignItems: "center", backgroundColor: SURFACE }}>
+        <ActivityIndicator color={TEAL} />
+        <Text style={{ marginTop: 10, color: MUTED }}>Loading feed...</Text>
       </View>
     );
   }
 
   function renderEmptyState() {
     return (
-      <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+      <View style={{ padding: 14, backgroundColor: SURFACE }}>
         <View
           style={{
-            borderRadius: 24,
+            borderRadius: 22,
             borderWidth: 1,
-            borderColor: BORDER_SOFT,
-            backgroundColor: SURFACE_ALT,
-            padding: 18,
+            borderColor: BORDER,
+            backgroundColor: PANEL,
+            padding: 16,
           }}
         >
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>
-            {profileUserId ? "No seller updates yet" : "Your market board is quiet"}
+          <Ionicons name="chatbubbles-outline" size={22} color={TEAL} />
+          <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 17 }}>
+            {profileUserId ? "No posts yet" : "No updates yet"}
           </Text>
-          <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
-            {profileUserId
-              ? "This seller has not published a storefront update yet."
-              : "Follow more sellers or publish your first update to start filling this board."}
+          <Text style={{ marginTop: 6, color: MUTED, lineHeight: 19 }}>
+            {profileUserId ? "This seller has not posted yet." : "Seller updates will appear here."}
           </Text>
         </View>
+      </View>
+    );
+  }
+
+  function renderContainedHeader() {
+    return (
+      <View style={{ backgroundColor: SURFACE }}>
+        <View
+          style={{
+            paddingTop: Math.max(insets.top, 14),
+            paddingHorizontal: 16,
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: BORDER,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Social Feed</Text>
+            <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+              {profileUserId ? "Seller updates" : "Marketplace updates"}
+            </Text>
+          </View>
+          <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
+        </View>
+        {renderComposer()}
       </View>
     );
   }
@@ -1288,402 +1157,43 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       <View
         style={{
           marginTop: 12,
-          borderRadius: 28,
+          borderRadius: 24,
           borderWidth: 1,
-          borderColor: BORDER_SOFT,
+          borderColor: BORDER,
           backgroundColor: SURFACE,
           overflow: "hidden",
         }}
       >
-        {!hideComposer ? renderComposer() : null}
-        {loading
-          ? renderLoadingState()
-          : posts.length === 0
-            ? renderEmptyState()
-            : posts.map((post) => <React.Fragment key={post.id}>{renderPost(post)}</React.Fragment>)}
+        {renderComposer()}
+        {loading ? renderLoadingState() : posts.length ? posts.map((post) => <React.Fragment key={post.id}>{renderPost(post)}</React.Fragment>) : renderEmptyState()}
       </View>
     );
   }
 
-  function renderTimelineHeader() {
-    if (isContained) {
-      return !hideComposer ? renderComposer() : null;
-    }
-
+  function renderContainedContent() {
     return (
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
-        <View
-          style={{
-            borderRadius: 28,
-            borderWidth: 1,
-            borderColor: BORDER,
-            backgroundColor: SURFACE_ALT,
-            padding: isTablet ? 18 : 16,
-          }}
-        >
-          <View style={{ flexDirection: isTablet ? "row" : "column", alignItems: isTablet ? "center" : "flex-start", justifyContent: "space-between", gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 12, letterSpacing: 1 }}>SELLER BOARD</Text>
-              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 24 }}>
-                {profileUserId ? "Storefront updates" : "Marketplace seller board"}
-              </Text>
-              <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
-                {profileUserId
-                  ? "Restocks, launches, and media from this seller in one place."
-                  : "A market-first stream of product drops, promos, and announcements from the sellers you follow."}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: BORDER,
-                backgroundColor: ACCENT_BG,
-                paddingHorizontal: 14,
-                paddingVertical: 9,
-              }}
-            >
-              <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>
-                {profileUserId ? "Seller posts" : "Following sellers"}
-              </Text>
-            </View>
-          </View>
-
-          <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <MetricChip icon="newspaper-outline" label={`${formatCount(posts.length)} posts`} />
-            <MetricChip icon="images-outline" label={`${formatCount(totalMedia)} media items`} />
-            <MetricChip icon="people-outline" label={`${formatCount(activeProfiles.length)} active storefronts`} />
-          </View>
-        </View>
-
-        {!hideComposer ? renderComposer() : null}
-      </View>
-    );
-  }
-
-  function renderDesktopRail() {
-    if (!showRightRail) return null;
-
-    return (
-      <View style={{ width: 360, paddingHorizontal: 20, paddingTop: Math.max(12, insets.top + 10), gap: 16 }}>
-        <View
-          style={{
-            height: 46,
-            borderRadius: 23,
-            borderWidth: 1,
-            borderColor: BORDER_SOFT,
-            backgroundColor: SURFACE_ALT,
-            paddingHorizontal: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <Ionicons name="search" size={18} color={MUTED} />
-          <Text style={{ color: MUTED }}>Search sellers or updates</Text>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 28,
-            borderWidth: 1,
-            borderColor: BORDER_SOFT,
-            backgroundColor: SURFACE_ALT,
-            overflow: "hidden",
-          }}
-        >
-          <View style={{ height: 5, backgroundColor: ACCENT }} />
-          <View style={{ padding: 18, gap: 14 }}>
-            <View>
-              <Text style={{ color: ACCENT, fontWeight: "900", fontSize: 11, letterSpacing: 1 }}>MARKET PULSE</Text>
-              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 22 }}>Board snapshot</Text>
-              <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
-                Keep your storefront active with short updates, fresh media, and quick buyer replies.
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              {[
-                { label: "Posts", value: formatCount(posts.length) },
-                { label: "Media", value: formatCount(totalMedia) },
-              ].map((item) => (
-                <View key={item.label} style={{ flex: 1, borderRadius: 18, backgroundColor: CARD, padding: 14 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>{item.value}</Text>
-                  <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{item.label}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View
-              style={{
-                borderRadius: 18,
-                backgroundColor: "rgba(255,255,255,0.04)",
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-              }}
-            >
-              <Text style={{ color: MUTED, lineHeight: 20 }}>
-                {posts[0] ? `Latest update landed ${formatRelativeTime(posts[0].created_at)} ago.` : "No seller posts loaded yet."}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View
-          style={{
-            borderRadius: 28,
-            borderWidth: 1,
-            borderColor: BORDER_SOFT,
-            backgroundColor: SURFACE_ALT,
-            padding: 18,
-            gap: 12,
-          }}
-        >
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Active storefronts</Text>
-          {activeProfiles.length ? (
-            activeProfiles.map((profile) => {
-              const avatar = profile.logo_path
-                ? supabase.storage.from("market-sellers").getPublicUrl(profile.logo_path).data.publicUrl
-                : null;
-              const username = profile.market_username;
-              const name = getDisplayName(profile);
-
-              return (
-                <Pressable
-                  key={profile.user_id}
-                  disabled={!username}
-                  onPress={() => username && router.push(`/market/profile/${username}` as any)}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-                >
-                  <View
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 21,
-                      overflow: "hidden",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "#0A0E13",
-                    }}
-                  >
-                    {avatar ? (
-                      <Image source={{ uri: avatar }} style={{ width: 42, height: 42 }} />
-                    ) : (
-                      <Text style={{ color: TEXT, fontWeight: "900" }}>{getInitial(name)}</Text>
-                    )}
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "800", flexShrink: 1 }}>
-                        {name}
-                      </Text>
-                      <SellerBadge verified={profile.is_verified} />
-                    </View>
-                    <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontSize: 12 }}>
-                      @{getHandle(profile)}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })
-          ) : (
-            <Text style={{ color: MUTED, lineHeight: 20 }}>Follow more sellers to populate this panel.</Text>
-          )}
-        </View>
-
-        <View
-          style={{
-            borderRadius: 28,
-            borderWidth: 1,
-            borderColor: BORDER_SOFT,
-            backgroundColor: SURFACE_ALT,
-            padding: 18,
-            gap: 10,
-          }}
-        >
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Store prompts</Text>
-          {[
-            "Share one clean product shot or a short demo clip.",
-            "Drop quick updates when price or inventory changes.",
-            "Answer buyer comments quickly so interest does not cool off.",
-          ].map((tip) => (
-            <View key={tip} style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-              <View
-                style={{
-                  marginTop: 6,
-                  width: 7,
-                  height: 7,
-                  borderRadius: 3.5,
-                  backgroundColor: ACCENT,
-                }}
-              />
-              <Text style={{ flex: 1, color: MUTED, lineHeight: 20 }}>{tip}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  }
-
-  function renderContainedTimeline() {
-    const railWidth = showRailLabels ? 232 : 88;
-    const timelineWidth = showRightRail ? 760 : showLeftRail ? 860 : width;
-    const navItems: Array<{ icon: IconName; label: string; active?: boolean }> = [
-      { icon: "grid-outline", label: "Board", active: true },
-      { icon: "pricetags-outline", label: "Listings" },
-      { icon: "receipt-outline", label: "Orders" },
-      { icon: "mail-outline", label: "Messages" },
-      { icon: "person-outline", label: "Profile" },
-    ];
-
-    return (
-      <View style={{ flex: 1, width: "100%", flexDirection: "row", backgroundColor: TIMELINE_BG }}>
-        {showLeftRail ? (
-          <View
-            style={{
-              width: railWidth,
-              borderRightWidth: 1,
-              borderRightColor: BORDER_SOFT,
-              paddingTop: Math.max(8, insets.top),
-              paddingHorizontal: showRailLabels ? 14 : 0,
-              alignItems: showRailLabels ? "stretch" : "center",
-              gap: 10,
-            }}
-          >
-            <View
-              style={{
-                alignSelf: showRailLabels ? "flex-start" : "center",
-                marginLeft: showRailLabels ? 8 : 0,
-                width: 56,
-                height: 56,
-                borderRadius: 28,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: ACCENT_BG,
-              }}
-            >
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>M</Text>
-            </View>
-
-            {navItems.map((item) => (
-              <View
-                key={item.label}
-                style={{
-                  alignSelf: showRailLabels ? "stretch" : "center",
-                }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: showRailLabels ? "flex-start" : "center",
-                    gap: 14,
-                    height: 52,
-                    borderRadius: 26,
-                    paddingHorizontal: showRailLabels ? 18 : 0,
-                    backgroundColor: item.active ? ACCENT_BG : "transparent",
-                  }}
-                >
-                  <Ionicons name={item.icon} size={26} color={TEXT} />
-                  {showRailLabels ? (
-                    <Text style={{ color: TEXT, fontWeight: item.active ? "900" : "700", fontSize: 18 }}>
-                      {item.label}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ))}
-
-            <View
-              style={{
-                marginTop: 6,
-                width: showRailLabels ? "100%" : 54,
-                height: 54,
-                borderRadius: 27,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: ACCENT,
-              }}
-            >
-              {showRailLabels ? (
-                <Text style={{ color: "#17120D", fontWeight: "900", fontSize: 17 }}>Publish</Text>
-              ) : (
-                <Ionicons name="add" size={26} color="#17120D" />
-              )}
-            </View>
-          </View>
-        ) : null}
-
-        <View
-          style={{
-            flex: 1,
-            minHeight: 0,
-            flexDirection: "row",
-            justifyContent: showRightRail ? "space-between" : "center",
-            backgroundColor: TIMELINE_BG,
-          }}
-        >
-          <View style={{ flex: 1, minWidth: 0, alignItems: showRightRail ? "flex-start" : "center" }}>
-            <View
-              style={{
-                flex: 1,
-                minHeight: 0,
-                width: "100%",
-                maxWidth: timelineWidth,
-                borderLeftWidth: showLeftRail ? 0 : isTablet ? 1 : 0,
-                borderRightWidth: 1,
-                borderColor: BORDER_SOFT,
-                backgroundColor: SURFACE,
-                overflow: "hidden",
-              }}
-            >
-              <View
-                style={{
-                  height: 56 + insets.top,
-                  paddingTop: insets.top,
-                  borderBottomWidth: 1,
-                  borderBottomColor: BORDER_SOFT,
-                  backgroundColor: "rgba(23,18,13,0.94)",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  paddingHorizontal: 16,
-                }}
-              >
-                <Text style={{ color: TEXT, fontWeight: "800", fontSize: 15, marginRight: "auto" }}>Following sellers</Text>
-
-                <Pressable onPress={fetchPosts} style={{ width: 54, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="refresh" size={20} color={TEXT} />
-                </Pressable>
-              </View>
-
-              <FlatList
-                data={posts}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => renderPost(item)}
-                ListHeaderComponent={renderTimelineHeader()}
-                ListEmptyComponent={!loading ? renderEmptyState() : null}
-                ListFooterComponent={
-                  loading && posts.length > 0 ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 8) }} />
-                }
-                keyboardShouldPersistTaps="handled"
-                refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={ACCENT} />}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: Math.max(24, insets.bottom + 18) }}
-              />
-            </View>
-          </View>
-
-          {renderDesktopRail()}
-        </View>
+      <View style={{ flex: 1, backgroundColor: BG0 }}>
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => renderPost(item)}
+          ListHeaderComponent={renderContainedHeader()}
+          ListEmptyComponent={!loading ? renderEmptyState() : null}
+          ListFooterComponent={
+            loading && posts.length ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 12) }} />
+          }
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={TEAL} />}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ backgroundColor: BG0 }}
+        />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: isContained ? 1 : 0, width: "100%" }}>
-      {isContained ? renderContainedTimeline() : renderInlineContent()}
+    <View style={{ flex: isContained ? 1 : 0, width: "100%", backgroundColor: isContained ? BG0 : "transparent" }}>
+      {isContained ? renderContainedContent() : renderInlineContent()}
 
       <OrderPreviewModal open={!!previewPayload} onClose={() => setPreviewPayload(null)} payload={previewPayload} />
 
@@ -1691,86 +1201,87 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(2,6,23,0.72)",
+            backgroundColor: "rgba(2,6,4,0.72)",
             alignItems: "center",
-            justifyContent: isTablet ? "center" : "flex-end",
+            justifyContent: isWide ? "center" : "flex-end",
             padding: 16,
           }}
         >
           <View
             style={{
               width: "100%",
-              maxWidth: 720,
-              maxHeight: isTablet ? "82%" : "90%",
-              borderRadius: 28,
+              maxWidth: 680,
+              maxHeight: isWide ? "82%" : "90%",
+              borderRadius: 26,
               borderWidth: 1,
-              borderColor: BORDER,
-              backgroundColor: TIMELINE_BG,
+              borderColor: BORDER_TOP,
+              backgroundColor: BG1,
               overflow: "hidden",
             }}
           >
             <View
               style={{
-                paddingHorizontal: 18,
-                paddingVertical: 16,
+                paddingHorizontal: 16,
+                paddingVertical: 14,
                 borderBottomWidth: 1,
-                borderBottomColor: BORDER_SOFT,
+                borderBottomColor: BORDER,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: 12,
               }}
             >
               <View>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Comments</Text>
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Join the conversation around this update.</Text>
+                <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>{comments.length} visible</Text>
               </View>
-
-              <Pressable onPress={() => setCommentsOpenPost(null)}>
-                <Ionicons name="close" size={24} color={TEXT} />
+              <Pressable onPress={() => setCommentsOpenPost(null)} style={{ padding: 8 }}>
+                <Ionicons name="close" size={22} color={TEXT} />
               </Pressable>
             </View>
 
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 10 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 14, gap: 10 }}>
               {comments.length === 0 ? (
-                <View
-                  style={{
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    borderColor: BORDER,
-                    backgroundColor: SURFACE_ALT,
-                    padding: 16,
-                  }}
-                >
-                  <Text style={{ color: TEXT, fontWeight: "800" }}>No comments yet</Text>
-                  <Text style={{ marginTop: 6, color: MUTED }}>Be the first to comment on this update.</Text>
+                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL, padding: 14 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>No comments yet</Text>
+                  <Text style={{ marginTop: 5, color: MUTED }}>Start the conversation.</Text>
                 </View>
               ) : (
-                comments.map((comment) => (
-                  <View
-                    key={comment.id}
-                    style={{
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: BORDER,
-                      backgroundColor: SURFACE_ALT,
-                      padding: 14,
-                    }}
-                  >
-                    <Text style={{ color: TEXT, fontWeight: "800" }}>
-                      @{comment.profiles?.username || comment.profiles?.full_name || "user"}
-                    </Text>
-                    <Text style={{ marginTop: 6, color: TEXT, lineHeight: 20 }}>{comment.body}</Text>
-                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 11 }}>{new Date(comment.created_at).toLocaleString()}</Text>
-                  </View>
-                ))
+                comments.map((comment) => {
+                  const commenter = profileMap[comment.user_id];
+                  const commentName = commenter?.market_username
+                    ? `@${commenter.market_username}`
+                    : commenter
+                    ? getDisplayName(commenter)
+                    : "User";
+
+                  return (
+                    <View
+                      key={comment.id}
+                      style={{
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: BORDER,
+                        backgroundColor: PANEL,
+                        padding: 14,
+                      }}
+                    >
+                      <Text style={{ color: TEXT, fontWeight: "900" }}>{commentName}</Text>
+                      <Text style={{ marginTop: 6, color: TEXT, lineHeight: 20 }}>{comment.body}</Text>
+                      <Text style={{ marginTop: 6, color: FAINT, fontSize: 11 }}>
+                        {new Date(comment.created_at).toLocaleString()}
+                      </Text>
+                    </View>
+                  );
+                })
               )}
             </ScrollView>
 
             <View
               style={{
-                padding: 16,
+                padding: 14,
                 borderTopWidth: 1,
-                borderTopColor: BORDER_SOFT,
+                borderTopColor: BORDER,
                 flexDirection: "row",
                 alignItems: "flex-end",
                 gap: 10,
@@ -1780,37 +1291,36 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 value={commentText}
                 onChangeText={setCommentText}
                 placeholder="Write a comment..."
-                placeholderTextColor="rgba(226,232,240,0.34)"
+                placeholderTextColor={FAINT}
                 multiline
                 style={{
                   flex: 1,
-                  minHeight: 48,
-                  maxHeight: 120,
-                  borderRadius: 18,
+                  minHeight: 46,
+                  maxHeight: 118,
+                  borderRadius: 17,
                   borderWidth: 1,
                   borderColor: BORDER,
-                  backgroundColor: "rgba(255,255,255,0.03)",
+                  backgroundColor: "rgba(255,253,247,0.06)",
                   color: TEXT,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
+                  paddingHorizontal: 13,
+                  paddingVertical: 11,
                 }}
               />
-
               <Pressable
-                disabled={commentBusy}
+                disabled={commentBusy || !commentText.trim()}
                 onPress={submitComment}
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 18,
+                style={({ pressed }) => ({
+                  width: 48,
+                  height: 48,
+                  borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  backgroundColor: ACCENT_BG,
-                }}
+                  backgroundColor: commentText.trim() ? TEAL : "rgba(255,253,247,0.12)",
+                  opacity: commentBusy || !commentText.trim() ? 0.65 : 1,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
               >
-                <Ionicons name="send" size={18} color={TEXT} />
+                {commentBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="send" size={17} color={commentText.trim() ? INK : MUTED} />}
               </Pressable>
             </View>
           </View>

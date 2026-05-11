@@ -11,14 +11,14 @@ type Props = {
 export default function PreviewWebsite({
   url,
   locked = true,
-  watermarkLabel = "BestCity Preview",
+  watermarkLabel = "Preview",
 }: Props) {
   if (locked) {
     return (
       <View style={styles.card}>
         <WatermarkOverlay label={watermarkLabel} opacity={0.10} />
-        <Text style={styles.title}>Website Preview</Text>
-        <Text style={styles.sub}>Locked until escrow is released.</Text>
+        <Text style={styles.title}>Website preview</Text>
+        <Text style={styles.sub}>Preview unavailable.</Text>
       </View>
     );
   }
@@ -26,15 +26,14 @@ export default function PreviewWebsite({
   return (
     <View style={styles.cardWeb}>
       <View style={styles.content}>
-        <Text style={styles.title}>Website Preview</Text>
-        <Text style={styles.sub}>Open preview in a new browser tab.</Text>
+        <Text style={styles.title}>Website preview</Text>
+        <Text style={styles.sub}>Open the site to continue.</Text>
         <Pressable
           onPress={() => window.open(url, "_blank", "noopener,noreferrer")}
           style={styles.openBtn}
         >
-          <Text style={styles.openBtnText}>Open Website</Text>
+          <Text style={styles.openBtnText}>Open website</Text>
         </Pressable>
-        <Text style={styles.hint}>Watermark on web is best-effort only.</Text>
       </View>
     </View>
   );
@@ -73,8 +72,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 11,
     paddingHorizontal: 14,
-    backgroundColor: "rgba(124,58,237,0.9)",
+    backgroundColor: "#2DD4BF",
   },
-  openBtnText: { color: "#fff", fontWeight: "900" },
-  hint: { marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12 },
+  openBtnText: { color: "#07100D", fontWeight: "900" },
 });

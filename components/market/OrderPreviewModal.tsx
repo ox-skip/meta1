@@ -1,14 +1,27 @@
+import { ResizeMode, Video, Audio } from "expo-av";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Image, Linking, Modal, Pressable, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { ResizeMode, Video } from "expo-av";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { usePreventScreenCapture } from "@/hooks/usePreventScreenCapture";
 import { WatermarkedBrowser } from "@/components/market/WatermarkedBrowser";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const PANEL = "rgba(255,253,247,0.065)";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const ROSE = "#FB7185";
+const INK = "#090D0B";
 const WatermarkIcon = require("../../assets/images/icon.png");
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export type PreviewPayload =
   | {
@@ -60,16 +73,15 @@ export function OrderPreviewModal({
 
       setBusy(true);
       try {
-        const u = await payload.urlPromise();
+        const nextUrl = await payload.urlPromise();
         if (!alive) return;
-        setResolvedUrl(u);
-        if (!u) setErr("Could not load preview URL");
+        setResolvedUrl(nextUrl);
+        if (!nextUrl) setErr("Preview is unavailable.");
       } catch (e: any) {
         if (!alive) return;
-        setErr(e?.message || "Could not load preview");
+        setErr(e?.message || "Preview is unavailable.");
       } finally {
-        if (!alive) return;
-        setBusy(false);
+        if (alive) setBusy(false);
       }
     })();
 
@@ -89,57 +101,51 @@ export function OrderPreviewModal({
           paddingHorizontal: 16,
         }}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Pressable
-            onPress={onClose}
-            style={{
-              borderRadius: 16,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              backgroundColor: "rgba(255,255,255,0.08)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Close</Text>
-          </Pressable>
-
-          <View style={{ alignItems: "flex-end" }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{title}</Text>
-            <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-              {isPreview ? "Low quality - Watermarked" : "Original quality"}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>
+              {title}
+            </Text>
+            <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+              {isPreview ? "Preview access" : "Full access"}
             </Text>
           </View>
+
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close preview"
+            style={({ pressed }) => ({
+              width: 42,
+              height: 42,
+              borderRadius: 16,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
+              borderWidth: 1,
+              borderColor: BORDER,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+            })}
+          >
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>X</Text>
+          </Pressable>
         </View>
 
         {busy ? (
-          <View style={{ marginTop: 30, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>Loading...</Text>
-          </View>
+          <CenterMessage icon="hourglass-outline" title="Loading preview" message="One moment..." />
         ) : err ? (
-          <View style={{ marginTop: 18, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Preview failed</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{err}</Text>
-          </View>
+          <CenterMessage icon="alert-circle-outline" title="Preview failed" message={err} tone={ROSE} />
         ) : !payload ? null : payload.kind === "image" ? (
-          resolvedUrl ? (
-            <ImageBlock uri={resolvedUrl} watermark={isPreview} fill />
-          ) : null
+          resolvedUrl ? <ImageBlock uri={resolvedUrl} watermark={isPreview} fill /> : null
         ) : payload.kind === "video" ? (
-          <VideoBlock
-            uri={resolvedUrl}
-            watermark={isPreview}
-            previewSeconds={payload.previewSeconds ?? 20}
-            fill
-          />
+          <VideoBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} fill />
         ) : payload.kind === "audio" ? (
           <AudioBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} />
         ) : payload.kind === "file" ? (
           <FileBlock uri={resolvedUrl} watermark={isPreview} />
         ) : payload.kind === "link" ? (
           resolvedUrl ? (
-            <View style={{ marginTop: 12 }}>
+            <View style={{ marginTop: 12, flex: 1 }}>
               <WatermarkedBrowser initialUrl={resolvedUrl} allowGoogleSearch lockToInitialHost />
             </View>
           ) : null
@@ -149,12 +155,40 @@ export function OrderPreviewModal({
   );
 }
 
+function CenterMessage({
+  icon,
+  title,
+  message,
+  tone = TEAL,
+}: {
+  icon: IconName;
+  title: string;
+  message: string;
+  tone?: string;
+}) {
+  return (
+    <View
+      style={{
+        marginTop: 18,
+        borderRadius: 22,
+        padding: 18,
+        backgroundColor: PANEL,
+        borderWidth: 1,
+        borderColor: BORDER,
+        alignItems: "center",
+      }}
+    >
+      {title === "Loading preview" ? <ActivityIndicator color={tone} /> : <Ionicons name={icon} size={22} color={tone} />}
+      <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900" }}>{title}</Text>
+      <Text style={{ marginTop: 5, color: MUTED, textAlign: "center" }}>{message}</Text>
+    </View>
+  );
+}
+
 function fitAspectRatio(raw?: number | null) {
   const ratio = Number(raw || 0);
   if (!Number.isFinite(ratio) || ratio <= 0) return 9 / 16;
-  const min = 9 / 21;
-  const max = 21 / 9;
-  return Math.max(min, Math.min(max, ratio));
+  return Math.max(9 / 21, Math.min(21 / 9, ratio));
 }
 
 function MediaFrame({
@@ -170,23 +204,24 @@ function MediaFrame({
 }) {
   const fittedAspectRatio = fitAspectRatio(aspectRatio);
   const portraitLike = fittedAspectRatio < 1;
+
   return (
     <View
       style={{
         marginTop: 14,
         flex: fill ? 1 : undefined,
         minHeight: fill ? 0 : undefined,
-        borderRadius: 18,
+        borderRadius: 22,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.10)",
+        borderColor: BORDER_TOP,
+        backgroundColor: "#000",
       }}
     >
       <View
         style={{
           flex: fill ? 1 : undefined,
           minHeight: fill ? 0 : 380,
-          backgroundColor: "rgba(0,0,0,0.96)",
           alignItems: "center",
           justifyContent: "center",
           paddingVertical: fill ? 8 : 0,
@@ -205,64 +240,64 @@ function MediaFrame({
         >
           {children}
         </View>
-        {watermark ? (
-          <View pointerEvents="none" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-            {Array.from({ length: 8 }).map((_, row) => (
-              <View
-                key={`wm-row-${row}`}
-                style={{
-                  position: "absolute",
-                  top: row * 56 - 20,
-                  left: row % 2 === 0 ? -24 : -82,
-                  flexDirection: "row",
-                }}
-              >
-                {Array.from({ length: 7 }).map((__, col) => (
-                  <View
-                    key={`wm-cell-${row}-${col}`}
-                    style={{
-                      width: 138,
-                      transform: [{ rotate: "-24deg" }],
-                      opacity: 0.18,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: "rgba(255,255,255,0.40)",
-                        fontSize: 10,
-                        fontWeight: "900",
-                        letterSpacing: 0.8,
-                      }}
-                    >
-                      BESTCITY PREVIEW
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-            <View style={{ position: "absolute", right: 10, bottom: 10, opacity: 0.22 }}>
-              <Image source={WatermarkIcon} style={{ width: 34, height: 34 }} />
-            </View>
-          </View>
-        ) : null}
+
+        {watermark ? <PreviewWatermark /> : null}
       </View>
+
       <View
         style={{
           position: fill ? "absolute" : "relative",
           left: fill ? 12 : 0,
           right: fill ? 12 : 0,
           bottom: fill ? 12 : 0,
-          borderRadius: fill ? 14 : 0,
+          borderRadius: fill ? 15 : 0,
           paddingHorizontal: 12,
-          paddingVertical: 10,
-          backgroundColor: fill ? "rgba(0,0,0,0.52)" : "rgba(0,0,0,0.35)",
+          paddingVertical: 9,
+          backgroundColor: fill ? "rgba(0,0,0,0.54)" : "rgba(0,0,0,0.36)",
           borderWidth: fill ? 1 : 0,
-          borderColor: fill ? "rgba(255,255,255,0.10)" : "transparent",
+          borderColor: fill ? "rgba(255,253,247,0.12)" : "transparent",
         }}
       >
-        <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "900", fontSize: 12 }}>
-          {watermark ? "Preview only - Low quality / Watermarked" : "Original quality deliverable"}
+        <Text style={{ color: "rgba(255,253,247,0.86)", fontWeight: "900", fontSize: 12 }}>
+          {watermark ? "Preview access" : "Full access"}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+function PreviewWatermark() {
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, overflow: "hidden" }}
+    >
+      {Array.from({ length: 8 }).map((_, row) => (
+        <View
+          key={`wm-row-${row}`}
+          style={{
+            position: "absolute",
+            top: row * 58 - 20,
+            left: row % 2 === 0 ? -24 : -82,
+            flexDirection: "row",
+          }}
+        >
+          {Array.from({ length: 7 }).map((__, col) => (
+            <View
+              key={`wm-cell-${row}-${col}`}
+              style={{
+                width: 140,
+                transform: [{ rotate: "-24deg" }],
+                opacity: 0.16,
+              }}
+            >
+              <Text style={{ color: "rgba(255,253,247,0.42)", fontSize: 10, fontWeight: "900" }}>PREVIEW</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+      <View style={{ position: "absolute", right: 10, bottom: 10, opacity: 0.22 }}>
+        <Image source={WatermarkIcon} style={{ width: 34, height: 34 }} />
       </View>
     </View>
   );
@@ -275,13 +310,11 @@ function ImageBlock({ uri, watermark, fill = false }: { uri: string; watermark: 
     let alive = true;
     Image.getSize(
       uri,
-      (width, height) => {
-        if (!alive) return;
-        if (width > 0 && height > 0) setAspectRatio(width / height);
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setAspectRatio(w / h);
       },
       () => {
-        if (!alive) return;
-        setAspectRatio(9 / 16);
+        if (alive) setAspectRatio(9 / 16);
       },
     );
     return () => {
@@ -293,34 +326,6 @@ function ImageBlock({ uri, watermark, fill = false }: { uri: string; watermark: 
     <MediaFrame watermark={watermark} fill={fill} aspectRatio={aspectRatio}>
       <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
     </MediaFrame>
-  );
-}
-
-function FileBlock({ uri, watermark }: { uri: string | null; watermark: boolean }) {
-  return (
-    <View style={{ marginTop: 18, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-      <Text style={{ color: "#fff", fontWeight: "900" }}>{watermark ? "File preview" : "File download"}</Text>
-      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-        {watermark ? "This is a preview file. It may be watermarked or reduced quality." : "This is the full-quality file."}
-      </Text>
-
-      <Pressable
-        disabled={!uri}
-        onPress={() => uri && Linking.openURL(uri)}
-        style={{
-          marginTop: 12,
-          borderRadius: 14,
-          paddingVertical: 12,
-          alignItems: "center",
-          backgroundColor: uri ? "rgba(124,58,237,0.85)" : "rgba(255,255,255,0.08)",
-          borderWidth: 1,
-          borderColor: uri ? "rgba(124,58,237,0.95)" : "rgba(255,255,255,0.12)",
-          opacity: uri ? 1 : 0.7,
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>{uri ? "Open / Download" : "Loading..."}</Text>
-      </Pressable>
-    </View>
   );
 }
 
@@ -342,14 +347,7 @@ function VideoBlock({
     setAspectRatio(9 / 16);
   }, [uri]);
 
-  if (!uri) {
-    return (
-      <View style={{ marginTop: 18, alignItems: "center" }}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>Loading video...</Text>
-      </View>
-    );
-  }
+  if (!uri) return <CenterMessage icon="videocam-outline" title="Loading video" message="One moment..." />;
 
   return (
     <MediaFrame watermark={watermark} fill={fill} aspectRatio={aspectRatio}>
@@ -362,25 +360,13 @@ function VideoBlock({
         shouldPlay={false}
         isMuted={false}
         onReadyForDisplay={(event: any) => {
-          const naturalWidth = Number(
-            event?.naturalSize?.width ??
-              event?.status?.naturalSize?.width ??
-              0,
-          );
-          const naturalHeight = Number(
-            event?.naturalSize?.height ??
-              event?.status?.naturalSize?.height ??
-              0,
-          );
-          if (naturalWidth > 0 && naturalHeight > 0) {
-            setAspectRatio(naturalWidth / naturalHeight);
-          }
+          const naturalWidth = Number(event?.naturalSize?.width ?? event?.status?.naturalSize?.width ?? 0);
+          const naturalHeight = Number(event?.naturalSize?.height ?? event?.status?.naturalSize?.height ?? 0);
+          if (naturalWidth > 0 && naturalHeight > 0) setAspectRatio(naturalWidth / naturalHeight);
         }}
-        onPlaybackStatusUpdate={(st: any) => {
-          if (!watermark) return;
-          if (!st?.isLoaded) return;
-          const limitMs = previewSeconds * 1000;
-          if (st.positionMillis >= limitMs && st.isPlaying) {
+        onPlaybackStatusUpdate={(status: any) => {
+          if (!watermark || !status?.isLoaded) return;
+          if (status.positionMillis >= previewSeconds * 1000 && status.isPlaying) {
             videoRef.current?.pauseAsync?.();
           }
         }}
@@ -390,123 +376,122 @@ function VideoBlock({
 }
 
 function AudioBlock({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
-  const [av, setAv] = useState<any | null | false>(null);
-  const [sound, setSound] = useState<any>(null);
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const mod = await import("expo-av");
-        if (!alive) return;
-        setAv(mod);
-      } catch {
-        if (!alive) return;
-        setAv(false);
+    return () => {
+      sound?.unloadAsync().catch(() => undefined);
+    };
+  }, [sound]);
+
+  async function toggle() {
+    if (!uri || loading) return;
+    setLoading(true);
+    try {
+      if (!sound) {
+        const { sound: nextSound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
+        nextSound.setOnPlaybackStatusUpdate((status: any) => {
+          if (!status?.isLoaded) return;
+          setPlaying(!!status.isPlaying);
+          if (watermark && status.positionMillis >= previewSeconds * 1000) {
+            nextSound.pauseAsync();
+            nextSound.setPositionAsync(0);
+          }
+        });
+        setSound(nextSound);
+      } else {
+        const status: any = await sound.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) await sound.pauseAsync();
+        else await sound.playAsync();
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!av || av === false) return;
-      if (!uri) return;
-
-      try {
-        if (sound) {
-          await sound.unloadAsync();
-          setSound(null);
-          setPlaying(false);
-        }
-
-        const { sound: s } = await av.Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: false },
-          (st: any) => {
-            if (!st?.isLoaded) return;
-            setPlaying(!!st.isPlaying);
-            if (watermark) {
-              const limitMs = previewSeconds * 1000;
-              if (st.positionMillis >= limitMs && st.isPlaying) {
-                s.pauseAsync();
-              }
-            }
-          },
-        );
-
-        if (!mounted) return;
-        setSound(s);
-      } catch {}
-    })();
-
-    return () => {
-      mounted = false;
-      (async () => {
-        try {
-          if (sound) await sound.unloadAsync();
-        } catch {}
-      })();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [av, uri]);
-
-  if (!uri) {
-    return (
-      <View style={{ marginTop: 18, alignItems: "center" }}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>Loading audio...</Text>
-      </View>
-    );
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (av === false) {
-    return (
-      <View style={{ marginTop: 18, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Audio preview not installed</Text>
-        <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>Install expo-av to play audio in-app.</Text>
-        <Pressable
-          onPress={() => Linking.openURL(uri)}
-          style={{ marginTop: 12, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(124,58,237,0.85)" }}
-        >
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Open in browser</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (!uri) return <CenterMessage icon="musical-notes-outline" title="Loading audio" message="One moment..." />;
 
   return (
-    <View style={{ marginTop: 14, borderRadius: 18, padding: 14, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-      <Text style={{ color: "#fff", fontWeight: "900" }}>{watermark ? "Audio preview" : "Full audio"}</Text>
-      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-        {watermark ? `Preview stops at ${previewSeconds}s.` : "Full-quality audio."}
-      </Text>
-
-      <Pressable
-        disabled={!sound}
-        onPress={async () => {
-          if (!sound) return;
-          if (playing) await sound.pauseAsync();
-          else await sound.playAsync();
-        }}
+    <View
+      style={{
+        marginTop: 14,
+        borderRadius: 22,
+        padding: 18,
+        backgroundColor: PANEL,
+        borderWidth: 1,
+        borderColor: BORDER_TOP,
+      }}
+    >
+      <View
         style={{
-          marginTop: 12,
-          borderRadius: 14,
-          paddingVertical: 12,
+          width: 56,
+          height: 56,
+          borderRadius: 22,
           alignItems: "center",
-          backgroundColor: sound ? "rgba(124,58,237,0.85)" : "rgba(255,255,255,0.08)",
+          justifyContent: "center",
+          backgroundColor: "rgba(244,183,93,0.14)",
           borderWidth: 1,
-          borderColor: sound ? "rgba(124,58,237,0.95)" : "rgba(255,255,255,0.12)",
-          opacity: sound ? 1 : 0.7,
+          borderColor: "rgba(244,183,93,0.34)",
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>{sound ? (playing ? "Pause" : "Play") : "Loading..."}</Text>
+        <Ionicons name="musical-notes" size={23} color={AMBER} />
+      </View>
+      <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>
+        {watermark ? "Audio preview" : "Audio"}
+      </Text>
+      <Text style={{ marginTop: 6, color: MUTED }}>{watermark ? `Playback stops at ${previewSeconds}s.` : "Ready to play."}</Text>
+
+      <Pressable
+        onPress={toggle}
+        disabled={loading}
+        style={({ pressed }) => ({
+          marginTop: 14,
+          borderRadius: 18,
+          paddingVertical: 13,
+          alignItems: "center",
+          backgroundColor: TEAL,
+          opacity: loading ? 0.7 : 1,
+          transform: [{ translateY: pressed ? 1 : 0 }],
+        })}
+      >
+        {loading ? <ActivityIndicator color={INK} /> : <Text style={{ color: INK, fontWeight: "900" }}>{playing ? "Pause" : "Play"}</Text>}
       </Pressable>
     </View>
   );
 }
 
+function FileBlock({ uri, watermark }: { uri: string | null; watermark: boolean }) {
+  return (
+    <View
+      style={{
+        marginTop: 14,
+        borderRadius: 22,
+        padding: 18,
+        backgroundColor: PANEL,
+        borderWidth: 1,
+        borderColor: BORDER_TOP,
+      }}
+    >
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{watermark ? "Preview file" : "File"}</Text>
+      <Text style={{ marginTop: 6, color: MUTED }}>Open this file in your device browser.</Text>
+
+      <Pressable
+        disabled={!uri}
+        onPress={() => uri && Linking.openURL(uri)}
+        style={({ pressed }) => ({
+          marginTop: 14,
+          borderRadius: 18,
+          paddingVertical: 13,
+          alignItems: "center",
+          backgroundColor: uri ? TEAL : "rgba(255,253,247,0.12)",
+          opacity: uri ? 1 : 0.7,
+          transform: [{ translateY: pressed ? 1 : 0 }],
+        })}
+      >
+        <Text style={{ color: uri ? INK : FAINT, fontWeight: "900" }}>{uri ? "Open file" : "Loading..."}</Text>
+      </Pressable>
+    </View>
+  );
+}

@@ -1,19 +1,25 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const BORDER = "rgba(255,253,247,0.12)";
+const TEAL = "#2DD4BF";
+const INK = "#07100D";
+
 export function WatermarkedWeb({ url }: { url: string }) {
   return (
     <View
       style={{
         padding: 14,
         borderRadius: 18,
-        backgroundColor: "rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(255,253,247,0.06)",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.10)",
+        borderColor: BORDER,
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "900" }}>Website preview</Text>
-      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{url}</Text>
+      <Text style={{ color: TEXT, fontWeight: "900" }}>Website preview</Text>
+      <Text style={{ marginTop: 6, color: MUTED }}>Open the site to continue.</Text>
       <Pressable
         onPress={() => window.open(url, "_blank", "noopener,noreferrer")}
         style={{
@@ -21,14 +27,11 @@ export function WatermarkedWeb({ url }: { url: string }) {
           borderRadius: 14,
           paddingVertical: 12,
           alignItems: "center",
-          backgroundColor: "rgba(124,58,237,0.85)",
+          backgroundColor: TEAL,
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Open preview</Text>
+        <Text style={{ color: INK, fontWeight: "900" }}>Open website</Text>
       </Pressable>
-      <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-        Watermark is best-effort on web (screenshots cannot be fully blocked).
-      </Text>
     </View>
   );
 }

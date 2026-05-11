@@ -13,10 +13,9 @@ type Props = {
 export default function PreviewImage({
   uri,
   locked = true,
-  watermarkLabel = "BestCity Preview",
+  watermarkLabel = "Preview",
   onPressFull,
 }: Props) {
-  // Best-effort screenshot prevention while preview is open
   useSecureScreen(true);
 
   return (
@@ -31,7 +30,7 @@ export default function PreviewImage({
         <WatermarkOverlay label={watermarkLabel} />
         {locked ? (
           <View style={styles.lockPill}>
-            <Text style={styles.lockText}>LOCKED PREVIEW</Text>
+            <Text style={styles.lockText}>PREVIEW</Text>
           </View>
         ) : null}
       </Pressable>

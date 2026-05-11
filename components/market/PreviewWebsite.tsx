@@ -13,12 +13,11 @@ type Props = {
 export default function PreviewWebsite({
   url,
   locked = true,
-  watermarkLabel = "BestCity Preview",
+  watermarkLabel = "Preview",
 }: Props) {
   useSecureScreen(true);
 
   const injected = useMemo(() => {
-    // Overlay watermark inside the webview too (still not perfect protection, but good deterrence)
     return `
       (function() {
         try {
@@ -65,8 +64,8 @@ export default function PreviewWebsite({
     return (
       <View style={styles.card}>
         <WatermarkOverlay label={watermarkLabel} opacity={0.10} />
-        <Text style={styles.title}>Website Preview</Text>
-        <Text style={styles.sub}>Locked until escrow is released.</Text>
+        <Text style={styles.title}>Website preview</Text>
+        <Text style={styles.sub}>Preview unavailable.</Text>
       </View>
     );
   }
@@ -80,7 +79,7 @@ export default function PreviewWebsite({
         renderLoading={() => (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading preview…</Text>
+            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading preview</Text>
           </View>
         )}
         style={{ backgroundColor: "transparent" }}
