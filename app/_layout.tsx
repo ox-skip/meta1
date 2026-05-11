@@ -279,13 +279,16 @@ export default function RootLayout() {
   }
 
   /* ---------------- ROUTING (NO ONBOARDING) ---------------- */
-  const group = segments[0];
+  const routeSegments = segments as readonly string[];
+  const group = routeSegments[0];
+  const route = routeSegments[1];
+  const isPasswordRecovery = group === "(auth)" && route === "reset";
 
   if (!user && group !== "(auth)" && group !== "pi") {
     return <Redirect href="/(auth)/login" />;
   }
 
-  if (user && (group === "(auth)" || group === "(onboarding)")) {
+  if (user && !isPasswordRecovery && (group === "(auth)" || group === "(onboarding)")) {
     return <Redirect href="/market/(tabs)" />;
   }
 
