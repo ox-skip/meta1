@@ -324,24 +324,6 @@ function tintBorder(color: string, alphaHex: string) {
   return color.startsWith("#") ? `${color}${alphaHex}` : color;
 }
 
-function StatusDot({ status }: { status: string }) {
-  const c = statusTone(status);
-  return (
-    <View
-      style={{
-        width: 10,
-        height: 10,
-        borderRadius: 99,
-        backgroundColor: c,
-        shadowColor: c,
-        shadowOpacity: 0.5,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 0 },
-      }}
-    />
-  );
-}
-
 function SegButton({
   label,
   active,
@@ -525,7 +507,7 @@ export default function MarketOrdersTab() {
   const { width } = useWindowDimensions();
   const isWebDesktop = Platform.OS === "web" && width >= 980;
   const pagePadding = isWebDesktop ? 28 : 16;
-  const contentMaxWidth = isWebDesktop ? 1120 : undefined;
+  const contentMaxWidth = isWebDesktop ? 760 : undefined;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -741,143 +723,71 @@ export default function MarketOrdersTab() {
         : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
   const activeFilterLabel = `${roleLabel} / ${statusLabel}`;
 
-  function renderOrdersHero() {
+  function renderOrdersOverview() {
     return (
-      <LinearGradient
-        colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <View
         style={{
-          marginTop: 12,
-          borderRadius: 30,
-          padding: isWebDesktop ? 22 : 18,
+          marginTop: 10,
+          borderRadius: 24,
+          padding: 14,
+          backgroundColor: CARD,
           borderWidth: 1,
           borderColor: BORDER_TOP,
-          overflow: "hidden",
           shadowColor: "#000",
-          shadowOpacity: 0.24,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 14 },
+          shadowOpacity: 0.16,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
         }}
       >
-        <View
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 4,
-            backgroundColor: TEAL,
-          }}
-        />
-
-        <View
-          style={{
-            flexDirection: isWebDesktop ? "row" : "column",
-            gap: 18,
-            alignItems: isWebDesktop ? "center" : "stretch",
-          }}
-        >
-          <View style={{ flex: 1.2 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 7,
-                  borderRadius: 999,
-                  paddingHorizontal: 11,
-                  paddingVertical: 7,
-                  backgroundColor: "rgba(9,13,11,0.52)",
-                  borderWidth: 1,
-                  borderColor: "rgba(94,234,212,0.28)",
-                }}
-              >
-                <Ionicons name="shield-checkmark-outline" size={14} color={TEAL} />
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Escrow orders</Text>
-              </View>
-
-              <Pressable
-                onPress={() => load()}
-                accessibilityRole="button"
-                accessibilityLabel="Refresh orders"
-                style={({ pressed }) => ({
-                  width: 38,
-                  height: 38,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  transform: [{ scale: pressed ? 0.96 : 1 }],
-                })}
-              >
-                <Ionicons name="refresh" size={18} color={TEXT} />
-              </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="receipt-outline" size={16} color={TEAL} />
+              <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>ORDER LEDGER</Text>
             </View>
-
             <Text
+              numberOfLines={1}
               style={{
-                marginTop: 18,
+                marginTop: 7,
                 color: TEXT,
                 fontWeight: "900",
-                fontSize: isWebDesktop ? 32 : 28,
-                lineHeight: isWebDesktop ? 38 : 34,
-                maxWidth: 560,
+                fontSize: 22,
+                lineHeight: 27,
               }}
             >
-              Track every marketplace handoff.
+              {orderStats.visible} of {orderStats.total} orders
             </Text>
-            <Text style={{ marginTop: 10, color: MUTED, lineHeight: 21, maxWidth: 560 }}>
-              Follow buying, selling, escrow, delivery, and release stages from one focused order desk.
+            <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+              {activeFilterLabel}
             </Text>
-
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 16 }}>
-              <View
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 11,
-                  paddingVertical: 7,
-                  backgroundColor: "rgba(255,253,247,0.07)",
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                }}
-              >
-                <Text style={{ color: MUTED, fontWeight: "900", fontSize: 12 }}>{activeFilterLabel}</Text>
-              </View>
-              {orderStats.disputed > 0 ? (
-                <View
-                  style={{
-                    borderRadius: 999,
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    backgroundColor: "rgba(244,183,93,0.13)",
-                    borderWidth: 1,
-                    borderColor: "rgba(244,183,93,0.34)",
-                  }}
-                >
-                  <Text style={{ color: AMBER, fontWeight: "900", fontSize: 12 }}>
-                    {orderStats.disputed} disputed
-                  </Text>
-                </View>
-              ) : null}
-            </View>
           </View>
 
-          <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            <MetricTile label="Total" value={String(orderStats.total)} icon="receipt-outline" tone={TEAL} />
-            <MetricTile label="Visible" value={String(orderStats.visible)} icon="funnel-outline" tone={BLUE} />
-            <MetricTile label="Pending" value={String(orderStats.pending)} icon="time-outline" tone={AMBER} />
-            <MetricTile
-              label="Complete"
-              value={String(orderStats.completed)}
-              icon="checkmark-circle-outline"
-              tone={TEAL}
-            />
-          </View>
+          <Pressable
+            onPress={() => load()}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh orders"
+            style={({ pressed }) => ({
+              width: 42,
+              height: 42,
+              borderRadius: 16,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
+              borderWidth: 1,
+              borderColor: BORDER,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+            })}
+          >
+            <Ionicons name="refresh" size={19} color={TEXT} />
+          </Pressable>
         </View>
-      </LinearGradient>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+          <MetricTile label="Pending" value={String(orderStats.pending)} icon="time-outline" tone={AMBER} />
+          <MetricTile label="Complete" value={String(orderStats.completed)} icon="checkmark-circle-outline" tone={TEAL} />
+          <MetricTile label="Disputed" value={String(orderStats.disputed)} icon="alert-circle-outline" tone={ROSE} />
+        </View>
+      </View>
     );
   }
 
@@ -888,7 +798,7 @@ export default function MarketOrdersTab() {
       end={{ x: 0.9, y: 1 }}
       style={{
         flex: 1,
-        paddingTop: Math.max(insets.top, 14),
+        paddingTop: 14,
         paddingHorizontal: pagePadding,
       }}
     >
@@ -912,7 +822,7 @@ export default function MarketOrdersTab() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT} />
         }
       >
-        {renderOrdersHero()}
+        {renderOrdersOverview()}
 
         <View
           style={{
@@ -1039,9 +949,7 @@ export default function MarketOrdersTab() {
           <View
             style={{
               marginTop: 14,
-              flexDirection: isWebDesktop ? "row" : "column",
-              flexWrap: "wrap",
-              gap: 12,
+              gap: 10,
             }}
           >
             {visibleItems.map((o) => {
@@ -1053,8 +961,13 @@ export default function MarketOrdersTab() {
               const coverKind = inferMarketMediaKind(img);
               const tone = statusTone(o.status);
               const createdAt = o.created_at ? new Date(o.created_at) : null;
-              const createdLabel =
-                createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleString() : "Date unavailable";
+              const hasDate = !!createdAt && !Number.isNaN(createdAt.getTime());
+              const createdLabel = hasDate
+                ? createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                : "Date unavailable";
+              const createdTime = hasDate
+                ? createdAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+                : "";
 
               return (
                 <Pressable
@@ -1062,26 +975,24 @@ export default function MarketOrdersTab() {
                   onPress={() => openOrder(o.id)}
                   accessibilityRole="button"
                   style={({ pressed }) => ({
-                    flexBasis: isWebDesktop ? "48.8%" : "100%",
-                    flexGrow: 1,
-                    borderRadius: 24,
-                    padding: 14,
+                    borderRadius: 20,
+                    padding: 12,
                     backgroundColor: pressed ? "rgba(255,253,247,0.09)" : CARD,
                     borderWidth: 1,
                     borderColor: pressed ? BORDER_TOP : BORDER,
                     shadowColor: "#000",
-                    shadowOpacity: 0.18,
-                    shadowRadius: 18,
-                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.12,
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 8 },
                     transform: [{ translateY: pressed ? 1 : 0 }],
                   })}
                 >
-                  <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+                  <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
                     <View
                       style={{
-                        width: 66,
-                        height: 66,
-                        borderRadius: 20,
+                        width: 58,
+                        height: 58,
+                        borderRadius: 18,
                         overflow: "hidden",
                         backgroundColor: "rgba(255,253,247,0.06)",
                         borderWidth: 1,
@@ -1094,7 +1005,7 @@ export default function MarketOrdersTab() {
                         <MarketMediaView
                           uri={img}
                           kind={coverKind}
-                          style={{ width: 66, height: 66 }}
+                          style={{ width: 58, height: 58 }}
                           resizeMode="cover"
                           autoplay={coverKind === "video"}
                           muted
@@ -1102,28 +1013,23 @@ export default function MarketOrdersTab() {
                           disablePointerEvents
                         />
                       ) : (
-                        <Ionicons name="cube-outline" size={24} color={MUTED} />
+                        <Ionicons name="cube-outline" size={22} color={MUTED} />
                       )}
                     </View>
 
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        <StatusDot status={o.status} />
-                        <Text style={{ color: tone, fontWeight: "900", flex: 1, fontSize: 12 }} numberOfLines={1}>
-                          {formatStatusLabel(o.status)}
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                        <Text
+                          style={{ color: TEXT, fontWeight: "900", flex: 1, fontSize: 15, lineHeight: 20 }}
+                          numberOfLines={1}
+                        >
+                          {title}
                         </Text>
                         <Ionicons name="chevron-forward" size={18} color={FAINT} />
                       </View>
 
                       <Text
-                        style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 16, lineHeight: 21 }}
-                        numberOfLines={2}
-                      >
-                        {title}
-                      </Text>
-
-                      <Text
-                        style={{ marginTop: 6, color: MUTED, fontSize: 12, textTransform: "capitalize" }}
+                        style={{ marginTop: 5, color: MUTED, fontSize: 12, textTransform: "capitalize" }}
                         numberOfLines={1}
                       >
                         {meta}
@@ -1131,15 +1037,24 @@ export default function MarketOrdersTab() {
                     </View>
                   </View>
 
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      marginTop: 12,
+                    }}
+                  >
                     <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 7,
+                        gap: 6,
                         borderRadius: 999,
                         paddingHorizontal: 10,
-                        paddingVertical: 7,
+                        paddingVertical: 6,
                         backgroundColor: "rgba(9,13,11,0.34)",
                         borderWidth: 1,
                         borderColor: tintBorder(tone, "59"),
@@ -1154,7 +1069,7 @@ export default function MarketOrdersTab() {
                       style={{
                         borderRadius: 999,
                         paddingHorizontal: 10,
-                        paddingVertical: 7,
+                        paddingVertical: 6,
                         backgroundColor: "rgba(45,212,191,0.12)",
                         borderWidth: 1,
                         borderColor: "rgba(94,234,212,0.30)",
@@ -1168,19 +1083,21 @@ export default function MarketOrdersTab() {
 
                   <View
                     style={{
-                      marginTop: 14,
-                      paddingTop: 12,
+                      marginTop: 10,
+                      paddingTop: 10,
                       borderTopWidth: 1,
                       borderTopColor: "rgba(255,253,247,0.08)",
                       flexDirection: "row",
                       flexWrap: "wrap",
                       justifyContent: "space-between",
-                      gap: 10,
+                      gap: 8,
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
                       <Ionicons name="calendar-outline" size={14} color={FAINT} />
-                      <Text style={{ color: FAINT, fontSize: 12 }}>{createdLabel}</Text>
+                      <Text style={{ color: FAINT, fontSize: 12 }}>
+                        {createdTime ? `${createdLabel} at ${createdTime}` : createdLabel}
+                      </Text>
                     </View>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
                       <Ionicons name="key-outline" size={14} color={FAINT} />
