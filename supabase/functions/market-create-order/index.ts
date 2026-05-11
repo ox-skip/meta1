@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
 
   const { data: listing, error: le } = await admin
     .from("market_listings")
-    .select("id,seller_id,price_amount,currency,is_active,stock_qty,payment_options")
+    .select("id,seller_id,price_amount,currency,is_active,stock_qty,payment_options,created_at")
     .eq("id", listing_id)
     .maybeSingle();
 
@@ -91,7 +91,9 @@ Deno.serve(async (req) => {
   const expiresAt = (listing as any)?.payment_options?.expires_at;
   if (expiresAt) {
     const exp = Date.parse(String(expiresAt));
-    if (Number.isFinite(exp) && exp <= Date.now()) {
+    const createdAt = Date.parse(String((listing as any)?.created_at || ""));
+    const isStaleDraftExpiry = Number.isFinite(createdAt) && Number.isFinite(exp) && exp <= createdAt;
+    if (!isStaleDraftExpiry && Number.isFinite(exp) && exp <= Date.now()) {
       return bad("This listing has expired");
     }
   }

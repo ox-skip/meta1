@@ -164,6 +164,14 @@ function isoFromPreset(preset: DurationPreset) {
   return "";
 }
 
+function parseFutureDateInput(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  if (!Number.isFinite(ms)) return NaN;
+  return ms;
+}
+
 function uniqueLocationParts(parts: Array<string | null | undefined>) {
   return Array.from(new Set(parts.map((part) => String(part || "").trim()).filter(Boolean)));
 }
@@ -614,8 +622,18 @@ export default function SellTab() {
           if (draft.discountPrice) setDiscountPrice(draft.discountPrice);
           if (draft.discountEndsAt) setDiscountEndsAt(draft.discountEndsAt);
           if (draft.discountPreset) setDiscountPreset(draft.discountPreset);
-          if (draft.autoDeleteAt) setAutoDeleteAt(draft.autoDeleteAt);
-          if (draft.autoDeletePreset) setAutoDeletePreset(draft.autoDeletePreset);
+          if (draft.autoDeleteAt) {
+            const deleteAtMs = parseFutureDateInput(String(draft.autoDeleteAt));
+            if (deleteAtMs && deleteAtMs > Date.now()) {
+              setAutoDeleteAt(draft.autoDeleteAt);
+              if (draft.autoDeletePreset) setAutoDeletePreset(draft.autoDeletePreset);
+            } else {
+              setAutoDeleteAt("");
+              setAutoDeletePreset("none");
+            }
+          } else if (draft.autoDeletePreset) {
+            setAutoDeletePreset(draft.autoDeletePreset);
+          }
           if (draft.availabilityScope) setAvailabilityScope(draft.availabilityScope);
           if (draft.availabilityContinents) setAvailabilityContinents(draft.availabilityContinents);
           if (draft.availabilityCountryName) setAvailabilityCountryName(draft.availabilityCountryName);
@@ -1209,6 +1227,16 @@ export default function SellTab() {
       }
     }
 
+    if (autoDeleteAt.trim()) {
+      const deleteAtMs = parseFutureDateInput(autoDeleteAt);
+      if (deleteAtMs === null || !Number.isFinite(deleteAtMs)) {
+        return "Invalid listing auto-delete date format. Use ISO format (e.g., 2026-12-31T23:59:59Z)";
+      }
+      if (deleteAtMs <= Date.now()) {
+        return "Listing auto-delete date must be in the future";
+      }
+    }
+
     if (category === "product") {
       if (stockMode === "limited") {
         const q = safeNumber(stockQty);
@@ -1564,6 +1592,13 @@ export default function SellTab() {
     setPrice("");
     setStockMode("limited");
     setStockQty("");
+    setDiscountEnabled(false);
+    setDiscountOriginalPrice("");
+    setDiscountPrice("");
+    setDiscountEndsAt("");
+    setDiscountPreset("none");
+    setAutoDeleteAt("");
+    setAutoDeletePreset("none");
     setMediaAssets([]);
     setUseCustomSub(false);
     setCustomSub("");

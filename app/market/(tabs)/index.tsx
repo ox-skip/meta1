@@ -98,6 +98,26 @@ function listingAvailability(row: ListingRow) {
   return row.availability ?? row.payment_options?.availability ?? null;
 }
 
+function listingExpiresAtMs(row: ListingRow) {
+  const exp = row.payment_options?.expires_at;
+  if (!exp) return null;
+
+  const expMs = new Date(String(exp)).getTime();
+  if (!Number.isFinite(expMs)) return null;
+
+  const createdMs = new Date(String(row.created_at || "")).getTime();
+  if (Number.isFinite(createdMs) && expMs <= createdMs) {
+    return null;
+  }
+
+  return expMs;
+}
+
+function listingIsExpired(row: ListingRow) {
+  const expMs = listingExpiresAtMs(row);
+  return expMs !== null && expMs <= Date.now();
+}
+
 function cleanListingSearch(value: string) {
   return value.trim().replace(/[%,]/g, " ").replace(/\s+/g, " ").slice(0, 90);
 }
@@ -820,12 +840,7 @@ export default function MarketHome() {
         fetched = await fetchListingsDirect();
       }
 
-      const items = fetched.filter((r) => {
-        const exp = r.payment_options?.expires_at;
-        if (!exp) return true;
-        const t = new Date(exp).getTime();
-        return Number.isFinite(t) ? t > Date.now() : true;
-      });
+      const items = fetched.filter((r) => !listingIsExpired(r));
       const scopedBase =
         feedScope === "global"
           ? items
