@@ -52,6 +52,7 @@ const FAINT = "rgba(255,253,247,0.44)";
 
 const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
+const LISTING_FETCH_LIMIT = 500;
 
 type SortBy = "newest" | "price_low" | "price_high";
 type FeedSection = "all" | "product" | "service" | "social";
@@ -86,6 +87,10 @@ type SellerCard = {
   featured_enabled?: boolean | null;
   featured_until?: string | null;
 };
+
+function listingAvailability(row: ListingRow) {
+  return row.availability ?? row.payment_options?.availability ?? null;
+}
 
 function publicSellerLogo(path?: string | null) {
   if (!path) return null;
@@ -550,7 +555,7 @@ export default function MarketHome() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [directoryMode, setDirectoryMode] = useState<DirectoryMode>("listings");
-  const [feedScope, setFeedScope] = useState<FeedScope>("country");
+  const [feedScope, setFeedScope] = useState<FeedScope>("global");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -590,7 +595,7 @@ export default function MarketHome() {
     setLocatingCountry(true);
     setCountryErr(null);
     try {
-      const c = await resolveUserCountry({ prompt: true, refresh: true, ipOnly: true });
+      const c = await resolveUserCountry({ prompt: true, refresh: true });
       if (c) {
         setUserCountry(c);
         return c;
@@ -603,7 +608,7 @@ export default function MarketHome() {
         return cached;
       }
 
-      setCountryErr("Location not detected. Use Global to view all listings.");
+      setCountryErr("Location not detected. Showing Global until your country is available.");
       return null;
     } catch (e: any) {
       const cached = await getCachedCountry();
@@ -657,8 +662,9 @@ export default function MarketHome() {
           "id,seller_id,title,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)"
         )
         .eq("is_active", true)
+        .is("deleted_at", null)
         .order(sortBy === "newest" ? "created_at" : "price_amount", { ascending: sortBy === "price_low" })
-        .limit(120);
+        .limit(LISTING_FETCH_LIMIT);
 
       if (main) query = query.eq("category", main);
       if (selectedSlug) query = query.eq("sub_category", selectedSlug);
@@ -680,9 +686,9 @@ export default function MarketHome() {
           ? items
           : effectiveCountry
           ? items.filter((r) =>
-              listingMatchesCountry(r.availability ?? r.payment_options?.availability, effectiveCountry, false),
+              listingMatchesCountry(listingAvailability(r), effectiveCountry, true),
             )
-          : [];
+          : items;
       const scoped = scopedBase;
       const uniq = new Map<string, ListingRow>();
       scoped.forEach((r) => {
@@ -736,6 +742,23 @@ export default function MarketHome() {
 
   useEffect(() => {
     loadDirectory();
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const c = await resolveUserCountry();
+        if (mounted && c) setUserCountry(c);
+      } catch {
+        // Country is optional for the Global feed.
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -815,7 +838,7 @@ export default function MarketHome() {
       ? feedScope === "country"
         ? userCountry
           ? `Showing ${feedLabel} matched to ${locationLabel}.`
-          : `Waiting for your location before showing ${feedLabel} for your country.`
+          : `Showing Global ${feedLabel} while your country is being detected.`
         : `Showing ${feedLabel} from every country in the marketplace.`
       : directoryMode === "featured"
       ? "Browse promoted storefronts first."
@@ -1686,7 +1709,7 @@ export default function MarketHome() {
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
               {feedScope === "country"
-                ? "Showing only listings matched to your current country."
+                ? "Showing listings available in your current country, including worldwide offers."
                 : "Showing every listing currently available in the marketplace."}
             </Text>
           </View>
@@ -1745,7 +1768,9 @@ export default function MarketHome() {
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
             <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }}>
               {feedScope === "country"
-                ? "Local listings show local currency plus USD reference."
+                ? userCountry
+                  ? "Local listings include offers for your country plus worldwide listings."
+                  : "Showing Global while your country is being detected."
                 : "Global feed shows listings from every country."}
             </Text>
           </View>
@@ -1762,7 +1787,7 @@ export default function MarketHome() {
               backgroundColor: "rgba(255,253,247,0.055)",
             }}
           >
-            <Text style={{ color: MUTED }}>Enable location to see listings near you. You can still use the Global feed.</Text>
+            <Text style={{ color: MUTED }}>Enable location to filter to your country. Until then, the feed stays visible with Global listings.</Text>
             {countryErr ? (
               <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.55)", fontSize: 12 }}>{countryErr}</Text>
             ) : null}

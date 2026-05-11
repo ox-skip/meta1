@@ -2,7 +2,7 @@ import "react-native-get-random-values";
 // app/_layout.tsx
 // app/_layout.tsx
 import { supabase } from "@/services/supabase";
-import { Redirect, Slot, useSegments } from "expo-router";
+import { Redirect, Slot, useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -17,6 +17,12 @@ import { useAuth } from "../hooks/authentication/useAuth";
 import { initMobileAds } from "@/services/ads/initMobileAds";
 import { OnboardingProvider } from "@/components/onboarding/InAppTutorial";
 import { recordAuthSessionNotification } from "@/services/market/notifications";
+import {
+  buildSessionRouteHref,
+  isSessionRestoreEntryPoint,
+  loadLastSessionRoute,
+  saveLastSessionRoute,
+} from "@/services/navigation/sessionRoute";
 import { ExternalWalletProvider } from "@/services/wallet/externalWalletProvider";
 
 import * as Application from "expo-application";
@@ -69,6 +75,8 @@ const isOutdated = (current: string, min: string) => {
 export default function RootLayout() {
   const { user, loading } = useAuth();
   const segments = useSegments();
+  const pathname = usePathname();
+  const routeParams = useGlobalSearchParams();
 
   const [systemState, setSystemState] = useState<
     | { type: "maintenance"; message: string; eta?: string }
@@ -78,6 +86,10 @@ export default function RootLayout() {
 
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [lastRouteReady, setLastRouteReady] = useState(false);
+  const [lastRouteHref, setLastRouteHref] = useState<string | null>(null);
+  const [hasInitialUrl, setHasInitialUrl] = useState(false);
+  const [initialUrlChecked, setInitialUrlChecked] = useState(false);
 
   const supabaseUrl = useMemo(
     () => (supabase as any)?.supabaseUrl as string | undefined,
@@ -87,11 +99,100 @@ export default function RootLayout() {
   const retryNonceRef = useRef(0);
   const authEventsReadyRef = useRef(false);
   const lastAuthAccessTokenRef = useRef<string | null>(null);
+  const lastSavedRouteRef = useRef<string | null>(null);
+  const routeSegments = segments as readonly string[];
+  const routeParamsKey = useMemo(() => JSON.stringify(routeParams ?? {}), [routeParams]);
 
   /* ---------------- ADMOB INIT ---------------- */
   useEffect(() => {
     initMobileAds();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    Linking.getInitialURL()
+      .then((url: string | null) => {
+        if (mounted) {
+          setHasInitialUrl(Boolean(url));
+          setInitialUrlChecked(true);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setHasInitialUrl(false);
+          setInitialUrlChecked(true);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const userId = user?.id ?? null;
+
+    setLastRouteReady(false);
+    setLastRouteHref(null);
+    lastSavedRouteRef.current = null;
+
+    if (!userId) {
+      setLastRouteReady(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    loadLastSessionRoute(userId)
+      .then((href) => {
+        if (!mounted) return;
+        setLastRouteHref(href);
+        lastSavedRouteRef.current = href;
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setLastRouteHref(null);
+      })
+      .finally(() => {
+        if (mounted) setLastRouteReady(true);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const userId = user?.id ?? null;
+    if (!userId || !lastRouteReady || booting || loading) return;
+
+    const shouldRestore =
+      !!lastRouteHref &&
+      initialUrlChecked &&
+      !hasInitialUrl &&
+      isSessionRestoreEntryPoint(routeSegments, pathname) &&
+      lastRouteHref !== pathname;
+    if (shouldRestore) return;
+
+    const href = buildSessionRouteHref(pathname, routeParams as Record<string, unknown>, routeSegments);
+    if (!href || href === lastSavedRouteRef.current) return;
+
+    lastSavedRouteRef.current = href;
+    void saveLastSessionRoute(userId, href);
+  }, [
+    user?.id,
+    lastRouteReady,
+    lastRouteHref,
+    initialUrlChecked,
+    hasInitialUrl,
+    booting,
+    loading,
+    pathname,
+    routeParamsKey,
+    routeSegments.join("/"),
+  ]);
 
   /* ---------------- SYSTEM CONTROL CHECK ---------------- */
   useEffect(() => {
@@ -279,13 +380,25 @@ export default function RootLayout() {
   }
 
   /* ---------------- ROUTING (NO ONBOARDING) ---------------- */
-  const routeSegments = segments as readonly string[];
   const group = routeSegments[0];
   const route = routeSegments[1];
   const isPasswordRecovery = group === "(auth)" && route === "reset";
+  const shouldRestoreLastRoute =
+    !!user &&
+    lastRouteReady &&
+    !!lastRouteHref &&
+    initialUrlChecked &&
+    !hasInitialUrl &&
+    !isPasswordRecovery &&
+    isSessionRestoreEntryPoint(routeSegments, pathname) &&
+    lastRouteHref !== pathname;
 
   if (!user && group !== "(auth)" && group !== "pi") {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (shouldRestoreLastRoute) {
+    return <Redirect href={lastRouteHref as any} />;
   }
 
   if (user && !isPasswordRecovery && (group === "(auth)" || group === "(onboarding)")) {
@@ -293,7 +406,7 @@ export default function RootLayout() {
   }
 
   if (user && !group) {
-    return <Redirect href="/market/(tabs)" />;
+    return <Redirect href={(lastRouteHref || "/market/(tabs)") as any} />;
   }
 
   return (
