@@ -1,4 +1,4 @@
-// app/market/(tabs)/order.tsx
+// app/market/(tabs)/orders.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,9 +29,21 @@ import { supabase } from "@/services/supabase";
 import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const INK = "#090D0B";
+const PURPLE = "#8B5CF6";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
+const CARD = "rgba(255,253,247,0.065)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
 
 const FN_MARKET_ORDERS_LIST = "market-orders-list"; // GET ONLY
 
@@ -292,19 +305,27 @@ function isRetryableNetworkError(error: unknown) {
   );
 }
 
-function StatusDot({ status }: { status: string }) {
+function statusTone(status: string) {
   const map: Record<string, string> = {
-    CREATED: "rgba(255,255,255,0.55)",
-    IN_ESCROW: "rgba(124,58,237,0.9)",
-    OUT_FOR_DELIVERY: "rgba(59,130,246,0.9)",
-    DELIVERABLE_UPLOADED: "rgba(14,165,233,0.9)",
-    DELIVERED: "rgba(16,185,129,0.9)",
-    RELEASED: "rgba(16,185,129,0.9)",
-    DISPUTED: "rgba(251,146,60,0.9)",
-    REFUNDED: "rgba(239,68,68,0.9)",
-    CANCELLED: "rgba(239,68,68,0.9)",
+    CREATED: FAINT,
+    IN_ESCROW: PURPLE,
+    OUT_FOR_DELIVERY: BLUE,
+    DELIVERABLE_UPLOADED: BLUE,
+    DELIVERED: TEAL,
+    RELEASED: TEAL,
+    DISPUTED: AMBER,
+    REFUNDED: ROSE,
+    CANCELLED: ROSE,
   };
-  const c = map[normalizeStatus(status)] ?? "rgba(255,255,255,0.55)";
+  return map[normalizeStatus(status)] ?? FAINT;
+}
+
+function tintBorder(color: string, alphaHex: string) {
+  return color.startsWith("#") ? `${color}${alphaHex}` : color;
+}
+
+function StatusDot({ status }: { status: string }) {
+  const c = statusTone(status);
   return (
     <View
       style={{
@@ -312,6 +333,10 @@ function StatusDot({ status }: { status: string }) {
         height: 10,
         borderRadius: 99,
         backgroundColor: c,
+        shadowColor: c,
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 0 },
       }}
     />
   );
@@ -333,20 +358,55 @@ function SegButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      style={{
+      style={({ pressed }) => ({
         flex: compact ? undefined : 1,
         minWidth: compact ? 92 : undefined,
         paddingHorizontal: compact ? 14 : 0,
         paddingVertical: 12,
         borderRadius: 16,
         alignItems: "center",
-        backgroundColor: active ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.06)",
+        backgroundColor: active ? "rgba(45,212,191,0.15)" : "rgba(255,253,247,0.06)",
         borderWidth: 1,
-        borderColor: active ? "rgba(124,58,237,0.40)" : "rgba(255,255,255,0.10)",
+        borderColor: active ? "rgba(94,234,212,0.45)" : BORDER,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}
+    >
+      <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900" }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  icon,
+  tone = TEAL,
+}: {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone?: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 112,
+        borderRadius: 18,
+        padding: 12,
+        backgroundColor: "rgba(255,253,247,0.06)",
+        borderWidth: 1,
+        borderColor: tintBorder(tone, "3D"),
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "900" }}>{label}</Text>
-    </Pressable>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+        <Ionicons name={icon} size={14} color={tone} />
+        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
+      </View>
+      <Text numberOfLines={1} style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 18 }}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -363,11 +423,11 @@ function ErrorCard({
     <View
       style={{
         marginTop: 14,
-        borderRadius: 22,
+        borderRadius: 24,
         padding: 16,
-        backgroundColor: "rgba(239,68,68,0.10)",
+        backgroundColor: "rgba(251,113,133,0.12)",
         borderWidth: 1,
-        borderColor: "rgba(239,68,68,0.22)",
+        borderColor: "rgba(251,113,133,0.32)",
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -376,18 +436,18 @@ function ErrorCard({
             width: 38,
             height: 38,
             borderRadius: 14,
-            backgroundColor: "rgba(239,68,68,0.18)",
+            backgroundColor: "rgba(251,113,133,0.18)",
             alignItems: "center",
             justifyContent: "center",
             borderWidth: 1,
-            borderColor: "rgba(239,68,68,0.25)",
+            borderColor: "rgba(253,164,175,0.28)",
           }}
         >
-          <Ionicons name="alert-circle-outline" size={20} color="#FCA5A5" />
+          <Ionicons name="alert-circle-outline" size={20} color="#FFE4E6" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>{title}</Text>
-          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.75)", fontSize: 12 }}>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>{title}</Text>
+          <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
             {message}
           </Text>
         </View>
@@ -400,12 +460,12 @@ function ErrorCard({
           borderRadius: 18,
           paddingVertical: 12,
           alignItems: "center",
-          backgroundColor: "rgba(255,255,255,0.08)",
+          backgroundColor: "rgba(255,253,247,0.08)",
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.12)",
+          borderColor: BORDER,
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Try again</Text>
+        <Text style={{ color: TEXT, fontWeight: "900" }}>Try again</Text>
       </Pressable>
     </View>
   );
@@ -416,15 +476,29 @@ function EmptyState({ onGoMarket }: { onGoMarket: () => void }) {
     <View
       style={{
         marginTop: 14,
-        borderRadius: 22,
-        padding: 16,
-        backgroundColor: "rgba(255,255,255,0.05)",
+        borderRadius: 24,
+        padding: 18,
+        backgroundColor: CARD,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: BORDER,
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "900" }}>No orders yet</Text>
-      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "rgba(45,212,191,0.14)",
+          borderWidth: 1,
+          borderColor: "rgba(94,234,212,0.32)",
+        }}
+      >
+        <Ionicons name="receipt-outline" size={20} color={TEAL} />
+      </View>
+      <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 18 }}>No orders yet</Text>
+      <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
         When you buy or sell, it will show here.
       </Text>
 
@@ -435,12 +509,12 @@ function EmptyState({ onGoMarket }: { onGoMarket: () => void }) {
           borderRadius: 18,
           paddingVertical: 14,
           alignItems: "center",
-          backgroundColor: PURPLE,
+          backgroundColor: TEAL,
           borderWidth: 1,
-          borderColor: PURPLE,
+          borderColor: "rgba(94,234,212,0.72)",
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900" }}>Go to marketplace</Text>
+        <Text style={{ color: INK, fontWeight: "900" }}>Go to marketplace</Text>
       </Pressable>
     </View>
   );
@@ -448,6 +522,10 @@ function EmptyState({ onGoMarket }: { onGoMarket: () => void }) {
 
 export default function MarketOrdersTab() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWebDesktop = Platform.OS === "web" && width >= 980;
+  const pagePadding = isWebDesktop ? 28 : 16;
+  const contentMaxWidth = isWebDesktop ? 1120 : undefined;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -640,155 +718,374 @@ export default function MarketOrdersTab() {
     return items.filter((o) => groupedStatuses.includes(normalizeStatus(o.status)));
   }, [items, pendingStageFilter, statusFilter]);
 
+  const orderStats = useMemo(() => {
+    const pending = items.filter((o) => STATUS_GROUPS.pending.includes(normalizeStatus(o.status))).length;
+    const completed = items.filter((o) => STATUS_GROUPS.completed.includes(normalizeStatus(o.status))).length;
+    const disputed = items.filter((o) => STATUS_GROUPS.disputed.includes(normalizeStatus(o.status))).length;
+
+    return {
+      total: items.length,
+      visible: visibleItems.length,
+      pending,
+      completed,
+      disputed,
+    };
+  }, [items, visibleItems.length]);
+
+  const roleLabel = mode === "buying" ? "Buying" : mode === "selling" ? "Selling" : "All roles";
+  const statusLabel =
+    statusFilter === "all"
+      ? "All statuses"
+      : statusFilter === "pending" && pendingStageFilter !== "all"
+        ? formatStatusLabel(PENDING_STAGE_STATUS_MAP[pendingStageFilter][0])
+        : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
+  const activeFilterLabel = `${roleLabel} / ${statusLabel}`;
+
+  function renderOrdersHero() {
+    return (
+      <LinearGradient
+        colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          marginTop: 12,
+          borderRadius: 30,
+          padding: isWebDesktop ? 22 : 18,
+          borderWidth: 1,
+          borderColor: BORDER_TOP,
+          overflow: "hidden",
+          shadowColor: "#000",
+          shadowOpacity: 0.24,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 14 },
+        }}
+      >
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 4,
+            backgroundColor: TEAL,
+          }}
+        />
+
+        <View
+          style={{
+            flexDirection: isWebDesktop ? "row" : "column",
+            gap: 18,
+            alignItems: isWebDesktop ? "center" : "stretch",
+          }}
+        >
+          <View style={{ flex: 1.2 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 7,
+                  borderRadius: 999,
+                  paddingHorizontal: 11,
+                  paddingVertical: 7,
+                  backgroundColor: "rgba(9,13,11,0.52)",
+                  borderWidth: 1,
+                  borderColor: "rgba(94,234,212,0.28)",
+                }}
+              >
+                <Ionicons name="shield-checkmark-outline" size={14} color={TEAL} />
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Escrow orders</Text>
+              </View>
+
+              <Pressable
+                onPress={() => load()}
+                accessibilityRole="button"
+                accessibilityLabel="Refresh orders"
+                style={({ pressed }) => ({
+                  width: 38,
+                  height: 38,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                })}
+              >
+                <Ionicons name="refresh" size={18} color={TEXT} />
+              </Pressable>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 18,
+                color: TEXT,
+                fontWeight: "900",
+                fontSize: isWebDesktop ? 32 : 28,
+                lineHeight: isWebDesktop ? 38 : 34,
+                maxWidth: 560,
+              }}
+            >
+              Track every marketplace handoff.
+            </Text>
+            <Text style={{ marginTop: 10, color: MUTED, lineHeight: 21, maxWidth: 560 }}>
+              Follow buying, selling, escrow, delivery, and release stages from one focused order desk.
+            </Text>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 16 }}>
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 11,
+                  paddingVertical: 7,
+                  backgroundColor: "rgba(255,253,247,0.07)",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                <Text style={{ color: MUTED, fontWeight: "900", fontSize: 12 }}>{activeFilterLabel}</Text>
+              </View>
+              {orderStats.disputed > 0 ? (
+                <View
+                  style={{
+                    borderRadius: 999,
+                    paddingHorizontal: 11,
+                    paddingVertical: 7,
+                    backgroundColor: "rgba(244,183,93,0.13)",
+                    borderWidth: 1,
+                    borderColor: "rgba(244,183,93,0.34)",
+                  }}
+                >
+                  <Text style={{ color: AMBER, fontWeight: "900", fontSize: 12 }}>
+                    {orderStats.disputed} disputed
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <MetricTile label="Total" value={String(orderStats.total)} icon="receipt-outline" tone={TEAL} />
+            <MetricTile label="Visible" value={String(orderStats.visible)} icon="funnel-outline" tone={BLUE} />
+            <MetricTile label="Pending" value={String(orderStats.pending)} icon="time-outline" tone={AMBER} />
+            <MetricTile
+              label="Complete"
+              value={String(orderStats.completed)}
+              icon="checkmark-circle-outline"
+              tone={TEAL}
+            />
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
+
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
+      colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={{
         flex: 1,
         paddingTop: Math.max(insets.top, 14),
-        paddingHorizontal: 16,
+        paddingHorizontal: pagePadding,
       }}
     >
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketOrders} />
-      <AppHeader title="Orders" subtitle="Buying & selling history" />
+      <View style={{ width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }}>
+        <AppHeader
+          title="Orders"
+          subtitle="Buying & selling history"
+          bordered={false}
+          style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
+        />
+      </View>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 28 }}
+        contentContainerStyle={{
+          width: "100%",
+          maxWidth: contentMaxWidth,
+          alignSelf: "center",
+          paddingBottom: isWebDesktop ? 44 : Math.max(insets.bottom + 116, 132),
+        }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT} />
         }
       >
-        {/* Header */}
+        {renderOrdersHero()}
+
         <View
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            paddingBottom: 12,
+            marginTop: 14,
+            borderRadius: 26,
+            padding: 14,
+            backgroundColor: CARD,
+            borderWidth: 1,
+            borderColor: BORDER,
           }}
         >
-          <View>
-            <Text style={{ color: "#fff", fontSize: 24, fontWeight: "900" }}>Orders</Text>
-            <Text style={{ color: "rgba(255,255,255,0.65)", marginTop: 6, fontSize: 13 }}>
-              Buying &amp; selling history
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 13,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(45,212,191,0.13)",
+                  borderWidth: 1,
+                  borderColor: "rgba(94,234,212,0.28)",
+                }}
+              >
+                <Ionicons name="options-outline" size={17} color={TEAL} />
+              </View>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Refine view</Text>
+            </View>
+            <Text
+              numberOfLines={1}
+              style={{
+                color: FAINT,
+                fontWeight: "900",
+                fontSize: 12,
+                maxWidth: isWebDesktop ? 420 : 160,
+              }}
+            >
+              {activeFilterLabel}
             </Text>
           </View>
 
-          <Pressable
-            onPress={() => load()}
-            accessibilityRole="button"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="refresh" size={20} color="#fff" />
-          </Pressable>
-        </View>
-
-        {/* Segmented */}
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <SegButton label="All" active={mode === "all"} onPress={() => setMode("all")} />
-          <SegButton label="Buying" active={mode === "buying"} onPress={() => setMode("buying")} />
-          <SegButton label="Selling" active={mode === "selling"} onPress={() => setMode("selling")} />
-        </View>
-
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-          <SegButton label="All" active={statusFilter === "all"} onPress={() => selectStatusFilter("all")} compact />
-          <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => selectStatusFilter("pending")} compact />
-          <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => selectStatusFilter("completed")} compact />
-          <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => selectStatusFilter("cancelled")} compact />
-          <SegButton label="Disputed" active={statusFilter === "disputed"} onPress={() => selectStatusFilter("disputed")} compact />
-        </View>
-
-        {statusFilter === "pending" ? (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-            <SegButton
-              label="All"
-              active={pendingStageFilter === "all"}
-              onPress={() => setPendingStageFilter("all")}
-              compact
-            />
-            <SegButton
-              label="Created"
-              active={pendingStageFilter === "created"}
-              onPress={() => setPendingStageFilter("created")}
-              compact
-            />
-            <SegButton
-              label="In Escrow"
-              active={pendingStageFilter === "in_escrow"}
-              onPress={() => setPendingStageFilter("in_escrow")}
-              compact
-            />
-            <SegButton
-              label="Out for Delivery"
-              active={pendingStageFilter === "out_for_delivery"}
-              onPress={() => setPendingStageFilter("out_for_delivery")}
-              compact
-            />
-            <SegButton
-              label="Uploaded"
-              active={pendingStageFilter === "deliverable_uploaded"}
-              onPress={() => setPendingStageFilter("deliverable_uploaded")}
-              compact
-            />
-            <SegButton
-              label="Delivered"
-              active={pendingStageFilter === "delivered"}
-              onPress={() => setPendingStageFilter("delivered")}
-              compact
-            />
+          <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Role</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 9 }}>
+            <SegButton label="All" active={mode === "all"} onPress={() => setMode("all")} />
+            <SegButton label="Buying" active={mode === "buying"} onPress={() => setMode("buying")} />
+            <SegButton label="Selling" active={mode === "selling"} onPress={() => setMode("selling")} />
           </View>
-        ) : null}
+
+          <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Status</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
+            <SegButton label="All" active={statusFilter === "all"} onPress={() => selectStatusFilter("all")} compact />
+            <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => selectStatusFilter("pending")} compact />
+            <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => selectStatusFilter("completed")} compact />
+            <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => selectStatusFilter("cancelled")} compact />
+            <SegButton label="Disputed" active={statusFilter === "disputed"} onPress={() => selectStatusFilter("disputed")} compact />
+          </View>
+
+          {statusFilter === "pending" ? (
+            <>
+              <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Stage</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
+                <SegButton
+                  label="All"
+                  active={pendingStageFilter === "all"}
+                  onPress={() => setPendingStageFilter("all")}
+                  compact
+                />
+                <SegButton
+                  label="Created"
+                  active={pendingStageFilter === "created"}
+                  onPress={() => setPendingStageFilter("created")}
+                  compact
+                />
+                <SegButton
+                  label="In Escrow"
+                  active={pendingStageFilter === "in_escrow"}
+                  onPress={() => setPendingStageFilter("in_escrow")}
+                  compact
+                />
+                <SegButton
+                  label="Out for Delivery"
+                  active={pendingStageFilter === "out_for_delivery"}
+                  onPress={() => setPendingStageFilter("out_for_delivery")}
+                  compact
+                />
+                <SegButton
+                  label="Uploaded"
+                  active={pendingStageFilter === "deliverable_uploaded"}
+                  onPress={() => setPendingStageFilter("deliverable_uploaded")}
+                  compact
+                />
+                <SegButton
+                  label="Delivered"
+                  active={pendingStageFilter === "delivered"}
+                  onPress={() => setPendingStageFilter("delivered")}
+                  compact
+                />
+              </View>
+            </>
+          ) : null}
+        </View>
 
         {!!err ? <ErrorCard title="Couldn't load orders" message={err} onRetry={() => load()} /> : null}
 
         {loading ? (
-          <View style={{ marginTop: 44, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading...</Text>
+          <View
+            style={{
+              marginTop: 14,
+              borderRadius: 24,
+              padding: 24,
+              alignItems: "center",
+              backgroundColor: CARD,
+              borderWidth: 1,
+              borderColor: BORDER,
+            }}
+          >
+            <ActivityIndicator color={TEAL} />
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Syncing orders...</Text>
           </View>
         ) : visibleItems.length === 0 ? (
           <EmptyState onGoMarket={() => router.push("/market/(tabs)" as any)} />
         ) : (
-          <View style={{ marginTop: 12, gap: 10 }}>
+          <View
+            style={{
+              marginTop: 14,
+              flexDirection: isWebDesktop ? "row" : "column",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
             {visibleItems.map((o) => {
               const title = o.listing?.title ?? "Order";
-              const meta = `${o.listing?.category ?? "-"} - ${o.listing?.delivery_type ?? "-"}`;
+              const category = o.listing?.category ?? "Marketplace";
+              const delivery = (o.listing?.delivery_type ?? "delivery").replace(/_/g, " ");
+              const meta = `${category} / ${delivery}`;
               const img = o.cover_image?.public_url ?? null;
               const coverKind = inferMarketMediaKind(img);
+              const tone = statusTone(o.status);
+              const createdAt = o.created_at ? new Date(o.created_at) : null;
+              const createdLabel =
+                createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleString() : "Date unavailable";
 
               return (
                 <Pressable
                   key={o.id}
                   onPress={() => openOrder(o.id)}
                   accessibilityRole="button"
-                  style={{
-                    borderRadius: 22,
+                  style={({ pressed }) => ({
+                    flexBasis: isWebDesktop ? "48.8%" : "100%",
+                    flexGrow: 1,
+                    borderRadius: 24,
                     padding: 14,
-                    backgroundColor: "rgba(255,255,255,0.05)",
+                    backgroundColor: pressed ? "rgba(255,253,247,0.09)" : CARD,
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.08)",
-                  }}
+                    borderColor: pressed ? BORDER_TOP : BORDER,
+                    shadowColor: "#000",
+                    shadowOpacity: 0.18,
+                    shadowRadius: 18,
+                    shadowOffset: { width: 0, height: 10 },
+                    transform: [{ translateY: pressed ? 1 : 0 }],
+                  })}
                 >
-                  <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
                     <View
                       style={{
-                        width: 54,
-                        height: 54,
-                        borderRadius: 18,
+                        width: 66,
+                        height: 66,
+                        borderRadius: 20,
                         overflow: "hidden",
-                        backgroundColor: "rgba(255,255,255,0.06)",
+                        backgroundColor: "rgba(255,253,247,0.06)",
                         borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.10)",
+                        borderColor: BORDER,
                         alignItems: "center",
                         justifyContent: "center",
                       }}
@@ -797,7 +1094,7 @@ export default function MarketOrdersTab() {
                         <MarketMediaView
                           uri={img}
                           kind={coverKind}
-                          style={{ width: 54, height: 54 }}
+                          style={{ width: 66, height: 66 }}
                           resizeMode="cover"
                           autoplay={coverKind === "video"}
                           muted
@@ -805,46 +1102,90 @@ export default function MarketOrdersTab() {
                           disablePointerEvents
                         />
                       ) : (
-                        <Ionicons name="cube-outline" size={22} color="rgba(255,255,255,0.75)" />
+                        <Ionicons name="cube-outline" size={24} color={MUTED} />
                       )}
                     </View>
 
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         <StatusDot status={o.status} />
-                        <Text style={{ color: "#fff", fontWeight: "900", flex: 1 }} numberOfLines={1}>
-                          {title}
+                        <Text style={{ color: tone, fontWeight: "900", flex: 1, fontSize: 12 }} numberOfLines={1}>
+                          {formatStatusLabel(o.status)}
                         </Text>
-                        <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.75)" />
+                        <Ionicons name="chevron-forward" size={18} color={FAINT} />
                       </View>
 
                       <Text
-                        style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 12 }}
+                        style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 16, lineHeight: 21 }}
+                        numberOfLines={2}
+                      >
+                        {title}
+                      </Text>
+
+                      <Text
+                        style={{ marginTop: 6, color: MUTED, fontSize: 12, textTransform: "capitalize" }}
                         numberOfLines={1}
                       >
                         {meta}
                       </Text>
+                    </View>
+                  </View>
 
-                      <View
-                        style={{
-                          marginTop: 10,
-                          flexDirection: "row",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                          <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                            {formatStatusLabel(o.status)}
-                          </Text>
-                        </View>
-                        <Text style={{ color: "#fff", fontWeight: "900" }}>
-                          {money(o.currency, o.amount)}
-                        </Text>
-                      </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 7,
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        backgroundColor: "rgba(9,13,11,0.34)",
+                        borderWidth: 1,
+                        borderColor: tintBorder(tone, "59"),
+                      }}
+                    >
+                      <Ionicons name="radio-button-on-outline" size={13} color={tone} />
+                      <Text style={{ color: tone, fontWeight: "900", fontSize: 12 }}>
+                        {formatStatusLabel(o.status)}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        backgroundColor: "rgba(45,212,191,0.12)",
+                        borderWidth: 1,
+                        borderColor: "rgba(94,234,212,0.30)",
+                      }}
+                    >
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                        {money(o.currency, o.amount)}
+                      </Text>
+                    </View>
+                  </View>
 
-                      <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                        {new Date(o.created_at).toLocaleString()}
+                  <View
+                    style={{
+                      marginTop: 14,
+                      paddingTop: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: "rgba(255,253,247,0.08)",
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                      <Ionicons name="calendar-outline" size={14} color={FAINT} />
+                      <Text style={{ color: FAINT, fontSize: 12 }}>{createdLabel}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                      <Ionicons name="key-outline" size={14} color={FAINT} />
+                      <Text style={{ color: FAINT, fontSize: 12 }} numberOfLines={1}>
+                        #{o.id.slice(0, 8).toUpperCase()}
                       </Text>
                     </View>
                   </View>

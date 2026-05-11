@@ -22,12 +22,22 @@ import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { formatCurrency } from "@/utils/pricing";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.05)";
-const BORDER = "rgba(255,255,255,0.09)";
-const MUTED = "rgba(255,255,255,0.62)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const INK = "#090D0B";
+const PURPLE = "#8B5CF6";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
 
 type ListingMediaAsset = {
   uri: string;
@@ -197,39 +207,63 @@ function trimAvailabilityGeo(geo: AvailabilityGeoHints | null) {
   return Object.values(next).some(Boolean) ? next : undefined;
 }
 
-function CardBox({ children }: any) {
+function CardBox({ children, style }: any) {
   return (
-    <View style={{ marginTop: 12, borderRadius: 22, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+    <View
+      style={[
+        {
+          marginTop: 14,
+          borderRadius: 24,
+          padding: 16,
+          backgroundColor: CARD,
+          borderWidth: 1,
+          borderTopWidth: 1,
+          borderColor: BORDER,
+          borderTopColor: BORDER_TOP,
+          shadowColor: "#000",
+          shadowOpacity: 0.14,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 4,
+        },
+        style,
+      ]}
+    >
       {children}
     </View>
   );
 }
 
 function Label({ children }: any) {
-  return <Text style={{ color: "rgba(255,255,255,0.72)", fontWeight: "800", marginTop: 10, fontSize: 12 }}>{children}</Text>;
+  return (
+    <Text style={{ color: MUTED, fontWeight: "900", marginTop: 12, fontSize: 11, textTransform: "uppercase" }}>
+      {children}
+    </Text>
+  );
 }
 
 function Row({ children, style }: any) {
-  return <View style={[{ flexDirection: "row", gap: 10, marginTop: 10 }, style]}>{children}</View>;
+  return <View style={[{ flexDirection: "row", gap: 10, marginTop: 10, flexWrap: "wrap" }, style]}>{children}</View>;
 }
 
 function Input(props: any) {
   return (
     <TextInput
       {...props}
-      placeholderTextColor="rgba(255,255,255,0.35)"
+      placeholderTextColor="rgba(255,253,247,0.42)"
       style={[
         {
           marginTop: 8,
-          borderRadius: 16,
-          paddingHorizontal: 12,
-          paddingVertical: 12,
-          color: "#fff",
-          backgroundColor: "rgba(255,255,255,0.06)",
+          borderRadius: 18,
+          paddingHorizontal: 14,
+          paddingVertical: 13,
+          color: TEXT,
+          backgroundColor: "rgba(9,13,11,0.52)",
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.10)",
+          borderColor: "rgba(255,253,247,0.12)",
           minHeight: props.multiline ? 92 : undefined,
           textAlignVertical: props.multiline ? "top" : "auto",
+          fontWeight: "700",
         },
         props.style,
       ]}
@@ -254,40 +288,47 @@ function Pill({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={{
-        flex: 1,
-        height: 48,
-        borderRadius: 16,
+      style={({ pressed }) => ({
+        flexGrow: 1,
+        flexBasis: 118,
+        minHeight: 48,
+        borderRadius: 17,
+        paddingHorizontal: 12,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
         gap: 8,
-        backgroundColor: active ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.06)",
+        backgroundColor: active ? "rgba(45,212,191,0.15)" : "rgba(255,253,247,0.06)",
         borderWidth: 1,
-        borderColor: active ? "rgba(124,58,237,0.45)" : "rgba(255,255,255,0.10)",
+        borderColor: active ? "rgba(94,234,212,0.45)" : "rgba(255,253,247,0.12)",
         opacity: disabled ? 0.55 : 1,
-      }}
+        transform: [{ scale: pressed && !disabled ? 0.985 : 1 }],
+      })}
     >
-      {icon ? <Ionicons name={icon} size={16} color="#fff" /> : null}
-      <Text style={{ color: "#fff", fontWeight: "900" }}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={16} color={active ? TEAL : MUTED} /> : null}
+      <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>{label}</Text>
     </Pressable>
   );
 }
 
-function Chip({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) {
+function Chip({ active, label, onPress, icon }: { active: boolean; label: string; onPress: () => void; icon?: any }) {
   return (
     <Pressable
       onPress={onPress}
-      style={{
+      style={({ pressed }) => ({
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 9,
         borderRadius: 999,
-        backgroundColor: active ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.06)",
+        backgroundColor: active ? "rgba(244,183,93,0.16)" : "rgba(255,253,247,0.06)",
         borderWidth: 1,
-        borderColor: active ? "rgba(124,58,237,0.45)" : "rgba(255,255,255,0.10)",
-      }}
+        borderColor: active ? "rgba(244,183,93,0.44)" : "rgba(255,253,247,0.12)",
+        transform: [{ scale: pressed ? 0.98 : 1 }],
+      })}
     >
-      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{label}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {icon ? <Ionicons name={icon} size={12} color={active ? AMBER : MUTED} /> : null}
+        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -299,28 +340,144 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
       <Pressable
         onPress={() => setOpen(!open)}
         style={{
-          borderRadius: 22,
-          padding: 14,
+          borderRadius: 24,
+          padding: 16,
           backgroundColor: CARD,
           borderWidth: 1,
           borderColor: BORDER,
+          borderTopColor: BORDER_TOP,
+          borderTopWidth: 1,
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "center",
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 3,
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>{title}</Text>
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{title}</Text>
         <Ionicons
           name={open ? "chevron-up-outline" : "chevron-down-outline"}
           size={20}
-          color="rgba(255,255,255,0.6)"
+          color={MUTED}
         />
       </Pressable>
       {open ? (
-        <View style={{ marginTop: 8, borderRadius: 16, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+        <View style={{ marginTop: 8, borderRadius: 20, padding: 16, backgroundColor: "rgba(255,253,247,0.055)", borderWidth: 1, borderColor: BORDER }}>
           {children}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function SectionTitle({
+  title,
+  subtitle,
+  icon,
+  tone = TEAL,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  tone?: string;
+}) {
+  return (
+    <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+      {icon ? (
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 14,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${tone}20`,
+            borderWidth: 1,
+            borderColor: `${tone}45`,
+          }}
+        >
+          <Ionicons name={icon} size={17} color={tone} />
+        </View>
+      ) : null}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{title}</Text>
+        {subtitle ? <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>{subtitle}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  icon,
+  tone = TEAL,
+}: {
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone?: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 108,
+        borderRadius: 18,
+        padding: 12,
+        backgroundColor: "rgba(255,253,247,0.06)",
+        borderWidth: 1,
+        borderColor: `${tone}3D`,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+        <Ionicons name={icon} size={14} color={tone} />
+        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
+      </View>
+      <Text numberOfLines={1} style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 16 }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function FeedbackBox({
+  tone,
+  title,
+  message,
+}: {
+  tone: "error" | "success" | "info";
+  title: string;
+  message: string;
+}) {
+  const colors = {
+    error: { bg: "rgba(251,113,133,0.12)", border: "rgba(251,113,133,0.36)", icon: "alert-circle-outline" as const, fg: "#FFE4E6" },
+    success: { bg: "rgba(45,212,191,0.12)", border: "rgba(94,234,212,0.36)", icon: "checkmark-circle-outline" as const, fg: "#CCFBF1" },
+    info: { bg: "rgba(56,189,248,0.12)", border: "rgba(125,211,252,0.36)", icon: "information-circle-outline" as const, fg: "#E0F2FE" },
+  }[tone];
+
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        borderRadius: 18,
+        borderWidth: 1,
+        padding: 12,
+        backgroundColor: colors.bg,
+        borderColor: colors.border,
+        flexDirection: "row",
+        gap: 10,
+        alignItems: "flex-start",
+      }}
+    >
+      <Ionicons name={colors.icon} size={18} color={colors.fg} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: TEXT, fontWeight: "900" }}>{title}</Text>
+        <Text style={{ marginTop: 5, color: MUTED, lineHeight: 18 }}>{message}</Text>
+      </View>
     </View>
   );
 }
@@ -392,6 +549,8 @@ export default function SellTab() {
   const floatingTabBarHeight = isWebDesktop ? 0 : 72 + bottomPad;
   const stickyPublishBottom = isWebDesktop ? Math.max(insets.bottom, 18) : floatingTabBarHeight + 22;
   const scrollBottomPadding = stickyPublishBottom + 132;
+  const pagePadding = isWebDesktop ? 28 : 16;
+  const contentMaxWidth = isWebDesktop ? 1120 : undefined;
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -1450,14 +1609,113 @@ export default function SellTab() {
     Number.isFinite(liveDiscountedLocal) && liveDiscountedLocal > 0 && fxUsdToLocal && fxUsdToLocal > 0
       ? liveDiscountedLocal / fxUsdToLocal
       : NaN;
+  const selectedSubCategory = finalSubCategory();
+  const selectedSubCategoryTitle =
+    categories.find((c: any) => c.main === category && String(c.slug) === selectedSubCategory)?.title ||
+    selectedSubCategory ||
+    "Not selected";
+  const mediaRequirementMet =
+    mediaAssets.length > 0 || (category === "service" && deliveryType === "digital" && isValidUrl(websiteUrl));
+  const readyChecks = [
+    !!title.trim(),
+    !!selectedSubCategory,
+    Number.isFinite(liveLocalInput) && liveLocalInput > 0,
+    mediaRequirementMet,
+  ];
+  const readyCount = readyChecks.filter(Boolean).length;
+  const readinessPercent = Math.round((readyCount / readyChecks.length) * 100);
+  const listingModeLabel =
+    category === "product"
+      ? "Physical product"
+      : deliveryType === "digital"
+      ? "Digital service"
+      : "In-person service";
+  const pricePreview =
+    Number.isFinite(liveLocalInput) && liveLocalInput > 0
+      ? formatCurrency(localCurrency, liveLocalInput)
+      : "No price";
+
+  function renderSellHero() {
+    return (
+      <LinearGradient
+        colors={[`${category === "product" ? BLUE : TEAL}22`, "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          marginTop: 12,
+          borderRadius: 28,
+          padding: isWebDesktop ? 24 : 16,
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.16)",
+          overflow: "hidden",
+          shadowColor: "#000",
+          shadowOpacity: 0.22,
+          shadowRadius: 24,
+          shadowOffset: { width: 0, height: 16 },
+          elevation: 7,
+        }}
+      >
+        <View style={{ flexDirection: isWebDesktop ? "row" : "column", gap: 18, alignItems: "stretch" }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <Chip
+                active
+                label={listingModeLabel}
+                icon={category === "product" ? "cube-outline" : deliveryType === "digital" ? "cloud-outline" : "walk-outline"}
+                onPress={() => {}}
+              />
+              <Chip
+                active={mediaRequirementMet}
+                label={mediaRequirementMet ? "Media ready" : "Needs media"}
+                icon={mediaRequirementMet ? "checkmark-circle-outline" : "images-outline"}
+                onPress={() => {}}
+              />
+            </View>
+
+            <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: isWebDesktop ? 34 : 26, lineHeight: isWebDesktop ? 40 : 32 }}>
+              Build a listing buyers can trust.
+            </Text>
+            <Text style={{ marginTop: 8, color: MUTED, lineHeight: 21, maxWidth: 680 }}>
+              Add clear details, set where buyers can purchase, attach proof media, and publish through escrow-backed checkout.
+            </Text>
+
+            <View style={{ marginTop: 16, height: 8, borderRadius: 999, backgroundColor: "rgba(255,253,247,0.10)", overflow: "hidden" }}>
+              <View style={{ width: `${readinessPercent}%`, height: "100%", borderRadius: 999, backgroundColor: readyCount === readyChecks.length ? TEAL : AMBER }} />
+            </View>
+            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12, fontWeight: "800" }}>
+              {readyCount}/{readyChecks.length} publish basics complete
+            </Text>
+          </View>
+
+          <View style={{ width: isWebDesktop ? 360 : undefined, gap: 10 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <MetricTile label="Type" value={category === "product" ? "Product" : "Service"} icon="storefront-outline" tone={category === "product" ? BLUE : TEAL} />
+              <MetricTile label="Price" value={pricePreview} icon="pricetag-outline" tone={AMBER} />
+            </View>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <MetricTile label="Category" value={selectedSubCategoryTitle} icon="grid-outline" tone={PURPLE} />
+              <MetricTile label="Media" value={mediaAssets.length ? `${mediaAssets.length} items` : "Empty"} icon="images-outline" tone={TEAL} />
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   if (checkingSeller) {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-        <AppHeader title="Sell" subtitle="Products are physical. Services can be digital (remote) or in-person." />
-        <View style={{ marginTop: 60, alignItems: "center" }}>
-          <ActivityIndicator />
-          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>Checking seller profile…</Text>
+      <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, paddingHorizontal: pagePadding, paddingTop: 14 }}>
+        <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
+          <AppHeader
+            title="Sell"
+            subtitle="Products, services, escrow, and media in one flow"
+            bordered={false}
+            style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
+          />
+          <CardBox style={{ marginTop: 60, alignItems: "center", paddingVertical: 28 }}>
+            <ActivityIndicator color={TEAL} />
+            <Text style={{ marginTop: 12, color: MUTED, fontWeight: "900" }}>Checking seller profile...</Text>
+          </CardBox>
         </View>
       </LinearGradient>
     );
@@ -1465,39 +1723,85 @@ export default function SellTab() {
 
   if (!hasSellerProfile) {
     return (
-      <LinearGradient colors={[BG1, BG0]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-        <AppHeader title="Sell" subtitle="Products are physical. Services can be digital (remote) or in-person." />
-        <View style={{ marginTop: 40 }}>
-          <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Start selling</Text>
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>You need a Market Profile before you can post listings.</Text>
-
-          <Pressable
-            onPress={() => router.push("/market/profile/create" as any)}
-            style={{ marginTop: 14, borderRadius: 18, paddingVertical: 14, alignItems: "center", backgroundColor: PURPLE, borderWidth: 1, borderColor: "rgba(124,58,237,0.8)" }}
+      <LinearGradient colors={[BG2, BG1, BG0]} style={{ flex: 1, paddingHorizontal: pagePadding, paddingTop: 14 }}>
+        <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
+          <AppHeader
+            title="Sell"
+            subtitle="Create your seller identity before publishing"
+            bordered={false}
+            style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
+          />
+          <LinearGradient
+            colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ marginTop: 34, borderRadius: 28, padding: 20, borderWidth: 1, borderColor: "rgba(255,253,247,0.16)" }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Create Market Profile</Text>
-          </Pressable>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(45,212,191,0.16)",
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.36)",
+              }}
+            >
+              <Ionicons name="storefront-outline" size={22} color={TEAL} />
+            </View>
+            <Text style={{ marginTop: 14, color: TEXT, fontSize: 26, lineHeight: 32, fontWeight: "900" }}>Start selling with a public profile</Text>
+            <Text style={{ marginTop: 8, color: MUTED, lineHeight: 21 }}>
+              You need a Market Profile before posting listings. It gives buyers a storefront, username, verification context, and a place to inspect your business.
+            </Text>
+
+            <Pressable
+              onPress={() => router.push("/market/profile/create" as any)}
+              style={({ pressed }) => ({
+                marginTop: 18,
+                borderRadius: 18,
+                paddingVertical: 14,
+                alignItems: "center",
+                backgroundColor: TEAL,
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.8)",
+                transform: [{ scale: pressed ? 0.985 : 1 }],
+              })}
+            >
+              <Text style={{ color: INK, fontWeight: "900" }}>Create Market Profile</Text>
+            </Pressable>
+          </LinearGradient>
         </View>
       </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Sell" subtitle="Products are physical. Services can be digital (remote) or in-person." />
+    <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, paddingHorizontal: pagePadding, paddingTop: 14 }}>
+      <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
+        <AppHeader
+          title="Sell"
+          subtitle="Create escrow-ready products and services"
+          bordered={false}
+          style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
+        />
+      </View>
       <ScrollView
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
+        contentContainerStyle={{ paddingBottom: scrollBottomPadding, alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}
       >
-        <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Create Listing</Text>
-        <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-          Products are physical. Services can be digital (remote) or in-person.
-        </Text>
+        {renderSellHero()}
 
         <CardBox>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>What are you listing?</Text>
+          <SectionTitle
+            title="Listing setup"
+            subtitle="Choose the selling mode first. The rest of the form adapts to products, digital work, or in-person services."
+            icon="options-outline"
+            tone={category === "product" ? BLUE : TEAL}
+          />
           <Row>
             <Pill active={category === "product"} label="Product" icon="cube-outline" onPress={() => setCategory("product")} />
             <Pill active={category === "service"} label="Service" icon="sparkles-outline" onPress={() => setCategory("service")} />
@@ -1521,10 +1825,10 @@ export default function SellTab() {
           ) : null}
         </CardBox>
 
-        <CollapsibleCardBox title="📂 Category (optional)" defaultOpen={true}>
+        <CollapsibleCardBox title="Category" defaultOpen={true}>
 
           <Label>Search sub-categories</Label>
-          <Input value={subSearch} onChangeText={setSubSearch} placeholder="Search… (e.g. phones, design)" />
+          <Input value={subSearch} onChangeText={setSubSearch} placeholder="Search... (e.g. phones, design)" />
 
           <Row style={{ flexWrap: "wrap" }}>
             {visibleSubs.slice(0, 8).map((c: any) => (
@@ -1535,7 +1839,7 @@ export default function SellTab() {
             ) : null}
             <Chip
               active={useCustomSub}
-              label="Other…"
+              label="Other..."
               onPress={() => {
                 setUseCustomSub(true);
                 setSubCategory("");
@@ -1548,14 +1852,18 @@ export default function SellTab() {
             <>
               <Label>Type your category</Label>
               <Input value={customSub} onChangeText={setCustomSub} placeholder="e.g. Website sales / SaaS / Music production" />
-              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>We’ll save it as a searchable sub-category.</Text>
+              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>We'll save it as a searchable sub-category.</Text>
             </>
           ) : null}
         </CollapsibleCardBox>
 
         <CardBox>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Availability</Text>
-          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Choose where this listing is available.</Text>
+          <SectionTitle
+            title="Availability"
+            subtitle="Choose the exact market reach for this listing, from global visibility to a local service radius."
+            icon="location-outline"
+            tone={AMBER}
+          />
 
           <Label>Scope</Label>
           <Row style={{ flexWrap: "wrap" }}>
@@ -1572,17 +1880,17 @@ export default function SellTab() {
               borderRadius: 16,
               paddingVertical: 12,
               alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: "rgba(45,212,191,0.10)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(94,234,212,0.32)",
               opacity: locatingAvailability ? 0.7 : 1,
               flexDirection: "row",
               gap: 8,
               justifyContent: "center",
             }}
           >
-            {locatingAvailability ? <ActivityIndicator /> : <Ionicons name="locate-outline" size={18} color="#fff" />}
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Use my current location</Text>
+            {locatingAvailability ? <ActivityIndicator color={TEAL} /> : <Ionicons name="locate-outline" size={18} color={TEAL} />}
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Use my current location</Text>
           </Pressable>
 
           {availabilityScope === "continent" ? (
@@ -1637,8 +1945,8 @@ export default function SellTab() {
               <Input value={availabilityRadiusKm} onChangeText={setAvailabilityRadiusKm} placeholder="e.g. 10" keyboardType="numeric" />
 
               <Label>Center</Label>
-              <View style={{ marginTop: 8, borderRadius: 16, padding: 12, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" }}>
-                <Text style={{ color: "#fff", fontWeight: "800" }}>
+              <View style={{ marginTop: 8, borderRadius: 18, padding: 12, backgroundColor: "rgba(9,13,11,0.48)", borderWidth: 1, borderColor: BORDER }}>
+                <Text style={{ color: TEXT, fontWeight: "800" }}>
                   {availabilityCenter?.label || "No center set yet"}
                 </Text>
                 {availabilityCenter ? (
@@ -1657,12 +1965,12 @@ export default function SellTab() {
                     paddingHorizontal: 12,
                     borderRadius: 12,
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.12)",
-                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderColor: BORDER,
+                    backgroundColor: "rgba(255,253,247,0.06)",
                     alignSelf: "flex-start",
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open in Google Maps</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open in Google Maps</Text>
                 </Pressable>
               ) : null}
             </>
@@ -1672,11 +1980,17 @@ export default function SellTab() {
           <Input value={availabilityNote} onChangeText={setAvailabilityNote} placeholder="e.g. Weekdays only" />
 
           <Text style={{ marginTop: 10, color: MUTED, fontSize: 12 }}>
-            Summary: <Text style={{ color: "#fff", fontWeight: "900" }}>{formatAvailabilitySummary(buildAvailability())}</Text>
+            Summary: <Text style={{ color: TEXT, fontWeight: "900" }}>{formatAvailabilitySummary(buildAvailability())}</Text>
           </Text>
         </CardBox>
 
         <CardBox>
+          <SectionTitle
+            title="Listing story"
+            subtitle="Write the buyer-facing promise. AI can help polish the wording after you add a few details."
+            icon="create-outline"
+            tone={PURPLE}
+          />
           <Label>Title *</Label>
           <Input value={title} onChangeText={setTitle} placeholder={category === "product" ? "e.g. iPhone 12 Pro Max" : "e.g. Landing page design"} />
 
@@ -1686,18 +2000,19 @@ export default function SellTab() {
           <View
             style={{
               marginTop: 14,
-              borderRadius: 18,
-              padding: 12,
-              backgroundColor: "rgba(124,58,237,0.10)",
+              borderRadius: 22,
+              padding: 14,
+              backgroundColor: "rgba(139,92,246,0.10)",
               borderWidth: 1,
-              borderColor: "rgba(124,58,237,0.28)",
+              borderColor: "rgba(196,181,253,0.28)",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>AI listing assistant</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
-              Improve the title, description, sub-category hints, and buyer-facing details. This does not publish or overwrite anything unless you apply it.
-            </Text>
-
+            <SectionTitle
+              title="AI listing assistant"
+              subtitle="Improve the title, description, sub-category hints, and buyer-facing details. This does not publish or overwrite anything unless you apply it."
+              icon="sparkles-outline"
+              tone={PURPLE}
+            />
             <Pressable
               onPress={runAiListingAssistant}
               disabled={aiBusy || submitting}
@@ -1707,9 +2022,9 @@ export default function SellTab() {
                 borderRadius: 16,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
-                backgroundColor: aiBusy ? "rgba(124,58,237,0.68)" : PURPLE,
+                backgroundColor: aiBusy ? "rgba(139,92,246,0.58)" : PURPLE,
                 borderWidth: 1,
-                borderColor: "rgba(124,58,237,0.9)",
+                borderColor: "rgba(196,181,253,0.55)",
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1717,29 +2032,16 @@ export default function SellTab() {
                 opacity: submitting ? 0.7 : 1,
               }}
             >
-              {aiBusy ? <ActivityIndicator color="#fff" /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
-              <Text style={{ color: "#fff", fontWeight: "900" }}>
+              {aiBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="sparkles-outline" size={18} color={TEXT} />}
+              <Text style={{ color: TEXT, fontWeight: "900" }}>
                 {aiBusy ? "Generating AI suggestions..." : "Generate with AI"}
               </Text>
             </Pressable>
 
-            {aiError ? (
-              <View
-                style={{
-                  marginTop: 12,
-                  borderRadius: 14,
-                  padding: 10,
-                  backgroundColor: "rgba(239,68,68,0.10)",
-                  borderWidth: 1,
-                  borderColor: "rgba(239,68,68,0.24)",
-                }}
-              >
-                <Text style={{ color: "#FCA5A5", fontWeight: "800", fontSize: 12 }}>{aiError}</Text>
-              </View>
-            ) : null}
+            {aiError ? <FeedbackBox tone="error" title="AI could not generate suggestions" message={aiError} /> : null}
 
             {__DEV__ && aiDebug ? (
-              <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.56)", fontSize: 11, lineHeight: 16 }}>
+              <Text style={{ marginTop: 10, color: FAINT, fontSize: 11, lineHeight: 16 }}>
                 Debug: {aiDebug}
               </Text>
             ) : null}
@@ -1750,15 +2052,15 @@ export default function SellTab() {
                   marginTop: 12,
                   borderRadius: 16,
                   padding: 12,
-                  backgroundColor: "rgba(255,255,255,0.05)",
+                  backgroundColor: "rgba(255,253,247,0.06)",
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.10)",
+                  borderColor: BORDER,
                   gap: 12,
                 }}
               >
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
                   <View style={{ flex: 1, minWidth: 180 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>AI suggestions</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>AI suggestions</Text>
                     {aiModel ? (
                       <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>Model: {aiModel}</Text>
                     ) : null}
@@ -1770,57 +2072,57 @@ export default function SellTab() {
                       paddingHorizontal: 12,
                       paddingVertical: 8,
                       borderWidth: 1,
-                      borderColor: "rgba(124,58,237,0.45)",
-                      backgroundColor: "rgba(124,58,237,0.18)",
+                      borderColor: "rgba(196,181,253,0.45)",
+                      backgroundColor: "rgba(139,92,246,0.18)",
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Apply main suggestions</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Apply main suggestions</Text>
                   </Pressable>
                 </View>
 
                 {aiDraft.suggested_title ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Title</Text>
-                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>{aiDraft.suggested_title}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Title</Text>
+                    <Text style={{ marginTop: 6, color: TEXT, fontWeight: "800" }}>{aiDraft.suggested_title}</Text>
                     <Pressable onPress={() => setTitle(aiDraft.suggested_title)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
-                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use title</Text>
+                      <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 12 }}>Use title</Text>
                     </Pressable>
                   </View>
                 ) : null}
 
                 {aiDraft.suggested_description ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Description</Text>
-                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.86)", lineHeight: 20 }}>{aiDraft.suggested_description}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Description</Text>
+                    <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.86)", lineHeight: 20 }}>{aiDraft.suggested_description}</Text>
                     <Pressable onPress={() => setDescription(aiDraft.suggested_description)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
-                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use description</Text>
+                      <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 12 }}>Use description</Text>
                     </Pressable>
                   </View>
                 ) : null}
 
                 {aiDraft.suggested_sub_category ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Sub-category</Text>
-                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>{aiDraft.suggested_sub_category}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Sub-category</Text>
+                    <Text style={{ marginTop: 6, color: TEXT, fontWeight: "800" }}>{aiDraft.suggested_sub_category}</Text>
                     <Pressable onPress={() => applyAiSubCategorySuggestion(aiDraft.suggested_sub_category)} style={{ marginTop: 8, alignSelf: "flex-start" }}>
-                      <Text style={{ color: "#C4B5FD", fontWeight: "900", fontSize: 12 }}>Use sub-category</Text>
+                      <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 12 }}>Use sub-category</Text>
                     </Pressable>
                   </View>
                 ) : null}
 
                 {aiDraft.tags.length ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Search keywords</Text>
-                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.86)", lineHeight: 20 }}>{aiDraft.tags.join(", ")}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Search keywords</Text>
+                    <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.86)", lineHeight: 20 }}>{aiDraft.tags.join(", ")}</Text>
                   </View>
                 ) : null}
 
                 {aiDraft.warnings.length ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Missing details to tighten up</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Missing details to tighten up</Text>
                     {aiDraft.warnings.map((warning, index) => (
-                      <Text key={`${warning}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,255,255,0.86)", lineHeight: 19 }}>
-                        • {warning}
+                      <Text key={`${warning}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,253,247,0.86)", lineHeight: 19 }}>
+                        - {warning}
                       </Text>
                     ))}
                   </View>
@@ -1828,24 +2130,24 @@ export default function SellTab() {
 
                 {aiDraft.price_hint_low > 0 || aiDraft.price_hint_high > 0 ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Price hint</Text>
-                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "800" }}>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Price hint</Text>
+                    <Text style={{ marginTop: 6, color: TEXT, fontWeight: "800" }}>
                       {aiDraft.price_hint_high > 0
                         ? `${formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_low)} - ${formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_high)}`
                         : formatCurrency(aiDraft.price_hint_currency || localCurrency, aiDraft.price_hint_low)}
                     </Text>
                     {aiDraft.price_hint_reason ? (
-                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.76)", lineHeight: 18 }}>{aiDraft.price_hint_reason}</Text>
+                      <Text style={{ marginTop: 4, color: MUTED, lineHeight: 18 }}>{aiDraft.price_hint_reason}</Text>
                     ) : null}
                   </View>
                 ) : null}
 
                 {aiDraft.media_notes.length ? (
                   <View>
-                    <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Media notes</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>Media notes</Text>
                     {aiDraft.media_notes.map((note, index) => (
-                      <Text key={`${note}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,255,255,0.86)", lineHeight: 19 }}>
-                        • {note}
+                      <Text key={`${note}-${index}`} style={{ marginTop: index === 0 ? 6 : 4, color: "rgba(255,253,247,0.86)", lineHeight: 19 }}>
+                        - {note}
                       </Text>
                     ))}
                   </View>
@@ -1860,7 +2162,12 @@ export default function SellTab() {
         </CardBox>
 
         <CardBox>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>💰 Pricing & Payment</Text>
+          <SectionTitle
+            title="Pricing and payment"
+            subtitle="Enter the buyer-facing local price. Checkout settles in supported stablecoins."
+            icon="card-outline"
+            tone={AMBER}
+          />
 
           <Label>Price *</Label>
           <Row>
@@ -1899,11 +2206,11 @@ export default function SellTab() {
           </Row>
 
           <Text style={{ marginTop: 12, color: MUTED, fontSize: 12 }}>
-            ✓ Listings settle in stablecoins (USDC/USDT). Buyers choose their preferred network.
+            Listings settle in stablecoins (USDC/USDT). Buyers choose their preferred network.
           </Text>
         </CardBox>
 
-        <CollapsibleCardBox title="🎁 Discount (optional)" defaultOpen={false}>
+        <CollapsibleCardBox title="Discount (optional)" defaultOpen={false}>
           <Label>Enable discount</Label>
           <Row>
             <Pill active={discountEnabled} label="On" onPress={() => setDiscountEnabled(true)} />
@@ -1927,8 +2234,8 @@ export default function SellTab() {
                     Original: {formatCurrency(localCurrency, liveOriginalLocal)} | USD: {formatCurrency("USD", liveOriginalUsd)}
                   </Text>
                   {Number.isFinite(liveDiscountedLocal) && liveDiscountedLocal > 0 ? (
-                    <Text style={{ marginTop: 4, color: "#10B981", fontSize: 12, fontWeight: "600" }}>
-                      💚 Saves {formatCurrency(localCurrency, liveOriginalLocal - liveDiscountedLocal)} ({(((liveOriginalLocal - liveDiscountedLocal) / liveOriginalLocal) * 100).toFixed(0)}% off)
+                    <Text style={{ marginTop: 4, color: TEAL, fontSize: 12, fontWeight: "700" }}>
+                      Saves {formatCurrency(localCurrency, liveOriginalLocal - liveDiscountedLocal)} ({(((liveOriginalLocal - liveDiscountedLocal) / liveOriginalLocal) * 100).toFixed(0)}% off)
                     </Text>
                   ) : null}
                 </>
@@ -1953,7 +2260,7 @@ export default function SellTab() {
           ) : null}
         </CollapsibleCardBox>
 
-        <CollapsibleCardBox title="♻️ Listing auto-delete (optional)" defaultOpen={false}>
+        <CollapsibleCardBox title="Listing auto-delete (optional)" defaultOpen={false}>
           <Label>Listing auto-delete</Label>
           <View style={{ marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <Chip label="No auto-delete" active={autoDeletePreset === "none"} onPress={() => applyAutoDeletePreset("none")} />
@@ -1973,7 +2280,12 @@ export default function SellTab() {
 
         {category === "product" ? (
           <CardBox>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Stock (for products)</Text>
+            <SectionTitle
+              title="Stock"
+              subtitle="Control whether buyers see a finite quantity or a continuously available product."
+              icon="layers-outline"
+              tone={BLUE}
+            />
             <Label>Stock mode</Label>
             <Row>
               <Pill
@@ -2003,32 +2315,35 @@ export default function SellTab() {
         ) : null}
 
         <CardBox>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Media</Text>
-          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-            {category === "product"
-              ? "Add at least 1 image or video. If you upload a video, it becomes the cover automatically."
-              : deliveryType === "digital"
-              ? "Add an image or video OR provide a website URL. Videos automatically become the cover."
-              : "Add at least 1 image or video. Videos automatically become the cover."}
-          </Text>
-
+          <SectionTitle
+            title="Media"
+            subtitle={
+              category === "product"
+                ? "Add at least one image or video. If you upload a video, it becomes the cover automatically."
+                : deliveryType === "digital"
+                ? "Add media or provide a website URL. Videos automatically become the cover."
+                : "Add at least one image or video. Videos automatically become the cover."
+            }
+            icon="images-outline"
+            tone={TEAL}
+          />
           <Pressable
             onPress={pickMedia}
             style={{
               marginTop: 12,
               height: 50,
               borderRadius: 18,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: "rgba(45,212,191,0.12)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(94,234,212,0.34)",
               flexDirection: "row",
               gap: 10,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="images-outline" size={18} color="#fff" />
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{mediaAssets.length ? "Add more media" : "Pick image or video"}</Text>
+            <Ionicons name="images-outline" size={18} color={TEAL} />
+            <Text style={{ color: TEXT, fontWeight: "900" }}>{mediaAssets.length ? "Add more media" : "Pick image or video"}</Text>
           </Pressable>
 
           {mediaAssets.length > 0 ? (
@@ -2045,8 +2360,8 @@ export default function SellTab() {
                       borderRadius: 16,
                       overflow: "hidden",
                       borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.12)",
-                      backgroundColor: "rgba(255,255,255,0.06)",
+                      borderColor: "rgba(255,253,247,0.14)",
+                      backgroundColor: "rgba(255,253,247,0.06)",
                     }}
                   >
                     <MarketMediaView
@@ -2060,16 +2375,16 @@ export default function SellTab() {
                       disablePointerEvents
                     />
                     <View style={{ position: "absolute", left: 8, top: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)" }}>
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{idx === 0 ? "Cover" : `#${idx + 1}`}</Text>
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>{idx === 0 ? "Cover" : `#${idx + 1}`}</Text>
                     </View>
                     {isVideo ? (
                       <View style={{ position: "absolute", left: 8, bottom: 8, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)", flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Ionicons name="videocam-outline" size={12} color="#fff" />
-                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Video</Text>
+                        <Ionicons name="videocam-outline" size={12} color={TEXT} />
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>Video</Text>
                       </View>
                     ) : null}
                     <View style={{ position: "absolute", right: 8, top: 8, width: 28, height: 28, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="close" size={16} color="#fff" />
+                      <Ionicons name="close" size={16} color={TEXT} />
                     </View>
                   </Pressable>
                 );
@@ -2079,35 +2394,13 @@ export default function SellTab() {
         </CardBox>
 
         {stage ? (
-          <View style={{ marginTop: 12, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.06)", padding: 12, flexDirection: "row", gap: 10, alignItems: "center" }}>
-            <ActivityIndicator color="#fff" />
-            <Text style={{ color: "rgba(255,255,255,0.85)", fontWeight: "900" }}>{stage}</Text>
+          <View style={{ marginTop: 12, borderRadius: 18, borderWidth: 1, borderColor: "rgba(94,234,212,0.28)", backgroundColor: "rgba(45,212,191,0.10)", padding: 12, flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <ActivityIndicator color={TEAL} />
+            <Text style={{ color: TEXT, fontWeight: "900" }}>{stage}</Text>
           </View>
         ) : null}
         {submitFeedback ? (
-          <View
-            style={{
-              marginTop: 12,
-              borderRadius: 16,
-              borderWidth: 1,
-              padding: 12,
-              backgroundColor:
-                submitFeedback.tone === "error"
-                  ? "rgba(239,68,68,0.12)"
-                  : submitFeedback.tone === "success"
-                  ? "rgba(16,185,129,0.12)"
-                  : "rgba(59,130,246,0.12)",
-              borderColor:
-                submitFeedback.tone === "error"
-                  ? "rgba(239,68,68,0.35)"
-                  : submitFeedback.tone === "success"
-                  ? "rgba(16,185,129,0.35)"
-                  : "rgba(59,130,246,0.35)",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{submitFeedback.title}</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.82)" }}>{submitFeedback.message}</Text>
-          </View>
+          <FeedbackBox tone={submitFeedback.tone} title={submitFeedback.title} message={submitFeedback.message} />
         ) : null}
       </ScrollView>
 
@@ -2115,42 +2408,51 @@ export default function SellTab() {
         pointerEvents="box-none"
         style={{
           position: "absolute",
-          left: 16,
-          right: 16,
+          left: pagePadding,
+          right: pagePadding,
           bottom: stickyPublishBottom,
+          alignItems: "center",
         }}
       >
         <View
           style={{
-            borderRadius: 22,
+            width: "100%",
+            maxWidth: isWebDesktop ? 720 : contentMaxWidth,
+            borderRadius: 24,
             padding: 10,
-            backgroundColor: "rgba(5,4,11,0.94)",
+            backgroundColor: "rgba(9,13,11,0.94)",
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: "rgba(255,253,247,0.12)",
+            shadowColor: "#000",
+            shadowOpacity: 0.28,
+            shadowRadius: 22,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 12,
           }}
         >
           <Pressable
             disabled={submitting}
             onPress={() => triggerPublish("press")}
             onPressIn={Platform.OS === "web" ? () => triggerPublish("pressIn") : undefined}
-            style={{
+            style={({ pressed }) => ({
               borderRadius: 18,
               paddingVertical: 14,
               alignItems: "center",
-              backgroundColor: PURPLE,
+              backgroundColor: submitting ? "rgba(45,212,191,0.52)" : TEAL,
               borderWidth: 1,
-              borderColor: "rgba(124,58,237,0.8)",
+              borderColor: "rgba(94,234,212,0.72)",
               opacity: submitting ? 0.7 : 1,
-            }}
+              transform: [{ scale: pressed && !submitting ? 0.99 : 1 }],
+            })}
           >
             {submitting ? (
               <View style={{ alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                <ActivityIndicator color={TEXT} />
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
                   {stage || "Publishing..."}
                 </Text>
               </View>
-            ) : <Text style={{ color: "#fff", fontWeight: "900" }}>Publish listing</Text>}
+            ) : <Text style={{ color: INK, fontWeight: "900" }}>Publish listing</Text>}
           </Pressable>
         </View>
       </View>
