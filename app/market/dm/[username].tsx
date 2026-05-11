@@ -22,7 +22,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppHeader from "@/components/common/AppHeader";
 import {
   DMAttachment,
+  DmAiSafetyResult,
   DMMessage,
+  checkDmSafety,
   fetchMessages,
   getOrCreateThread,
   getUserByUsername,
@@ -99,6 +101,8 @@ export default function DMChat() {
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null);
   const [replyTo, setReplyTo] = useState<DMMessage | null>(null);
   const [activeReactionFor, setActiveReactionFor] = useState<string | null>(null);
+  const [safetyBusy, setSafetyBusy] = useState(false);
+  const [safetyResult, setSafetyResult] = useState<DmAiSafetyResult | null>(null);
 
   const [imageViewer, setImageViewer] = useState<string | null>(null);
   const [videoViewer, setVideoViewer] = useState<string | null>(null);
@@ -199,6 +203,7 @@ export default function DMChat() {
       setText("");
       setPendingMedia(null);
       setReplyTo(null);
+      setSafetyResult(null);
       const msgs = await fetchMessages(threadId, 120);
       setMessages(msgs);
       await markRead(threadId);
@@ -207,6 +212,31 @@ export default function DMChat() {
     } finally {
       setSending(false);
     }
+  }
+
+  async function onSafetyCheck() {
+    if (!threadId) return;
+    setSafetyBusy(true);
+    setErr(null);
+    try {
+      const result = await checkDmSafety({
+        threadId,
+        draftMessage: text,
+        pendingMediaKind: pendingMedia?.kind ?? "",
+      });
+      setSafetyResult(result);
+    } catch (e: any) {
+      setErr(e?.message || "Could not run DM safety check.");
+    } finally {
+      setSafetyBusy(false);
+    }
+  }
+
+  function safetyColor(level?: string) {
+    const risk = String(level || "").toUpperCase();
+    if (risk === "URGENT" || risk === "HIGH") return "#FCA5A5";
+    if (risk === "MEDIUM") return "#FDE68A";
+    return BRAND;
   }
 
   async function onPickFromLibrary() {
@@ -535,6 +565,36 @@ export default function DMChat() {
             </View>
           ) : null}
 
+          {safetyResult?.safety ? (
+            <View style={{ marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: `${safetyColor(safetyResult.safety.risk_level)}55`, backgroundColor: `${safetyColor(safetyResult.safety.risk_level)}18`, padding: 10, gap: 7 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="shield-checkmark-outline" size={16} color={safetyColor(safetyResult.safety.risk_level)} />
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                  Gemini safety: {safetyResult.safety.risk_level}
+                </Text>
+              </View>
+              {safetyResult.safety.summary ? (
+                <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{safetyResult.safety.summary}</Text>
+              ) : null}
+              {safetyResult.safety.risk_flags?.length ? (
+                <Text style={{ color: safetyColor(safetyResult.safety.risk_level), fontSize: 12, lineHeight: 18 }}>
+                  Flags: {safetyResult.safety.risk_flags.join(", ")}
+                </Text>
+              ) : null}
+              {safetyResult.safety.recommended_action ? (
+                <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{safetyResult.safety.recommended_action}</Text>
+              ) : null}
+              {safetyResult.safety.safer_reply ? (
+                <Pressable
+                  onPress={() => setText(safetyResult.safety.safer_reply)}
+                  style={{ alignSelf: "flex-start", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: BORDER }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Use safer reply</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Pressable
               onPress={onPickFromLibrary}
@@ -570,6 +630,23 @@ export default function DMChat() {
               }}
             >
               <Ionicons name={recording ? "stop-circle-outline" : "mic-outline"} size={18} color="#fff" />
+            </Pressable>
+            <Pressable
+              onPress={onSafetyCheck}
+              disabled={safetyBusy || (!text.trim() && !pendingMedia && messages.length === 0)}
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                backgroundColor: CARD,
+                borderWidth: 1,
+                borderColor: safetyResult?.safety?.should_pause_before_sending ? "rgba(252,165,165,0.55)" : BORDER,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: safetyBusy || (!text.trim() && !pendingMedia && messages.length === 0) ? 0.6 : 1,
+              }}
+            >
+              {safetyBusy ? <ActivityIndicator size="small" /> : <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />}
             </Pressable>
 
             <View style={{ flex: 1 }}>

@@ -576,6 +576,69 @@ async function loadTriageContext(admin: any, ticketId: string) {
   };
 }
 
+function cacheFresh(
+  cache: any,
+  context: Awaited<ReturnType<typeof loadTriageContext>>,
+) {
+  if (!cache?.triage) return false;
+  return String(cache.source_ticket_updated_at ?? "") ===
+      String(context.ticket?.updated_at ?? "") &&
+    String(cache.source_last_message_at ?? "") ===
+      String(context.ticket?.last_message_at ?? "") &&
+    Number(cache.source_message_count ?? -1) === context.messages.length;
+}
+
+async function loadCachedTriage(
+  admin: any,
+  ticketId: string,
+  context: Awaited<ReturnType<typeof loadTriageContext>>,
+) {
+  const { data, error } = await admin
+    .from("market_support_ai_triages")
+    .select(
+      "id,ticket_id,model,triage,source_ticket_updated_at,source_last_message_at,source_message_count,updated_at,created_at",
+    )
+    .eq("ticket_id", ticketId)
+    .maybeSingle();
+  if (error) {
+    console.warn(
+      "[market-support-ai-triage] cache read skipped:",
+      error.message,
+    );
+    return null;
+  }
+  if (!cacheFresh(data, context)) return null;
+  return data;
+}
+
+async function saveCachedTriage(
+  admin: any,
+  ctx: AdminContext,
+  ticketId: string,
+  context: Awaited<ReturnType<typeof loadTriageContext>>,
+  model: string,
+  triage: SupportAiTriage,
+) {
+  const { error } = await admin
+    .from("market_support_ai_triages")
+    .upsert({
+      ticket_id: ticketId,
+      generated_by: ctx.userId === "service-token" ? null : ctx.userId,
+      provider: "gemini",
+      model,
+      triage,
+      source_ticket_updated_at: context.ticket?.updated_at ?? null,
+      source_last_message_at: context.ticket?.last_message_at ?? null,
+      source_message_count: context.messages.length,
+    }, { onConflict: "ticket_id" });
+  if (error) {
+    console.warn(
+      "[market-support-ai-triage] cache write skipped:",
+      error.message,
+    );
+  }
+}
+
 async function audit(admin: any, ctx: AdminContext, input: {
   ticketId: string;
   model: string;
@@ -616,8 +679,29 @@ Deno.serve(async (req) => {
 
     const body = asRecord(await req.json().catch(() => ({})));
     const ticketId = requireUuid("ticket_id", body.ticket_id);
+    const forceRefresh = body.force === true || body.force_refresh === true;
     const admin = supabaseAdminClient();
     const context = await loadTriageContext(admin, ticketId);
+
+    if (!forceRefresh) {
+      const cached = await loadCachedTriage(admin, ticketId, context);
+      if (cached?.triage) {
+        const triage = normalizeTriage(
+          cached.triage,
+          context.ticket.category,
+          context.ticket.priority,
+        );
+        return ok({
+          ok: true,
+          ticket_id: ticketId,
+          generated_at: cached.updated_at ?? cached.created_at ??
+            new Date().toISOString(),
+          model: cached.model ?? null,
+          cached: true,
+          triage,
+        });
+      }
+    }
 
     const result = await requestSupportTriage(buildPrompt(context));
     const triage = normalizeTriage(
@@ -625,6 +709,7 @@ Deno.serve(async (req) => {
       context.ticket.category,
       context.ticket.priority,
     );
+    await saveCachedTriage(admin, ctx, ticketId, context, result.model, triage);
     await audit(admin, ctx, {
       ticketId,
       model: result.model,
@@ -637,6 +722,7 @@ Deno.serve(async (req) => {
       ticket_id: ticketId,
       generated_at: new Date().toISOString(),
       model: result.model,
+      cached: false,
       triage,
     });
   } catch (error: unknown) {

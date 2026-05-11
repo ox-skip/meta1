@@ -43,3 +43,59 @@ export type MarketAiDraftResult = {
 export async function generateListingAiDraft(input: MarketAiDraftInput) {
   return await callFn<MarketAiDraftResult>("market-ai-draft-listing", input, 45000);
 }
+
+export type MarketOrderAiRisk = {
+  risk_level: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  mismatch_flags: string[];
+  payment_flags: string[];
+  delivery_flags: string[];
+  dispute_likelihood: string;
+  recommended_actions: string[];
+  buyer_note: string;
+  seller_note: string;
+};
+
+export type MarketOrderAiRiskResult = {
+  ok: true;
+  order_id: string;
+  model?: string;
+  risk: MarketOrderAiRisk;
+};
+
+export async function generateOrderAiRisk(orderId: string) {
+  return await callFn<MarketOrderAiRiskResult>(
+    "market-order-ai-risk",
+    { order_id: orderId },
+    45000,
+  );
+}
+
+export type MarketListingAiPerformance = {
+  performance_score: number;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  conversion_wins: string[];
+  issue_flags: string[];
+  action_items: string[];
+  media_tips: string[];
+  pricing_note: string;
+  suggested_title: string;
+  suggested_description: string;
+};
+
+export type MarketListingAiPerformanceResult = {
+  ok: true;
+  listing_id: string;
+  model?: string;
+  performance: MarketListingAiPerformance;
+};
+
+export async function generateListingAiPerformance(listingId: string) {
+  return await callFn<MarketListingAiPerformanceResult>(
+    "market-listing-ai-performance",
+    { listing_id: listingId },
+    45000,
+  );
+}

@@ -78,6 +78,7 @@ export type MarketSupportAiTriageResult = {
   ticket_id: string;
   generated_at: string;
   model?: string;
+  cached?: boolean;
   triage: MarketSupportAiTriage;
 };
 
@@ -175,10 +176,10 @@ export async function runAdminAction(body: Record<string, unknown>) {
   return await callAdminFn<MarketAdminActionResult>("market-admin-action", body);
 }
 
-export async function generateSupportAiTriage(ticketId: string) {
+export async function generateSupportAiTriage(ticketId: string, options?: { force?: boolean }) {
   return await callAdminFn<MarketSupportAiTriageResult>(
     "market-support-ai-triage",
-    { ticket_id: ticketId },
+    { ticket_id: ticketId, force: options?.force === true },
     45000,
   );
 }

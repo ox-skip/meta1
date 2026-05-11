@@ -947,14 +947,14 @@ export default function MarketAdminIndex() {
     }
   }
 
-  async function runSupportAiTriage(ticket: any) {
+  async function runSupportAiTriage(ticket: any, force = false) {
     const ticketId = String(ticket?.id || "");
     if (!ticketId) return;
     setWorkingKey(`support-ai-${ticketId}`);
     setError(null);
     setNotice(null);
     try {
-      const result = await generateSupportAiTriage(ticketId);
+      const result = await generateSupportAiTriage(ticketId, { force });
       setSupportAiResults((prev) => ({ ...prev, [ticketId]: result }));
       const suggestedReply = String(result.triage?.suggested_admin_reply || "").trim();
       setSupportReplies((prev) => (
@@ -962,7 +962,7 @@ export default function MarketAdminIndex() {
           ? { ...prev, [ticketId]: suggestedReply }
           : prev
       ));
-      setNotice("Gemini triage is ready. Review it before sending or changing priority.");
+      setNotice(result.cached ? "Cached Gemini triage loaded." : "Gemini triage is ready. Review it before sending or changing priority.");
     } catch (e: any) {
       setError(String(e?.message || e || "Could not generate Gemini triage."));
     } finally {
@@ -1075,7 +1075,7 @@ export default function MarketAdminIndex() {
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Gemini triage</Text>
               </View>
               <Text style={{ marginTop: 5, color: FAINT, fontSize: 11, fontWeight: "800" }}>
-                {result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
+                {result.cached ? "Cached - " : ""}{result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
               </Text>
             </View>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
@@ -1109,6 +1109,14 @@ export default function MarketAdminIndex() {
           ) : null}
 
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <ActionButton
+              icon="refresh-outline"
+              label="Refresh AI"
+              color={ACCENT}
+              disabled={!canRespond}
+              loading={workingKey === `support-ai-${ticketId}`}
+              onPress={() => void runSupportAiTriage(ticket, true)}
+            />
             <ActionButton
               icon="create-outline"
               label="Use reply"

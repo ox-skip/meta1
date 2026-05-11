@@ -17,6 +17,7 @@ import { supabase } from "@/services/supabase";
 import { DeliveryGeo, availabilityMayMatch, formatAvailabilitySummary, getCurrentLocationWithGeocode, toDeliveryGeo } from "@/utils/location";
 import { getMyWalletForChain, isWalletMismatchError, payUsdcForOrder, payUsdtForOrder, replaceSavedWalletWithDevice } from "@/services/market/usdcCheckout";
 import { fetchMarketChains, getPreferredMarketChain, setPreferredMarketChain, type MarketChainConfig } from "@/services/market/chainConfig";
+import { generateOrderAiRisk, type MarketOrderAiRiskResult } from "@/services/market/ai";
 import { friendlyMarketError } from "@/utils/marketUx";
 import { resolveUserCountry, type UserCountry } from "@/utils/country";
 import { getRpcUrlForChain } from "@/utils/aaWallet";
@@ -201,6 +202,8 @@ export default function Checkout() {
   const [usdtBalance, setUsdtBalance] = useState(0);
   const [fundingLoading, setFundingLoading] = useState(false);
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
+  const [riskBusy, setRiskBusy] = useState(false);
+  const [riskResult, setRiskResult] = useState<MarketOrderAiRiskResult | null>(null);
   const autoRoutedRef = useRef(false);
   const listingCurrency = String((listing as any)?.currency ?? "").toUpperCase();
   const orderCurrency = String((order as any)?.currency ?? listingCurrency).toUpperCase();
@@ -580,6 +583,27 @@ export default function Checkout() {
     }
   }
 
+  async function runOrderRiskCheck() {
+    if (!oid) return;
+    setRiskBusy(true);
+    setErr(null);
+    try {
+      const result = await generateOrderAiRisk(oid);
+      setRiskResult(result);
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't run the order risk check."));
+    } finally {
+      setRiskBusy(false);
+    }
+  }
+
+  function riskColor(level?: string) {
+    const risk = String(level || "").toUpperCase();
+    if (risk === "URGENT" || risk === "HIGH") return "#FCA5A5";
+    if (risk === "MEDIUM") return "#FDE68A";
+    return "#2DD4BF";
+  }
+
 
   async function payWithUsdt() {
     if (busy) return;
@@ -736,6 +760,68 @@ export default function Checkout() {
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
             Fund only appears when your selected payment wallet is insufficient.
           </Text>
+        </View>
+
+        <View
+          style={{
+            marginTop: 12,
+            borderRadius: 22,
+            padding: 16,
+            backgroundColor: "rgba(255,255,255,0.05)",
+            borderWidth: 1,
+            borderColor: riskResult?.risk ? `${riskColor(riskResult.risk.risk_level)}55` : "rgba(255,255,255,0.08)",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Gemini order risk</Text>
+              <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+                Check payment, delivery, escrow, and dispute signals before you pay.
+              </Text>
+            </View>
+            <Pressable
+              onPress={runOrderRiskCheck}
+              disabled={riskBusy || loading || !oid}
+              style={{
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: "rgba(45,212,191,0.18)",
+                borderWidth: 1,
+                borderColor: "rgba(45,212,191,0.4)",
+                opacity: riskBusy || loading || !oid ? 0.6 : 1,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {riskBusy ? <ActivityIndicator size="small" /> : <Ionicons name="sparkles-outline" size={16} color="#fff" />}
+              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{riskBusy ? "Checking" : "Check"}</Text>
+            </Pressable>
+          </View>
+          {riskResult?.risk ? (
+            <View style={{ marginTop: 12, gap: 8 }}>
+              <Text style={{ color: riskColor(riskResult.risk.risk_level), fontWeight: "900", fontSize: 12 }}>
+                {riskResult.risk.risk_level} risk - {riskResult.risk.confidence} confidence
+              </Text>
+              {riskResult.risk.summary ? (
+                <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>{riskResult.risk.summary}</Text>
+              ) : null}
+              {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].length ? (
+                <Text style={{ color: riskColor(riskResult.risk.risk_level), fontSize: 12, lineHeight: 18 }}>
+                  Flags: {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].join(", ")}
+                </Text>
+              ) : null}
+              {riskResult.risk.recommended_actions?.length ? (
+                <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
+                  Next: {riskResult.risk.recommended_actions.join(" ")}
+                </Text>
+              ) : null}
+              {riskResult.risk.buyer_note ? (
+                <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>{riskResult.risk.buyer_note}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <MarketPolicyPanel

@@ -22,9 +22,11 @@ import {
   createSupportTicket,
   fetchMySupportTickets,
   fetchSupportMessages,
+  generateSupportComposerAi,
   sendSupportMessage,
   subscribeToMySupportTickets,
   subscribeToSupportMessages,
+  type SupportAiComposerResult,
   type SupportAttachment,
   type SupportLocalFile,
   type SupportMessage,
@@ -61,6 +63,7 @@ const CATEGORIES = [
 ];
 
 const PRIORITIES: Array<{ key: SupportTicketPriority; label: string }> = [
+  { key: "LOW", label: "Low" },
   { key: "NORMAL", label: "Normal" },
   { key: "HIGH", label: "High" },
   { key: "URGENT", label: "Urgent" },
@@ -440,6 +443,8 @@ export default function MarketSupportScreen() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [supportAiLoading, setSupportAiLoading] = useState(false);
+  const [supportAiResult, setSupportAiResult] = useState<SupportAiComposerResult | null>(null);
   const [picking, setPicking] = useState<"new" | "reply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -624,6 +629,7 @@ export default function MarketSupportScreen() {
       setPriority("NORMAL");
       setCategory("order");
       setNewFiles([]);
+      setSupportAiResult(null);
       setSelectedId(ticket.id);
       setFilter("fresh");
       await loadTickets(ticket.id);
@@ -634,6 +640,38 @@ export default function MarketSupportScreen() {
     } finally {
       setCreating(false);
     }
+  }
+
+  async function runSupportComposerAi() {
+    setError(null);
+    setNotice(null);
+    setSupportAiLoading(true);
+    try {
+      const result = await generateSupportComposerAi({
+        subject,
+        category,
+        priority,
+        body,
+        relatedOrderId: relatedOrderId.trim() || null,
+        attachments: newFiles,
+      });
+      setSupportAiResult(result);
+      setNotice("Gemini reviewed your ticket draft. Apply only if it matches what happened.");
+    } catch (e: any) {
+      setError(e?.message || "Could not improve this support ticket.");
+    } finally {
+      setSupportAiLoading(false);
+    }
+  }
+
+  function applySupportAiSuggestion() {
+    const suggestion = supportAiResult?.suggestion;
+    if (!suggestion) return;
+    setSubject(suggestion.subject || subject);
+    setCategory(suggestion.category || category);
+    setPriority(suggestion.priority || priority);
+    setBody(suggestion.improved_body || body);
+    setNotice("Gemini suggestion applied. Review before sending.");
   }
 
   async function submitReply() {
@@ -778,7 +816,47 @@ export default function MarketSupportScreen() {
                       </View>
 
                       <PendingFiles files={newFiles} onRemove={(id) => setNewFiles((prev) => prev.filter((file) => file.id !== id))} />
+                      {supportAiResult?.suggestion ? (
+                        <View style={{ borderRadius: 16, padding: 13, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.25)", gap: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <Ionicons name="sparkles-outline" size={16} color={TEAL} />
+                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Gemini ticket check</Text>
+                            <Pill label={labelFromKey(supportAiResult.suggestion.category)} color={TEAL} />
+                            <Pill label={labelFromKey(supportAiResult.suggestion.priority)} color={priorityColor(supportAiResult.suggestion.priority)} />
+                          </View>
+                          {supportAiResult.suggestion.improved_body ? (
+                            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{supportAiResult.suggestion.improved_body}</Text>
+                          ) : null}
+                          {supportAiResult.suggestion.missing_evidence?.length ? (
+                            <Text style={{ color: AMBER, fontSize: 12, lineHeight: 18 }}>
+                              Missing: {supportAiResult.suggestion.missing_evidence.join(", ")}
+                            </Text>
+                          ) : null}
+                          {supportAiResult.suggestion.evidence_to_attach?.length ? (
+                            <Text style={{ color: BLUE, fontSize: 12, lineHeight: 18 }}>
+                              Attach: {supportAiResult.suggestion.evidence_to_attach.join(", ")}
+                            </Text>
+                          ) : null}
+                          {supportAiResult.suggestion.safety_note ? (
+                            <Text style={{ color: ROSE, fontSize: 12, lineHeight: 18 }}>{supportAiResult.suggestion.safety_note}</Text>
+                          ) : null}
+                          <PrimaryButton
+                            label="Apply suggestion"
+                            icon="checkmark-circle-outline"
+                            color={TEAL}
+                            onPress={applySupportAiSuggestion}
+                          />
+                        </View>
+                      ) : null}
                       <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                        <PrimaryButton
+                          label={supportAiLoading ? "Checking" : "Gemini help"}
+                          icon="sparkles-outline"
+                          color={LIME}
+                          loading={supportAiLoading}
+                          disabled={!subject.trim() && !body.trim() && !relatedOrderId.trim() && !newFiles.length}
+                          onPress={() => void runSupportComposerAi()}
+                        />
                         <PrimaryButton
                           label={picking === "new" ? "Attaching" : "Attach proof"}
                           icon="document-attach-outline"

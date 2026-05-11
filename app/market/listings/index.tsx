@@ -21,6 +21,7 @@ import MarketMediaView from "@/components/market/MarketMediaView";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
+import { generateListingAiPerformance, type MarketListingAiPerformanceResult } from "@/services/market/ai";
 import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
@@ -200,6 +201,8 @@ export default function ListingsFeed() {
   const [hasMore, setHasMore] = useState(true);
 
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [listingAiBusyId, setListingAiBusyId] = useState<string | null>(null);
+  const [listingAiResults, setListingAiResults] = useState<Record<string, MarketListingAiPerformanceResult>>({});
 
   const supabaseUrl =
     (supabase as any)?.supabaseUrl ?? (process.env.EXPO_PUBLIC_SUPABASE_URL as string) ?? "";
@@ -533,6 +536,20 @@ export default function ListingsFeed() {
     [isMineView, runDelete],
   );
 
+  const runListingAiPerformance = useCallback(async (listing: Listing) => {
+    if (!isMineView) return;
+    setListingAiBusyId(listing.id);
+    setErr(null);
+    try {
+      const result = await generateListingAiPerformance(listing.id);
+      setListingAiResults((prev) => ({ ...prev, [listing.id]: result }));
+    } catch (e: any) {
+      Alert.alert("Gemini unavailable", e?.message ?? "Could not analyze this listing.");
+    } finally {
+      setListingAiBusyId(null);
+    }
+  }, [isMineView]);
+
   const Header = useMemo(() => {
     const Chip = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
       <Pressable
@@ -797,6 +814,8 @@ export default function ListingsFeed() {
       const coverUrl = cover?.url ?? null;
       const coverKind = cover?.kind ?? "image";
       const busy = busyId === item.id;
+      const aiBusy = listingAiBusyId === item.id;
+      const aiResult = listingAiResults[item.id]?.performance ?? null;
       const displayPrice = getListingPriceDisplay(item as any);
       const showDiscount = displayPrice.hasDiscount;
       const isOutOfStock = item.category === "product" && typeof item.stock_qty === "number" && item.stock_qty <= 0;
@@ -954,6 +973,23 @@ export default function ListingsFeed() {
               </Pressable>
 
               <Pressable
+                disabled={aiBusy}
+                onPress={() => runListingAiPerformance(item)}
+                style={{
+                  width: 44,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(45,212,191,0.16)",
+                  borderWidth: 1,
+                  borderColor: "rgba(45,212,191,0.38)",
+                  opacity: aiBusy ? 0.6 : 1,
+                }}
+              >
+                {aiBusy ? <ActivityIndicator /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
+              </Pressable>
+
+              <Pressable
                 disabled={busy}
                 onPress={() => rpcDelete(item)}
                 style={{
@@ -971,10 +1007,31 @@ export default function ListingsFeed() {
               </Pressable>
             </View>
           ) : null}
+
+          {isMineView && aiResult ? (
+            <View style={{ marginHorizontal: 12, marginBottom: 12, borderRadius: 16, padding: 12, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.25)", gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Gemini score</Text>
+                <Text style={{ color: "#CCFBF1", fontWeight: "900", fontSize: 12 }}>{aiResult.performance_score}/100</Text>
+              </View>
+              {aiResult.summary ? (
+                <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{aiResult.summary}</Text>
+              ) : null}
+              {aiResult.issue_flags?.length ? (
+                <Text style={{ color: "#FDE68A", fontSize: 12, lineHeight: 18 }}>Fix: {aiResult.issue_flags.join(", ")}</Text>
+              ) : null}
+              {aiResult.action_items?.length ? (
+                <Text style={{ color: "#CCFBF1", fontSize: 12, lineHeight: 18 }}>Next: {aiResult.action_items.slice(0, 3).join(" ")}</Text>
+              ) : null}
+              {aiResult.suggested_title ? (
+                <Text style={{ color: "#fff", fontSize: 12, lineHeight: 18 }}>Title: {aiResult.suggested_title}</Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       );
     },
-    [supabaseUrl, isMineView, rpcToggleActive, rpcDelete, busyId],
+    [supabaseUrl, isMineView, rpcToggleActive, rpcDelete, busyId, listingAiBusyId, listingAiResults, runListingAiPerformance],
   );
 
   // While redirecting away, avoid flicker

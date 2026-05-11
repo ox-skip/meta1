@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
 export type SupportTicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
@@ -54,6 +55,23 @@ export type SupportLocalFile = {
   mimeType?: string | null;
   size?: number | null;
   fileBody?: Blob | null;
+};
+
+export type SupportAiComposerSuggestion = {
+  subject: string;
+  category: string;
+  priority: SupportTicketPriority;
+  improved_body: string;
+  missing_evidence: string[];
+  evidence_to_attach: string[];
+  safety_note: string;
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+};
+
+export type SupportAiComposerResult = {
+  ok: true;
+  model?: string;
+  suggestion: SupportAiComposerSuggestion;
 };
 
 export type SupportMessage = {
@@ -327,6 +345,32 @@ export async function createSupportTicket(input: {
   const drafts = await uploadSupportFiles(ticket.id, message.id, attachments);
   await insertSupportAttachments(ticket.id, message.id, drafts);
   return ticket as SupportTicket;
+}
+
+export async function generateSupportComposerAi(input: {
+  subject?: string;
+  category?: string;
+  priority?: SupportTicketPriority;
+  body?: string;
+  relatedOrderId?: string | null;
+  attachments?: SupportLocalFile[];
+}) {
+  return await callFn<SupportAiComposerResult>(
+    "market-support-ai-compose",
+    {
+      subject: input.subject ?? "",
+      category: input.category ?? "general",
+      priority: input.priority ?? "NORMAL",
+      body: input.body ?? "",
+      related_order_id: input.relatedOrderId ?? null,
+      attachments: (input.attachments ?? []).slice(0, 8).map((file) => ({
+        name: file.name ?? null,
+        mimeType: file.mimeType ?? null,
+        size: file.size ?? null,
+      })),
+    },
+    45000,
+  );
 }
 
 export async function sendSupportMessage(ticketId: string, bodyInput: string, attachments: SupportLocalFile[] = []) {

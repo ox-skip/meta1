@@ -14,6 +14,7 @@ import { supabase } from "@/services/supabase";
 import { releaseUsdcForOrder } from "@/services/market/usdcCheckout";
 import { releasePiForOrder } from "@/services/market/piCheckout";
 import { getPreferredMarketChain } from "@/services/market/chainConfig";
+import { generateOrderAiRisk, type MarketOrderAiRiskResult } from "@/services/market/ai";
 import { friendlyMarketError } from "@/utils/marketUx";
 
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
@@ -280,6 +281,8 @@ export default function OrderDetails() {
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [riskBusy, setRiskBusy] = useState(false);
+  const [riskResult, setRiskResult] = useState<MarketOrderAiRiskResult | null>(null);
 
   // Preview modal
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -363,6 +366,27 @@ export default function OrderDetails() {
     buyerProfile?.username,
     order,
   ]);
+
+  async function runOrderRiskCheck() {
+    if (!order?.id) return;
+    setRiskBusy(true);
+    setErr(null);
+    try {
+      const result = await generateOrderAiRisk(order.id);
+      setRiskResult(result);
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't run the order risk check."));
+    } finally {
+      setRiskBusy(false);
+    }
+  }
+
+  function riskColor(level?: string) {
+    const risk = String(level || "").toUpperCase();
+    if (risk === "URGENT" || risk === "HIGH") return "#FCA5A5";
+    if (risk === "MEDIUM") return "#FDE68A";
+    return "#2DD4BF";
+  }
 
   const otpVerified = !!otp?.verified_at;
   const latestDepositIntent = useMemo(() => {
@@ -1812,6 +1836,58 @@ async function pickAndUpload(access: "preview" | "final") {
                 <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
               </View>
             ) : null}
+
+            <Card title="Gemini order risk">
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
+                  Check payment, delivery, escrow, and dispute signals for this order.
+                </Text>
+                <Pressable
+                  disabled={riskBusy || !order?.id}
+                  onPress={runOrderRiskCheck}
+                  style={{
+                    borderRadius: 18,
+                    paddingVertical: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(45,212,191,0.18)",
+                    borderWidth: 1,
+                    borderColor: "rgba(45,212,191,0.4)",
+                    opacity: riskBusy || !order?.id ? 0.6 : 1,
+                    flexDirection: "row",
+                    gap: 8,
+                  }}
+                >
+                  {riskBusy ? <ActivityIndicator /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
+                  <Text style={{ color: "#fff", fontWeight: "900" }}>{riskBusy ? "Checking..." : "Run risk check"}</Text>
+                </Pressable>
+                {riskResult?.risk ? (
+                  <View style={{ borderRadius: 16, padding: 12, backgroundColor: `${riskColor(riskResult.risk.risk_level)}18`, borderWidth: 1, borderColor: `${riskColor(riskResult.risk.risk_level)}55`, gap: 8 }}>
+                    <Text style={{ color: riskColor(riskResult.risk.risk_level), fontWeight: "900" }}>
+                      {riskResult.risk.risk_level} risk - {riskResult.risk.confidence} confidence
+                    </Text>
+                    {riskResult.risk.summary ? (
+                      <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>{riskResult.risk.summary}</Text>
+                    ) : null}
+                    {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].length ? (
+                      <Text style={{ color: riskColor(riskResult.risk.risk_level), fontSize: 12, lineHeight: 18 }}>
+                        Flags: {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].join(", ")}
+                      </Text>
+                    ) : null}
+                    {riskResult.risk.recommended_actions?.length ? (
+                      <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
+                        Next: {riskResult.risk.recommended_actions.join(" ")}
+                      </Text>
+                    ) : null}
+                    {(isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note) ? (
+                      <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
+                        {isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            </Card>
 
             <MarketPolicyPanel
               title="Progress"

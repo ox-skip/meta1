@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { callFn } from "@/services/functions";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
 export type UserIdentity = {
@@ -63,6 +64,21 @@ export type DMAttachment = {
   duration_sec: number | null;
   meta: any;
   created_at: string;
+};
+
+export type DmAiSafetyResult = {
+  ok: true;
+  thread_id: string;
+  model?: string;
+  safety: {
+    risk_level: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+    confidence: "LOW" | "MEDIUM" | "HIGH";
+    summary: string;
+    risk_flags: string[];
+    safer_reply: string;
+    recommended_action: string;
+    should_pause_before_sending: boolean;
+  };
 };
 
 export async function getUserByUsername(username: string): Promise<UserIdentity | null> {
@@ -343,6 +359,22 @@ export async function sendText(threadId: string, text: string, replyToId?: strin
 
   if (error) throw new Error(error.message);
   return data?.id as string;
+}
+
+export async function checkDmSafety(input: {
+  threadId: string;
+  draftMessage?: string;
+  pendingMediaKind?: string | null;
+}) {
+  return await callFn<DmAiSafetyResult>(
+    "market-dm-ai-safety",
+    {
+      thread_id: input.threadId,
+      draft_message: input.draftMessage ?? "",
+      pending_media_kind: input.pendingMediaKind ?? "",
+    },
+    45000,
+  );
 }
 
 async function inferMimeFromUri(uri: string) {
