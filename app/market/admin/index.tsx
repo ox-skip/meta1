@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -26,6 +27,10 @@ import {
   type MarketAdminOverview,
   type MarketAdminWorkspace,
 } from "@/services/market/admin";
+import {
+  uploadSupportFiles,
+  type SupportLocalFile,
+} from "@/services/market/support";
 
 const BG0 = "#0B0907";
 const BG1 = "#22160D";
@@ -45,6 +50,8 @@ type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "admins"
 type ModerationTab = "sellers" | "listings";
 type EscrowTab = "orders" | "stocks" | "chains" | "audit";
 type AdminTab = "members" | "roles" | "invite";
+type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
+type SupportPickedFile = SupportLocalFile & { id: string };
 
 const MODULE_META: Record<ModuleKey, {
   icon: keyof typeof Ionicons.glyphMap;
@@ -235,6 +242,23 @@ function openListing(listingId?: string | null) {
 function openOrder(orderId?: string | null) {
   const id = String(orderId ?? "").trim();
   if (id) router.push(`/market/order/${encodeURIComponent(id)}` as any);
+}
+
+function dmSlugForUser(user: any) {
+  return String(user?.seller?.market_username || user?.profile?.username || user?.id || "").trim();
+}
+
+function openDmSlug(slug?: string | null) {
+  const clean = String(slug || "").trim();
+  if (clean) router.push(`/market/dm/${encodeURIComponent(clean)}` as any);
+}
+
+function supportAttachmentIcon(kind?: string): keyof typeof Ionicons.glyphMap {
+  const raw = String(kind || "").toLowerCase();
+  if (raw === "image") return "image-outline";
+  if (raw === "video") return "videocam-outline";
+  if (raw === "audio") return "mic-outline";
+  return "document-attach-outline";
 }
 
 function statusTone(status?: unknown) {
@@ -541,6 +565,9 @@ export default function MarketAdminIndex() {
   const [moderationTab, setModerationTab] = useState<ModerationTab>("sellers");
   const [escrowTab, setEscrowTab] = useState<EscrowTab>("orders");
   const [adminTab, setAdminTab] = useState<AdminTab>("members");
+  const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
+  const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
+  const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
 
   const visibleModules = useMemo(() => {
     const permissions = overview?.admin.permissions ?? [];
@@ -809,22 +836,190 @@ export default function MarketAdminIndex() {
     );
   }
 
+  async function pickSupportFiles(ticketId: string) {
+    setSupportPickingId(ticketId);
+    setError(null);
+    setNotice(null);
+    try {
+      const DocumentPicker = require("expo-document-picker");
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+        type: "*/*",
+      });
+      if (res.canceled) return;
+      const picked: SupportPickedFile[] = (res.assets ?? [])
+        .filter((asset: any) => !!asset?.uri)
+        .slice(0, 8)
+        .map((asset: any) => ({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          uri: asset.uri,
+          name: asset.name ?? `support-proof-${Date.now()}`,
+          mimeType: asset.mimeType ?? null,
+          size: typeof asset.size === "number" ? asset.size : null,
+          fileBody: asset.file ?? null,
+        }));
+      if (!picked.length) return;
+      setSupportFiles((prev) => ({ ...prev, [ticketId]: [...(prev[ticketId] ?? []), ...picked].slice(0, 8) }));
+    } catch (e: any) {
+      setError(String(e?.message || e || "Could not attach proof."));
+    } finally {
+      setSupportPickingId(null);
+    }
+  }
+
+  function removeSupportFile(ticketId: string, fileId: string) {
+    setSupportFiles((prev) => ({
+      ...prev,
+      [ticketId]: (prev[ticketId] ?? []).filter((file) => file.id !== fileId),
+    }));
+  }
+
+  async function openSupportAttachment(attachment: any) {
+    try {
+      const bucket = String(attachment?.storage_bucket || "market-support");
+      const path = String(attachment?.storage_path || "");
+      let url = String(attachment?.public_url || "");
+      if (!url && path) {
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+        if (error) throw error;
+        url = String(data?.signedUrl || "");
+      }
+      if (url) await Linking.openURL(url);
+    } catch (e: any) {
+      setError(String(e?.message || e || "Could not open proof."));
+    }
+  }
+
+  async function submitSupportReply(ticket: any, body: string) {
+    const ticketId = String(ticket?.id || "");
+    const cleanBody = body.trim();
+    const files = supportFiles[ticketId] ?? [];
+    if (!ticketId || (!cleanBody && !files.length)) return;
+    setWorkingKey(`support-reply-${ticketId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const uploadBatch = files.length ? await uploadSupportFiles(ticketId, `admin-${Date.now()}`, files) : [];
+      await runAdminAction({
+        action: "support_reply",
+        ticket_id: ticketId,
+        body: cleanBody,
+        attachments: uploadBatch,
+        note: actionNote,
+      });
+      setSupportReplies((prev) => ({ ...prev, [ticketId]: "" }));
+      setSupportFiles((prev) => ({ ...prev, [ticketId]: [] }));
+      setActionNote("");
+      await loadUnlockedDashboard();
+    } catch (e: any) {
+      setError(String(e?.message || e || "Could not send support reply."));
+    } finally {
+      setWorkingKey(null);
+      setCheckingSession(false);
+    }
+  }
+
+  function renderSupportPendingFiles(ticketId: string) {
+    const files = supportFiles[ticketId] ?? [];
+    if (!files.length) return null;
+    return (
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {files.map((file) => (
+          <View
+            key={file.id}
+            style={{
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderWidth: 1,
+              borderColor: BORDER,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 230,
+            }}
+          >
+            <Ionicons name="document-attach-outline" size={15} color={ACCENT} />
+            <Text numberOfLines={1} style={{ color: TEXT, fontSize: 12, fontWeight: "800", flex: 1 }}>
+              {file.name || "Proof"}
+            </Text>
+            <Pressable onPress={() => removeSupportFile(ticketId, file.id)} hitSlop={8}>
+              <Ionicons name="close" size={15} color={FAINT} />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  function renderSupportAttachments(attachments?: any[]) {
+    if (!attachments?.length) return null;
+    return (
+      <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {attachments.map((attachment: any) => (
+          <Pressable
+            key={String(attachment.id)}
+            onPress={() => void openSupportAttachment(attachment)}
+            style={{
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderWidth: 1,
+              borderColor: BORDER,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              maxWidth: 240,
+            }}
+          >
+            <Ionicons name={supportAttachmentIcon(attachment.kind)} size={15} color={ACCENT} />
+            <Text numberOfLines={1} style={{ color: TEXT, fontSize: 12, fontWeight: "800", flex: 1 }}>
+              {attachment.file_name || labelFromKey(String(attachment.kind || "proof"))}
+            </Text>
+            <Ionicons name="open-outline" size={14} color={FAINT} />
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
+
   function renderSupport() {
     const allTickets = workspace?.modules.support?.tickets ?? [];
     const allDisputes = workspace?.modules.support?.disputes ?? [];
     const supportTicketRole = overview?.admin.role_key === "super_admin" || overview?.admin.role_key === "support_admin";
     const canRespond = supportTicketRole && hasPermission("complaints.respond");
-    const tickets = allTickets.filter((ticket: any) => matchesSearch(currentModuleSearch, [
+    const searchedTickets = allTickets.filter((ticket: any) => matchesSearch(currentModuleSearch, [
       ticket.id,
       ticket.subject,
       ticket.category,
       ticket.priority,
       ticket.status,
       ticket.related_order_id,
+      ticket.message_slug,
       personLabel(ticket.user),
       personLabel(ticket.assigned_admin),
       ...(ticket.messages ?? []).map((message: any) => message.body),
+      ...(ticket.messages ?? []).map((message: any) => message.message_slug),
     ]));
+    const supportCounts: Record<SupportStatusTab, number> = {
+      fresh: searchedTickets.filter((ticket: any) => String(ticket.status).toUpperCase() === "OPEN").length,
+      in_progress: searchedTickets.filter((ticket: any) => String(ticket.status).toUpperCase() === "IN_PROGRESS").length,
+      resolved: searchedTickets.filter((ticket: any) => String(ticket.status).toUpperCase() === "RESOLVED").length,
+      closed: searchedTickets.filter((ticket: any) => String(ticket.status).toUpperCase() === "CLOSED").length,
+      all: searchedTickets.length,
+    };
+    const tickets = supportStatusTab === "all"
+      ? searchedTickets
+      : searchedTickets.filter((ticket: any) => {
+        const status = String(ticket.status ?? "").toUpperCase();
+        if (supportStatusTab === "fresh") return status === "OPEN";
+        if (supportStatusTab === "in_progress") return status === "IN_PROGRESS";
+        if (supportStatusTab === "resolved") return status === "RESOLVED";
+        return status === "CLOSED";
+      });
     const disputes = allDisputes.filter((dispute: any) => matchesSearch(currentModuleSearch, [
       dispute.id,
       dispute.order_id,
@@ -845,7 +1040,20 @@ export default function MarketAdminIndex() {
           subtitle="Review user tickets, answer marketplace reports, and keep open disputes in one role-bound workspace."
           count={tickets.length + disputes.length}
         >
-          <SearchBox value={currentModuleSearch} onChangeText={setCurrentModuleSearch} placeholder="Search support by user, subject, order, status, or reason" />
+          <View style={{ gap: 10 }}>
+            <SearchBox value={currentModuleSearch} onChangeText={setCurrentModuleSearch} placeholder="Search support by user, subject, order, status, or reason" />
+            <SegmentedControl
+              value={supportStatusTab}
+              onChange={setSupportStatusTab}
+              options={[
+                { key: "fresh", label: "Fresh", count: supportCounts.fresh },
+                { key: "in_progress", label: "In progress", count: supportCounts.in_progress },
+                { key: "resolved", label: "Resolved", count: supportCounts.resolved },
+                { key: "closed", label: "Closed", count: supportCounts.closed },
+                { key: "all", label: "All", count: supportCounts.all },
+              ]}
+            />
+          </View>
         </SectionHeader>
 
         {supportTicketRole ? (
@@ -854,15 +1062,28 @@ export default function MarketAdminIndex() {
               const messages = ticket.messages ?? [];
               const recentMessages = messages.slice(-4);
               const draft = supportReplies[ticket.id] ?? "";
+              const pendingFiles = supportFiles[ticket.id] ?? [];
               const status = String(ticket.status ?? "OPEN").toUpperCase();
+              const ticketDmSlug = ticket.message_slug || dmSlugForUser(ticket.user);
               return (
                 <RecordCard key={ticket.id}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                     <View style={{ flex: 1, minWidth: 220 }}>
                       <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{ticket.subject}</Text>
-                      <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                        {personLabel(ticket.user)} opened a {labelFromKey(String(ticket.category ?? "general"))} ticket.
-                      </Text>
+                      <View style={{ marginTop: 6, flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <Text style={{ color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                          {personLabel(ticket.user)} opened a {labelFromKey(String(ticket.category ?? "general"))} ticket.
+                        </Text>
+                        {ticketDmSlug ? (
+                          <Pressable
+                            onPress={() => openDmSlug(ticketDmSlug)}
+                            style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: "rgba(74,222,128,0.12)", borderWidth: 1, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", gap: 5 }}
+                          >
+                            <Ionicons name="chatbubble-ellipses-outline" size={13} color={SUCCESS} />
+                            <Text style={{ color: SUCCESS, fontSize: 11, fontWeight: "900" }}>DM</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
                       <Pill label={status} color={statusTone(status)} />
@@ -872,6 +1093,7 @@ export default function MarketAdminIndex() {
 
                   <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                     <InfoLine label="User" value={personLabel(ticket.user)} />
+                    <InfoLine label="DM slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
                     <InfoLine label="Order" value={ticket.related_order_id ? shortId(ticket.related_order_id) : "n/a"} />
                     <InfoLine label="Assigned" value={ticket.assigned_admin ? personLabel(ticket.assigned_admin) : "Unassigned"} />
                     <InfoLine label="Last message" value={formatDate(ticket.last_message_at)} />
@@ -893,14 +1115,22 @@ export default function MarketAdminIndex() {
                             borderColor: fromAdmin ? "rgba(74,222,128,0.22)" : "rgba(245,158,11,0.24)",
                           }}
                         >
-                          <Text style={{ color: fromAdmin ? SUCCESS : ACCENT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
-                            {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
-                          </Text>
-                          <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <Text style={{ color: fromAdmin ? SUCCESS : ACCENT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                              {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
+                            </Text>
+                            {!fromAdmin && message.message_slug ? (
+                              <Pressable onPress={() => openDmSlug(message.message_slug)} hitSlop={8}>
+                                <Ionicons name="chatbubble-ellipses-outline" size={14} color={ACCENT} />
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          {message.body ? <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text> : null}
+                          {renderSupportAttachments(message.attachments)}
                         </View>
                       );
                     }) : (
-                      <Text style={{ color: MUTED, fontSize: 13 }}>No messages on this ticket.</Text>
+                      <Text style={{ color: MUTED, fontSize: 13 }}>Conversation is empty.</Text>
                     )}
                   </View>
 
@@ -911,19 +1141,23 @@ export default function MarketAdminIndex() {
                       placeholder="Reply to the user"
                       multiline
                     />
+                    {renderSupportPendingFiles(ticket.id)}
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <ActionButton
+                        icon="document-attach-outline"
+                        label="Attach proof"
+                        color={ACCENT}
+                        disabled={!canRespond}
+                        loading={supportPickingId === ticket.id}
+                        onPress={() => void pickSupportFiles(ticket.id)}
+                      />
                       <ActionButton
                         icon="send-outline"
                         label="Send reply"
                         color={SUCCESS}
-                        disabled={!canRespond || !draft.trim()}
+                        disabled={!canRespond || (!draft.trim() && !pendingFiles.length)}
                         loading={workingKey === `support-reply-${ticket.id}`}
-                        onPress={() => {
-                          const body = draft.trim();
-                          if (!body) return;
-                          setSupportReplies((prev) => ({ ...prev, [ticket.id]: "" }));
-                          void performAction(`support-reply-${ticket.id}`, { action: "support_reply", ticket_id: ticket.id, body });
-                        }}
+                        onPress={() => void submitSupportReply(ticket, draft)}
                       />
                       <ActionButton
                         icon="eye-outline"
@@ -962,7 +1196,7 @@ export default function MarketAdminIndex() {
                 </RecordCard>
               );
             }) : (
-              <EmptyState title={allTickets.length ? "No matching support tickets" : "No support tickets"} subtitle={allTickets.length ? "Clear the search or try a subject, user, status, or order ID." : "New user reports appear here for support admins."} />
+              <EmptyState title={allTickets.length ? "No matching support tickets" : "Support queue is clear"} subtitle={allTickets.length ? "Clear the search or try a subject, user, status, or order ID." : "No tickets require this view."} />
             )}
           </>
         ) : null}

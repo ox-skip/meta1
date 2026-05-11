@@ -352,7 +352,8 @@ async function replySupportTicket(admin: any, ctx: AdminContext, body: any) {
 
   const ticketId = requireUuid("ticket_id", body.ticket_id);
   const message = String(body.body ?? "").trim().slice(0, 3000);
-  if (!message) return bad("Reply required");
+  const attachmentsInput = Array.isArray(body.attachments) ? body.attachments.slice(0, 8) : [];
+  if (!message && !attachmentsInput.length) return bad("Reply or attachment required");
 
   const { data: ticket, error: ticketError } = await admin
     .from("market_support_tickets")
@@ -375,6 +376,42 @@ async function replySupportTicket(admin: any, ctx: AdminContext, body: any) {
     .single();
   if (error) return bad(error.message);
 
+  let attachments: any[] = [];
+  if (attachmentsInput.length) {
+    let rows: any[];
+    try {
+      rows = attachmentsInput.map((item: any) => {
+        const storagePath = String(item?.storage_path ?? "").trim();
+        const storageBucket = String(item?.storage_bucket ?? "market-support").trim() || "market-support";
+        const kind = String(item?.kind ?? "file").trim().toLowerCase();
+        if (!storagePath) throw new Error("attachment storage_path required");
+        if (!["image", "video", "audio", "file"].includes(kind)) throw new Error("unsupported attachment kind");
+        if (storageBucket !== "market-support") throw new Error("unsupported attachment bucket");
+        if (!storagePath.startsWith(`${ctx.userId}/`)) throw new Error("attachment path must belong to this admin");
+        return {
+          message_id: data.id,
+          ticket_id: ticketId,
+          uploaded_by: ctx.userId,
+          kind,
+          storage_bucket: storageBucket,
+          storage_path: storagePath,
+          public_url: item?.public_url ? String(item.public_url) : null,
+          mime_type: item?.mime_type ? String(item.mime_type).slice(0, 160) : null,
+          file_name: item?.file_name ? String(item.file_name).slice(0, 180) : null,
+          file_size: Number.isFinite(Number(item?.file_size)) ? Number(item.file_size) : null,
+        };
+      });
+    } catch (e) {
+      return bad(String((e as any)?.message || e || "Invalid support attachment"));
+    }
+    const { data: attachmentRows, error: attachmentError } = await admin
+      .from("market_support_message_attachments")
+      .insert(rows)
+      .select("id,message_id,ticket_id,uploaded_by,kind,storage_bucket,storage_path,public_url,mime_type,file_name,file_size,created_at");
+    if (attachmentError) return bad(attachmentError.message);
+    attachments = attachmentRows ?? [];
+  }
+
   const nextStatus = String(ticket.status ?? "").toUpperCase() === "OPEN" ? "IN_PROGRESS" : ticket.status;
   const { error: updateError } = await admin
     .from("market_support_tickets")
@@ -394,7 +431,7 @@ async function replySupportTicket(admin: any, ctx: AdminContext, body: any) {
     payload: { user_id: ticket.user_id, subject: ticket.subject, note: adminNote(body.note) },
   });
 
-  return ok({ ok: true, message: data });
+  return ok({ ok: true, message: { ...data, attachments } });
 }
 
 async function updateSupportTicketStatus(admin: any, ctx: AdminContext, body: any) {

@@ -4,7 +4,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -23,17 +25,20 @@ import {
   sendSupportMessage,
   subscribeToMySupportTickets,
   subscribeToSupportMessages,
+  type SupportAttachment,
+  type SupportLocalFile,
   type SupportMessage,
   type SupportTicket,
   type SupportTicketPriority,
   type SupportTicketStatus,
 } from "@/services/market/support";
+import { supabase } from "@/services/supabase";
 
-const BG0 = "#07100D";
-const BG1 = "#16120B";
-const PANEL = "rgba(255,253,247,0.07)";
-const PANEL_STRONG = "rgba(13,18,15,0.92)";
-const BORDER = "rgba(255,253,247,0.12)";
+const BG0 = "#06100D";
+const BG1 = "#17120A";
+const PANEL = "rgba(255,253,247,0.075)";
+const PANEL_STRONG = "rgba(8,13,10,0.94)";
+const BORDER = "rgba(255,253,247,0.13)";
 const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.67)";
 const FAINT = "rgba(255,253,247,0.43)";
@@ -42,6 +47,9 @@ const AMBER = "#F4B75D";
 const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
 const LIME = "#A3E635";
+
+type FilterKey = "fresh" | "in_progress" | "resolved" | "closed" | "all";
+type PickedFile = SupportLocalFile & { id: string };
 
 const CATEGORIES = [
   { key: "order", label: "Order" },
@@ -59,15 +67,14 @@ const PRIORITIES: Array<{ key: SupportTicketPriority; label: string }> = [
 ];
 
 function labelFromKey(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function statusColor(status: SupportTicketStatus) {
-  if (status === "RESOLVED") return LIME;
-  if (status === "CLOSED") return FAINT;
-  if (status === "IN_PROGRESS") return BLUE;
+function statusColor(status: SupportTicketStatus | string) {
+  const raw = String(status).toUpperCase();
+  if (raw === "RESOLVED") return LIME;
+  if (raw === "CLOSED") return FAINT;
+  if (raw === "IN_PROGRESS") return BLUE;
   return AMBER;
 }
 
@@ -82,6 +89,21 @@ function formatDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Now";
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function fileKind(mime?: string | null, name?: string | null) {
+  const raw = String(mime || name || "").toLowerCase();
+  if (raw.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(raw)) return "image";
+  if (raw.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(raw)) return "video";
+  if (raw.startsWith("audio/") || /\.(m4a|mp3|wav|aac)$/i.test(raw)) return "audio";
+  return "file";
+}
+
+function fileIcon(kind: string): keyof typeof Ionicons.glyphMap {
+  if (kind === "image") return "image-outline";
+  if (kind === "video") return "videocam-outline";
+  if (kind === "audio") return "mic-outline";
+  return "document-attach-outline";
 }
 
 function Pill({ label, color }: { label: string; color: string }) {
@@ -145,9 +167,9 @@ function PrimaryButton({
       onPress={onPress}
       disabled={blocked}
       style={{
-        minHeight: 48,
-        borderRadius: 8,
-        paddingHorizontal: 16,
+        minHeight: 46,
+        borderRadius: 14,
+        paddingHorizontal: 15,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
@@ -161,6 +183,135 @@ function PrimaryButton({
       {loading ? <ActivityIndicator color={color} /> : <Ionicons name={icon} size={18} color={color} />}
       <Text style={{ color, fontWeight: "900" }}>{label}</Text>
     </Pressable>
+  );
+}
+
+function FilterTabs({
+  value,
+  onChange,
+  counts,
+}: {
+  value: FilterKey;
+  onChange: (value: FilterKey) => void;
+  counts: Record<FilterKey, number>;
+}) {
+  const options: Array<{ key: FilterKey; label: string; color: string }> = [
+    { key: "fresh", label: "Fresh", color: AMBER },
+    { key: "in_progress", label: "In progress", color: BLUE },
+    { key: "resolved", label: "Resolved", color: LIME },
+    { key: "closed", label: "Closed", color: FAINT },
+    { key: "all", label: "All", color: TEAL },
+  ];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+      {options.map((option) => {
+        const selected = value === option.key;
+        return (
+          <Pressable
+            key={option.key}
+            onPress={() => onChange(option.key)}
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              backgroundColor: selected ? `${option.color}1F` : "rgba(255,255,255,0.045)",
+              borderWidth: 1,
+              borderColor: selected ? `${option.color}55` : BORDER,
+              flexDirection: "row",
+              gap: 7,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: selected ? option.color : MUTED, fontWeight: "900", fontSize: 12 }}>{option.label}</Text>
+            <Text style={{ color: selected ? option.color : FAINT, fontWeight: "900", fontSize: 12 }}>{counts[option.key]}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function PendingFiles({
+  files,
+  onRemove,
+}: {
+  files: PickedFile[];
+  onRemove: (id: string) => void;
+}) {
+  if (!files.length) return null;
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+      {files.map((file) => {
+        const kind = fileKind(file.mimeType, file.name);
+        return (
+          <View
+            key={file.id}
+            style={{
+              maxWidth: 210,
+              borderRadius: 13,
+              padding: 9,
+              backgroundColor: "rgba(255,255,255,0.055)",
+              borderWidth: 1,
+              borderColor: BORDER,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <Ionicons name={fileIcon(kind)} size={17} color={kind === "image" ? TEAL : kind === "video" ? BLUE : AMBER} />
+            <Text numberOfLines={1} style={{ color: TEXT, flex: 1, fontSize: 12, fontWeight: "800" }}>
+              {file.name || "Proof"}
+            </Text>
+            <Pressable onPress={() => onRemove(file.id)} hitSlop={10}>
+              <Ionicons name="close" size={16} color={FAINT} />
+            </Pressable>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function AttachmentList({ attachments }: { attachments?: SupportAttachment[] }) {
+  if (!attachments?.length) return null;
+  return (
+    <View style={{ marginTop: 9, gap: 7 }}>
+      {attachments.map((attachment) => {
+        const url = attachment.signed_url || attachment.public_url;
+        const label = attachment.file_name || labelFromKey(attachment.kind);
+        return (
+          <Pressable
+            key={attachment.id}
+            onPress={() => {
+              if (url) Linking.openURL(url);
+            }}
+            style={{
+              borderRadius: 12,
+              padding: 8,
+              backgroundColor: "rgba(0,0,0,0.18)",
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.12)",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            {attachment.kind === "image" && url ? (
+              <Image source={{ uri: url }} style={{ width: 36, height: 36, borderRadius: 9 }} />
+            ) : (
+              <View style={{ width: 36, height: 36, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.07)" }}>
+                <Ionicons name={fileIcon(attachment.kind)} size={18} color={attachment.kind === "video" ? BLUE : attachment.kind === "audio" ? AMBER : TEAL} />
+              </View>
+            )}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontSize: 12, fontWeight: "900" }}>{label}</Text>
+              <Text style={{ marginTop: 2, color: FAINT, fontSize: 10, fontWeight: "700" }}>{labelFromKey(attachment.kind)}</Text>
+            </View>
+            <Ionicons name="open-outline" size={15} color={MUTED} />
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -178,8 +329,7 @@ function TicketCard({
     <Pressable
       onPress={onPress}
       style={{
-        width: 260,
-        borderRadius: 8,
+        borderRadius: 18,
         padding: 14,
         backgroundColor: selected ? "rgba(45,212,191,0.12)" : PANEL,
         borderWidth: 1,
@@ -200,26 +350,43 @@ function TicketCard({
   );
 }
 
-function MessageRow({ message }: { message: SupportMessage }) {
+function MessageRow({
+  message,
+  meId,
+  onOpenDm,
+}: {
+  message: SupportMessage;
+  meId: string | null;
+  onOpenDm: (slug?: string | null) => void;
+}) {
+  const mine = !!meId && message.sender_id === meId;
   const fromAdmin = message.sender_kind === "ADMIN";
-  const color = fromAdmin ? TEAL : AMBER;
+  const color = mine ? AMBER : fromAdmin ? TEAL : BLUE;
   return (
-    <View style={{ alignSelf: fromAdmin ? "flex-start" : "flex-end", maxWidth: "86%", marginTop: 10 }}>
+    <View style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "88%", marginTop: 10 }}>
       <View
         style={{
-          borderRadius: 8,
+          borderRadius: 16,
           padding: 12,
-          backgroundColor: fromAdmin ? "rgba(45,212,191,0.12)" : "rgba(244,183,93,0.13)",
+          backgroundColor: mine ? "rgba(244,183,93,0.13)" : fromAdmin ? "rgba(45,212,191,0.12)" : "rgba(56,189,248,0.12)",
           borderWidth: 1,
           borderColor: `${color}38`,
         }}
       >
-        <Text style={{ color, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
-          {fromAdmin ? "Support" : "You"}
-        </Text>
-        <Text style={{ marginTop: 6, color: TEXT, fontSize: 14, lineHeight: 20 }}>{message.body}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+          <Text style={{ color, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+            {mine ? "You" : fromAdmin ? "Support" : "User"}
+          </Text>
+          {!mine && message.message_slug ? (
+            <Pressable onPress={() => onOpenDm(message.message_slug)} hitSlop={8}>
+              <Ionicons name="chatbubble-ellipses-outline" size={15} color={color} />
+            </Pressable>
+          ) : null}
+        </View>
+        {message.body ? <Text style={{ marginTop: 6, color: TEXT, fontSize: 14, lineHeight: 20 }}>{message.body}</Text> : null}
+        <AttachmentList attachments={message.attachments} />
       </View>
-      <Text style={{ marginTop: 4, color: FAINT, fontSize: 10, textAlign: fromAdmin ? "left" : "right" }}>
+      <Text style={{ marginTop: 4, color: FAINT, fontSize: 10, textAlign: mine ? "right" : "left" }}>
         {formatDate(message.created_at)}
       </Text>
     </View>
@@ -230,16 +397,19 @@ export default function MarketSupportScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ ticket?: string }>();
   const { width } = useWindowDimensions();
-  const wide = width >= 920;
+  const wide = width >= 940;
   const scrollRef = useRef<ScrollView>(null);
 
+  const [meId, setMeId] = useState<string | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("fresh");
   const [loading, setLoading] = useState(true);
   const [messageLoading, setMessageLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [picking, setPicking] = useState<"new" | "reply" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -249,11 +419,41 @@ export default function MarketSupportScreen() {
   const [relatedOrderId, setRelatedOrderId] = useState("");
   const [body, setBody] = useState("");
   const [reply, setReply] = useState("");
+  const [newFiles, setNewFiles] = useState<PickedFile[]>([]);
+  const [replyFiles, setReplyFiles] = useState<PickedFile[]>([]);
+  const [composerOpen, setComposerOpen] = useState(true);
 
   const selectedTicket = useMemo(
     () => tickets.find((ticket) => ticket.id === selectedId) ?? null,
     [selectedId, tickets],
   );
+
+  const counts = useMemo(() => {
+    const next: Record<FilterKey, number> = { fresh: 0, in_progress: 0, resolved: 0, closed: 0, all: tickets.length };
+    tickets.forEach((ticket) => {
+      if (ticket.status === "OPEN") next.fresh += 1;
+      if (ticket.status === "IN_PROGRESS") next.in_progress += 1;
+      if (ticket.status === "RESOLVED") next.resolved += 1;
+      if (ticket.status === "CLOSED") next.closed += 1;
+    });
+    return next;
+  }, [tickets]);
+
+  const filteredTickets = useMemo(() => {
+    if (filter === "all") return tickets;
+    const status: Record<Exclude<FilterKey, "all">, SupportTicketStatus> = {
+      fresh: "OPEN",
+      in_progress: "IN_PROGRESS",
+      resolved: "RESOLVED",
+      closed: "CLOSED",
+    };
+    return tickets.filter((ticket) => ticket.status === status[filter]);
+  }, [filter, tickets]);
+
+  const latestAdminDmSlug = useMemo(() => {
+    const found = [...messages].reverse().find((message) => message.sender_kind === "ADMIN" && message.message_slug);
+    return found?.message_slug ?? null;
+  }, [messages]);
 
   const loadTickets = useCallback(async (preferredId?: string | null) => {
     const rows = await fetchMySupportTickets();
@@ -286,6 +486,8 @@ export default function MarketSupportScreen() {
       setLoading(true);
       setError(null);
       try {
+        const { data } = await supabase.auth.getUser();
+        setMeId(data?.user?.id ?? null);
         await loadTickets(params.ticket ?? null);
       } catch (e: any) {
         if (mounted) setError(e?.message || "Could not load support.");
@@ -334,6 +536,44 @@ export default function MarketSupportScreen() {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages.length]);
 
+  async function pickProof(target: "new" | "reply") {
+    setError(null);
+    setPicking(target);
+    try {
+      const DocumentPicker = require("expo-document-picker");
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+        type: "*/*",
+      });
+      if (res.canceled) return;
+      const picked: PickedFile[] = (res.assets ?? [])
+        .filter((asset: any) => !!asset?.uri)
+        .slice(0, 8)
+        .map((asset: any) => ({
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          uri: asset.uri,
+          name: asset.name ?? `proof-${Date.now()}`,
+          mimeType: asset.mimeType ?? null,
+          size: typeof asset.size === "number" ? asset.size : null,
+          fileBody: asset.file ?? null,
+        }));
+      if (!picked.length) return;
+      if (target === "new") setNewFiles((prev) => [...prev, ...picked].slice(0, 8));
+      else setReplyFiles((prev) => [...prev, ...picked].slice(0, 8));
+    } catch (e: any) {
+      setError(e?.message || "Could not attach proof.");
+    } finally {
+      setPicking(null);
+    }
+  }
+
+  function openDm(slug?: string | null) {
+    const clean = String(slug || "").trim();
+    if (!clean) return;
+    router.push(`/market/dm/${encodeURIComponent(clean)}` as any);
+  }
+
   async function submitTicket() {
     setError(null);
     setNotice(null);
@@ -345,13 +585,16 @@ export default function MarketSupportScreen() {
         priority,
         body,
         relatedOrderId: relatedOrderId.trim() || null,
+        attachments: newFiles,
       });
       setSubject("");
       setBody("");
       setRelatedOrderId("");
       setPriority("NORMAL");
       setCategory("order");
+      setNewFiles([]);
       setSelectedId(ticket.id);
+      setFilter("fresh");
       await loadTickets(ticket.id);
       await loadMessages(ticket.id);
       setNotice("Support ticket sent.");
@@ -368,8 +611,9 @@ export default function MarketSupportScreen() {
     setNotice(null);
     setSending(true);
     try {
-      await sendSupportMessage(selectedId, reply);
+      await sendSupportMessage(selectedId, reply, replyFiles);
       setReply("");
+      setReplyFiles([]);
       await loadMessages(selectedId);
       await loadTickets(selectedId);
     } catch (e: any) {
@@ -396,7 +640,7 @@ export default function MarketSupportScreen() {
           contentContainerStyle={{
             paddingHorizontal: wide ? 24 : 16,
             paddingTop: 10,
-            paddingBottom: insets.bottom + 130,
+            paddingBottom: insets.bottom + 120,
           }}
         >
           <View style={{ width: "100%", maxWidth: 1180, alignSelf: "center" }}>
@@ -406,7 +650,7 @@ export default function MarketSupportScreen() {
                 style={{
                   width: 46,
                   height: 46,
-                  borderRadius: 8,
+                  borderRadius: 16,
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: PANEL,
@@ -418,129 +662,145 @@ export default function MarketSupportScreen() {
               </Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: TEAL, fontSize: 12, fontWeight: "900", textTransform: "uppercase" }}>Marketplace support</Text>
-                <Text style={{ marginTop: 5, color: TEXT, fontSize: wide ? 30 : 25, fontWeight: "900" }}>Report an issue</Text>
+                <Text style={{ marginTop: 5, color: TEXT, fontSize: wide ? 30 : 25, fontWeight: "900" }}>Cases and proof</Text>
                 <Text style={{ marginTop: 5, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                  Order, payment, listing, account, and safety cases go straight to support admins.
+                  Track each case separately, attach evidence, and continue by DM when a support admin replies.
                 </Text>
               </View>
             </View>
 
             {error ? (
-              <View style={{ marginTop: 16, borderRadius: 8, padding: 13, backgroundColor: "rgba(251,113,133,0.13)", borderWidth: 1, borderColor: "rgba(251,113,133,0.35)" }}>
+              <View style={{ marginTop: 16, borderRadius: 15, padding: 13, backgroundColor: "rgba(251,113,133,0.13)", borderWidth: 1, borderColor: "rgba(251,113,133,0.35)" }}>
                 <Text style={{ color: "#FDA4AF", fontWeight: "900" }}>{error}</Text>
               </View>
             ) : null}
             {notice ? (
-              <View style={{ marginTop: 16, borderRadius: 8, padding: 13, backgroundColor: "rgba(45,212,191,0.12)", borderWidth: 1, borderColor: "rgba(45,212,191,0.32)" }}>
+              <View style={{ marginTop: 16, borderRadius: 15, padding: 13, backgroundColor: "rgba(45,212,191,0.12)", borderWidth: 1, borderColor: "rgba(45,212,191,0.32)" }}>
                 <Text style={{ color: TEAL, fontWeight: "900" }}>{notice}</Text>
               </View>
             ) : null}
 
             <View style={{ marginTop: 18, flexDirection: wide ? "row" : "column", gap: 14, alignItems: "flex-start" }}>
-              <View style={{ width: wide ? 390 : "100%", borderRadius: 8, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <View>
-                    <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>New ticket</Text>
-                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Send the case details once.</Text>
-                  </View>
-                  <View style={{ width: 42, height: 42, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(45,212,191,0.12)", borderWidth: 1, borderColor: "rgba(45,212,191,0.3)" }}>
-                    <Ionicons name="help-buoy-outline" size={20} color={TEAL} />
-                  </View>
+              <View style={{ width: wide ? 410 : "100%", gap: 14 }}>
+                <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
+                  <Pressable onPress={() => setComposerOpen((prev) => !prev)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <View>
+                      <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>New ticket</Text>
+                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Attach screenshots, videos, PDFs, or receipts.</Text>
+                    </View>
+                    <Ionicons name={composerOpen ? "chevron-up" : "chevron-down"} size={20} color={TEAL} />
+                  </Pressable>
+
+                  {composerOpen ? (
+                    <View style={{ marginTop: 16, gap: 12 }}>
+                      <View style={{ gap: 7 }}>
+                        <FieldLabel>Subject</FieldLabel>
+                        <TextInput
+                          value={subject}
+                          onChangeText={setSubject}
+                          placeholder="Short summary"
+                          placeholderTextColor="rgba(255,253,247,0.35)"
+                          style={{ minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, fontSize: 14 }}
+                        />
+                      </View>
+
+                      <View style={{ gap: 8 }}>
+                        <FieldLabel>Category</FieldLabel>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {CATEGORIES.map((item) => (
+                            <Choice key={item.key} label={item.label} selected={category === item.key} color={TEAL} onPress={() => setCategory(item.key)} />
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ gap: 8 }}>
+                        <FieldLabel>Priority</FieldLabel>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {PRIORITIES.map((item) => (
+                            <Choice key={item.key} label={item.label} selected={priority === item.key} color={priorityColor(item.key)} onPress={() => setPriority(item.key)} />
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ gap: 7 }}>
+                        <FieldLabel>Order ID</FieldLabel>
+                        <TextInput
+                          value={relatedOrderId}
+                          onChangeText={setRelatedOrderId}
+                          autoCapitalize="none"
+                          placeholder="Optional"
+                          placeholderTextColor="rgba(255,253,247,0.35)"
+                          style={{ minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, fontSize: 14 }}
+                        />
+                      </View>
+
+                      <View style={{ gap: 7 }}>
+                        <FieldLabel>Message</FieldLabel>
+                        <TextInput
+                          value={body}
+                          onChangeText={setBody}
+                          multiline
+                          placeholder="What happened?"
+                          placeholderTextColor="rgba(255,253,247,0.35)"
+                          style={{ minHeight: 116, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, textAlignVertical: "top" }}
+                        />
+                      </View>
+
+                      <PendingFiles files={newFiles} onRemove={(id) => setNewFiles((prev) => prev.filter((file) => file.id !== id))} />
+                      <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                        <PrimaryButton
+                          label={picking === "new" ? "Attaching" : "Attach proof"}
+                          icon="document-attach-outline"
+                          color={BLUE}
+                          loading={picking === "new"}
+                          onPress={() => void pickProof("new")}
+                        />
+                        <PrimaryButton
+                          label={creating ? "Sending" : "Send ticket"}
+                          icon="paper-plane-outline"
+                          color={TEAL}
+                          loading={creating}
+                          disabled={!subject.trim() || (!body.trim() && !newFiles.length)}
+                          onPress={submitTicket}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
 
-                <View style={{ marginTop: 16, gap: 12 }}>
-                  <View style={{ gap: 7 }}>
-                    <FieldLabel>Subject</FieldLabel>
-                    <TextInput
-                      value={subject}
-                      onChangeText={setSubject}
-                      placeholder="Short summary"
-                      placeholderTextColor="rgba(255,253,247,0.35)"
-                      style={{ minHeight: 46, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, fontSize: 14 }}
-                    />
-                  </View>
-
-                  <View style={{ gap: 8 }}>
-                    <FieldLabel>Category</FieldLabel>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                      {CATEGORIES.map((item) => (
-                        <Choice key={item.key} label={item.label} selected={category === item.key} color={TEAL} onPress={() => setCategory(item.key)} />
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={{ gap: 8 }}>
-                    <FieldLabel>Priority</FieldLabel>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                      {PRIORITIES.map((item) => (
-                        <Choice key={item.key} label={item.label} selected={priority === item.key} color={priorityColor(item.key)} onPress={() => setPriority(item.key)} />
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={{ gap: 7 }}>
-                    <FieldLabel>Order ID</FieldLabel>
-                    <TextInput
-                      value={relatedOrderId}
-                      onChangeText={setRelatedOrderId}
-                      autoCapitalize="none"
-                      placeholder="Optional"
-                      placeholderTextColor="rgba(255,253,247,0.35)"
-                      style={{ minHeight: 46, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, fontSize: 14 }}
-                    />
-                  </View>
-
-                  <View style={{ gap: 7 }}>
-                    <FieldLabel>Message</FieldLabel>
-                    <TextInput
-                      value={body}
-                      onChangeText={setBody}
-                      multiline
-                      placeholder="What happened?"
-                      placeholderTextColor="rgba(255,253,247,0.35)"
-                      style={{ minHeight: 118, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, textAlignVertical: "top" }}
-                    />
-                  </View>
-
-                  <PrimaryButton
-                    label={creating ? "Sending" : "Send ticket"}
-                    icon="paper-plane-outline"
-                    color={TEAL}
-                    loading={creating}
-                    disabled={!subject.trim() || !body.trim()}
-                    onPress={submitTicket}
-                  />
-                </View>
-              </View>
-
-              <View style={{ flex: 1, width: wide ? undefined : "100%", minWidth: 0 }}>
-                <View style={{ borderRadius: 8, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
+                <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <View>
                       <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Tickets</Text>
-                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{tickets.length} active record{tickets.length === 1 ? "" : "s"}</Text>
+                      <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{tickets.length} total</Text>
                     </View>
                     <PrimaryButton label="Refresh" icon="refresh" color={AMBER} onPress={() => void loadTickets(selectedId)} />
                   </View>
 
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ marginTop: 14, gap: 10, paddingRight: 4 }}>
-                    {tickets.length ? tickets.map((ticket) => (
+                  <View style={{ marginTop: 13 }}>
+                    <FilterTabs value={filter} onChange={setFilter} counts={counts} />
+                  </View>
+
+                  <View style={{ marginTop: 13, gap: 10 }}>
+                    {filteredTickets.length ? filteredTickets.map((ticket) => (
                       <TicketCard key={ticket.id} ticket={ticket} selected={ticket.id === selectedId} onPress={() => setSelectedId(ticket.id)} />
                     )) : (
-                      <View style={{ width: wide ? 480 : 300, borderRadius: 8, padding: 16, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
-                        <Text style={{ color: TEXT, fontWeight: "900" }}>No support tickets yet.</Text>
-                        <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 19 }}>Open a ticket when you need help with a marketplace issue.</Text>
+                      <View style={{ borderRadius: 16, padding: 15, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
+                        <Text style={{ color: TEXT, fontWeight: "900" }}>No {filter === "fresh" ? "fresh" : labelFromKey(filter)} tickets</Text>
+                        <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 19 }}>Switch filters or open a new support ticket.</Text>
                       </View>
                     )}
-                  </ScrollView>
+                  </View>
                 </View>
+              </View>
 
-                <View style={{ marginTop: 14, borderRadius: 8, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER, minHeight: 380 }}>
+              <View style={{ flex: 1, width: wide ? undefined : "100%", minWidth: 0 }}>
+                <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER, minHeight: 520 }}>
                   {selectedTicket ? (
                     <>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
                         <View style={{ flex: 1, minWidth: 220 }}>
-                          <Text style={{ color: TEXT, fontSize: 20, fontWeight: "900" }}>{selectedTicket.subject}</Text>
+                          <Text style={{ color: TEXT, fontSize: 21, fontWeight: "900" }}>{selectedTicket.subject}</Text>
                           <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
                             {labelFromKey(selectedTicket.category)} - Created {formatDate(selectedTicket.created_at)}
                           </Text>
@@ -551,19 +811,18 @@ export default function MarketSupportScreen() {
                         </View>
                       </View>
 
-                      {selectedTicket.related_order_id ? (
-                        <Pressable
-                          onPress={() => router.push(`/market/order/${selectedTicket.related_order_id}` as any)}
-                          style={{ marginTop: 12, alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "rgba(56,189,248,0.12)", borderWidth: 1, borderColor: "rgba(56,189,248,0.3)", flexDirection: "row", alignItems: "center", gap: 8 }}
-                        >
-                          <Ionicons name="receipt-outline" size={15} color={BLUE} />
-                          <Text style={{ color: BLUE, fontWeight: "900", fontSize: 12 }}>Open order</Text>
-                        </Pressable>
-                      ) : null}
+                      <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                        {selectedTicket.related_order_id ? (
+                          <PrimaryButton label="Open order" icon="receipt-outline" color={BLUE} onPress={() => router.push(`/market/order/${selectedTicket.related_order_id}` as any)} />
+                        ) : null}
+                        {latestAdminDmSlug ? (
+                          <PrimaryButton label="Message admin" icon="chatbubble-ellipses-outline" color={TEAL} onPress={() => openDm(latestAdminDmSlug)} />
+                        ) : null}
+                      </View>
 
                       <ScrollView
                         ref={scrollRef}
-                        style={{ marginTop: 14, maxHeight: wide ? 420 : 360 }}
+                        style={{ marginTop: 14, maxHeight: wide ? 520 : 410 }}
                         contentContainerStyle={{ paddingBottom: 6 }}
                         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
                       >
@@ -572,31 +831,39 @@ export default function MarketSupportScreen() {
                             <ActivityIndicator color={TEAL} />
                           </View>
                         ) : messages.length ? (
-                          messages.map((message) => <MessageRow key={message.id} message={message} />)
+                          messages.map((message) => <MessageRow key={message.id} message={message} meId={meId} onOpenDm={openDm} />)
                         ) : (
-                          <View style={{ borderRadius: 8, padding: 14, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
-                            <Text style={{ color: TEXT, fontWeight: "900" }}>No messages yet.</Text>
+                          <View style={{ borderRadius: 16, padding: 14, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
+                            <Text style={{ color: TEXT, fontWeight: "900" }}>No messages recorded.</Text>
                           </View>
                         )}
                       </ScrollView>
 
                       <View style={{ marginTop: 14, gap: 8 }}>
                         <FieldLabel>Reply</FieldLabel>
-                        <View style={{ flexDirection: wide ? "row" : "column", alignItems: wide ? "flex-end" : "stretch", gap: 10 }}>
-                          <TextInput
-                            value={reply}
-                            onChangeText={setReply}
-                            multiline
-                            placeholder="Write a reply"
-                            placeholderTextColor="rgba(255,253,247,0.35)"
-                            style={{ flex: 1, minHeight: 58, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, textAlignVertical: "top" }}
+                        <TextInput
+                          value={reply}
+                          onChangeText={setReply}
+                          multiline
+                          placeholder="Write a reply"
+                          placeholderTextColor="rgba(255,253,247,0.35)"
+                          style={{ minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, textAlignVertical: "top" }}
+                        />
+                        <PendingFiles files={replyFiles} onRemove={(id) => setReplyFiles((prev) => prev.filter((file) => file.id !== id))} />
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                          <PrimaryButton
+                            label={picking === "reply" ? "Attaching" : "Attach proof"}
+                            icon="document-attach-outline"
+                            color={BLUE}
+                            loading={picking === "reply"}
+                            onPress={() => void pickProof("reply")}
                           />
                           <PrimaryButton
                             label={sending ? "Sending" : "Send"}
                             icon="send"
                             color={TEAL}
                             loading={sending}
-                            disabled={!reply.trim()}
+                            disabled={!reply.trim() && !replyFiles.length}
                             onPress={submitReply}
                           />
                         </View>

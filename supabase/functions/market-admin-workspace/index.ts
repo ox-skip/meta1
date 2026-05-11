@@ -95,7 +95,7 @@ async function loadSupport(admin: any, ctx: AdminContext) {
     canUseTicketQueue
       ? admin
           .from("market_support_tickets")
-          .select("id,user_id,subject,category,priority,status,related_order_id,assigned_admin_id,last_message_at,resolved_at,created_at,updated_at")
+          .select("id,user_id,subject,category,priority,status,related_order_id,assigned_admin_id,message_slug,last_message_at,resolved_at,created_at,updated_at")
           .order("last_message_at", { ascending: false })
           .limit(DEFAULT_LIMIT)
       : Promise.resolve({ data: [], error: null }),
@@ -121,12 +121,30 @@ async function loadSupport(admin: any, ctx: AdminContext) {
   const { data: ticketMessages, error: ticketMessagesError } = ticketIds.length
     ? await admin
         .from("market_support_messages")
-        .select("id,ticket_id,sender_id,sender_kind,body,created_at")
+        .select("id,ticket_id,sender_id,sender_kind,message_slug,body,created_at")
         .in("ticket_id", ticketIds)
         .order("created_at", { ascending: true })
         .limit(300)
     : { data: [], error: null };
   if (ticketMessagesError) throw ticketMessagesError;
+
+  const messageIds = unique((ticketMessages ?? []).map((row: any) => row.id));
+  const { data: messageAttachments, error: messageAttachmentsError } = messageIds.length
+    ? await admin
+        .from("market_support_message_attachments")
+        .select("id,message_id,ticket_id,uploaded_by,kind,storage_bucket,storage_path,public_url,mime_type,file_name,file_size,created_at")
+        .in("message_id", messageIds)
+        .order("created_at", { ascending: true })
+        .limit(500)
+    : { data: [], error: null };
+  if (messageAttachmentsError) throw messageAttachmentsError;
+
+  const attachmentsByMessage: Record<string, any[]> = {};
+  for (const attachment of messageAttachments ?? []) {
+    const messageId = String(attachment.message_id ?? "");
+    if (!messageId) continue;
+    attachmentsByMessage[messageId] = [...(attachmentsByMessage[messageId] ?? []), attachment];
+  }
 
   const messagesByTicket: Record<string, any[]> = {};
   for (const message of ticketMessages ?? []) {
@@ -166,6 +184,7 @@ async function loadSupport(admin: any, ctx: AdminContext) {
       messages: (messagesByTicket[String(ticket.id)] ?? []).map((message: any) => ({
         ...message,
         sender: userBundle(message.sender_id, profiles, sellers),
+        attachments: attachmentsByMessage[String(message.id)] ?? [],
       })),
     })),
   };
