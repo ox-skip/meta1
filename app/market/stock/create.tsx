@@ -1,20 +1,30 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Linking,
   Modal,
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import {
+  STOCK,
+  StockAlert,
+  StockField,
+  StockInput,
+  StockLoadingState,
+  StockMetric,
+  StockPanel,
+  StockPill,
+  StockScreen,
+  formatStockMoney,
+  stockChainLabel,
+} from "@/components/market/stock/StockUi";
 import { fetchMarketChains } from "@/services/market/chainConfig";
 import { isSupportedEvmStockChain } from "@/services/market/stockChains";
 import { createStockIdentityOnchain } from "@/services/market/stockOnchain";
@@ -22,12 +32,6 @@ import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const BG_TOP = "#0D1B2A";
-const BG_BOTTOM = "#071018";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.12)";
-const MINT = "#2DD4BF";
-const MUTED = "rgba(255,255,255,0.68)";
 const CHAIN_ORDER: Record<string, number> = {
   base: 0,
   ethereum: 1,
@@ -50,9 +54,9 @@ function formatCreationMessage(economics?: {
   const liquidity = Number(economics?.liquidity_usdc ?? 0);
   const reserve = Number(economics?.reserve_usdc ?? economics?.platform_usdc ?? 0);
   if (fee <= 0) {
-    return "EVM stock identity created on-chain. Current factory creation fee is $0.";
+    return "Stock identity created on-chain. No factory fee was charged.";
   }
-  return `EVM stock identity created on-chain. Creation fee $${formatMoney(fee)} split into $${formatMoney(liquidity)} liquidity and $${formatMoney(reserve)} reserve.`;
+  return `Stock identity created on-chain. Factory fee $${formatMoney(fee)}; $${formatMoney(liquidity)} liquidity and $${formatMoney(reserve)} reserve.`;
 }
 
 export default function CreateStockIdentityScreen() {
@@ -116,7 +120,7 @@ export default function CreateStockIdentityScreen() {
         if (sellerErr) throw sellerErr;
 
         if (!mounted) return;
-        const chainRows = (chainData ?? []).filter((c: any) =>
+        const availableChains = (chainData ?? []).filter((c: any) =>
           c.active &&
           isSupportedEvmStockChain(String(c.chain || "")) &&
           c.identity_factory &&
@@ -124,8 +128,8 @@ export default function CreateStockIdentityScreen() {
           (c.identity_stable_address || c.usdc_address)
         );
         const defaultChain =
-          chainRows.find((c: any) => String(c.chain || "").toLowerCase() === "base")?.chain ||
-          chainRows[0]?.chain ||
+          availableChains.find((c: any) => String(c.chain || "").toLowerCase() === "base")?.chain ||
+          availableChains[0]?.chain ||
           "";
         setChains(chainData ?? []);
         setChain(String(defaultChain));
@@ -136,7 +140,7 @@ export default function CreateStockIdentityScreen() {
         });
       } catch (e: any) {
         if (!mounted) return;
-        setErr(friendlyMarketError(e, "Unable to prepare identity creation right now."));
+        setErr(friendlyMarketError(e, "Unable to prepare stock creation."));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -182,12 +186,6 @@ export default function CreateStockIdentityScreen() {
         }, 700);
       }
     } catch (e: any) {
-      console.error("[stock-create-ui] create failed", {
-        message: String(e?.message ?? e ?? ""),
-        chain,
-        name: name.trim(),
-        symbol: symbol.trim().toUpperCase(),
-      });
       if (isWalletMismatchError(e)) {
         Alert.alert(
           "Wallet mismatch detected",
@@ -204,275 +202,319 @@ export default function CreateStockIdentityScreen() {
     }
   }
 
+  function requestConfirm() {
+    setErr(null);
+    if (!name.trim() || name.trim().length < 3) {
+      setErr("Name must be at least 3 characters");
+      return;
+    }
+    if (!symbol.trim() || symbol.trim().length < 2) {
+      setErr("Symbol must be at least 2 characters");
+      return;
+    }
+    if (!chain.trim()) {
+      setErr("Select a chain");
+      return;
+    }
+    setConfirmVisible(true);
+  }
+
   const blockReason = !sellerState.exists
     ? "Create your seller profile first."
     : !sellerState.active
     ? "Your seller profile is inactive."
     : !sellerState.verified
-    ? "Only verified stores can create stock identity."
+    ? "Only verified stores can create a stock identity."
     : null;
 
+  const disabled = submitting || loading || !!blockReason;
+
   return (
-    <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Digital Stock" subtitle="Launch your store's stock token. Fixed supply: 100,000,000 shares." />
+    <StockScreen>
+      <AppHeader title="Create Digital Stock" subtitle="Launch a fixed-supply market identity for your verified store." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
-        {loading ? (
-          <View style={{ marginTop: 30, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: MUTED }}>Preparing screen...</Text>
+        <StockPanel style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <StockPill label="EVM Launch" tone="mint" icon="flash-outline" compact />
+              <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 28, fontWeight: "900" }}>
+                100,000,000 shares
+              </Text>
+              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>
+                Fixed supply, factory pricing, wallet-signed creation.
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(52,211,153,0.14)",
+                borderWidth: 1,
+                borderColor: "rgba(52,211,153,0.38)",
+              }}
+            >
+              <Ionicons name="business-outline" size={24} color={STOCK.mint} />
+            </View>
           </View>
-        ) : null}
+          <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <StockMetric label="Launch Cap" value="< $5K" tone="cyan" />
+            <StockMetric label="Supply" value="100M" tone="mint" />
+            <StockMetric label="Factory Fee" value={formatStockMoney(0)} tone="amber" />
+          </View>
+        </StockPanel>
+
+        {loading ? <StockLoadingState label="Preparing creation" /> : null}
 
         {!!blockReason ? (
-          <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#FCA5A5", fontWeight: "900" }}>{blockReason}</Text>
+          <StockPanel tone="red" style={{ marginTop: 12 }}>
+            <Text style={{ color: "#FFE4E6", fontWeight: "900" }}>{blockReason}</Text>
             <Pressable
               onPress={() => router.push("/market/profile/create" as any)}
               style={{
-                marginTop: 10,
-                borderRadius: 12,
-                paddingVertical: 10,
+                marginTop: 12,
+                borderRadius: 14,
+                paddingVertical: 11,
                 alignItems: "center",
-                backgroundColor: "rgba(45,212,191,0.16)",
+                backgroundColor: "rgba(52,211,153,0.18)",
                 borderWidth: 1,
-                borderColor: "rgba(45,212,191,0.42)",
+                borderColor: "rgba(52,211,153,0.46)",
               }}
             >
-              <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Open Seller Profile</Text>
+              <Text style={{ color: "#D1FAE5", fontWeight: "900" }}>Open Seller Profile</Text>
             </Pressable>
-          </View>
+          </StockPanel>
         ) : null}
 
         <View style={{ marginTop: 12, gap: 10 }}>
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Name</Text>
-            <TextInput
+          <StockField label="Stock Name" caption="Use the public store or product name buyers already recognize.">
+            <StockInput
               value={name}
               onChangeText={setName}
-              placeholder="Example: Ada Fashion House"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
-              editable={!submitting && !loading && !blockReason}
+              placeholder="Ada Fashion House"
+              editable={!disabled}
             />
-          </View>
+          </StockField>
 
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Symbol</Text>
-            <TextInput
+          <StockField label="Ticker Symbol" caption="Two to eight letters works best for trading screens.">
+            <StockInput
               value={symbol}
-              onChangeText={(v) => setSymbol(v.toUpperCase())}
-              placeholder="Example: ADAH"
-              placeholderTextColor="rgba(255,255,255,0.45)"
+              onChangeText={(value) => setSymbol(value.toUpperCase())}
+              placeholder="ADAH"
               autoCapitalize="characters"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
-              editable={!submitting && !loading && !blockReason}
+              editable={!disabled}
             />
-          </View>
+          </StockField>
 
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Slug (optional)</Text>
-            <TextInput
+          <StockField label="Market Slug" caption="Optional. Leave blank to generate one from the stock name.">
+            <StockInput
               value={slug}
               onChangeText={setSlug}
               placeholder="ada-fashion-house-stock"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
-              editable={!submitting && !loading && !blockReason}
+              autoCapitalize="none"
+              editable={!disabled}
             />
-          </View>
+          </StockField>
         </View>
 
-        <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-          <Text style={{ color: "#fff", fontWeight: "800" }}>Chain</Text>
-          <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {chainRows.map((c: any) => {
-              const active = chain === c.chain;
+        <StockPanel style={{ marginTop: 12 }}>
+          <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 14 }}>Settlement Chain</Text>
+          <Text style={{ marginTop: 5, color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
+            Choose where the identity factory and router will create the tradable market.
+          </Text>
+          <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {chainRows.map((row: any) => {
+              const key = String(row.chain || "");
+              const active = chain === key;
               return (
                 <Pressable
-                  key={String(c.chain)}
-                  onPress={() => setChain(String(c.chain))}
+                  key={key}
+                  onPress={() => setChain(key)}
+                  disabled={disabled}
                   style={{
+                    borderRadius: 999,
                     paddingHorizontal: 12,
                     paddingVertical: 8,
-                    borderRadius: 999,
-                    backgroundColor: active ? "rgba(45,212,191,0.20)" : "rgba(255,255,255,0.05)",
+                    backgroundColor: active ? "rgba(52,211,153,0.17)" : STOCK.panelSoft,
                     borderWidth: 1,
-                    borderColor: active ? "rgba(45,212,191,0.55)" : BORDER,
+                    borderColor: active ? "rgba(52,211,153,0.46)" : STOCK.border,
+                    opacity: disabled ? 0.65 : 1,
                   }}
-                  disabled={!!blockReason || submitting}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>
-                    {String(c.chain).toUpperCase().replace("_", " ")}
+                  <Text style={{ color: active ? "#D1FAE5" : STOCK.muted, fontSize: 12, fontWeight: "900" }}>
+                    {stockChainLabel(key)}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
-        </View>
+        </StockPanel>
 
-        <View style={{ marginTop: 16, borderRadius: 16, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, overflow: "hidden" }}>
-          {/* Header */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "rgba(45,212,191,0.2)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="wallet-outline" size={18} color={MINT} />
+        <StockPanel style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 15,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(34,211,238,0.13)",
+                borderWidth: 1,
+                borderColor: "rgba(34,211,238,0.34)",
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={19} color={STOCK.cyan} />
             </View>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 15, flex: 1 }}>Token Economics</Text>
-          </View>
-
-          {/* Info Grid */}
-          <View style={{ gap: 12 }}>
-            {/* Creation Fee */}
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(99,102,241,0.1)", borderWidth: 1, borderColor: "rgba(99,102,241,0.25)" }}>
-              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Creation Fee</Text>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>Determined by Factory</Text>
-              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Current factory fee is typically $0 for new deployments</Text>
-            </View>
-
-            {/* Supply Info */}
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(16,185,129,0.1)", borderWidth: 1, borderColor: "rgba(16,185,129,0.25)" }}>
-              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Initial Supply</Text>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>100,000,000 Shares</Text>
-              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Fixed at launch to ensure fair initial market cap</Text>
-            </View>
-
-            {/* Market Cap */}
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(168,85,247,0.1)", borderWidth: 1, borderColor: "rgba(168,85,247,0.25)" }}>
-              <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Launch Market Cap</Text>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>~$5,000 USD</Text>
-              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Launches with conservative valuation for organic growth</Text>
-            </View>
-
-            {/* Reserved Symbols */}
-            <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "rgba(59,130,246,0.1)", borderWidth: 1, borderColor: "rgba(59,130,246,0.25)" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="shield-checkmark-outline" size={14} color={MINT} />
-                <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>Reserved Protection</Text>
-              </View>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "800", fontSize: 13 }}>Reserved Names Protected</Text>
-              <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.5)", fontSize: 10 }}>Only unlocked for verified stores with special permission</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>Launch Rules</Text>
+              <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }}>
+                Reserved symbols stay protected and factory limits are enforced before signature.
+              </Text>
             </View>
           </View>
-
-          {/* Footer Note */}
-          <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.1)" }}>
-            <Text style={{ color: MUTED, fontSize: 11, lineHeight: 16 }}>
-              💡 <Text style={{ fontWeight: "600" }}>Pro Tip:</Text> Once deployed, your stock token will be tradeable immediately. Price discovery happens naturally through market demand.
-            </Text>
+          <View style={{ marginTop: 14, gap: 9 }}>
+            <StockMetric label="Creation Fee" value="Factory Quote" caption="Read before signing" tone="cyan" />
+            <StockMetric label="Initial Market" value="Guarded" caption="Launch valuation capped by contract" tone="mint" />
+            <StockMetric label="Availability" value="Verified Sellers" caption="Profile status is checked" tone="amber" />
           </View>
-        </View>
+        </StockPanel>
 
-        {!!err ? (
-          <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(127,29,29,0.26)", borderWidth: 1, borderColor: "rgba(239,68,68,0.35)" }}>
-            <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
-          </View>
-        ) : null}
-
-        {!!okMsg ? (
-          <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(6,78,59,0.26)", borderWidth: 1, borderColor: "rgba(16,185,129,0.40)" }}>
-            <Text style={{ color: "#A7F3D0", fontWeight: "800" }}>{okMsg}</Text>
-          </View>
-        ) : null}
+        {!!err ? <StockAlert>{err}</StockAlert> : null}
+        {!!okMsg ? <StockAlert tone="mint">{okMsg}</StockAlert> : null}
 
         <Pressable
-          onPress={() => {
-            if (!name.trim() || name.trim().length < 3) {
-              setErr("Name must be at least 3 characters");
-              return;
-            }
-            if (!symbol.trim() || symbol.trim().length < 2) {
-              setErr("Symbol must be at least 2 characters");
-              return;
-            }
-            if (!chain.trim()) {
-              setErr("Select a chain");
-              return;
-            }
-            setConfirmVisible(true);
-          }}
-          disabled={submitting || loading || !!blockReason}
+          onPress={requestConfirm}
+          disabled={disabled}
           style={{
             marginTop: 14,
-            borderRadius: 14,
-            paddingVertical: 13,
+            borderRadius: 18,
+            minHeight: 52,
             alignItems: "center",
-            backgroundColor: submitting || loading || !!blockReason ? "rgba(45,212,191,0.25)" : "rgba(45,212,191,0.42)",
+            justifyContent: "center",
+            backgroundColor: disabled ? "rgba(255,255,255,0.12)" : "rgba(52,211,153,0.24)",
             borderWidth: 1,
-            borderColor: "rgba(45,212,191,0.55)",
+            borderColor: disabled ? STOCK.border : "rgba(52,211,153,0.52)",
           }}
         >
-          <Text style={{ color: "#ECFEFF", fontWeight: "900", fontSize: 15 }}>
-            {submitting ? "Creating..." : "Create Stock Identity"}
+          <Text style={{ color: disabled ? STOCK.faint : "#D1FAE5", fontWeight: "900", fontSize: 15 }}>
+            {submitting ? "Creating" : "Create Stock Identity"}
           </Text>
         </Pressable>
       </ScrollView>
 
       <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.62)", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <View style={{ width: "100%", maxWidth: 420, borderRadius: 16, padding: 14, backgroundColor: "#0B1220", borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Confirm On-Chain Creation</Text>
-            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Name: {name.trim()}</Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Symbol: {symbol.trim().toUpperCase()}</Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Chain: {chain.toUpperCase().replace("_", " ")}</Text>
-            <Text style={{ marginTop: 8, color: "#E2E8F0", fontWeight: "800", fontSize: 12 }}>
-              This will execute on-chain and read the current creation fee from the factory before your wallet signs.
-            </Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-              The stock supply is fixed at 100,000,000 and the launch valuation is set onchain below $5,000 market cap.
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <StockPanel style={{ width: "100%", maxWidth: 430, backgroundColor: STOCK.modal }}>
+            <StockPill label="Confirm" tone="mint" icon="lock-closed-outline" compact />
+            <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 20 }}>Create stock identity</Text>
+            <Text style={{ marginTop: 8, color: STOCK.muted, lineHeight: 19 }}>
+              Your wallet will sign the factory transaction for this stock.
             </Text>
 
-            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+            <View style={{ marginTop: 14, gap: 8 }}>
+              <StockMetric label="Name" value={name.trim() || "Stock"} />
+              <StockMetric label="Symbol" value={symbol.trim().toUpperCase() || "STOCK"} tone="cyan" />
+              <StockMetric label="Chain" value={stockChainLabel(chain)} tone="mint" />
+            </View>
+
+            <Text style={{ marginTop: 12, color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
+              The supply is fixed at 100,000,000 shares and the launch valuation is enforced by the stock contracts.
+            </Text>
+
+            <View style={{ marginTop: 14, flexDirection: "row", gap: 9 }}>
               <Pressable
                 onPress={() => setConfirmVisible(false)}
-                style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: BORDER }}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: STOCK.panelSoft,
+                  borderWidth: 1,
+                  borderColor: STOCK.border,
+                }}
               >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Cancel</Text>
+                <Text style={{ color: STOCK.ink, fontWeight: "800" }}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={onCreate}
                 disabled={submitting}
-                style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: "rgba(45,212,191,0.34)", borderWidth: 1, borderColor: "rgba(45,212,191,0.60)" }}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(52,211,153,0.24)",
+                  borderWidth: 1,
+                  borderColor: "rgba(52,211,153,0.52)",
+                  opacity: submitting ? 0.7 : 1,
+                }}
               >
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>{submitting ? "Submitting..." : "Confirm"}</Text>
+                <Text style={{ color: "#D1FAE5", fontWeight: "900" }}>{submitting ? "Submitting" : "Confirm"}</Text>
               </Pressable>
             </View>
-          </View>
+          </StockPanel>
         </View>
       </Modal>
 
       <Modal visible={successVisible} transparent animationType="fade" onRequestClose={() => setSuccessVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.62)", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <View style={{ width: "100%", maxWidth: 420, borderRadius: 16, padding: 14, backgroundColor: "#052019", borderWidth: 1, borderColor: "rgba(45,212,191,0.4)" }}>
-            <Text style={{ color: "#A7F3D0", fontWeight: "900", fontSize: 16 }}>Creation Successful</Text>
-            <Text style={{ marginTop: 8, color: "#ECFEFF", fontSize: 12 }}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <StockPanel tone="mint" style={{ width: "100%", maxWidth: 430 }}>
+            <StockPill label="Created" tone="mint" icon="checkmark-circle-outline" compact />
+            <Text style={{ marginTop: 12, color: "#D1FAE5", fontWeight: "900", fontSize: 20 }}>Stock is ready</Text>
+            <Text style={{ marginTop: 8, color: "#ECFDF5", lineHeight: 19 }}>
               Stock identity was created on-chain and synced to BestCity.
             </Text>
             {!!txHash ? (
-              <Text style={{ marginTop: 8, color: "#99F6E4", fontSize: 11 }} numberOfLines={2}>
+              <Text style={{ marginTop: 10, color: "#D1FAE5", fontSize: 11, fontWeight: "800" }} numberOfLines={2}>
                 Tx: {txHash}
               </Text>
             ) : null}
-            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+            <View style={{ marginTop: 14, flexDirection: "row", gap: 9 }}>
               <Pressable
                 onPress={() => setSuccessVisible(false)}
-                style={{ flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: "center", backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: "rgba(255,255,255,0.16)" }}
+                style={{
+                  flex: 1,
+                  minHeight: 45,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,255,255,0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.16)",
+                }}
               >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Close</Text>
+                <Text style={{ color: STOCK.ink, fontWeight: "800" }}>Close</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
                   if (txExplorer) Linking.openURL(txExplorer);
                 }}
                 disabled={!txExplorer}
-                style={{ flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: "center", backgroundColor: txExplorer ? "rgba(45,212,191,0.28)" : "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: txExplorer ? "rgba(45,212,191,0.56)" : "rgba(255,255,255,0.16)" }}
+                style={{
+                  flex: 1,
+                  minHeight: 45,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: txExplorer ? "rgba(34,211,238,0.18)" : "rgba(255,255,255,0.08)",
+                  borderWidth: 1,
+                  borderColor: txExplorer ? "rgba(34,211,238,0.42)" : "rgba(255,255,255,0.16)",
+                  opacity: txExplorer ? 1 : 0.6,
+                }}
               >
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>View On Explorer</Text>
+                <Text style={{ color: txExplorer ? "#CFFAFE" : STOCK.faint, fontWeight: "900" }}>Explorer</Text>
               </Pressable>
             </View>
-          </View>
+          </StockPanel>
         </View>
       </Modal>
-    </LinearGradient>
+    </StockScreen>
   );
 }
-
 

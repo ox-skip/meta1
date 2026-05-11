@@ -1,17 +1,22 @@
-import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import {
+  STOCK,
+  StockAlert,
+  StockField,
+  StockInput,
+  StockMetric,
+  StockPanel,
+  StockPill,
+  StockScreen,
+  formatStockPrice,
+} from "@/components/market/stock/StockUi";
 import { createPiStockIdentity } from "@/services/market/piStock";
 import { friendlyMarketError } from "@/utils/marketUx";
-
-const BG_TOP = "#111827";
-const BG_BOTTOM = "#0B1020";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.12)";
-const MUTED = "rgba(255,255,255,0.68)";
 
 export default function CreatePiStockIdentityScreen() {
   const [submitting, setSubmitting] = useState(false);
@@ -26,12 +31,16 @@ export default function CreatePiStockIdentityScreen() {
     setErr(null);
     setOkMsg(null);
     try {
+      if (!name.trim() || name.trim().length < 3) throw new Error("Name must be at least 3 characters");
+      if (!symbol.trim() || symbol.trim().length < 2) throw new Error("Symbol must be at least 2 characters");
+      const price = Number(initialPrice || 0);
+      if (!Number.isFinite(price) || price <= 0) throw new Error("Enter a valid initial price");
       setSubmitting(true);
       const res = await createPiStockIdentity({
         name: name.trim(),
         symbol: symbol.trim().toUpperCase(),
         slug: slug.trim() || null,
-        initial_price_usdc: Number(initialPrice || 0.01),
+        initial_price_usdc: price,
       });
       const createdSlug = String(res.identity?.slug || "");
       setOkMsg(res.created ? "Pi stock identity created." : "Pi stock identity already exists.");
@@ -48,96 +57,107 @@ export default function CreatePiStockIdentityScreen() {
   }
 
   return (
-    <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
-      <AppHeader title="Create Pi Stock" subtitle="Create a Pi-native identity for the unified stock market." />
+    <StockScreen>
+      <AppHeader title="Create Pi Stock" subtitle="Publish a Pi-native market identity for your store." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
-        <View style={{ marginTop: 12, gap: 10 }}>
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Name</Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Example: Ada Fashion House Pi"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
-              editable={!submitting}
-            />
+        <StockPanel style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <StockPill label="Pi Native" tone="amber" icon="planet-outline" compact />
+              <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 28, fontWeight: "900" }}>
+                Pi settlement
+              </Text>
+              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>
+                Listed beside EVM stocks with Pi buy and sell settlement.
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 22,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(245,158,11,0.15)",
+                borderWidth: 1,
+                borderColor: "rgba(245,158,11,0.42)",
+              }}
+            >
+              <Ionicons name="planet" size={25} color={STOCK.amber} />
+            </View>
           </View>
+          <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <StockMetric label="Rail" value="PI" tone="amber" />
+            <StockMetric label="Reference" value={formatStockPrice(Number(initialPrice || 0), 4)} tone="cyan" />
+            <StockMetric label="Status" value="Tradable" tone="mint" />
+          </View>
+        </StockPanel>
 
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Symbol</Text>
-            <TextInput
+        <View style={{ marginTop: 12, gap: 10 }}>
+          <StockField label="Stock Name" caption="Use the public store or product name for this Pi market.">
+            <StockInput value={name} onChangeText={setName} placeholder="Ada Fashion House Pi" editable={!submitting} />
+          </StockField>
+
+          <StockField label="Ticker Symbol" caption="Keep it short enough for the trading header and order cards.">
+            <StockInput
               value={symbol}
               onChangeText={(value) => setSymbol(value.toUpperCase())}
-              placeholder="Example: ADAPI"
-              placeholderTextColor="rgba(255,255,255,0.45)"
+              placeholder="ADAPI"
               autoCapitalize="characters"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
               editable={!submitting}
             />
-          </View>
+          </StockField>
 
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Slug (optional)</Text>
-            <TextInput
+          <StockField label="Market Slug" caption="Optional. Leave blank to generate one from the stock name.">
+            <StockInput
               value={slug}
               onChangeText={setSlug}
               placeholder="ada-fashion-house-pi-stock"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
+              autoCapitalize="none"
               editable={!submitting}
             />
-          </View>
+          </StockField>
 
-          <View style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>Initial Price (USD reference)</Text>
-            <TextInput
+          <StockField label="Initial Price" caption="USD reference used when the Pi identity is first listed.">
+            <StockInput
               value={initialPrice}
               onChangeText={setInitialPrice}
               keyboardType="decimal-pad"
               placeholder="0.01"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              style={{ marginTop: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 10, color: "#fff", backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}
               editable={!submitting}
             />
-          </View>
+          </StockField>
         </View>
 
-        <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Pi-native Rules</Text>
-          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-            This creates a Pi-native stock identity. It appears in the same market list as EVM stocks, but buy/sell settlement stays on Pi.
+        <StockPanel style={{ marginTop: 12 }}>
+          <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>Pi Market Rules</Text>
+          <Text style={{ marginTop: 6, color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
+            Buy orders authorize in Pi Browser. Sell orders use locked redemption quotes and the stock queue budget.
           </Text>
-        </View>
+        </StockPanel>
 
-        {!!err ? (
-          <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(127,29,29,0.26)", borderWidth: 1, borderColor: "rgba(239,68,68,0.35)" }}>
-            <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
-          </View>
-        ) : null}
-
-        {!!okMsg ? (
-          <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(6,78,59,0.26)", borderWidth: 1, borderColor: "rgba(16,185,129,0.40)" }}>
-            <Text style={{ color: "#A7F3D0", fontWeight: "800" }}>{okMsg}</Text>
-          </View>
-        ) : null}
+        {!!err ? <StockAlert>{err}</StockAlert> : null}
+        {!!okMsg ? <StockAlert tone="mint">{okMsg}</StockAlert> : null}
 
         <Pressable
           onPress={onCreate}
           disabled={submitting}
           style={{
             marginTop: 14,
-            borderRadius: 14,
-            paddingVertical: 13,
+            borderRadius: 18,
+            minHeight: 52,
             alignItems: "center",
-            backgroundColor: submitting ? "rgba(245,158,11,0.22)" : "rgba(245,158,11,0.38)",
+            justifyContent: "center",
+            backgroundColor: submitting ? "rgba(255,255,255,0.12)" : "rgba(245,158,11,0.25)",
             borderWidth: 1,
-            borderColor: "rgba(245,158,11,0.48)",
+            borderColor: submitting ? STOCK.border : "rgba(245,158,11,0.52)",
           }}
         >
-          {submitting ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#FFFBEB", fontWeight: "900", fontSize: 15 }}>Create Pi Stock Identity</Text>}
+          <Text style={{ color: submitting ? STOCK.faint : "#FEF3C7", fontWeight: "900", fontSize: 15 }}>
+            {submitting ? "Creating" : "Create Pi Stock"}
+          </Text>
         </Pressable>
       </ScrollView>
-    </LinearGradient>
+    </StockScreen>
   );
 }

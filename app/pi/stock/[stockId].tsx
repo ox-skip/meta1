@@ -7,6 +7,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import LazyQrCode from "@/components/common/LazyQrCode";
 import {
+  STOCK,
+  StockMetric,
+  StockPill,
+  formatStockMoney,
+  formatStockQuantity,
+} from "@/components/market/stock/StockUi";
+import {
   buildPiStockBrowserHandoff,
   parsePiStockIntentFromQuery,
   payPiStockWithCheckoutToken,
@@ -14,8 +21,8 @@ import {
 } from "@/services/market/piStock";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const BG0 = "#071018";
-const BG1 = "#0D1B2A";
+const BG0 = STOCK.bgBottom;
+const BG1 = STOCK.bgTop;
 
 function delayResult<T>(timeoutMs: number, value: T) {
   return new Promise<T>((resolve) => {
@@ -140,7 +147,7 @@ export default function PublicPiStockCheckout() {
   async function handleResult(res: any) {
     Alert.alert(
       "Pi stock purchase confirmed",
-      "Your Pi payment is confirmed and your stock position has been credited.",
+      "Your Pi payment is confirmed and your stock position is updated.",
       [
         returnTo
           ? { text: "Return to BestCity", onPress: () => void openReturnTarget() }
@@ -164,7 +171,7 @@ export default function PublicPiStockCheckout() {
       const res = await withTimeout(
         payPiStockWithCheckoutToken(intentState.intent),
         25_000,
-        "Pi stock checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
+        "Pi checkout is taking longer than expected. Retry once, then open Pi Browser manually.",
       );
       await handleResult(res);
     } catch (e: any) {
@@ -197,16 +204,17 @@ export default function PublicPiStockCheckout() {
       >
         <View
           style={{
-            borderRadius: 24,
+            borderRadius: 26,
             padding: 18,
-            backgroundColor: "rgba(255,255,255,0.06)",
+            backgroundColor: STOCK.panel,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.12)",
+            borderColor: STOCK.border,
           }}
         >
-          <Text style={{ color: "#fff", fontSize: 24, fontWeight: "900" }}>Pi Stock Checkout</Text>
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
-            Finish this BestCity stock purchase in Pi Browser. The share quantity and Pi amount are locked to this quote.
+          <StockPill label="Pi Payment" tone="amber" icon="planet-outline" compact />
+          <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 27, fontWeight: "900" }}>Pi Stock Checkout</Text>
+          <Text style={{ marginTop: 8, color: STOCK.muted, lineHeight: 20 }}>
+            Finish the stock purchase in Pi Browser. The share quantity and Pi amount are locked to this quote.
           </Text>
           {desktopWeb ? (
             <Text style={{ marginTop: 10, color: "#FDE68A", lineHeight: 20 }}>
@@ -221,16 +229,16 @@ export default function PublicPiStockCheckout() {
                 marginTop: 14,
                 borderRadius: 20,
                 padding: 16,
-                backgroundColor: "rgba(255,255,255,0.04)",
+                backgroundColor: STOCK.panelSoft,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.1)",
+                borderColor: STOCK.border,
                 alignItems: "center",
               }}
             >
               <View style={{ padding: 10, borderRadius: 16, backgroundColor: "#fff" }}>
                 <LazyQrCode value={desktopCheckoutUrl} size={176} />
               </View>
-              <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.72)", textAlign: "center", lineHeight: 20 }}>
+              <Text style={{ marginTop: 12, color: STOCK.muted, textAlign: "center", lineHeight: 20 }}>
                 Scan with your phone to open this locked stock checkout page, then continue in Pi Browser.
               </Text>
               <Pressable
@@ -242,30 +250,39 @@ export default function PublicPiStockCheckout() {
                   paddingHorizontal: 16,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: "rgba(45,212,191,0.18)",
+                  backgroundColor: "rgba(245,158,11,0.18)",
                   borderWidth: 1,
-                  borderColor: "rgba(45,212,191,0.4)",
+                  borderColor: "rgba(245,158,11,0.42)",
                 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Copy link to phone</Text>
+                <Text style={{ color: "#FEF3C7", fontWeight: "900" }}>Copy link to phone</Text>
               </Pressable>
             </View>
           ) : null}
 
-          <View style={{ marginTop: 18, gap: 8 }}>
-            <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>Stock</Text>
-            <Text style={{ color: "#fff", fontWeight: "800" }}>{stockId || "n/a"}</Text>
-            <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 10 }}>Required</Text>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 20 }}>
-              {intentState.intent ? `${Number(intentState.intent.quote.gross_pi).toFixed(8)} PI` : "n/a"}
-            </Text>
-            <Text style={{ color: "rgba(255,255,255,0.72)" }}>
-              Shares: {intentState.intent ? Number(intentState.intent.quote.quantity).toFixed(6) : "n/a"}
-            </Text>
-            <Text style={{ color: "rgba(255,255,255,0.72)" }}>
-              USD: {intentState.intent ? `$${Number(intentState.intent.quote.gross_usdc).toFixed(4)}` : "n/a"}
-            </Text>
-            <Text style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
+          <View style={{ marginTop: 18, gap: 10 }}>
+            <View>
+              <Text style={{ color: STOCK.faint, fontSize: 11, fontWeight: "800" }}>Stock</Text>
+              <Text style={{ marginTop: 4, color: STOCK.ink, fontWeight: "900" }}>{stockId || "n/a"}</Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <StockMetric
+                label="Pay"
+                value={intentState.intent ? `${Number(intentState.intent.quote.gross_pi).toFixed(8)} PI` : "n/a"}
+                tone="amber"
+              />
+              <StockMetric
+                label="Shares"
+                value={intentState.intent ? formatStockQuantity(intentState.intent.quote.quantity, 6) : "n/a"}
+                tone="mint"
+              />
+              <StockMetric
+                label="USD"
+                value={intentState.intent ? formatStockMoney(intentState.intent.quote.gross_usdc, 4) : "n/a"}
+                tone="cyan"
+              />
+            </View>
+            <Text style={{ color: STOCK.faint, fontSize: 12, fontWeight: "700" }}>
               Quote expires: {intentState.intent?.quote.quote_expires_at || "n/a"}
             </Text>
           </View>
@@ -294,7 +311,7 @@ export default function PublicPiStockCheckout() {
             {busy ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Processing...</Text>
+                <Text style={{ color: "#fff", fontWeight: "900" }}>Processing</Text>
               </View>
             ) : (
               <Text style={{ color: "#fff", fontWeight: "900" }}>Pay With Pi</Text>

@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -19,6 +18,19 @@ import {
 import Svg, { Defs, Line, LinearGradient as SvgGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import AppHeader from "@/components/common/AppHeader";
+import {
+  STOCK,
+  StockScreen,
+  StockLoadingState,
+  StockMetric,
+  StockPanel,
+  StockPill,
+  StockSegment,
+  formatStockMoney,
+  formatStockPrice,
+  formatStockQuantity,
+  stockChainLabel,
+} from "@/components/market/stock/StockUi";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import {
   fetchStockDetail,
@@ -39,13 +51,11 @@ import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const BG_TOP = "#0D1B2A";
-const BG_BOTTOM = "#071018";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.12)";
-const MINT = "#2DD4BF";
-const RED = "#F87171";
-const MUTED = "rgba(255,255,255,0.68)";
+const CARD = STOCK.panel;
+const BORDER = STOCK.border;
+const MINT = STOCK.mint;
+const RED = STOCK.red;
+const MUTED = STOCK.muted;
 const DEFAULT_TRADE_SLIPPAGE_BPS = 2200;
 
 type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
@@ -124,15 +134,15 @@ function isDesktopWebEnvironment() {
 
 function CandleChart({ candles }: { candles: Candle[] }) {
   const [width, setWidth] = useState(0);
-  const height = 262;
-  const left = 12;
-  const right = 56;
-  const top = 14;
-  const bottom = 12;
-  const volumeHeight = 58;
-  const priceBottom = height - volumeHeight - 8;
-  const volumeTop = priceBottom + 6;
-  const rows = candles.slice(-100);
+  const height = 330;
+  const left = 16;
+  const right = 66;
+  const top = 18;
+  const bottom = 18;
+  const volumeHeight = 68;
+  const priceBottom = height - volumeHeight - 16;
+  const volumeTop = priceBottom + 10;
+  const rows = candles.slice(-120);
   const plotW = Math.max(10, width - left - right);
   const priceH = Math.max(10, priceBottom - top);
   const volH = Math.max(8, height - bottom - volumeTop);
@@ -153,7 +163,19 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       high = Math.max(1, Number(rows[0]?.high_price_usdc || 1));
       low = Math.max(0, Number(rows[0]?.low_price_usdc || 0));
     }
-    return { high, low, maxVolume: Math.max(1, maxVolume) };
+    const rangePad = Math.max(0.000001, (high - low) * 0.08);
+    return { high: high + rangePad, low: Math.max(0, low - rangePad), maxVolume: Math.max(1, maxVolume) };
+  }, [rows]);
+
+  const marketStats = useMemo(() => {
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    const firstClose = Number(first?.close_price_usdc || first?.open_price_usdc || 0);
+    const lastClose = Number(last?.close_price_usdc || 0);
+    const changePct = firstClose > 0 ? ((lastClose - firstClose) / firstClose) * 100 : 0;
+    const volume = rows.reduce((sum, row) => sum + Number(row.volume_usdc || 0), 0);
+    const trades = rows.reduce((sum, row) => sum + Number(row.trades_count || 0), 0);
+    return { firstClose, lastClose, changePct, volume, trades };
   }, [rows]);
 
   const xStep = plotW / Math.max(1, rows.length);
@@ -194,19 +216,56 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       onLayout={onLayout}
       style={{
         marginTop: 10,
-        borderRadius: 14,
+        borderRadius: 20,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: BORDER,
-        backgroundColor: "rgba(255,255,255,0.035)",
+        borderColor: "rgba(52,211,153,0.24)",
+        backgroundColor: "rgba(3,10,8,0.7)",
       }}
     >
+      <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: STOCK.faint, fontSize: 11, fontWeight: "800" }}>Last price</Text>
+            <Text style={{ marginTop: 3, color: STOCK.ink, fontSize: 22, fontWeight: "900" }}>
+              {formatStockPrice(marketStats.lastClose, 6)}
+            </Text>
+          </View>
+          <View
+            style={{
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              backgroundColor: marketStats.changePct >= 0 ? "rgba(52,211,153,0.15)" : "rgba(251,113,133,0.14)",
+              borderWidth: 1,
+              borderColor: marketStats.changePct >= 0 ? "rgba(52,211,153,0.42)" : "rgba(251,113,133,0.4)",
+            }}
+          >
+            <Text style={{ color: marketStats.changePct >= 0 ? "#D1FAE5" : "#FFE4E6", fontSize: 11, fontWeight: "900" }}>
+              {marketStats.changePct >= 0 ? "+" : ""}
+              {marketStats.changePct.toFixed(2)}%
+            </Text>
+          </View>
+        </View>
+        <View style={{ marginTop: 12, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+          <Text style={{ color: STOCK.muted, fontSize: 11, fontWeight: "800" }}>
+            Range {formatStockPrice(stats.low, 6)} - {formatStockPrice(stats.high, 6)}
+          </Text>
+          <Text style={{ color: STOCK.muted, fontSize: 11, fontWeight: "800" }}>
+            Volume {formatStockMoney(marketStats.volume, 2)}
+          </Text>
+          <Text style={{ color: STOCK.muted, fontSize: 11, fontWeight: "800" }}>
+            Trades {marketStats.trades}
+          </Text>
+        </View>
+      </View>
       {width > 0 && rows.length > 0 ? (
         <Svg width={width} height={height}>
           <Defs>
             <SvgGradient id="stockAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="rgba(45,212,191,0.35)" />
-              <Stop offset="100%" stopColor="rgba(45,212,191,0.02)" />
+              <Stop offset="0%" stopColor="rgba(52,211,153,0.38)" />
+              <Stop offset="55%" stopColor="rgba(34,211,238,0.10)" />
+              <Stop offset="100%" stopColor="rgba(52,211,153,0.00)" />
             </SvgGradient>
           </Defs>
 
@@ -215,27 +274,61 @@ function CandleChart({ candles }: { candles: Candle[] }) {
             const price = stats.high - ((stats.high - stats.low) * i) / 4;
             return (
               <React.Fragment key={`grid-${i}`}>
-                <Line x1={left} y1={yy} x2={left + plotW} y2={yy} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+                <Line x1={left} y1={yy} x2={left + plotW} y2={yy} stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
                 <SvgText x={width - 4} y={yy + 3} fontSize={10} fill="rgba(255,255,255,0.55)" textAnchor="end">
-                  {price.toFixed(4)}
+                  {price >= 1 ? price.toFixed(4) : price.toFixed(6)}
                 </SvgText>
               </React.Fragment>
             );
           })}
 
           {rows.map((_, idx) => {
-            if (idx % 12 !== 0) return null;
+            const interval = Math.max(8, Math.ceil(rows.length / 6));
+            if (idx % interval !== 0) return null;
             const xx = xAt(idx);
-            return <Line key={`v-${idx}`} x1={xx} y1={top} x2={xx} y2={priceBottom} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />;
+            return <Line key={`v-${idx}`} x1={xx} y1={top} x2={xx} y2={priceBottom} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />;
           })}
 
           <Path d={closeLine.areaPath} fill="url(#stockAreaGradient)" />
-          <Path d={closeLine.linePath} stroke="rgba(45,212,191,0.85)" strokeWidth={1.5} fill="none" />
+          <Path d={closeLine.linePath} stroke="rgba(52,211,153,0.92)" strokeWidth={2} strokeLinecap="round" fill="none" />
+
+          {marketStats.lastClose > 0 ? (
+            <>
+              <Line
+                x1={left}
+                y1={yPrice(marketStats.lastClose)}
+                x2={left + plotW}
+                y2={yPrice(marketStats.lastClose)}
+                stroke={marketStats.changePct >= 0 ? "rgba(52,211,153,0.52)" : "rgba(251,113,133,0.48)"}
+                strokeWidth={1}
+                strokeDasharray="5 5"
+              />
+              <Rect
+                x={Math.max(left, width - right + 4)}
+                y={Math.max(top, yPrice(marketStats.lastClose) - 11)}
+                width={right - 8}
+                height={22}
+                rx={8}
+                fill={marketStats.changePct >= 0 ? "rgba(52,211,153,0.20)" : "rgba(251,113,133,0.18)"}
+              />
+              <SvgText
+                x={width - 6}
+                y={Math.max(top + 14, yPrice(marketStats.lastClose) + 4)}
+                fontSize={10}
+                fontWeight="700"
+                fill={marketStats.changePct >= 0 ? "#D1FAE5" : "#FFE4E6"}
+                textAnchor="end"
+              >
+                {marketStats.lastClose >= 1 ? marketStats.lastClose.toFixed(4) : marketStats.lastClose.toFixed(6)}
+              </SvgText>
+            </>
+          ) : null}
 
           {rows.map((c, idx) => {
             const barX = left + idx * xStep + xStep * 0.24;
             const barW = Math.max(1, xStep * 0.5);
             const vy = yVolume(Number(c.volume_usdc || 0));
+            const up = Number(c.close_price_usdc || 0) >= Number(c.open_price_usdc || 0);
             return (
               <Rect
                 key={`vol-${idx}`}
@@ -243,7 +336,8 @@ function CandleChart({ candles }: { candles: Candle[] }) {
                 y={vy}
                 width={barW}
                 height={Math.max(1, height - bottom - vy)}
-                fill="rgba(148,163,184,0.22)"
+                rx={1}
+                fill={up ? "rgba(52,211,153,0.22)" : "rgba(251,113,133,0.20)"}
               />
             );
           })}
@@ -269,16 +363,17 @@ function CandleChart({ candles }: { candles: Candle[] }) {
                   x2={x + candleW / 2}
                   y2={yPrice(l)}
                   stroke={color}
-                  strokeWidth={1}
+                  strokeWidth={1.2}
                 />
-                <Rect x={x} y={top} width={candleW} height={bodyH} fill={color} />
+                <Rect x={x} y={top} width={candleW} height={bodyH} rx={Math.min(3, candleW / 2)} fill={color} />
               </React.Fragment>
             );
           })}
         </Svg>
       ) : (
         <View style={{ height, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: MUTED }}>No candle data yet</Text>
+          <Ionicons name="analytics-outline" size={26} color={STOCK.faint} />
+          <Text style={{ marginTop: 9, color: MUTED, fontWeight: "800" }}>Market chart is waiting for trades.</Text>
         </View>
       )}
     </View>
@@ -487,7 +582,7 @@ export default function StockDetailScreen() {
             amount_usdc: Number(pendingTrade.amount_usdc || 0),
           }),
           25_000,
-          "Pi stock checkout is taking too long. Retry once, then open Pi Browser manually if needed.",
+          "Pi checkout is taking longer than expected. Retry once, then open Pi Browser manually.",
         );
 
         if (res?.handoff_required) {
@@ -512,7 +607,7 @@ export default function StockDetailScreen() {
           Alert.alert(
             desktopWeb ? "Open on your phone" : "Continue in Pi Browser",
             desktopWeb
-              ? "A Pi stock checkout page was opened. Scan its QR code or copy the link to your phone, then continue in Pi Browser."
+              ? "A Pi checkout page opened. Scan its QR code or copy the link to your phone, then continue in Pi Browser."
               : "Pi checkout was opened. Complete the payment there, then return and refresh your position.",
           );
           setPendingTrade(null);
@@ -521,7 +616,7 @@ export default function StockDetailScreen() {
 
         setSuccessTxHash(String(res?.txid || "") || null);
         setSuccessExplorer(null);
-        setSuccessMessage("Pi payment confirmed and your shares were credited to the off-chain stock ledger.");
+        setSuccessMessage("Pi payment confirmed and your shares are now in your stock position.");
       } else if (pendingTrade.rail === "pi" && pendingTrade.side === "sell") {
         const lockedQuote = pendingTrade.lockedQuote;
         if (!lockedQuote?.quote_ref || !lockedQuote?.quote_signature) {
@@ -696,9 +791,7 @@ export default function StockDetailScreen() {
   const title = detail?.identity?.name || "Stock";
   const symbol = detail?.identity?.symbol || "";
   const isPiNativeStock = String(detail?.identity?.chain || "").toLowerCase() === "pi_testnet";
-  const chainText = String(detail?.identity?.chain || "")
-    .toUpperCase()
-    .replace("_", " ");
+  const chainText = stockChainLabel(detail?.identity?.chain);
   const price = Number(detail?.stats?.price ?? 0);
   const mcap = Number(detail?.stats?.market_cap ?? 0);
   const vol24 = Number(detail?.stats?.volume_24h_quote ?? 0);
@@ -746,16 +839,11 @@ export default function StockDetailScreen() {
   }, [isPiNativeStock, tradeRail]);
 
   return (
-    <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+    <StockScreen>
       <InAppTutorial enabled={!loading && !!detail} flow={tutorialFlows.stockDetail} />
-      <AppHeader title="Stock Detail" subtitle="Realtime market + chat + buy/sell execution." />
+      <AppHeader title="Stock Detail" subtitle="Live chart, execution, trades, and market chat." />
       <ScrollView contentContainerStyle={{ paddingBottom: 148 }}>
-        {loading ? (
-          <View style={{ marginTop: 28, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 8, color: MUTED }}>Loading stock details...</Text>
-          </View>
-        ) : null}
+        {loading ? <StockLoadingState label="Loading stock" /> : null}
 
         {!!err ? (
           <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(127,29,29,0.26)", borderWidth: 1, borderColor: "rgba(239,68,68,0.35)" }}>
@@ -765,37 +853,45 @@ export default function StockDetailScreen() {
 
         {!loading && !err && detail ? (
           <>
-            <View style={{ marginTop: 10, borderRadius: 15, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <StockPanel style={{ marginTop: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <View
                   style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 16,
+                    width: 64,
+                    height: 64,
+                    borderRadius: 24,
                     overflow: "hidden",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.2)",
-                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderColor: STOCK.borderStrong,
+                    backgroundColor: STOCK.panelSoft,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
                   {sellerLogo ? (
-                    <Image source={{ uri: sellerLogo }} style={{ width: 52, height: 52 }} />
+                    <Image source={{ uri: sellerLogo }} style={{ width: 64, height: 64 }} />
                   ) : (
-                    <Ionicons name="storefront-outline" size={20} color="rgba(255,255,255,0.75)" />
+                    <Ionicons name="storefront-outline" size={25} color={STOCK.muted} />
                   )}
                 </View>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }} numberOfLines={1}>
-                    {title} <Text style={{ color: "#99F6E4" }}>({symbol})</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>
+                    {title}
                   </Text>
-                  <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <Text style={{ color: MUTED, fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
-                      @{detail?.seller?.market_username || "store"} - {detail?.seller?.business_name || "Store"}
+                  <View style={{ marginTop: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <Text style={{ color: MUTED, fontSize: 12, flexShrink: 1, fontWeight: "700" }} numberOfLines={1}>
+                      {symbol} - @{detail?.seller?.market_username || "store"}
                     </Text>
-                    {detail?.seller?.is_verified ? <Ionicons name="checkmark-circle" size={13} color="#60A5FA" /> : null}
+                    {detail?.seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={STOCK.cyan} /> : null}
+                  </View>
+                  <View style={{ marginTop: 8, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                    <StockPill label={chainText} tone={isPiNativeStock ? "amber" : "cyan"} compact />
+                    <StockPill
+                      label={tradingPaused ? "Trading Paused" : launchGuard ? "Launch Guard" : "Trading Active"}
+                      tone={tradingPaused ? "red" : "mint"}
+                      compact
+                    />
                   </View>
                 </View>
 
@@ -807,101 +903,66 @@ export default function StockDetailScreen() {
                       : undefined
                   }
                   style={{
-                    borderRadius: 10,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    backgroundColor: "rgba(255,255,255,0.06)",
+                    width: 43,
+                    height: 43,
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: STOCK.panelSoft,
                     borderWidth: 1,
                     borderColor: BORDER,
                     opacity: detail?.seller?.market_username ? 1 : 0.5,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "900" }}>Store</Text>
+                  <Ionicons name="storefront-outline" size={18} color={STOCK.ink} />
                 </Pressable>
               </View>
 
-              <View style={{ marginTop: 9, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: BORDER }}>
-                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>{chainText}</Text>
-                </View>
-                <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: tradingPaused ? "rgba(248,113,113,0.18)" : "rgba(45,212,191,0.18)", borderWidth: 1, borderColor: tradingPaused ? "rgba(248,113,113,0.42)" : "rgba(45,212,191,0.45)" }}>
-                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>
-                    {tradingPaused ? "Trading Paused" : launchGuard ? "Bootstrap Guard" : "Trading Active"}
-                  </Text>
-                </View>
+              <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <StockMetric label="Price" value={formatStockPrice(price, 6)} tone="mint" />
+                <StockMetric label="Market Cap" value={formatStockMoney(mcap)} />
+                <StockMetric label="24h Volume" value={formatStockMoney(vol24)} tone="cyan" />
+                <StockMetric label="24h Trades" value={String(trades24)} tone="amber" />
               </View>
+            </StockPanel>
+
+            <View style={{ marginTop: 12 }}>
+              <StockSegment
+                value={timeframe}
+                onChange={setTimeframe}
+                options={[
+                  { key: "1m", label: "1m", tone: "mint" },
+                  { key: "5m", label: "5m", tone: "mint" },
+                  { key: "15m", label: "15m", tone: "cyan" },
+                  { key: "1h", label: "1h", tone: "cyan" },
+                  { key: "4h", label: "4h", tone: "amber" },
+                  { key: "1d", label: "1d", tone: "amber" },
+                ]}
+              />
             </View>
 
-            <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 11 }}>Price</Text>
-                <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>${price.toFixed(6)}</Text>
-              </View>
-              <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 11 }}>Market Cap</Text>
-                <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>${mcap.toFixed(2)}</Text>
-              </View>
-              <View style={{ flex: 1, borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 11 }}>24h Vol</Text>
-                <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>${vol24.toFixed(2)}</Text>
-              </View>
-            </View>
-
-            <View style={{ marginTop: 8, borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: MUTED, fontSize: 11 }}>24h Trades</Text>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>{trades24}</Text>
-            </View>
-
-            <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {(["1m", "5m", "15m", "1h", "4h", "1d"] as Timeframe[]).map((tf) => (
-                <Pressable
-                  key={tf}
-                  onPress={() => setTimeframe(tf)}
-                  style={{
-                    paddingHorizontal: 11,
-                    paddingVertical: 7,
-                    borderRadius: 999,
-                    backgroundColor: timeframe === tf ? "rgba(45,212,191,0.20)" : "rgba(255,255,255,0.05)",
-                    borderWidth: 1,
-                    borderColor: timeframe === tf ? "rgba(45,212,191,0.55)" : BORDER,
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>{tf}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
-              <View style={{ flex: 1, borderRadius: 11, padding: 9, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 10 }}>Last</Text>
-                <Text style={{ marginTop: 3, color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                  ${Number(latestCandle?.close_price_usdc ?? price).toFixed(6)}
-                </Text>
-              </View>
-              <View style={{ flex: 1, borderRadius: 11, padding: 9, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 10 }}>High</Text>
-                <Text style={{ marginTop: 3, color: "#fff", fontWeight: "900", fontSize: 12 }}>${chartHigh.toFixed(6)}</Text>
-              </View>
-              <View style={{ flex: 1, borderRadius: 11, padding: 9, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: MUTED, fontSize: 10 }}>Low</Text>
-                <Text style={{ marginTop: 3, color: "#fff", fontWeight: "900", fontSize: 12 }}>${chartLow.toFixed(6)}</Text>
-              </View>
+            <View style={{ marginTop: 10, flexDirection: "row", gap: 9 }}>
+              <StockMetric label="Last" value={formatStockPrice(Number(latestCandle?.close_price_usdc ?? price), 6)} />
+              <StockMetric label="High" value={formatStockPrice(chartHigh, 6)} tone="mint" />
+              <StockMetric label="Low" value={formatStockPrice(chartLow, 6)} tone="red" />
             </View>
 
             <CandleChart candles={candles} />
 
             {!!myPos ? (
-              <View style={{ marginTop: 10, borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>My Position</Text>
-                <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-                  Qty {Number(myPos.balance_qty || 0).toFixed(6)} - Avg ${Number(myPos.avg_cost_usdc || 0).toFixed(6)} - Realized ${Number(myPos.realized_pnl_usdc || 0).toFixed(2)}
-                </Text>
+              <StockPanel style={{ marginTop: 10 }}>
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>My Position</Text>
+                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                  <StockMetric label="Quantity" value={formatStockQuantity(myPos.balance_qty, 4)} />
+                  <StockMetric label="Average" value={formatStockPrice(myPos.avg_cost_usdc, 6)} tone="cyan" />
+                  <StockMetric label="Realized" value={formatStockMoney(myPos.realized_pnl_usdc)} tone={Number(myPos.realized_pnl_usdc || 0) >= 0 ? "mint" : "red"} />
+                </View>
                 {lockedRedemptionQty > 0 ? (
-                  <Text style={{ marginTop: 4, color: "#FDE68A", fontSize: 12, fontWeight: "800" }}>
-                    Locked for redemption: {lockedRedemptionQty.toFixed(6)} {symbol}
+                  <Text style={{ marginTop: 9, color: "#FDE68A", fontSize: 12, fontWeight: "800" }}>
+                    Locked for redemption: {formatStockQuantity(lockedRedemptionQty, 4)} {symbol}
                   </Text>
                 ) : null}
-              </View>
+              </StockPanel>
             ) : null}
 
             {!!piLiquidity ? (
@@ -921,8 +982,8 @@ export default function StockDetailScreen() {
                 </Text>
                 <Text style={{ marginTop: 4, color: piSellsPaused ? "#FCA5A5" : "#BFDBFE", fontSize: 12, fontWeight: "800" }}>
                   {piSellsPaused
-                    ? "Stress mode: new Pi sells are paused until coverage improves. Existing locked sells remain honored."
-                    : "Stress mode is active dynamically. Sell spreads, cooldowns, and supply release adjust with LPI."}
+                    ? "New Pi sells are paused until coverage improves. Existing locked sells remain honored."
+                    : "Sell spreads, cooldowns, and supply release adjust with LPI."}
                 </Text>
               </View>
             ) : null}
@@ -978,7 +1039,7 @@ export default function StockDetailScreen() {
                   <View style={{ marginBottom: 10, borderRadius: 10, padding: 10, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.28)" }}>
                     <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>EVM Settlement</Text>
                     <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                      This stock is part of the formal EVM market. Pi trading is available only on Pi-native stock identities.
+                      This market settles on EVM. Pi settlement is available on Pi-native stock identities.
                     </Text>
                   </View>
                 ) : null}
@@ -1045,7 +1106,7 @@ export default function StockDetailScreen() {
                 )}
 
                 {quoting ? (
-                  <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Getting quote...</Text>
+                  <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Updating quote</Text>
                 ) : null}
 
                 {!!quote ? (
@@ -1068,14 +1129,14 @@ export default function StockDetailScreen() {
                     ) : null}
                     {tradeRail === "pi" && side === "sell" ? (
                       <Text style={{ marginTop: 3, color: "#FDE68A", fontSize: 12 }}>
-                        Locked payout is fixed once accepted. Shares move to `LOCKED_FOR_REDEMPTION` immediately.
+                        Locked payout is fixed once accepted. Shares are held for redemption immediately.
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && side === "buy" && !isPiBrowser ? (
                       <Text style={{ marginTop: 3, color: "#BFDBFE", fontSize: 12 }}>
                         {isDesktopWeb
                           ? "Desktop will open a phone handoff page with QR and copy-link. Continue on your phone in Pi Browser."
-                          : "Pi buy will hand off to Pi Browser before server completion credits shares."}
+                          : "Pi buy opens Pi Browser before confirmed shares are added."}
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && side === "sell" && piSellsPaused ? (
@@ -1156,7 +1217,7 @@ export default function StockDetailScreen() {
                 >
                   <Text style={{ color: "#fff", fontWeight: "900" }}>
                     {submitting
-                      ? "Submitting..."
+                      ? "Submitting"
                       : tradingPaused
                       ? "Trading Paused"
                       : tradeRail === "pi" && side === "buy"
@@ -1191,7 +1252,7 @@ export default function StockDetailScreen() {
                     }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>
-                      {repairing ? "Repairing..." : "Repair Last Trade"}
+                      {repairing ? "Repairing" : "Repair Last Trade"}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -1222,7 +1283,7 @@ export default function StockDetailScreen() {
               <View style={{ marginTop: 10, gap: 8 }}>
                 {trades.length === 0 ? (
                   <View style={{ borderRadius: 12, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                    <Text style={{ color: MUTED }}>No trades yet.</Text>
+                    <Text style={{ color: MUTED }}>No trades recorded.</Text>
                   </View>
                 ) : (
                   trades.map((t: any) => (
@@ -1250,7 +1311,7 @@ export default function StockDetailScreen() {
             {panel === "chat" ? (
               <View style={{ marginTop: 10 }}>
                 <View style={{ borderRadius: 12, padding: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>Live Chat</Text>
+                  <Text style={{ color: "#fff", fontWeight: "900" }}>Market Chat</Text>
                   <Text style={{ marginTop: 3, color: MUTED, fontSize: 11 }}>Rate limited to reduce spam and noise.</Text>
                 </View>
 
@@ -1258,7 +1319,7 @@ export default function StockDetailScreen() {
                   <TextInput
                     value={chatText}
                     onChangeText={setChatText}
-                    placeholder="Share insight or ask question..."
+                    placeholder="Add a market comment"
                     placeholderTextColor="rgba(255,255,255,0.45)"
                     style={{ color: "#fff", minHeight: 44 }}
                     editable={!posting}
@@ -1276,14 +1337,14 @@ export default function StockDetailScreen() {
                       borderColor: "rgba(45,212,191,0.55)",
                     }}
                   >
-                    <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>{posting ? "Posting..." : "Post Chat"}</Text>
+                    <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>{posting ? "Posting" : "Post"}</Text>
                   </Pressable>
                 </View>
 
                 {chatLoading ? (
                   <View style={{ marginTop: 10, alignItems: "center" }}>
                     <ActivityIndicator />
-                    <Text style={{ marginTop: 7, color: MUTED }}>Loading chat...</Text>
+                    <Text style={{ marginTop: 7, color: MUTED }}>Loading chat</Text>
                   </View>
                 ) : null}
 
@@ -1369,7 +1430,7 @@ export default function StockDetailScreen() {
               ) : quickQuoteErr ? (
                 <Text style={{ color: "#FCA5A5", fontSize: 11, fontWeight: "700" }}>{quickQuoteErr}</Text>
               ) : (
-                <Text style={{ color: MUTED, fontSize: 11 }}>Preparing quote...</Text>
+                <Text style={{ color: MUTED, fontSize: 11 }}>Preparing quote</Text>
               )}
             </View>
             <Pressable
@@ -1385,7 +1446,7 @@ export default function StockDetailScreen() {
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                {submitting ? "Submitting..." : !canQuickBuy ? "Quote Needed" : `Buy $${quickAmount}`}
+                {submitting ? "Submitting" : !canQuickBuy ? "Quote required" : `Buy $${quickAmount}`}
               </Text>
             </Pressable>
           </View>
@@ -1419,15 +1480,15 @@ export default function StockDetailScreen() {
               <>
                 <Text style={{ marginTop: 6, color: "#BFDBFE", fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
-                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} PI will be authorized and only server confirmation credits shares.`
+                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} PI will be authorized after payment confirmation.`
                     : `${Number(confirmQuote?.net_pi || 0).toFixed(8)} PI is locked at this sell quote and will pay out from the queue budget.`}
                 </Text>
                 <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
                     ? isPiBrowser
-                      ? "This runs Pi Browser payment approval and server-side completion."
-                      : "This opens Pi Browser, then server-side completion credits shares after Pi confirms."
-                    : "Shares move to LOCKED_FOR_REDEMPTION immediately after acceptance. Retries are idempotent and queue-driven."}
+                      ? "Pi Browser payment approval runs before shares are added."
+                      : "This opens Pi Browser; shares are added after Pi confirms payment."
+                    : "Shares are held for redemption immediately after acceptance. Queue retries are idempotent."}
                 </Text>
               </>
             ) : (
@@ -1448,7 +1509,7 @@ export default function StockDetailScreen() {
                 disabled={submitting}
                 style={{ flex: 1, borderRadius: 11, paddingVertical: 10, alignItems: "center", backgroundColor: "rgba(45,212,191,0.34)", borderWidth: 1, borderColor: "rgba(45,212,191,0.58)" }}
               >
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>{submitting ? "Submitting..." : "Confirm"}</Text>
+                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>{submitting ? "Submitting" : "Confirm"}</Text>
               </Pressable>
             </View>
           </View>
@@ -1487,7 +1548,7 @@ export default function StockDetailScreen() {
           </View>
         </View>
       </Modal>
-    </LinearGradient>
+    </StockScreen>
   );
 }
 

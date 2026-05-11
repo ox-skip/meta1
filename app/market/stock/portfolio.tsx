@@ -1,21 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import {
+  STOCK,
+  StockAlert,
+  StockEmptyState,
+  StockLoadingState,
+  StockMetric,
+  StockPanel,
+  StockPill,
+  StockScreen,
+  formatStockMoney,
+  formatStockPrice,
+  formatStockQuantity,
+  stockChainLabel,
+} from "@/components/market/stock/StockUi";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import { fetchMyStockPortfolio } from "@/services/market/stocks";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { friendlyMarketError } from "@/utils/marketUx";
-
-const BG_TOP = "#0D1B2A";
-const BG_BOTTOM = "#071018";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.12)";
-const MINT = "#2DD4BF";
-const MUTED = "rgba(255,255,255,0.68)";
 
 export default function StockPortfolioScreen() {
   const [loading, setLoading] = useState(true);
@@ -44,54 +50,78 @@ export default function StockPortfolioScreen() {
     load();
   }, []);
 
+  const summary = useMemo(() => {
+    const invested = rows.reduce((sum, row) => sum + Number(row.balance_qty ?? 0) * Number(row.avg_cost_usdc ?? 0), 0);
+    const pnl = rows.reduce((sum, row) => sum + Number(row.unrealized_pnl_usdc ?? 0), 0);
+    const locked = rows.reduce((sum, row) => sum + Number(row.locked_redemption_qty ?? 0), 0);
+    const winners = rows.filter((row) => Number(row.unrealized_pnl_usdc ?? 0) >= 0).length;
+    return { invested, pnl, locked, winners };
+  }, [rows]);
+
   return (
-    <LinearGradient colors={[BG_TOP, BG_BOTTOM]} style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}>
+    <StockScreen>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.stockPortfolio} />
-      <AppHeader title="Stock Portfolio" subtitle="Holdings from your digital stock trades." />
+      <AppHeader title="Stock Portfolio" subtitle="Positions, cost basis, and trade-ready holdings." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
-        <View style={{ marginTop: 10, borderRadius: 16, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-          <Text style={{ color: MUTED, fontWeight: "700", fontSize: 12 }}>Total Value</Text>
-          <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 24 }}>${total.toFixed(2)}</Text>
-        </View>
-
-        {loading ? (
-          <View style={{ marginTop: 24, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 8, color: MUTED }}>Loading portfolio...</Text>
-          </View>
-        ) : null}
-
-        {!!err ? (
-          <View style={{ marginTop: 12, borderRadius: 12, padding: 10, backgroundColor: "rgba(127,29,29,0.26)", borderWidth: 1, borderColor: "rgba(239,68,68,0.35)" }}>
-            <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
-          </View>
-        ) : null}
-
-        {!loading && !err && rows.length === 0 ? (
-          <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>No holdings yet</Text>
-            <Text style={{ marginTop: 6, color: MUTED }}>Buy a stock identity to see it here.</Text>
-            <Pressable
-              onPress={() => router.push("/market/stock" as any)}
+        <StockPanel style={{ marginTop: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <StockPill label={`${rows.length} Positions`} tone="cyan" icon="layers-outline" compact />
+              <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 32 }}>
+                {formatStockMoney(total)}
+              </Text>
+              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>Current portfolio value</Text>
+            </View>
+            <View
               style={{
-                marginTop: 10,
-                borderRadius: 10,
-                paddingVertical: 10,
+                width: 58,
+                height: 58,
+                borderRadius: 22,
                 alignItems: "center",
-                backgroundColor: "rgba(45,212,191,0.16)",
+                justifyContent: "center",
+                backgroundColor: "rgba(52,211,153,0.14)",
                 borderWidth: 1,
-                borderColor: "rgba(45,212,191,0.45)",
+                borderColor: "rgba(52,211,153,0.38)",
               }}
             >
-              <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Browse Stocks</Text>
-            </Pressable>
+              <Ionicons name="pie-chart" size={25} color={STOCK.mint} />
+            </View>
+          </View>
+
+          <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <StockMetric label="Unrealized P/L" value={formatStockMoney(summary.pnl)} tone={summary.pnl >= 0 ? "mint" : "red"} />
+            <StockMetric label="Cost Basis" value={formatStockMoney(summary.invested)} />
+            <StockMetric label="Locked" value={formatStockQuantity(summary.locked, 2)} tone="amber" />
+          </View>
+        </StockPanel>
+
+        {loading ? <StockLoadingState label="Loading portfolio" /> : null}
+
+        {!!err ? <StockAlert>{err}</StockAlert> : null}
+
+        {!loading && !err && rows.length === 0 ? (
+          <View style={{ marginTop: 14 }}>
+            <StockEmptyState
+              icon="wallet-outline"
+              title="No stock positions"
+              message="Buy a listed stock to add it to your portfolio."
+              actionLabel="Browse Market"
+              onAction={() => router.push("/market/stock" as any)}
+            />
           </View>
         ) : null}
 
-        <View style={{ marginTop: 10, gap: 10 }}>
+        {!loading && rows.length > 0 ? (
+          <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
+            <StockMetric label="Profitable" value={`${summary.winners}/${rows.length}`} tone="mint" />
+            <StockMetric label="Allocation" value={total > 0 ? "Live" : "Flat"} tone="cyan" />
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: 12, gap: 11 }}>
           {rows.map((row: any) => {
             const stock = row.identity;
             const symbol = String(stock?.symbol || "");
@@ -103,41 +133,58 @@ export default function StockPortfolioScreen() {
             const price = Number(row.price_now_usdc ?? 0);
             const value = Number(row.value_usdc ?? 0);
             const pnl = Number(row.unrealized_pnl_usdc ?? 0);
+            const allocation = total > 0 ? (value / total) * 100 : 0;
 
             return (
               <Pressable
                 key={`${row.stock_id}-${row.user_id}`}
                 onPress={() => slug && router.push(`/market/stock/${slug}` as any)}
-                style={{ borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}
+                style={{ opacity: slug ? 1 : 0.72 }}
               >
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>
-                      {name} <Text style={{ color: "#99F6E4" }}>({symbol})</Text>
-                    </Text>
-                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>Qty {qty.toFixed(6)} - Avg ${avg.toFixed(6)}</Text>
-                    {locked > 0 ? (
-                      <Text style={{ marginTop: 2, color: "#FDE68A", fontSize: 11 }}>
-                        Locked for redemption {locked.toFixed(6)}
+                <StockPanel>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 16 }} numberOfLines={1}>
+                        {name}
                       </Text>
-                    ) : null}
-                    <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-                      Current ${price.toFixed(6)}
-                    </Text>
+                      <View style={{ marginTop: 6, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                        <StockPill label={symbol || "STOCK"} tone="cyan" compact />
+                        <StockPill label={stockChainLabel(stock?.chain)} compact />
+                        {locked > 0 ? <StockPill label="Redemption Lock" tone="amber" compact /> : null}
+                      </View>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 18 }}>{formatStockMoney(value)}</Text>
+                      <StockPill label={formatStockMoney(pnl)} tone={pnl >= 0 ? "mint" : "red"} compact />
+                    </View>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>${value.toFixed(2)}</Text>
-                    <Text style={{ marginTop: 4, color: pnl >= 0 ? MINT : "#FCA5A5", fontSize: 12, fontWeight: "800" }}>
-                      {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)}
-                    </Text>
-                    <Ionicons style={{ marginTop: 3 }} name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
+
+                  <View style={{ marginTop: 13, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                    <StockMetric label="Quantity" value={formatStockQuantity(qty, 4)} />
+                    <StockMetric label="Average" value={formatStockPrice(avg, 6)} />
+                    <StockMetric label="Current" value={formatStockPrice(price, 6)} />
                   </View>
-                </View>
+
+                  <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <View style={{ flex: 1, height: 8, borderRadius: 999, backgroundColor: STOCK.panelSoft, overflow: "hidden" }}>
+                      <View
+                        style={{
+                          width: `${Math.max(4, Math.min(100, allocation))}%`,
+                          height: 8,
+                          borderRadius: 999,
+                          backgroundColor: pnl >= 0 ? STOCK.mint : STOCK.red,
+                        }}
+                      />
+                    </View>
+                    <Text style={{ color: STOCK.muted, fontSize: 11, fontWeight: "800" }}>{allocation.toFixed(1)}%</Text>
+                    <Ionicons name="chevron-forward" size={17} color={STOCK.muted} />
+                  </View>
+                </StockPanel>
               </Pressable>
             );
           })}
         </View>
       </ScrollView>
-    </LinearGradient>
+    </StockScreen>
   );
 }

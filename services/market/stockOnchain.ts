@@ -167,20 +167,22 @@ const IDENTITY_CREATED_EVENT_SIG =
 const IDENTITY_CREATED_TOPIC0 = keccak256(stringToHex(IDENTITY_CREATED_EVENT_SIG));
 
 function logCreate(step: string, meta?: Record<string, unknown>) {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return;
   if (meta) {
-    console.log(`[stock-create] ${step}`, meta);
+    console.debug("stock create", step, meta);
     return;
   }
-  console.log(`[stock-create] ${step}`);
+  console.debug("stock create", step);
 }
 
 function logCreateError(step: string, err: unknown, meta?: Record<string, unknown>) {
+  if (typeof __DEV__ === "undefined" || !__DEV__) return;
   const message = String((err as any)?.message ?? err ?? "unknown");
   if (meta) {
-    console.error(`[stock-create] ${step} FAILED`, { message, ...meta });
+    console.warn("stock create failed", step, { message, ...meta });
     return;
   }
-  console.error(`[stock-create] ${step} FAILED`, { message });
+  console.warn("stock create failed", step, { message });
 }
 
 function toNumber(input: unknown, fallback = 0) {

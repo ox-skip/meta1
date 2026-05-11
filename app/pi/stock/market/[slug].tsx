@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { View } from "react-native";
 
 import AppHeader from "@/components/common/AppHeader";
+import { StockLoadingState, StockScreen } from "@/components/market/stock/StockUi";
 
 export default function PiStockDetailRedirect() {
   const params = useLocalSearchParams<{ slug?: string }>();
@@ -17,12 +18,11 @@ export default function PiStockDetailRedirect() {
   }, [slug]);
 
   return (
-    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14, backgroundColor: "#071018" }}>
-      <AppHeader title="Stock Detail" subtitle="Redirecting to unified market view..." />
-      <View style={{ marginTop: 24, alignItems: "center" }}>
-        <ActivityIndicator />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.72)" }}>Opening stock...</Text>
+    <StockScreen>
+      <AppHeader title="Stock Detail" subtitle="Opening market detail." />
+      <View style={{ marginTop: 10 }}>
+        <StockLoadingState label="Opening stock" />
       </View>
-    </View>
+    </StockScreen>
   );
 }
