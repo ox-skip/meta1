@@ -250,9 +250,9 @@ function dmSlugForUser(user: any) {
   return String(user?.seller?.market_username || user?.profile?.username || user?.id || "").trim();
 }
 
-function openDmSlug(slug?: string | null) {
-  const clean = String(slug || "").trim();
-  if (clean) router.push(`/market/dm/${encodeURIComponent(clean)}` as any);
+function openSupportTicket(ticketId?: string | null) {
+  const clean = String(ticketId || "").trim();
+  if (clean) router.push(`/market/support/${encodeURIComponent(clean)}?admin=1` as any);
 }
 
 function supportAttachmentIcon(kind?: string): keyof typeof Ionicons.glyphMap {
@@ -602,7 +602,7 @@ export default function MarketAdminIndex() {
     const moduleParam = String(params.module || "").trim().toLowerCase();
     const ticketParam = String(params.ticket || "").trim();
     if (moduleParam === "support") setActiveModule("support");
-    if (ticketParam) setSelectedSupportTicketId(ticketParam);
+    if (ticketParam) openSupportTicket(ticketParam);
   }, [params.module, params.ticket]);
 
   function setCurrentModuleSearch(value: string) {
@@ -1209,7 +1209,7 @@ export default function MarketAdminIndex() {
         <SectionHeader
           icon="chatbubbles-outline"
           title="Support queue"
-          subtitle="Review user tickets, answer marketplace reports, and keep open disputes in one role-bound workspace."
+          subtitle="Review case slugs, then open the dedicated support-admin chat for replies and status updates."
           count={tickets.length + disputes.length}
         >
           <View style={{ gap: 10 }}>
@@ -1229,22 +1229,21 @@ export default function MarketAdminIndex() {
         </SectionHeader>
 
         {supportTicketRole ? (
-          <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 12, alignItems: "flex-start" }}>
-            <View style={{ width: isDesktop ? 430 : "100%", gap: 10 }}>
+          <View style={{ gap: 10 }}>
+            <View style={{ width: "100%", gap: 10 }}>
               {tickets.length ? tickets.map((ticket: any) => {
                 const latest = latestSupportMessage(ticket);
                 const status = String(ticket.status ?? "OPEN").toUpperCase();
-                const selected = selectedTicket?.id === ticket.id;
                 return (
                   <Pressable
                     key={ticket.id}
-                    onPress={() => setSelectedSupportTicketId(ticket.id)}
+                    onPress={() => openSupportTicket(ticket.id)}
                     style={{
                       borderRadius: 8,
                       padding: 12,
-                      backgroundColor: selected ? "rgba(74,222,128,0.10)" : PANEL_ALT,
+                      backgroundColor: PANEL_ALT,
                       borderWidth: 1,
-                      borderColor: selected ? "rgba(74,222,128,0.32)" : BORDER,
+                      borderColor: BORDER,
                       flexDirection: "row",
                       gap: 11,
                       alignItems: "flex-start",
@@ -1267,6 +1266,9 @@ export default function MarketAdminIndex() {
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
                         <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: SUCCESS, fontSize: 12, fontWeight: "900" }}>
+                            support-{shortId(ticket.id).toLowerCase()}
+                          </Text>
                           <Text numberOfLines={1} style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>{ticket.subject}</Text>
                           <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontSize: 12, fontWeight: "800" }}>
                             {personLabel(ticket.user)}
@@ -1280,6 +1282,7 @@ export default function MarketAdminIndex() {
                       <View style={{ marginTop: 9, flexDirection: "row", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
                         <Pill label={status} color={statusTone(status)} />
                         <Pill label={String(ticket.priority ?? "NORMAL")} color={String(ticket.priority).toUpperCase() === "URGENT" ? DANGER : ACCENT} />
+                        {ticket.message_slug ? <Text style={{ color: ACCENT, fontSize: 10, fontWeight: "900" }}>@{ticket.message_slug}</Text> : null}
                         {latest?.attachments?.length ? <Ionicons name="document-attach-outline" size={14} color={FAINT} /> : null}
                       </View>
                     </View>
@@ -1290,7 +1293,7 @@ export default function MarketAdminIndex() {
               )}
             </View>
 
-            <View style={{ flex: 1, width: isDesktop ? undefined : "100%", minWidth: 0 }}>
+            <View style={{ display: "none" }}>
               {selectedTicket ? (() => {
                 const messages = selectedTicket.messages ?? [];
                 const draft = supportReplies[selectedTicket.id] ?? "";
@@ -1314,16 +1317,13 @@ export default function MarketAdminIndex() {
 
                     <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                       <InfoLine label="User" value={personLabel(selectedTicket.user)} />
-                      <InfoLine label="DM slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
+                      <InfoLine label="User slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
                       <InfoLine label="Order" value={selectedTicket.related_order_id ? shortId(selectedTicket.related_order_id) : "n/a"} />
                       <InfoLine label="Assigned" value={selectedTicket.assigned_admin ? personLabel(selectedTicket.assigned_admin) : "Unassigned"} />
                       <InfoLine label="Last message" value={formatDate(selectedTicket.last_message_at)} />
                     </View>
 
                     <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                      {ticketDmSlug ? (
-                        <ActionButton icon="chatbubble-ellipses-outline" label="DM user" color={SUCCESS} onPress={() => openDmSlug(ticketDmSlug)} />
-                      ) : null}
                       {selectedTicket.related_order_id ? (
                         <ActionButton icon="receipt-outline" label="Open order" color={WARNING} onPress={() => openOrder(selectedTicket.related_order_id)} />
                       ) : null}
@@ -1360,9 +1360,7 @@ export default function MarketAdminIndex() {
                                 {fromAdmin ? "Support" : "User"} - {formatDate(message.created_at)}
                               </Text>
                               {!fromAdmin && message.message_slug ? (
-                                <Pressable onPress={() => openDmSlug(message.message_slug)} hitSlop={8}>
-                                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={ACCENT} />
-                                </Pressable>
+                                <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900" }}>@{message.message_slug}</Text>
                               ) : null}
                             </View>
                             {message.body ? <Text style={{ marginTop: 5, color: TEXT, fontSize: 13, lineHeight: 19 }}>{message.body}</Text> : null}

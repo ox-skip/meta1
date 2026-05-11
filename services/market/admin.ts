@@ -54,6 +54,13 @@ export type MarketAdminWorkspace = {
   };
 };
 
+export type MarketAdminSupportTicketResult = {
+  ok: true;
+  generated_at: string;
+  admin: MarketAdminOverview["admin"];
+  ticket: any;
+};
+
 export type MarketAdminActionResult = {
   ok: true;
   [key: string]: any;
@@ -170,6 +177,13 @@ export async function loadAdminOverview() {
 
 export async function loadAdminWorkspace() {
   return await callAdminFn<MarketAdminWorkspace>("market-admin-workspace");
+}
+
+export async function loadAdminSupportTicket(ticketId: string) {
+  return await callAdminFn<MarketAdminSupportTicketResult>(
+    "market-admin-support-ticket",
+    { ticket_id: ticketId },
+  );
 }
 
 export async function runAdminAction(body: Record<string, unknown>) {

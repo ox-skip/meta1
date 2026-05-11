@@ -94,6 +94,15 @@ function formatDate(value?: string | null) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function shortId(value?: string | null) {
+  const raw = String(value ?? "").replace(/-/g, "");
+  return raw ? raw.slice(0, 8).toUpperCase() : "CASE";
+}
+
+function supportCaseSlug(ticket: SupportTicket) {
+  return `support-${shortId(ticket.id).toLowerCase()}`;
+}
+
 function fileKind(mime?: string | null, name?: string | null) {
   const raw = String(mime || name || "").toLowerCase();
   if (raw.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(raw)) return "image";
@@ -366,9 +375,14 @@ function TicketCard({
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-          <Text numberOfLines={1} style={{ flex: 1, color: TEXT, fontSize: 15, fontWeight: "900" }}>
-            {ticket.subject}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ color: TEAL, fontSize: 12, fontWeight: "900" }}>
+              {supportCaseSlug(ticket)}
+            </Text>
+            <Text numberOfLines={1} style={{ marginTop: 3, color: TEXT, fontSize: 15, fontWeight: "900" }}>
+              {ticket.subject}
+            </Text>
+          </View>
           <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{formatDate(ticket.last_message_at)}</Text>
         </View>
         <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 17 }}>
@@ -377,6 +391,7 @@ function TicketCard({
         <View style={{ marginTop: 9, flexDirection: "row", flexWrap: "wrap", gap: 7, alignItems: "center" }}>
           <Pill label={labelFromKey(ticket.status)} color={tone} />
           <Pill label={labelFromKey(ticket.priority)} color={priorityColor(ticket.priority)} />
+          {ticket.message_slug ? <Text style={{ color: AMBER, fontSize: 10, fontWeight: "900" }}>@{ticket.message_slug}</Text> : null}
           <Text style={{ color: FAINT, fontSize: 10, fontWeight: "800" }}>{labelFromKey(ticket.category)}</Text>
         </View>
       </View>
@@ -491,15 +506,10 @@ export default function MarketSupportScreen() {
     return found?.message_slug ?? null;
   }, [messages]);
 
-  const loadTickets = useCallback(async (preferredId?: string | null) => {
+  const loadTickets = useCallback(async (_preferredId?: string | null) => {
     const rows = await fetchMySupportTickets();
     setTickets(rows);
-    setSelectedId((current) => {
-      const preferred = String(preferredId ?? "").trim();
-      if (preferred && rows.some((ticket) => ticket.id === preferred)) return preferred;
-      if (current && rows.some((ticket) => ticket.id === current)) return current;
-      return null;
-    });
+    setSelectedId(null);
   }, []);
 
   const loadMessages = useCallback(async (ticketId: string | null) => {
@@ -604,10 +614,14 @@ export default function MarketSupportScreen() {
     }
   }
 
-  function openDm(slug?: string | null) {
-    const clean = String(slug || "").trim();
+  function openSupportTicket(ticketId?: string | null) {
+    const clean = String(ticketId || "").trim();
     if (!clean) return;
-    router.push(`/market/dm/${encodeURIComponent(clean)}` as any);
+    router.push(`/market/support/${encodeURIComponent(clean)}` as any);
+  }
+
+  function openDm(_slug?: string | null) {
+    if (selectedId) openSupportTicket(selectedId);
   }
 
   async function submitTicket() {
@@ -630,11 +644,11 @@ export default function MarketSupportScreen() {
       setCategory("order");
       setNewFiles([]);
       setSupportAiResult(null);
-      setSelectedId(ticket.id);
+      setSelectedId(null);
       setFilter("fresh");
       await loadTickets(ticket.id);
-      await loadMessages(ticket.id);
-      setNotice("Support ticket sent.");
+      setNotice("Support ticket sent. Opening the chat.");
+      openSupportTicket(ticket.id);
     } catch (e: any) {
       setError(e?.message || "Could not send support ticket.");
     } finally {
@@ -733,7 +747,7 @@ export default function MarketSupportScreen() {
                 <Text style={{ color: TEAL, fontSize: 12, fontWeight: "900", textTransform: "uppercase" }}>Marketplace support</Text>
                 <Text style={{ marginTop: 5, color: TEXT, fontSize: wide ? 30 : 25, fontWeight: "900" }}>Cases and proof</Text>
                 <Text style={{ marginTop: 5, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                  Track each case separately, attach evidence, and continue by DM when a support admin replies.
+                  Track each case by slug, attach evidence, and open every conversation in its dedicated support chat.
                 </Text>
               </View>
             </View>
@@ -749,8 +763,8 @@ export default function MarketSupportScreen() {
               </View>
             ) : null}
 
-            <View style={{ marginTop: 18, flexDirection: wide ? "row" : "column", gap: 14, alignItems: "flex-start" }}>
-              <View style={{ width: wide ? 410 : "100%", gap: 14 }}>
+            <View style={{ marginTop: 18, gap: 14 }}>
+              <View style={{ width: "100%", gap: 14 }}>
                 <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
                   <Pressable onPress={() => setComposerOpen((prev) => !prev)} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <View>
@@ -883,7 +897,7 @@ export default function MarketSupportScreen() {
                       <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Tickets</Text>
                       <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{tickets.length} total</Text>
                     </View>
-                    <PrimaryButton label="Refresh" icon="refresh" color={AMBER} onPress={() => void loadTickets(selectedId)} />
+                    <PrimaryButton label="Refresh" icon="refresh" color={AMBER} onPress={() => void loadTickets(null)} />
                   </View>
 
                   <View style={{ marginTop: 13 }}>
@@ -892,7 +906,7 @@ export default function MarketSupportScreen() {
 
                   <View style={{ marginTop: 13, gap: 10 }}>
                     {filteredTickets.length ? filteredTickets.map((ticket) => (
-                      <TicketCard key={ticket.id} ticket={ticket} selected={ticket.id === selectedId} onPress={() => setSelectedId(ticket.id)} />
+                      <TicketCard key={ticket.id} ticket={ticket} selected={false} onPress={() => openSupportTicket(ticket.id)} />
                     )) : (
                       <View style={{ borderRadius: 16, padding: 15, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
                         <Text style={{ color: TEXT, fontWeight: "900" }}>No {filter === "fresh" ? "fresh" : labelFromKey(filter)} tickets</Text>
@@ -903,90 +917,6 @@ export default function MarketSupportScreen() {
                 </View>
               </View>
 
-              <View style={{ flex: 1, width: wide ? undefined : "100%", minWidth: 0 }}>
-                <View style={{ borderRadius: 22, padding: 16, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER, minHeight: 520 }}>
-                  {selectedTicket ? (
-                    <>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-                        <View style={{ flex: 1, minWidth: 220 }}>
-                          <Text style={{ color: TEXT, fontSize: 21, fontWeight: "900" }}>{selectedTicket.subject}</Text>
-                          <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                            {labelFromKey(selectedTicket.category)} - Created {formatDate(selectedTicket.created_at)}
-                          </Text>
-                        </View>
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                          <Pill label={labelFromKey(selectedTicket.status)} color={statusColor(selectedTicket.status)} />
-                          <Pill label={labelFromKey(selectedTicket.priority)} color={priorityColor(selectedTicket.priority)} />
-                        </View>
-                      </View>
-
-                      <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                        {selectedTicket.related_order_id ? (
-                          <PrimaryButton label="Open order" icon="receipt-outline" color={BLUE} onPress={() => router.push(`/market/order/${selectedTicket.related_order_id}` as any)} />
-                        ) : null}
-                        {latestAdminDmSlug ? (
-                          <PrimaryButton label="Message admin" icon="chatbubble-ellipses-outline" color={TEAL} onPress={() => openDm(latestAdminDmSlug)} />
-                        ) : null}
-                      </View>
-
-                      <ScrollView
-                        ref={scrollRef}
-                        style={{ marginTop: 14, maxHeight: wide ? 520 : 410 }}
-                        contentContainerStyle={{ paddingBottom: 6 }}
-                        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-                      >
-                        {messageLoading ? (
-                          <View style={{ paddingVertical: 32, alignItems: "center" }}>
-                            <ActivityIndicator color={TEAL} />
-                          </View>
-                        ) : messages.length ? (
-                          messages.map((message) => <MessageRow key={message.id} message={message} meId={meId} onOpenDm={openDm} />)
-                        ) : (
-                          <View style={{ borderRadius: 16, padding: 14, backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
-                            <Text style={{ color: TEXT, fontWeight: "900" }}>No messages recorded.</Text>
-                          </View>
-                        )}
-                      </ScrollView>
-
-                      <View style={{ marginTop: 14, gap: 8 }}>
-                        <FieldLabel>Reply</FieldLabel>
-                        <TextInput
-                          value={reply}
-                          onChangeText={setReply}
-                          multiline
-                          placeholder="Write a reply"
-                          placeholderTextColor="rgba(255,253,247,0.35)"
-                          style={{ minHeight: 66, borderRadius: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.055)", color: TEXT, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, textAlignVertical: "top" }}
-                        />
-                        <PendingFiles files={replyFiles} onRemove={(id) => setReplyFiles((prev) => prev.filter((file) => file.id !== id))} />
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                          <PrimaryButton
-                            label={picking === "reply" ? "Attaching" : "Attach proof"}
-                            icon="document-attach-outline"
-                            color={BLUE}
-                            loading={picking === "reply"}
-                            onPress={() => void pickProof("reply")}
-                          />
-                          <PrimaryButton
-                            label={sending ? "Sending" : "Send"}
-                            icon="send"
-                            color={TEAL}
-                            loading={sending}
-                            disabled={!reply.trim() && !replyFiles.length}
-                            onPress={submitReply}
-                          />
-                        </View>
-                      </View>
-                    </>
-                  ) : (
-                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 }}>
-                      <Ionicons name="chatbubbles-outline" size={32} color={FAINT} />
-                      <Text style={{ marginTop: 12, color: TEXT, fontSize: 18, fontWeight: "900" }}>Select a ticket</Text>
-                      <Text style={{ marginTop: 6, color: MUTED, fontSize: 13 }}>Create or choose a ticket to view the conversation.</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
             </View>
           </View>
         </ScrollView>

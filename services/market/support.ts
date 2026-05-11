@@ -275,6 +275,22 @@ export async function fetchMySupportTickets(limit = 50) {
   });
 }
 
+export async function fetchSupportTicket(ticketId: string) {
+  await getCurrentUserId();
+  const id = cleanText(ticketId, 80);
+  if (!id) throw new Error("Choose a support ticket.");
+
+  const { data, error } = await supabase
+    .from("market_support_tickets")
+    .select(TICKET_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Support ticket not found.");
+  return data as SupportTicket;
+}
+
 export async function fetchSupportMessages(ticketId: string, limit = 120) {
   await getCurrentUserId();
   const id = cleanText(ticketId, 80);
