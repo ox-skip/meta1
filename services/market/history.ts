@@ -178,6 +178,41 @@ function orderStatusToHistory(status: unknown) {
   return "PENDING";
 }
 
+function walletTxKind(type: unknown): HistoryKind {
+  const t = String(type || "").toLowerCase();
+  if (t === "deposit") return "deposit";
+  if (t === "withdrawal") return "withdrawal";
+  if (t === "transfer_in") return "transfer_in";
+  if (t === "transfer_out") return "transfer_out";
+  if (t === "bill" || t === "fee") return "fee";
+  return "fee";
+}
+
+function walletTxTitle(type: unknown) {
+  const t = String(type || "").toLowerCase();
+  if (t === "deposit") return "NGN wallet deposit";
+  if (t === "withdrawal") return "NGN wallet withdrawal";
+  if (t === "transfer_in") return "Wallet transfer received";
+  if (t === "transfer_out") return "Wallet transfer sent";
+  if (t === "bill") return "Wallet bill payment";
+  if (t === "fee") return "Wallet fee";
+  return "Wallet transaction";
+}
+
+function withdrawalStatusToHistory(status: unknown) {
+  const s = String(status || "").toUpperCase();
+  if (["SUCCESS", "SUCCEEDED", "COMPLETED", "DONE", "PAID"].includes(s)) return "SUCCESS";
+  if (["FAILED", "CANCELLED", "CANCELED", "REJECTED"].includes(s)) return "FAILED";
+  if (["REVERSED", "REFUNDED"].includes(s)) return "REFUNDED";
+  return s || "PENDING";
+}
+
+function currencyFromMeta(meta: unknown, fallback = "NGN") {
+  const parsed = parseJsonObject(meta);
+  const value = parsed?.currency ?? parsed?.Currency;
+  return String(value || fallback).toUpperCase();
+}
+
 async function safeListQuery<T>(
   label: string,
   run: () => Promise<{ data: T[] | null; error: any }> | { data: T[] | null; error: any } | any,
@@ -251,7 +286,31 @@ async function fetchNotificationHistoryDetail(userId: string, notificationId: st
 
 async function fetchLegacyHistory(userId: string, limit: number) {
   const maxRows = Math.min(limit, 250);
-  const [orderRows, stockTradeRows, stockPositionRows] = await Promise.all([
+  const [walletRows, withdrawalRows, paystackRows, orderRows, stockTradeRows, stockPositionRows] = await Promise.all([
+    safeListQuery("app_wallet_tx_simple", () =>
+      supabase
+        .from("app_wallet_tx_simple")
+        .select("id,user_id,type,amount,reference,meta,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(maxRows),
+    ),
+    safeListQuery("withdrawals_simple", () =>
+      supabase
+        .from("withdrawals_simple")
+        .select("id,user_id,status,amount,fee,total_debit,bank_name,account_number,account_name,paystack_reference,paystack_transfer_code,meta,created_at,updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(maxRows),
+    ),
+    safeListQuery("paystack_events_simple", () =>
+      supabase
+        .from("paystack_events_simple")
+        .select("id,user_id,reference,amount,fee,raw,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(maxRows),
+    ),
     safeListQuery("market_orders", () =>
       supabase
         .from("market_orders")
@@ -321,6 +380,86 @@ async function fetchLegacyHistory(userId: string, limit: number) {
   const stockMap = new Map<string, any>((stockRows ?? []).map((s: any) => [String(s.id), s]));
 
   const out: MarketHistoryEntry[] = [];
+
+  for (const tx of walletRows ?? []) {
+    const meta = parseJsonObject((tx as any).meta) ?? {};
+    out.push({
+      id: `wallet:${String((tx as any).id)}`,
+      source_table: "app_wallet_tx_simple",
+      source_id: String((tx as any).id),
+      kind: walletTxKind((tx as any).type),
+      title: walletTxTitle((tx as any).type),
+      amount: toNum((tx as any).amount, 0),
+      currency: currencyFromMeta(meta, "NGN"),
+      status: "SUCCESS",
+      tx_hash: null,
+      order_id: null,
+      stock_id: null,
+      details: {
+        reference: (tx as any).reference ?? null,
+        wallet_type: (tx as any).type ?? null,
+        meta,
+      },
+      occurred_at: toIso((tx as any).created_at),
+      created_at: toIso((tx as any).created_at),
+    });
+  }
+
+  for (const withdrawal of withdrawalRows ?? []) {
+    const meta = parseJsonObject((withdrawal as any).meta) ?? {};
+    out.push({
+      id: `withdrawal:${String((withdrawal as any).id)}`,
+      source_table: "withdrawals_simple",
+      source_id: String((withdrawal as any).id),
+      kind: "withdrawal",
+      title: "Bank withdrawal",
+      amount: toNum(
+        (withdrawal as any).total_debit,
+        toNum((withdrawal as any).amount, 0) + toNum((withdrawal as any).fee, 0),
+      ),
+      currency: currencyFromMeta(meta, "NGN"),
+      status: withdrawalStatusToHistory((withdrawal as any).status),
+      tx_hash: null,
+      order_id: null,
+      stock_id: null,
+      details: {
+        status: (withdrawal as any).status ?? null,
+        bank_name: (withdrawal as any).bank_name ?? null,
+        account_number: (withdrawal as any).account_number ?? null,
+        account_name: (withdrawal as any).account_name ?? null,
+        paystack_reference: (withdrawal as any).paystack_reference ?? null,
+        paystack_transfer_code: (withdrawal as any).paystack_transfer_code ?? null,
+        fee: (withdrawal as any).fee ?? null,
+        meta,
+      },
+      occurred_at: toIso((withdrawal as any).updated_at || (withdrawal as any).created_at),
+      created_at: toIso((withdrawal as any).created_at),
+    });
+  }
+
+  for (const deposit of paystackRows ?? []) {
+    const raw = parseJsonObject((deposit as any).raw) ?? {};
+    out.push({
+      id: `paystack:${String((deposit as any).id || (deposit as any).reference)}`,
+      source_table: "paystack_events_simple",
+      source_id: String((deposit as any).id || (deposit as any).reference || ""),
+      kind: "deposit",
+      title: "Paystack deposit received",
+      amount: toNum((deposit as any).amount, 0),
+      currency: currencyFromMeta(raw, "NGN"),
+      status: "SUCCESS",
+      tx_hash: null,
+      order_id: null,
+      stock_id: null,
+      details: {
+        reference: (deposit as any).reference ?? null,
+        fee: (deposit as any).fee ?? null,
+        raw,
+      },
+      occurred_at: toIso((deposit as any).created_at),
+      created_at: toIso((deposit as any).created_at),
+    });
+  }
 
   for (const order of orders) {
     const isBuyer = String(order.buyer_id) === userId;

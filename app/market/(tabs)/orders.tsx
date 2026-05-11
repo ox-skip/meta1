@@ -850,7 +850,7 @@ export default function MarketOrdersTab() {
               >
                 <Ionicons name="options-outline" size={17} color={TEAL} />
               </View>
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Refine view</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>orders</Text>
             </View>
             <Text
               numberOfLines={1}

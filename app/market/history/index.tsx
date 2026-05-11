@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,111 +10,290 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
-import { subscribeToAccountNotifications } from "@/services/market/notifications";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { subscribeToAccountNotifications } from "@/services/market/notifications";
 import { fetchMarketHistory, type MarketHistoryEntry } from "@/services/market/history";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { formatCurrency } from "@/utils/pricing";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const PURPLE = "#7C3AED";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
+const PANEL = "rgba(255,253,247,0.065)";
+const PANEL_STRONG = "rgba(255,253,247,0.095)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEAL = "#2DD4BF";
+const AMBER = "#F4B75D";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const LIME = "#A3E635";
+const INK = "#07100D";
 
-const KINDS = [
-  "all",
-  "deposit",
-  "market_buy",
-  "market_sell",
-  "market_crypto",
-  "stock_buy",
-  "stock_sell",
-  "stock_profit",
-  "event",
-] as const;
+type GroupKey = "all" | "wallet" | "orders" | "crypto" | "stocks" | "events";
+type RangeKey = "all" | "today" | "7d" | "30d";
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
-function toNum(input: string) {
-  const n = Number(input);
-  return Number.isFinite(n) ? n : NaN;
+const GROUPS: Array<{ key: GroupKey; label: string; icon: IconName; accent: string }> = [
+  { key: "all", label: "All", icon: "albums-outline", accent: TEAL },
+  { key: "wallet", label: "Wallet", icon: "wallet-outline", accent: LIME },
+  { key: "orders", label: "Orders", icon: "receipt-outline", accent: AMBER },
+  { key: "crypto", label: "Crypto", icon: "shield-checkmark-outline", accent: BLUE },
+  { key: "stocks", label: "Stocks", icon: "trending-up-outline", accent: "#C084FC" },
+  { key: "events", label: "Events", icon: "notifications-outline", accent: ROSE },
+];
+
+const RANGES: Array<{ key: RangeKey; label: string }> = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "7d", label: "7 days" },
+  { key: "30d", label: "30 days" },
+];
+
+function toTimestamp(input: string) {
+  const value = new Date(input).getTime();
+  return Number.isFinite(value) ? value : 0;
 }
 
-function signAmount(entry: MarketHistoryEntry) {
-  const k = String(entry.kind || "").toLowerCase();
-  const amount = Number(entry.amount || 0);
-  if (k === "stock_profit") return amount;
-  if (
-    [
-      "market_buy",
-      "stock_buy",
-      "withdrawal",
-      "transfer_out",
-      "fee",
-    ].includes(k)
-  ) return -Math.abs(amount);
-  return Math.abs(amount);
+function kindLabel(kind: string) {
+  return String(kind || "activity")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatDateLabel(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Date unavailable";
+
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function statusTone(status: string) {
+  const s = String(status || "").toUpperCase();
+  if (["NEW", "UNREAD", "PENDING", "PROCESSING"].includes(s)) {
+    return { bg: "rgba(244,183,93,0.15)", border: "rgba(244,183,93,0.35)", text: AMBER };
+  }
+  if (["SUCCESS", "CONFIRMED", "RELEASED", "READ", "COMPLETED", "PAID"].includes(s)) {
+    return { bg: "rgba(45,212,191,0.13)", border: "rgba(45,212,191,0.34)", text: TEAL };
+  }
+  if (["REFUNDED", "REVERSED"].includes(s)) {
+    return { bg: "rgba(56,189,248,0.14)", border: "rgba(56,189,248,0.34)", text: BLUE };
+  }
+  if (["FAILED", "CANCELLED", "CANCELED", "REJECTED"].includes(s)) {
+    return { bg: "rgba(251,113,133,0.15)", border: "rgba(251,113,133,0.34)", text: ROSE };
+  }
+  return { bg: "rgba(255,253,247,0.08)", border: BORDER, text: MUTED };
 }
 
 function isEventEntry(entry: MarketHistoryEntry) {
   return String(entry.kind || "").toLowerCase() === "event" || String(entry.source_table || "").toLowerCase() === "account_notifications";
 }
 
-function shortHash(v?: string | null) {
-  const s = String(v || "");
-  if (!s.startsWith("0x")) return "";
-  if (s.length <= 14) return s;
-  return `${s.slice(0, 8)}...${s.slice(-6)}`;
+function groupFor(entry: MarketHistoryEntry): GroupKey {
+  const kind = String(entry.kind || "").toLowerCase();
+  const source = String(entry.source_table || "").toLowerCase();
+  if (kind === "event" || source === "account_notifications") return "events";
+  if (kind.includes("stock") || source.includes("stock")) return "stocks";
+  if (kind.includes("crypto") || source.includes("chain") || source.includes("crypto")) return "crypto";
+  if (kind.includes("market_") || source === "market_orders") return "orders";
+  if (
+    kind === "deposit" ||
+    kind === "withdrawal" ||
+    kind === "transfer_in" ||
+    kind === "transfer_out" ||
+    kind === "fee" ||
+    source.includes("wallet") ||
+    source.includes("withdrawal") ||
+    source.includes("paystack")
+  ) {
+    return "wallet";
+  }
+  return "events";
 }
 
-function kindLabel(kind: string) {
-  return String(kind || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+function groupMeta(entry: MarketHistoryEntry) {
+  return GROUPS.find((item) => item.key === groupFor(entry)) ?? GROUPS[0];
 }
 
-function statusTone(status: string) {
-  const s = String(status || "").toUpperCase();
-  if (["NEW", "UNREAD"].includes(s)) {
-    return { bg: "rgba(124,58,237,0.22)", border: "rgba(167,139,250,0.45)", text: "#E9D5FF" };
+function signAmount(entry: MarketHistoryEntry) {
+  if (isEventEntry(entry)) return 0;
+
+  const kind = String(entry.kind || "").toLowerCase();
+  const amount = Number(entry.amount || 0);
+  const abs = Math.abs(Number.isFinite(amount) ? amount : 0);
+  const details = (entry.details ?? {}) as Record<string, any>;
+  const intentType = String(details.intent_type || details.event_type || "").toUpperCase();
+
+  if (kind === "stock_profit") return amount;
+  if (kind === "market_crypto") {
+    if (intentType.includes("DEPOSIT")) return -abs;
+    if (intentType.includes("REFUND") || intentType.includes("RELEASE")) return abs;
+    return abs;
   }
-  if (["SUCCESS", "CONFIRMED", "RELEASED"].includes(s)) {
-    return { bg: "rgba(16,185,129,0.20)", border: "rgba(16,185,129,0.42)", text: "#A7F3D0" };
+  if (["market_buy", "stock_buy", "withdrawal", "transfer_out", "fee"].includes(kind)) return -abs;
+  return abs;
+}
+
+function shortHash(value?: string | null) {
+  const raw = String(value || "");
+  if (!raw) return "";
+  if (raw.length <= 14) return raw;
+  return `${raw.slice(0, 8)}...${raw.slice(-6)}`;
+}
+
+function detailsText(entry: MarketHistoryEntry) {
+  const details = (entry.details ?? {}) as Record<string, any>;
+  const body = String(details.body || "").trim();
+  if (body) return body;
+  if (entry.tx_hash) return `Hash ${shortHash(entry.tx_hash)}`;
+  if (details.reference) return `Reference ${String(details.reference)}`;
+  if (details.stock_symbol) return `${String(details.stock_symbol).toUpperCase()} activity`;
+  if (entry.order_id) return `Order ${String(entry.order_id).slice(0, 8)}`;
+  return kindLabel(String(entry.kind || ""));
+}
+
+function rangeStart(range: RangeKey) {
+  if (range === "all") return 0;
+  const d = new Date();
+  if (range === "today") {
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
   }
-  if (["FAILED", "CANCELLED", "REFUNDED"].includes(s)) {
-    return { bg: "rgba(239,68,68,0.20)", border: "rgba(239,68,68,0.42)", text: "#FECACA" };
-  }
-  return { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.16)", text: "#E5E7EB" };
+  if (range === "7d") return Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - 30 * 24 * 60 * 60 * 1000;
+}
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: IconName;
+  accent: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 136,
+        borderRadius: 20,
+        padding: 14,
+        backgroundColor: PANEL,
+        borderWidth: 1,
+        borderColor: BORDER,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${accent}18`,
+          borderWidth: 1,
+          borderColor: `${accent}44`,
+        }}
+      >
+        <Ionicons name={icon} size={18} color={accent} />
+      </View>
+      <Text style={{ marginTop: 11, color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: 18 }}>
+        {value}
+      </Text>
+      {sub ? <Text numberOfLines={1} style={{ marginTop: 3, color: FAINT, fontSize: 11 }}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+function FilterChip({
+  active,
+  label,
+  icon,
+  accent = TEAL,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  icon?: IconName;
+  accent?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        height: 40,
+        borderRadius: 999,
+        paddingHorizontal: 13,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 7,
+        borderWidth: 1,
+        borderColor: active ? `${accent}55` : BORDER,
+        backgroundColor: active ? `${accent}1D` : "rgba(255,253,247,0.055)",
+        transform: [{ scale: pressed ? 0.97 : 1 }],
+      })}
+    >
+      {icon ? <Ionicons name={icon} size={15} color={active ? accent : MUTED} /> : null}
+      <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export default function MarketHistoryScreen() {
   const params = useLocalSearchParams<{ q?: string }>();
   const initialSearch = String(params?.q ?? "").trim();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 760;
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<MarketHistoryEntry[]>([]);
-
-  const [kind, setKind] = useState<(typeof KINDS)[number]>("all");
+  const [group, setGroup] = useState<GroupKey>("all");
+  const [range, setRange] = useState<RangeKey>("all");
   const [search, setSearch] = useState(initialSearch);
-  const [year, setYear] = useState("");
-  const [month, setMonth] = useState("");
-  const [day, setDay] = useState("");
-  const [hour, setHour] = useState("");
   const [currency, setCurrency] = useState("all");
 
   const load = useCallback(async (silent?: boolean) => {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const items = await fetchMarketHistory(350);
+      const items = await fetchMarketHistory(500);
       setRows(items);
     } catch (e: any) {
-      setError(String(e?.message || "Unable to load transaction history."));
+      setError(String(e?.message || "Unable to load account activity."));
       setRows([]);
     } finally {
       setLoading(false);
@@ -122,54 +301,60 @@ export default function MarketHistoryScreen() {
     }
   }, []);
 
+  const scheduleReload = useCallback(() => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      void load(true);
+    }, 350);
+  }, [load]);
+
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    };
   }, [load]);
 
   useEffect(() => {
     let active = true;
     let removeNotifications: undefined | (() => void);
-    let historyChannel: any = null;
+    const channels: any[] = [];
 
     (async () => {
       const { data } = await supabase.auth.getUser();
       const userId = data?.user?.id;
       if (!active || !userId) return;
 
-      removeNotifications = await subscribeToAccountNotifications(() => {
-        void load(true);
-      });
-
+      removeNotifications = await subscribeToAccountNotifications(scheduleReload);
       if (!active) {
         removeNotifications?.();
         return;
       }
 
-      historyChannel = supabase
-        .channel(`market-history-live-${userId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "market_transaction_history",
-            filter: `user_id=eq.${userId}`,
-          },
-          () => {
-            void load(true);
-          },
-        )
-        .subscribe();
+      const attach = (name: string, table: string, filter?: string) => {
+        const channel = supabase
+          .channel(`market-history-${name}-${userId}`)
+          .on("postgres_changes", { event: "*", schema: "public", table, filter }, scheduleReload)
+          .subscribe();
+        channels.push(channel);
+      };
+
+      attach("history", "market_transaction_history", `user_id=eq.${userId}`);
+      attach("wallet", "app_wallet_tx_simple", `user_id=eq.${userId}`);
+      attach("withdrawals", "withdrawals_simple", `user_id=eq.${userId}`);
+      attach("paystack", "paystack_events_simple", `user_id=eq.${userId}`);
+      attach("stock-trades", "market_stock_trades", `user_id=eq.${userId}`);
+      attach("stock-positions", "market_stock_positions", `user_id=eq.${userId}`);
+      attach("orders-buyer", "market_orders", `buyer_id=eq.${userId}`);
+      attach("orders-seller", "market_orders", `seller_id=eq.${userId}`);
     })();
 
     return () => {
       active = false;
       removeNotifications?.();
-      if (historyChannel) {
-        supabase.removeChannel(historyChannel);
-      }
+      channels.forEach((channel) => supabase.removeChannel(channel));
     };
-  }, [load]);
+  }, [scheduleReload]);
 
   useEffect(() => {
     setSearch(initialSearch);
@@ -177,280 +362,446 @@ export default function MarketHistoryScreen() {
 
   const currencies = useMemo(() => {
     const set = new Set<string>();
-    for (const row of rows) set.add(String(row.currency || "USD").toUpperCase());
+    rows.forEach((row) => {
+      if (!isEventEntry(row)) set.add(String(row.currency || "USD").toUpperCase());
+    });
     return ["all", ...Array.from(set).sort()];
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const y = toNum(year);
-    const m = toNum(month);
-    const d = toNum(day);
-    const h = toNum(hour);
+    const start = rangeStart(range);
     const q = search.trim().toLowerCase();
 
     return rows.filter((row) => {
-      if (kind !== "all" && String(row.kind || "") !== kind) return false;
+      if (group !== "all" && groupFor(row) !== group) return false;
       if (currency !== "all" && String(row.currency || "").toUpperCase() !== currency) return false;
-
-      const dt = new Date(row.occurred_at);
-      if (Number.isFinite(y) && dt.getFullYear() !== y) return false;
-      if (Number.isFinite(m) && dt.getMonth() + 1 !== m) return false;
-      if (Number.isFinite(d) && dt.getDate() !== d) return false;
-      if (Number.isFinite(h) && dt.getHours() !== h) return false;
+      if (start && toTimestamp(row.occurred_at) < start) return false;
 
       if (!q) return true;
+      const details = row.details ?? {};
       const hay = [
         row.title,
         row.kind,
         row.status,
         row.currency,
+        row.source_table,
+        row.source_id,
         row.tx_hash || "",
         row.order_id || "",
-        row.source_id,
-        JSON.stringify(row.details || {}),
+        row.stock_id || "",
+        JSON.stringify(details),
       ]
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, kind, currency, year, month, day, hour, search]);
+  }, [rows, group, currency, range, search]);
 
   const summary = useMemo(() => {
-    let inflow = 0;
-    let outflow = 0;
-    for (const row of filtered) {
+    const totals = new Map<string, { inflow: number; outflow: number; count: number }>();
+
+    filtered.forEach((row) => {
+      if (isEventEntry(row)) return;
+      const code = String(row.currency || "USD").toUpperCase();
       const signed = signAmount(row);
-      if (signed >= 0) inflow += signed;
-      else outflow += Math.abs(signed);
-    }
-    return { inflow, outflow, net: inflow - outflow };
-  }, [filtered]);
+      const current = totals.get(code) ?? { inflow: 0, outflow: 0, count: 0 };
+      if (signed >= 0) current.inflow += signed;
+      else current.outflow += Math.abs(signed);
+      current.count += 1;
+      totals.set(code, current);
+    });
+
+    const entries = Array.from(totals.entries()).sort((a, b) => {
+      const av = a[1].inflow + a[1].outflow;
+      const bv = b[1].inflow + b[1].outflow;
+      return bv - av;
+    });
+    const selected = currency !== "all" ? currency : entries[0]?.[0] ?? "USD";
+    const current = totals.get(selected) ?? { inflow: 0, outflow: 0, count: 0 };
+    return {
+      currency: selected,
+      inflow: current.inflow,
+      outflow: current.outflow,
+      net: current.inflow - current.outflow,
+      transactionCount: filtered.filter((row) => !isEventEntry(row)).length,
+      eventCount: filtered.filter(isEventEntry).length,
+      currencyCount: totals.size,
+    };
+  }, [currency, filtered]);
+
+  const clearFilters = () => {
+    setGroup("all");
+    setRange("all");
+    setCurrency("all");
+    setSearch("");
+  };
+
+  function openEntry(item: MarketHistoryEntry) {
+    router.push({ pathname: "/market/history/[entryId]" as any, params: { entryId: item.id } });
+  }
+
+  function renderActivity(item: MarketHistoryEntry, index: number) {
+    const prev = index > 0 ? filtered[index - 1] : null;
+    const showDate = !prev || formatDateLabel(prev.occurred_at) !== formatDateLabel(item.occurred_at);
+    const event = isEventEntry(item);
+    const signed = signAmount(item);
+    const positive = signed >= 0;
+    const meta = groupMeta(item);
+    const tone = statusTone(item.status);
+
+    return (
+      <View>
+        {showDate ? (
+          <Text style={{ marginTop: index === 0 ? 14 : 22, marginBottom: 8, color: FAINT, fontWeight: "900", fontSize: 12 }}>
+            {formatDateLabel(item.occurred_at)}
+          </Text>
+        ) : null}
+
+        <Pressable
+          onPress={() => openEntry(item)}
+          style={({ pressed }) => ({
+            borderRadius: 22,
+            padding: 14,
+            backgroundColor: pressed ? PANEL_STRONG : PANEL,
+            borderWidth: 1,
+            borderColor: BORDER,
+            transform: [{ translateY: pressed ? 1 : 0 }],
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: `${meta.accent}18`,
+                borderWidth: 1,
+                borderColor: `${meta.accent}42`,
+              }}
+            >
+              <Ionicons name={meta.icon} size={20} color={meta.accent} />
+            </View>
+
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+                    {kindLabel(String(item.kind))} - {formatTime(item.occurred_at)}
+                  </Text>
+                </View>
+
+                <View style={{ alignItems: "flex-end", gap: 6 }}>
+                  {event ? (
+                    <Text style={{ color: meta.accent, fontWeight: "900", fontSize: 12 }}>{meta.label}</Text>
+                  ) : (
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={{
+                        color: positive ? TEAL : ROSE,
+                        fontWeight: "900",
+                        fontSize: 14,
+                        maxWidth: isWide ? 180 : 124,
+                      }}
+                    >
+                      {positive ? "+" : "-"}
+                      {formatCurrency(item.currency, Math.abs(signed), item.currency === "USDC" || item.currency === "USDT" ? 6 : 2)}
+                    </Text>
+                  )}
+
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderWidth: 1,
+                      borderColor: tone.border,
+                      backgroundColor: tone.bg,
+                    }}
+                  >
+                    <Text style={{ color: tone.text, fontWeight: "900", fontSize: 10 }}>{String(item.status || "STATUS")}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <Text numberOfLines={2} style={{ marginTop: 9, color: MUTED, lineHeight: 18, fontSize: 12 }}>
+                {detailsText(item)}
+              </Text>
+
+              <View style={{ marginTop: 11, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <Text numberOfLines={1} style={{ flex: 1, color: FAINT, fontSize: 11, fontWeight: "800" }}>
+                  {item.source_table.replace(/_/g, " ")}
+                </Text>
+                <Ionicons name="chevron-forward" size={17} color={MUTED} />
+              </View>
+            </View>
+          </View>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const hasActiveFilters = group !== "all" || range !== "all" || currency !== "all" || !!search.trim();
 
   return (
-    <LinearGradient colors={[BG1, BG0]} style={{ flex: 1 }}>
+    <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHistory} />
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 28 }}
+        renderItem={({ item, index }) => renderActivity(item, index)}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: Math.max(12, insets.top ? 6 : 12),
+          paddingBottom: Math.max(insets.bottom + 108, 132),
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: 980,
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              load(true);
+              void load(true);
             }}
+            tintColor={TEAL}
           />
         }
         ListHeaderComponent={
-          <View style={{ paddingTop: 14 }}>
-            <AppHeader title="History" subtitle="Deposits, orders, crypto, stock activity, and account events." />
+          <View>
+            <AppHeader title="History" subtitle="Wallet, orders, crypto, stocks, and account activity" bordered={false} style={{ paddingHorizontal: 0, backgroundColor: "transparent" }} />
 
-            <View style={{ marginTop: 10, borderRadius: 18, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 11 }}>SUMMARY (FILTERED)</Text>
-              <Text style={{ marginTop: 6, color: "#86EFAC", fontWeight: "900", fontSize: 13 }}>Inflow: ${summary.inflow.toLocaleString(undefined, { maximumFractionDigits: 2 })}</Text>
-              <Text style={{ marginTop: 4, color: "#FCA5A5", fontWeight: "900", fontSize: 13 }}>Outflow: ${summary.outflow.toLocaleString(undefined, { maximumFractionDigits: 2 })}</Text>
-              <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900", fontSize: 14 }}>
-                Net: ${summary.net.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </Text>
+            <View
+              style={{
+                marginTop: 8,
+                borderRadius: 28,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: BORDER_TOP,
+                backgroundColor: "rgba(9,13,11,0.72)",
+              }}
+            >
+              <LinearGradient
+                colors={["rgba(45,212,191,0.16)", "rgba(255,253,247,0.06)", "rgba(244,183,93,0.10)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ padding: 16 }}
+              >
+                <View style={{ flexDirection: isWide ? "row" : "column", gap: 12 }}>
+                  <SummaryCard
+                    label="Net"
+                    value={`${summary.net >= 0 ? "+" : "-"}${formatCurrency(summary.currency, Math.abs(summary.net), summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}`}
+                    sub={`${summary.net >= 0 ? "Positive" : "Negative"} in ${summary.currency}`}
+                    icon={summary.net >= 0 ? "trending-up-outline" : "trending-down-outline"}
+                    accent={summary.net >= 0 ? TEAL : ROSE}
+                  />
+                  <SummaryCard
+                    label="Inflow"
+                    value={formatCurrency(summary.currency, summary.inflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
+                    sub={summary.currencyCount > 1 ? "Primary currency" : "Received"}
+                    icon="arrow-down-circle-outline"
+                    accent={LIME}
+                  />
+                  <SummaryCard
+                    label="Outflow"
+                    value={formatCurrency(summary.currency, summary.outflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
+                    sub="Spent or sent"
+                    icon="arrow-up-circle-outline"
+                    accent={AMBER}
+                  />
+                  <SummaryCard
+                    label="Records"
+                    value={filtered.length.toLocaleString()}
+                    sub={`${summary.transactionCount} financial, ${summary.eventCount} events`}
+                    icon="list-outline"
+                    accent={BLUE}
+                  />
+                </View>
+              </LinearGradient>
             </View>
 
-            <View style={{ marginTop: 10, borderRadius: 16, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: "rgba(255,255,255,0.74)", fontWeight: "800", fontSize: 11 }}>Search</Text>
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search by title, route, hash, order id..."
-                placeholderTextColor="rgba(255,255,255,0.4)"
+            <View
+              style={{
+                marginTop: 12,
+                borderRadius: 24,
+                padding: 12,
+                backgroundColor: PANEL,
+                borderWidth: 1,
+                borderColor: BORDER,
+              }}
+            >
+              <View
                 style={{
-                  marginTop: 8,
-                  borderRadius: 12,
+                  minHeight: 48,
+                  borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.12)",
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  color: "#fff",
-                  paddingHorizontal: 11,
-                  paddingVertical: 10,
+                  borderColor: BORDER,
+                  backgroundColor: "rgba(255,253,247,0.06)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 13,
+                  gap: 10,
                 }}
-              />
-
-              <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.74)", fontWeight: "800", fontSize: 11 }}>
-                Filters (Year / Month / Day / Hour)
-              </Text>
-              <View style={{ marginTop: 8, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              >
+                <Ionicons name="search-outline" size={18} color={MUTED} />
                 <TextInput
-                  value={year}
-                  onChangeText={setYear}
-                  keyboardType="numeric"
-                  placeholder="Year"
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  style={{ width: 80, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.05)", color: "#fff", paddingHorizontal: 10, paddingVertical: 8 }}
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search title, order, reference, hash"
+                  placeholderTextColor={FAINT}
+                  style={{ flex: 1, minHeight: 46, color: TEXT, fontWeight: "800" }}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
-                <TextInput
-                  value={month}
-                  onChangeText={setMonth}
-                  keyboardType="numeric"
-                  placeholder="Month"
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  style={{ width: 80, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.05)", color: "#fff", paddingHorizontal: 10, paddingVertical: 8 }}
-                />
-                <TextInput
-                  value={day}
-                  onChangeText={setDay}
-                  keyboardType="numeric"
-                  placeholder="Day"
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  style={{ width: 80, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.05)", color: "#fff", paddingHorizontal: 10, paddingVertical: 8 }}
-                />
-                <TextInput
-                  value={hour}
-                  onChangeText={setHour}
-                  keyboardType="numeric"
-                  placeholder="Hour"
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  style={{ width: 80, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.05)", color: "#fff", paddingHorizontal: 10, paddingVertical: 8 }}
-                />
+                {search ? (
+                  <Pressable onPress={() => setSearch("")} style={{ padding: 6 }}>
+                    <Ionicons name="close-circle" size={18} color={MUTED} />
+                  </Pressable>
+                ) : null}
               </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {GROUPS.map((item) => (
+                    <FilterChip
+                      key={item.key}
+                      active={group === item.key}
+                      label={item.label}
+                      icon={item.icon}
+                      accent={item.accent}
+                      onPress={() => setGroup(item.key)}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
                 <View style={{ flexDirection: "row", gap: 8 }}>
-                  {KINDS.map((k) => {
-                    const active = kind === k;
-                    return (
-                      <Pressable
-                        key={k}
-                        onPress={() => setKind(k)}
-                        style={{
-                          paddingHorizontal: 11,
-                          paddingVertical: 8,
-                          borderRadius: 999,
-                          borderWidth: 1,
-                          borderColor: active ? PURPLE : BORDER,
-                          backgroundColor: active ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.05)",
-                        }}
-                      >
-                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{k === "all" ? "All kinds" : kindLabel(k)}</Text>
-                      </Pressable>
-                    );
-                  })}
+                  {RANGES.map((item) => (
+                    <FilterChip
+                      key={item.key}
+                      active={range === item.key}
+                      label={item.label}
+                      onPress={() => setRange(item.key)}
+                    />
+                  ))}
                 </View>
               </ScrollView>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  {currencies.map((c) => {
-                    const active = currency === c;
-                    return (
-                      <Pressable
-                        key={c}
-                        onPress={() => setCurrency(c)}
-                        style={{
-                          paddingHorizontal: 11,
-                          paddingVertical: 8,
-                          borderRadius: 999,
-                          borderWidth: 1,
-                          borderColor: active ? "rgba(45,212,191,0.55)" : BORDER,
-                          backgroundColor: active ? "rgba(45,212,191,0.18)" : "rgba(255,255,255,0.05)",
-                        }}
-                      >
-                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{c === "all" ? "All currency" : c}</Text>
-                      </Pressable>
-                    );
+              {currencies.length > 2 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {currencies.map((code) => (
+                      <FilterChip
+                        key={code}
+                        active={currency === code}
+                        label={code === "all" ? "All currency" : code}
+                        accent={code === "all" ? TEAL : AMBER}
+                        onPress={() => setCurrency(code)}
+                      />
+                    ))}
+                  </View>
+                </ScrollView>
+              ) : null}
+
+              {hasActiveFilters ? (
+                <Pressable
+                  onPress={clearFilters}
+                  style={({ pressed }) => ({
+                    marginTop: 12,
+                    height: 42,
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,253,247,0.08)",
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    transform: [{ scale: pressed ? 0.99 : 1 }],
                   })}
-                </View>
-              </ScrollView>
+                >
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>Clear filters</Text>
+                </Pressable>
+              ) : null}
             </View>
 
-            <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>
-                {filtered.length.toLocaleString()} activity records
-              </Text>
+            <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Activity ledger</Text>
+                <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
+                  {filtered.length.toLocaleString()} of {rows.length.toLocaleString()} records
+                </Text>
+              </View>
               <Pressable
-                onPress={() => load(true)}
-                style={{ width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.05)" }}
+                onPress={() => void load(true)}
+                style={({ pressed }) => ({
+                  width: 42,
+                  height: 42,
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  backgroundColor: "rgba(255,253,247,0.07)",
+                  transform: [{ rotate: pressed ? "12deg" : "0deg" }],
+                })}
               >
-                <Ionicons name="refresh" size={16} color="#fff" />
+                <Ionicons name="refresh" size={18} color={TEXT} />
               </Pressable>
             </View>
 
-            {!!error ? (
-              <View style={{ marginTop: 10, borderRadius: 14, padding: 10, backgroundColor: "rgba(239,68,68,0.18)", borderWidth: 1, borderColor: "rgba(239,68,68,0.35)" }}>
-                <Text style={{ color: "#FECACA", fontWeight: "800" }}>{error}</Text>
+            {error ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 18,
+                  padding: 13,
+                  backgroundColor: "rgba(251,113,133,0.14)",
+                  borderWidth: 1,
+                  borderColor: "rgba(251,113,133,0.32)",
+                }}
+              >
+                <Text style={{ color: "#FFE4E6", fontWeight: "900" }}>{error}</Text>
               </View>
             ) : null}
+
             {loading ? (
-              <View style={{ marginTop: 18, alignItems: "center" }}>
-                <ActivityIndicator />
-                <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)" }}>Loading history...</Text>
+              <View style={{ marginTop: 22, alignItems: "center" }}>
+                <ActivityIndicator color={TEAL} />
+                <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading activity</Text>
               </View>
             ) : null}
           </View>
         }
         ListEmptyComponent={
           !loading ? (
-            <View style={{ marginTop: 12, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: "#fff", fontWeight: "900" }}>No history records match your filter.</Text>
-              <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
-                Try clearing year/month/day/hour or search text.
-              </Text>
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => {
-          const signed = signAmount(item);
-          const positive = signed >= 0;
-          const tone = statusTone(item.status);
-          const eventEntry = isEventEntry(item);
-          const eventBody = String((item.details as any)?.body || "").trim();
-          return (
-            <Pressable
-              onPress={() => router.push(`/market/history/${encodeURIComponent(item.id)}` as any)}
+            <View
               style={{
-                marginTop: 10,
-                borderRadius: 16,
-                padding: 12,
-                backgroundColor: CARD,
+                marginTop: 14,
+                borderRadius: 22,
+                padding: 16,
+                backgroundColor: PANEL,
                 borderWidth: 1,
                 borderColor: BORDER,
               }}
             >
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                <Text style={{ color: "#fff", fontWeight: "900", flex: 1 }}>{item.title}</Text>
-                <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: tone.border, backgroundColor: tone.bg }}>
-                  <Text style={{ color: tone.text, fontWeight: "900", fontSize: 10 }}>{item.status}</Text>
-                </View>
-              </View>
-
-              <Text style={{ marginTop: 5, color: "rgba(255,255,255,0.66)", fontSize: 12 }}>
-                {kindLabel(String(item.kind))} - {new Date(item.occurred_at).toLocaleString()}
+              <Ionicons name={rows.length ? "filter-outline" : "file-tray-outline"} size={24} color={TEAL} />
+              <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 17 }}>
+                {rows.length ? "No matching activity" : "No account activity found"}
               </Text>
-
-              {eventBody ? (
-                <Text numberOfLines={2} style={{ marginTop: 5, color: "rgba(255,255,255,0.62)", fontSize: 11, lineHeight: 16 }}>
-                  {eventBody}
-                </Text>
-              ) : !!item.tx_hash ? (
-                <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.58)", fontSize: 11 }}>
-                  Hash: {shortHash(item.tx_hash)}
-                </Text>
-              ) : null}
-
-              <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                {eventEntry ? (
-                  <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 13 }}>
-                    {(item.details as any)?.route ? "Open event details" : "Event note"}
-                  </Text>
-                ) : (
-                  <Text style={{ color: positive ? "#86EFAC" : "#FCA5A5", fontWeight: "900", fontSize: 14 }}>
-                    {positive ? "+" : "-"}
-                    {formatCurrency(item.currency, Math.abs(signed), item.currency === "USDC" ? 6 : 2)}
-                  </Text>
-                )}
-                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
-              </View>
-            </Pressable>
-          );
-        }}
+              <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }}>
+                {rows.length ? "Adjust the filters or search terms." : "This account has no recorded marketplace activity."}
+              </Text>
+            </View>
+          ) : null
+        }
+        showsVerticalScrollIndicator={false}
       />
     </LinearGradient>
   );
