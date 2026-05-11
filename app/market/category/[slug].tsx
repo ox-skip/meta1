@@ -86,7 +86,7 @@ export default function CategoryFeed() {
                 storage_path,
                 meta
               ),
-              images:market_listing_images (
+              images:market_listing_images!market_listing_images_listing_id_fkey (
                 id,
                 public_url,
                 storage_path,

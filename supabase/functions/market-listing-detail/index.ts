@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       `
       *,
       market_seller_profiles ( user_id, business_name, market_username, display_name, bio, phone, location_text, address, logo_path, banner_path, is_verified, active ),
-      market_listing_images ( id, storage_path, public_url, sort_order, created_at )
+      market_listing_images!market_listing_images_listing_id_fkey ( id, storage_path, public_url, sort_order, created_at )
     `,
     )
     .eq("id", listing_id)
