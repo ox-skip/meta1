@@ -4,9 +4,10 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const SURFACE = "#15100C";
-const ACCENT = "#F59E0B";
-const MUTED = "rgba(255,247,237,0.58)";
+const SURFACE = "#090D0B";
+const ACCENT = "#2DD4BF";
+const GOLD = "#F4B75D";
+const MUTED = "rgba(255,253,247,0.58)";
 
 let BlurViewComp: any = null;
 if (Platform.OS === "ios") {
@@ -45,17 +46,17 @@ function CenterTabButton({
           alignItems: "center",
           justifyContent: "center",
           marginTop: -18,
-          backgroundColor: focused ? ACCENT : "#C88714",
+          backgroundColor: focused ? GOLD : "rgba(244,183,93,0.86)",
           borderWidth: 1,
-          borderColor: "rgba(255,244,230,0.18)",
+          borderColor: "rgba(255,253,247,0.22)",
           shadowColor: "#000",
-          shadowOpacity: 0.28,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 10,
+          shadowOpacity: 0.34,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 12,
         }}
       >
-        <Ionicons name="grid-outline" size={28} color="#1A120A" />
+        <Ionicons name="grid-outline" size={28} color={SURFACE} />
       </View>
 
       <Text
@@ -63,7 +64,7 @@ function CenterTabButton({
           marginTop: 4,
           fontSize: 11,
           fontWeight: "900",
-          color: focused ? ACCENT : MUTED,
+          color: focused ? GOLD : MUTED,
         }}
       >
         Category
@@ -91,7 +92,7 @@ export default function MarketTabsLayout() {
               <View
                 style={[
                   StyleSheet.absoluteFill,
-                  { backgroundColor: "rgba(12,9,7,0.98)" },
+                  { backgroundColor: "rgba(9,13,11,0.98)" },
                 ]}
               />
             );
@@ -119,12 +120,12 @@ export default function MarketTabsLayout() {
         },
         tabBarStyle: isWebDesktop
           ? {
-              backgroundColor: "rgba(12,9,7,0.98)",
-              borderRightColor: "rgba(245,158,11,0.14)",
+              backgroundColor: "rgba(9,13,11,0.98)",
+              borderRightColor: "rgba(45,212,191,0.16)",
               borderRightWidth: 1,
               borderTopWidth: 0,
               width: 228,
-              paddingTop: 18,
+              paddingTop: 20,
               paddingBottom: 18,
               paddingHorizontal: 10,
             }
@@ -246,11 +247,19 @@ const styles = StyleSheet.create({
     right: 14,
     bottom: 10,
     borderTopWidth: 0,
-    elevation: 0,
-    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,247,0.10)",
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    borderRadius: 26,
     overflow: "visible",
   },
   mobileBarBackground: {
-    borderRadius: 24,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: "rgba(255,253,247,0.10)",
   },
 });

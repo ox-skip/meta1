@@ -33,18 +33,22 @@ import { getCachedCountry, listingMatchesCountry, resolveUserCountry, type UserC
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 import { formatCountryLabel } from "@/utils/countryNames";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const AMBER = "#F59E0B";
-const TEAL = "#14B8A6";
-const CARD = "rgba(255,255,255,0.03)";
-const CARD_RAISED = "rgba(255,255,255,0.055)";
-const BORDER = "rgba(255,255,255,0.10)";
-const BORDER_TOP = "rgba(255,255,255,0.18)";
-const TEXT = "#FFFFFF";
-const MUTED = "rgba(255,255,255,0.65)";
-const FAINT = "rgba(255,255,255,0.42)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const INK = "#090D0B";
+const PURPLE = "#8B5CF6";
+const AMBER = "#F4B75D";
+const TEAL = "#2DD4BF";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
 
 const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
@@ -90,7 +94,7 @@ function publicSellerLogo(path?: string | null) {
 
 function VerifiedTick({ verified }: { verified?: boolean | null }) {
   if (!verified) return null;
-  return <Ionicons name="checkmark-circle" size={16} color="#3B82F6" />;
+  return <Ionicons name="checkmark-circle" size={16} color={BLUE} />;
 }
 
 function Chip({
@@ -111,19 +115,24 @@ function Chip({
       onPress={onPress}
       style={({ pressed }) => ({
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 9,
         borderRadius: 999,
-        backgroundColor: active ? "rgba(124,58,237,0.34)" : CARD,
+        backgroundColor: active ? "rgba(244,183,93,0.16)" : "rgba(255,253,247,0.055)",
         borderWidth: 1,
         borderTopWidth: 1,
-        borderColor: active ? "rgba(196,181,253,0.54)" : BORDER,
-        borderTopColor: active ? "rgba(255,255,255,0.22)" : BORDER_TOP,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
+        borderColor: active ? "rgba(244,183,93,0.46)" : BORDER,
+        borderTopColor: active ? "rgba(255,253,247,0.32)" : BORDER_TOP,
+        shadowColor: active ? AMBER : "#000",
+        shadowOpacity: active ? 0.18 : 0,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 7 },
+        elevation: active ? 3 : 0,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
       })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        {icon ? <Ionicons name={icon} size={13} color={iconColor || "#fff"} /> : null}
-        <Text style={{ color: TEXT, fontWeight: "800", fontSize: 12 }}>{label}</Text>
+        {icon ? <Ionicons name={icon} size={13} color={iconColor || (active ? AMBER : MUTED)} /> : null}
+        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "800", fontSize: 12 }}>{label}</Text>
       </View>
     </Pressable>
   );
@@ -149,21 +158,21 @@ function SectionPill({
         flex: stretch ? 1 : undefined,
         minWidth: stretch ? undefined : 106,
         height: 46,
-        borderRadius: 14,
+        borderRadius: 16,
         paddingHorizontal: stretch ? 8 : 14,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: active ? "rgba(124,58,237,0.28)" : CARD,
+        backgroundColor: active ? "rgba(45,212,191,0.15)" : "rgba(255,253,247,0.055)",
         borderWidth: 1,
         borderTopWidth: 1,
-        borderColor: active ? "rgba(196,181,253,0.50)" : BORDER,
-        borderTopColor: active ? "rgba(255,255,255,0.22)" : BORDER_TOP,
+        borderColor: active ? "rgba(45,212,191,0.46)" : BORDER,
+        borderTopColor: active ? "rgba(255,253,247,0.30)" : BORDER_TOP,
         transform: [{ scale: pressed ? 0.98 : 1 }],
       })}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-        {icon ? <Ionicons name={icon} size={15} color="#fff" /> : null}
-        <Text style={{ color: TEXT, fontWeight: "800" }}>{label}</Text>
+        {icon ? <Ionicons name={icon} size={15} color={active ? TEAL : MUTED} /> : null}
+        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "800" }}>{label}</Text>
       </View>
     </Pressable>
   );
@@ -188,34 +197,55 @@ function QuickAction({
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 132,
-        borderRadius: 14,
-        padding: 12,
+        borderRadius: 18,
+        overflow: "hidden",
         borderWidth: 1,
         borderTopWidth: 1,
-        borderColor: `${accent}55`,
-        borderTopColor: "rgba(255,255,255,0.18)",
-        backgroundColor: `${accent}1F`,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
+        borderColor: `${accent}4A`,
+        borderTopColor: "rgba(255,253,247,0.24)",
+        backgroundColor: INK,
+        shadowColor: "#000",
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 5,
+        transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
       })}
     >
-      <View
+      <LinearGradient
+        colors={[`${accent}26`, "rgba(255,253,247,0.055)", "rgba(9,13,11,0.80)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 12,
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: `${accent}33`,
-          borderWidth: 1,
-          borderColor: `${accent}66`,
+          minHeight: 94,
+          padding: 14,
+          justifyContent: "space-between",
         }}
       >
-        <Ionicons name={icon} size={17} color="#fff" />
-      </View>
-      <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 13 }}>{label}</Text>
-      {subtitle ? (
-        <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>{subtitle}</Text>
-      ) : null}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 13,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: `${accent}2E`,
+              borderWidth: 1,
+              borderColor: `${accent}72`,
+            }}
+          >
+            <Ionicons name={icon} size={17} color={TEXT} />
+          </View>
+          <Ionicons name="arrow-forward" size={16} color={accent} />
+        </View>
+        <View>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{label}</Text>
+          {subtitle ? (
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 11, lineHeight: 15 }}>{subtitle}</Text>
+          ) : null}
+        </View>
+      </LinearGradient>
     </Pressable>
   );
 }
@@ -236,18 +266,29 @@ function MarketMetric({
       style={{
         flex: 1,
         minWidth: 104,
-        borderRadius: 14,
+        borderRadius: 18,
         padding: 12,
         borderWidth: 1,
         borderTopWidth: 1,
-        borderColor: `${tone}38`,
+        borderColor: `${tone}42`,
         borderTopColor: BORDER_TOP,
-        backgroundColor: CARD,
+        backgroundColor: "rgba(255,253,247,0.06)",
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-        <Ionicons name={icon} size={14} color={tone} />
-        <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "800", fontSize: 11 }}>{label}</Text>
+        <View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 9,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${tone}22`,
+          }}
+        >
+          <Ionicons name={icon} size={13} color={tone} />
+        </View>
+        <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>{label}</Text>
       </View>
       <Text style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 18 }} numberOfLines={1}>
         {value}
@@ -273,28 +314,30 @@ function SellerMini({ seller, compact = false }: { seller?: SellerCard | null; c
           height: avatarSize,
           borderRadius: avatarSize / 2,
           overflow: "hidden",
-          backgroundColor: "rgba(255,255,255,0.08)",
+          backgroundColor: "rgba(255,253,247,0.10)",
           alignItems: "center",
           justifyContent: "center",
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.12)",
         }}
       >
         {logo ? (
           <Image source={{ uri: logo }} style={{ width: avatarSize, height: avatarSize }} />
         ) : (
-          <Ionicons name="person-outline" size={compact ? 10 : 12} color="#fff" />
+          <Ionicons name="person-outline" size={compact ? 10 : 12} color={TEXT} />
         )}
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, flex: 1 }}>
         <Text
           numberOfLines={1}
           style={{
-            color: "rgba(255,255,255,0.78)",
+            color: "rgba(255,253,247,0.80)",
             fontWeight: "800",
             fontSize: compact ? 10 : 11,
             flex: 1,
           }}
         >
-          {secondaryLabel ? `${primaryLabel} � ${secondaryLabel}` : primaryLabel}
+          {secondaryLabel ? `${primaryLabel} - ${secondaryLabel}` : primaryLabel}
         </Text>
         <VerifiedTick verified={seller.is_verified} />
       </View>
@@ -309,28 +352,43 @@ function CardBadge({
 }: {
   label: string;
   icon?: keyof typeof Ionicons.glyphMap;
-  tone?: "neutral" | "purple" | "gold" | "green" | "red";
+  tone?: "neutral" | "purple" | "gold" | "green" | "red" | "teal" | "blue";
 }) {
   const tones = {
     neutral: {
-      bg: "rgba(255,255,255,0.045)",
-      border: "rgba(255,255,255,0.12)",
+      bg: "rgba(255,253,247,0.07)",
+      border: "rgba(255,253,247,0.13)",
+      fg: "rgba(255,253,247,0.82)",
     },
     purple: {
-      bg: "rgba(124,58,237,0.22)",
-      border: "rgba(196,181,253,0.38)",
+      bg: "rgba(139,92,246,0.18)",
+      border: "rgba(196,181,253,0.36)",
+      fg: "#EDE9FE",
     },
     gold: {
-      bg: "rgba(245,158,11,0.20)",
-      border: "rgba(253,186,116,0.35)",
+      bg: "rgba(244,183,93,0.18)",
+      border: "rgba(244,183,93,0.38)",
+      fg: "#FEF3C7",
     },
     green: {
-      bg: "rgba(16,185,129,0.20)",
-      border: "rgba(52,211,153,0.35)",
+      bg: "rgba(34,197,94,0.18)",
+      border: "rgba(134,239,172,0.34)",
+      fg: "#DCFCE7",
     },
     red: {
-      bg: "rgba(239,68,68,0.22)",
-      border: "rgba(252,165,165,0.35)",
+      bg: "rgba(251,113,133,0.20)",
+      border: "rgba(253,164,175,0.36)",
+      fg: "#FFE4E6",
+    },
+    teal: {
+      bg: "rgba(45,212,191,0.17)",
+      border: "rgba(94,234,212,0.34)",
+      fg: "#CCFBF1",
+    },
+    blue: {
+      bg: "rgba(56,189,248,0.17)",
+      border: "rgba(125,211,252,0.34)",
+      fg: "#E0F2FE",
     },
   } as const;
 
@@ -349,8 +407,8 @@ function CardBadge({
         borderColor: colors.border,
       }}
     >
-      {icon ? <Ionicons name={icon} size={12} color="#fff" /> : null}
-      <Text style={{ color: "rgba(255,255,255,0.82)", fontWeight: "800", fontSize: 10 }}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={12} color={colors.fg} /> : null}
+      <Text style={{ color: colors.fg, fontWeight: "800", fontSize: 10 }}>{label}</Text>
     </View>
   );
 }
@@ -366,12 +424,17 @@ function GlassPanel({
     <View
       style={[
         {
-          borderRadius: 16,
+          borderRadius: 20,
           borderWidth: 1,
           borderTopWidth: 1,
           borderColor: BORDER,
           borderTopColor: BORDER_TOP,
           backgroundColor: CARD,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 3,
         },
         style,
       ]}
@@ -402,12 +465,12 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
                   borderRadius: 13,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: index < 2 ? "rgba(20,184,166,0.18)" : "rgba(255,255,255,0.045)",
+                  backgroundColor: index < 2 ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.055)",
                   borderWidth: 1,
-                  borderColor: index < 2 ? "rgba(94,234,212,0.36)" : "rgba(255,255,255,0.10)",
+                  borderColor: index < 2 ? "rgba(94,234,212,0.36)" : "rgba(255,253,247,0.10)",
                 }}
               >
-                <Ionicons name={step.icon} size={12} color={index < 2 ? "#5EEAD4" : MUTED} />
+                <Ionicons name={step.icon} size={12} color={index < 2 ? TEAL : MUTED} />
               </View>
             </View>
             {index < steps.length - 1 ? (
@@ -415,7 +478,7 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
                 style={{
                   width: 14,
                   height: 1,
-                  backgroundColor: index === 0 ? "rgba(94,234,212,0.54)" : "rgba(255,255,255,0.12)",
+                  backgroundColor: index === 0 ? "rgba(94,234,212,0.54)" : "rgba(255,253,247,0.12)",
                 }}
               />
             ) : null}
@@ -426,7 +489,7 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <GlassPanel style={{ padding: 14 }}>
+    <GlassPanel style={{ padding: 14, backgroundColor: "rgba(45,212,191,0.07)" }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14, letterSpacing: 0 }}>
@@ -450,12 +513,12 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
                   borderRadius: 17,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: index < 2 ? "rgba(20,184,166,0.20)" : "rgba(255,255,255,0.05)",
+                  backgroundColor: index < 2 ? "rgba(45,212,191,0.20)" : "rgba(255,253,247,0.055)",
                   borderWidth: 1,
                   borderColor: index < 2 ? "rgba(94,234,212,0.42)" : BORDER,
                 }}
               >
-                <Ionicons name={step.icon} size={16} color={index < 2 ? "#5EEAD4" : MUTED} />
+                <Ionicons name={step.icon} size={16} color={index < 2 ? TEAL : MUTED} />
               </View>
               <Text
                 numberOfLines={1}
@@ -469,7 +532,7 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
                 style={{
                   width: 24,
                   height: 1,
-                  backgroundColor: index === 0 ? "rgba(94,234,212,0.58)" : "rgba(255,255,255,0.12)",
+                  backgroundColor: index === 0 ? "rgba(94,234,212,0.58)" : "rgba(255,253,247,0.12)",
                 }}
               />
             ) : null}
@@ -757,6 +820,28 @@ export default function MarketHome() {
       : directoryMode === "featured"
       ? "Browse promoted storefronts first."
       : "Browse stores with verified seller profiles.";
+  const heroAccent =
+    section === "service" ? TEAL : section === "product" ? BLUE : section === "social" ? AMBER : PURPLE;
+  const heroPreviewListings = useMemo(
+    () =>
+      rows.slice(0, 3).map((item, index) => {
+        const mediaSource = resolveMarketMediaSource(
+          [item.cover ?? null, ...sortMarketMedia(item.images ?? [])],
+          supabaseUrl,
+          LISTING_IMAGES_BUCKET,
+        );
+        const displayPrice = getListingPriceDisplay(item as any);
+        return {
+          id: item.id,
+          title: item.title || "Untitled listing",
+          price: formatCurrency(displayPrice.localCurrency, displayPrice.localNow),
+          uri: mediaSource?.url ?? null,
+          kind: mediaSource?.kind ?? "image",
+          accent: [TEAL, AMBER, BLUE][index % 3],
+        };
+      }),
+    [rows, supabaseUrl],
+  );
 
   const renderListing = ({ item }: { item: ListingRow }) => {
     const mediaSource = resolveMarketMediaSource(
@@ -783,22 +868,22 @@ export default function MarketHome() {
           width: listingCardWidth as any,
           marginHorizontal: listingColumns === 1 && !isDesktop ? pagePadding : 0,
           marginTop: isDesktop ? 18 : 16,
-          borderRadius: 16,
+          borderRadius: 22,
           overflow: "hidden",
           borderWidth: 1,
           borderTopWidth: 1,
-          borderColor: BORDER,
+          borderColor: "rgba(255,253,247,0.13)",
           borderTopColor: BORDER_TOP,
-          backgroundColor: isDesktop ? "rgba(10,9,22,0.96)" : CARD_RAISED,
+          backgroundColor: isDesktop ? "rgba(10,13,11,0.96)" : CARD_RAISED,
           shadowColor: "#000",
-          shadowOpacity: isDesktop ? 0.32 : 0.24,
-          shadowRadius: isDesktop ? 24 : 18,
-          shadowOffset: { width: 0, height: isDesktop ? 16 : 12 },
-          elevation: 6,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          shadowOpacity: isDesktop ? 0.34 : 0.25,
+          shadowRadius: isDesktop ? 28 : 20,
+          shadowOffset: { width: 0, height: isDesktop ? 18 : 12 },
+          elevation: 7,
+          transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
         })}
       >
-        <View style={{ aspectRatio: listingMediaAspectRatio, backgroundColor: "rgba(255,255,255,0.06)" }}>
+        <View style={{ aspectRatio: listingMediaAspectRatio, backgroundColor: "rgba(255,253,247,0.07)" }}>
           {coverUrl ? (
             <MarketMediaView
               uri={coverUrl}
@@ -812,16 +897,16 @@ export default function MarketHome() {
             />
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <Ionicons name={coverKind === "video" ? "videocam-outline" : "image-outline"} size={30} color="rgba(255,255,255,0.55)" />
-              <Text style={{ color: "rgba(255,255,255,0.58)", fontWeight: "800", fontSize: 12 }}>
+              <Ionicons name={coverKind === "video" ? "videocam-outline" : "image-outline"} size={30} color="rgba(255,253,247,0.55)" />
+              <Text style={{ color: "rgba(255,253,247,0.58)", fontWeight: "800", fontSize: 12 }}>
                 Preview unavailable
               </Text>
             </View>
           )}
 
           <LinearGradient
-            colors={["rgba(5,4,11,0.08)", "rgba(5,4,11,0.12)", "rgba(5,4,11,0.30)"]}
-            locations={[0, 0.35, 1]}
+            colors={["rgba(6,8,7,0.02)", "rgba(6,8,7,0.16)", "rgba(6,8,7,0.56)"]}
+            locations={[0, 0.42, 1]}
             style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
           />
 
@@ -841,7 +926,7 @@ export default function MarketHome() {
               <CardBadge
                 label={categoryLabel}
                 icon={item.category === "service" ? "construct-outline" : "cube-outline"}
-                tone="purple"
+                tone={item.category === "service" ? "teal" : "blue"}
               />
               <ListingOriginBadge
                 availability={item.availability}
@@ -874,10 +959,10 @@ export default function MarketHome() {
                 justifyContent: "center",
                 backgroundColor: "rgba(0,0,0,0.54)",
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
+                borderColor: "rgba(255,253,247,0.12)",
               }}
             >
-              <Ionicons name="play" size={18} color="#fff" />
+              <Ionicons name="play" size={18} color={TEXT} />
             </View>
           ) : null}
         </View>
@@ -888,7 +973,7 @@ export default function MarketHome() {
             paddingHorizontal: isDesktop ? 16 : 14,
             paddingTop: isDesktop ? 16 : 14,
             paddingBottom: isDesktop ? 16 : 14,
-            backgroundColor: "rgba(5,4,11,0.72)",
+            backgroundColor: "rgba(9,13,11,0.92)",
           }}
         >
           <View style={{ minHeight: showDiscount ? 58 : 46 }}>
@@ -919,7 +1004,7 @@ export default function MarketHome() {
             <Text
               style={{
                 marginTop: 2,
-                color: showDiscount ? "#FCA5A5" : MUTED,
+                color: showDiscount ? ROSE : MUTED,
                 fontWeight: "800",
                 fontSize: 11,
               }}
@@ -939,7 +1024,7 @@ export default function MarketHome() {
             <CardBadge
               label={item.sub_category || categoryLabel}
               icon={item.category === "service" ? "construct-outline" : "cube-outline"}
-              tone="neutral"
+              tone={item.category === "service" ? "teal" : "blue"}
             />
             {item.category === "product" && typeof item.stock_qty === "number" ? (
               <CardBadge
@@ -964,16 +1049,17 @@ export default function MarketHome() {
               marginTop: 12,
               paddingTop: 12,
               borderTopWidth: 1,
-              borderTopColor: "rgba(255,255,255,0.08)",
+              borderTopColor: "rgba(255,253,247,0.10)",
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
               gap: 10,
             }}
           >
-            <Text style={{ color: "rgba(255,255,255,0.72)", fontWeight: "800", fontSize: 11 }}>
-              Escrow ready
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={TEAL} />
+              <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>Escrow ready</Text>
+            </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open</Text>
               <Ionicons name="arrow-forward" size={14} color={TEXT} />
@@ -986,36 +1072,88 @@ export default function MarketHome() {
 
   const renderSellerCard = ({ item }: { item: SellerCard }) => {
     const logo = publicSellerLogo(item.logo_path);
+    const name = item.business_name || item.display_name || "Business";
     return (
       <Pressable
         onPress={() => router.push(`/market/profile/${item.market_username}` as any)}
         style={({ pressed }) => ({
           width: sellerCardWidth as any,
           marginHorizontal: !isDesktop ? pagePadding : 0,
-          borderRadius: 16,
-          padding: 14,
-          backgroundColor: CARD,
+          borderRadius: 22,
+          overflow: "hidden",
+          backgroundColor: INK,
           borderWidth: 1,
           borderTopWidth: 1,
-          borderColor: BORDER,
+          borderColor: "rgba(255,253,247,0.13)",
           borderTopColor: BORDER_TOP,
           marginTop: 12,
-          transform: [{ scale: pressed ? 0.98 : 1 }],
+          shadowColor: "#000",
+          shadowOpacity: 0.18,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 4,
+          transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
         })}
       >
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-          <View style={{ width: 46, height: 46, borderRadius: 23, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}>
-            {logo ? <Image source={{ uri: logo }} style={{ width: 46, height: 46 }} /> : <Ionicons name="person-outline" size={22} color="#fff" />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={{ color: TEXT, fontWeight: "900", flexShrink: 1, letterSpacing: 0 }} numberOfLines={1}>{item.business_name || item.display_name || "Business"}</Text>
-              <VerifiedTick verified={item.is_verified} />
+        <LinearGradient
+          colors={["rgba(56,189,248,0.15)", "rgba(244,183,93,0.08)", "rgba(9,13,11,0.88)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ minHeight: 154, padding: 16 }}
+        >
+          <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+            <View
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: 20,
+                overflow: "hidden",
+                backgroundColor: "rgba(255,253,247,0.10)",
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.16)",
+              }}
+            >
+              {logo ? <Image source={{ uri: logo }} style={{ width: 54, height: 54 }} /> : <Ionicons name="storefront-outline" size={24} color={TEXT} />}
             </View>
-            <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>@{item.market_username || "profile"}</Text>
-            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 12 }} numberOfLines={2}>{item.bio || "No description yet."}</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", flexShrink: 1, letterSpacing: 0, fontSize: 15 }} numberOfLines={1}>
+                  {name}
+                </Text>
+                <VerifiedTick verified={item.is_verified} />
+              </View>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
+                @{item.market_username || "profile"}
+              </Text>
+            </View>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(255,253,247,0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.13)",
+              }}
+            >
+              <Ionicons name="arrow-forward" size={16} color={TEXT} />
+            </View>
           </View>
-        </View>
+
+          <Text style={{ marginTop: 12, color: MUTED, fontSize: 12, lineHeight: 18 }} numberOfLines={2}>
+            {item.bio || "No description yet."}
+          </Text>
+
+          <View style={{ marginTop: 12, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+            {item.is_verified ? <CardBadge label="Verified seller" icon="checkmark-circle-outline" tone="blue" /> : null}
+            {item.featured_enabled ? <CardBadge label="Featured" icon="flame-outline" tone="gold" /> : null}
+            <CardBadge label="Store profile" icon="storefront-outline" tone="neutral" />
+          </View>
+        </LinearGradient>
       </Pressable>
     );
   };
@@ -1041,11 +1179,11 @@ export default function MarketHome() {
         <View
           style={{
             marginTop: 20,
-            borderRadius: 18,
+            borderRadius: 20,
             padding: 6,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.12)",
-            backgroundColor: "rgba(255,255,255,0.055)",
+            borderColor: "rgba(255,253,247,0.13)",
+            backgroundColor: "rgba(9,13,11,0.50)",
             flexDirection: "row",
             gap: 6,
           }}
@@ -1093,26 +1231,26 @@ export default function MarketHome() {
           flexDirection: "row",
           gap: 10,
           alignItems: "center",
-          borderRadius: prominent ? 20 : 18,
+          borderRadius: prominent ? 22 : 18,
           padding: prominent ? 14 : 12,
           borderWidth: 1,
           borderTopWidth: 1,
-          borderColor: prominent ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.12)",
-          borderTopColor: "rgba(255,255,255,0.22)",
-          backgroundColor: prominent ? "rgba(5,4,11,0.42)" : "rgba(255,255,255,0.07)",
+          borderColor: prominent ? "rgba(255,253,247,0.18)" : "rgba(255,253,247,0.13)",
+          borderTopColor: "rgba(255,253,247,0.26)",
+          backgroundColor: prominent ? "rgba(9,13,11,0.58)" : "rgba(255,253,247,0.07)",
         }}
       >
-        <Ionicons name="search-outline" size={19} color="rgba(255,255,255,0.78)" />
+        <Ionicons name="search-outline" size={19} color={prominent ? TEAL : MUTED} />
         <TextInput
           value={q}
           onChangeText={setQ}
           placeholder={searchPlaceholder}
-          placeholderTextColor="rgba(255,255,255,0.45)"
+          placeholderTextColor="rgba(255,253,247,0.45)"
           returnKeyType="search"
           onSubmitEditing={() =>
             router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })
           }
-          style={{ flex: 1, minWidth: 0, color: "#fff", fontWeight: "800", fontSize: prominent ? 15 : 14 }}
+          style={{ flex: 1, minWidth: 0, color: TEXT, fontWeight: "800", fontSize: prominent ? 15 : 14 }}
         />
         {q.trim() ? (
           <Pressable
@@ -1124,10 +1262,10 @@ export default function MarketHome() {
               borderRadius: 12,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.08)",
+              backgroundColor: "rgba(255,253,247,0.08)",
             }}
           >
-            <Ionicons name="close" size={17} color="#fff" />
+            <Ionicons name="close" size={17} color={TEXT} />
           </Pressable>
         ) : null}
         <Pressable
@@ -1138,81 +1276,262 @@ export default function MarketHome() {
             borderRadius: prominent ? 15 : 13,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: "rgba(124,58,237,0.30)",
+            backgroundColor: "rgba(45,212,191,0.20)",
             borderWidth: 1,
-            borderColor: "rgba(196,181,253,0.42)",
+            borderColor: "rgba(94,234,212,0.42)",
           }}
         >
-          <Ionicons name="arrow-forward" size={17} color="#fff" />
+          <Ionicons name="arrow-forward" size={17} color={TEXT} />
         </Pressable>
       </View>
     ) : null;
   }
 
+  function renderHeroPreviewRail(compact = false) {
+    if (!heroPreviewListings.length) {
+      return (
+        <View
+          style={{
+            marginTop: compact ? 14 : 0,
+            borderRadius: compact ? 18 : 22,
+            padding: compact ? 12 : 16,
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.13)",
+            backgroundColor: "rgba(255,253,247,0.065)",
+            minHeight: compact ? 104 : 180,
+            justifyContent: "center",
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(45,212,191,0.16)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.34)",
+            }}
+          >
+            <Ionicons name="sparkles-outline" size={18} color={TEAL} />
+          </View>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: compact ? 13 : 15 }}>
+            Fresh marketplace shelf
+          </Text>
+          <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>
+            Listings with media will appear here as buyers browse.
+          </Text>
+        </View>
+      );
+    }
+
+    if (compact) {
+      return (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 14, marginHorizontal: -16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+        >
+          {heroPreviewListings.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
+              style={({ pressed }) => ({
+                width: 176,
+                borderRadius: 18,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.13)",
+                backgroundColor: "rgba(255,253,247,0.07)",
+                transform: [{ scale: pressed ? 0.985 : 1 }],
+              })}
+            >
+              <View style={{ height: 86, backgroundColor: "rgba(255,253,247,0.07)" }}>
+                {item.uri ? (
+                  <MarketMediaView
+                    uri={item.uri}
+                    kind={item.kind}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode={item.kind === "video" ? "contain" : "cover"}
+                    muted
+                    disablePointerEvents
+                  />
+                ) : (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="image-outline" size={20} color={MUTED} />
+                  </View>
+                )}
+              </View>
+              <View style={{ padding: 10 }}>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                  {item.title}
+                </Text>
+                <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                  {item.price}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      );
+    }
+
+    return (
+      <View style={{ gap: 10 }}>
+        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>LIVE SHELF</Text>
+        {heroPreviewListings.map((item) => (
+          <Pressable
+            key={item.id}
+            onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
+            style={({ pressed }) => ({
+              borderRadius: 18,
+              overflow: "hidden",
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.13)",
+              backgroundColor: "rgba(9,13,11,0.62)",
+              flexDirection: "row",
+              alignItems: "center",
+              transform: [{ translateY: pressed ? 1 : 0 }],
+            })}
+          >
+            <View style={{ width: 76, height: 76, backgroundColor: "rgba(255,253,247,0.07)" }}>
+              {item.uri ? (
+                <MarketMediaView
+                  uri={item.uri}
+                  kind={item.kind}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode={item.kind === "video" ? "contain" : "cover"}
+                  muted
+                  disablePointerEvents
+                />
+              ) : (
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="image-outline" size={20} color={MUTED} />
+                </View>
+              )}
+            </View>
+            <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 10 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                {item.title}
+              </Text>
+              <Text numberOfLines={1} style={{ marginTop: 5, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                {item.price}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={MUTED} style={{ marginRight: 12 }} />
+          </Pressable>
+        ))}
+      </View>
+    );
+  }
+
   function renderHeroPanel(desktop = false) {
+    const showPreviewShelf = desktop && contentInnerWidth >= 1120 && section !== "social";
+    const kicker = section === "social" ? "SELLER BOARD" : section === "service" ? "SERVICES" : section === "product" ? "PRODUCTS" : "MARKETPLACE";
+
     if (desktop) {
       return (
         <LinearGradient
-          colors={["rgba(124,58,237,0.38)", "rgba(20,184,166,0.16)", "rgba(255,255,255,0.045)"]}
+          colors={[`${heroAccent}24`, "rgba(244,183,93,0.10)", "rgba(255,253,247,0.055)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             flex: 1,
-            minHeight: 330,
-            borderRadius: 24,
-            padding: 24,
+            minHeight: 356,
+            borderRadius: 30,
+            padding: 26,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.16)",
+            borderColor: "rgba(255,253,247,0.17)",
             overflow: "hidden",
+            shadowColor: "#000",
+            shadowOpacity: 0.24,
+            shadowRadius: 26,
+            shadowOffset: { width: 0, height: 18 },
+            elevation: 8,
           }}
         >
-          <View style={{ maxWidth: 720 }}>
-            <Text style={{ color: "rgba(255,255,255,0.62)", fontWeight: "900", fontSize: 11 }}>
-              {section === "social" ? "SELLER BOARD" : "MARKETPLACE"}
-            </Text>
-            <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 36, lineHeight: 42 }}>
-              {heroTitle}
-            </Text>
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.74)", lineHeight: 22, fontSize: 14 }}>
-              {heroSubtitle}
-            </Text>
-          </View>
+          <View style={{ flex: 1, flexDirection: showPreviewShelf ? "row" : "column", gap: 22 }}>
+            <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between" }}>
+              <View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
+                  {section !== "social" ? (
+                    <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
+                  ) : null}
+                </View>
+                <Text style={{ marginTop: 16, color: TEXT, fontWeight: "900", fontSize: showPreviewShelf ? 38 : 36, lineHeight: showPreviewShelf ? 43 : 41 }}>
+                  {heroTitle}
+                </Text>
+                <Text style={{ marginTop: 12, color: "rgba(255,253,247,0.76)", lineHeight: 22, fontSize: 14, maxWidth: 650 }}>
+                  {heroSubtitle}
+                </Text>
+              </View>
 
-          {section === "social" ? (
-            <View style={{ marginTop: 20, flexDirection: "row", gap: 12, maxWidth: 600 }}>
-              <QuickAction
-                label="Seller Board"
-                subtitle="Open full feed"
-                icon="chatbubbles-outline"
-                accent={AMBER}
-                onPress={() => router.push("/market/social" as any)}
-              />
-              <QuickAction
-                label="Shopping"
-                subtitle="Return to listings"
-                icon="storefront-outline"
-                accent="#0EA5E9"
-                onPress={() => switchSection("all")}
-              />
+              <View style={{ marginTop: 18 }}>
+                {section === "social" ? (
+                  <View style={{ flexDirection: "row", gap: 12, maxWidth: 600 }}>
+                    <QuickAction
+                      label="Seller Board"
+                      subtitle="Open full feed"
+                      icon="chatbubbles-outline"
+                      accent={AMBER}
+                      onPress={() => router.push("/market/social" as any)}
+                    />
+                    <QuickAction
+                      label="Shopping"
+                      subtitle="Return to listings"
+                      icon="storefront-outline"
+                      accent={BLUE}
+                      onPress={() => switchSection("all")}
+                    />
+                  </View>
+                ) : (
+                  renderSearchBar(true)
+                )}
+
+                {renderSectionTabs("desktop")}
+              </View>
             </View>
-          ) : (
-            renderSearchBar(true)
-          )}
 
-          {renderSectionTabs("desktop")}
+            {showPreviewShelf ? (
+              <View style={{ width: 286, justifyContent: "center" }}>
+                {renderHeroPreviewRail(false)}
+              </View>
+            ) : null}
+          </View>
         </LinearGradient>
       );
     }
 
     return (
-      <GlassPanel style={{ marginTop: 12, padding: 16 }}>
-        <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>
-          {section === "social" ? "SELLER BOARD" : section === "service" ? "SERVICES" : "PRODUCTS"}
-        </Text>
-        <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 22 }}>{heroTitle}</Text>
-        <Text style={{ marginTop: 6, color: MUTED, lineHeight: 20 }} numberOfLines={2}>
+      <LinearGradient
+        colors={[`${heroAccent}20`, "rgba(244,183,93,0.08)", "rgba(255,253,247,0.06)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          marginTop: 12,
+          padding: 16,
+          borderRadius: 24,
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.15)",
+          overflow: "hidden",
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
+          {section !== "social" ? (
+            <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
+          ) : null}
+        </View>
+        <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 25, lineHeight: 31 }}>{heroTitle}</Text>
+        <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }} numberOfLines={3}>
           {heroSubtitle}
         </Text>
+
+        {section !== "social" ? renderHeroPreviewRail(true) : null}
 
         {section !== "social" ? (
           <View
@@ -1227,6 +1546,7 @@ export default function MarketHome() {
               label="In view"
               value={String(resultCount)}
               icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
+              tone={heroAccent}
             />
             <MarketMetric
               label="Scope"
@@ -1238,11 +1558,11 @@ export default function MarketHome() {
               label="Verified"
               value={String(verifiedSellers.length)}
               icon="checkmark-circle-outline"
-              tone="#60A5FA"
+              tone={BLUE}
             />
           </View>
         ) : null}
-      </GlassPanel>
+      </LinearGradient>
     );
   }
 
@@ -1257,8 +1577,9 @@ export default function MarketHome() {
       >
         <QuickAction
           label={section === "all" ? "Products" : section === "social" ? "Seller Board" : "Categories"}
+          subtitle={section === "all" ? "Shop curated items" : section === "social" ? "Open full feed" : "Browse by type"}
           icon={section === "all" ? "storefront-outline" : section === "social" ? "chatbubbles-outline" : "grid-outline"}
-          accent={section === "social" ? AMBER : PURPLE}
+          accent={section === "social" ? AMBER : heroAccent}
           onPress={() => {
             if (section === "social") {
               router.push("/market/social" as any);
@@ -1276,8 +1597,9 @@ export default function MarketHome() {
         />
         <QuickAction
           label={section === "social" ? "Shopping" : "Stock Market"}
+          subtitle={section === "social" ? "Back to listings" : "Trade seller stock"}
           icon={section === "social" ? "storefront-outline" : "trending-up-outline"}
-          accent={section === "social" ? "#0EA5E9" : TEAL}
+          accent={section === "social" ? BLUE : TEAL}
           onPress={() => {
             if (section === "social") {
               switchSection("all");
@@ -1292,14 +1614,14 @@ export default function MarketHome() {
 
   function renderDirectoryChooser(desktop = false) {
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, flex: desktop ? 1 : undefined }}>
-        <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "800", fontSize: 11 }}>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, flex: desktop ? 1 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+        <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>
           {directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY"}
         </Text>
 
         <View style={{ marginTop: 6, flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: desktop ? 20 : 18 }}>{resultTitle}</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: desktop ? 20 : 18 }}>{resultTitle}</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{resultSubtitle}</Text>
           </View>
           <View
@@ -1310,12 +1632,12 @@ export default function MarketHome() {
               paddingVertical: 8,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(124,58,237,0.18)",
+              backgroundColor: "rgba(45,212,191,0.16)",
               borderWidth: 1,
-              borderColor: "rgba(124,58,237,0.38)",
+              borderColor: "rgba(94,234,212,0.38)",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{resultCount}</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{resultCount}</Text>
           </View>
         </View>
 
@@ -1336,7 +1658,7 @@ export default function MarketHome() {
           <Chip
             label="Verified Stores"
             icon="checkmark-circle"
-            iconColor="#60A5FA"
+            iconColor={BLUE}
             active={directoryMode === "verified"}
             onPress={() => setDirectoryMode("verified")}
           />
@@ -1348,8 +1670,8 @@ export default function MarketHome() {
   function renderScopeAndFilters(desktop = false) {
     if (!isListingDirectory) {
       return (
-        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined }}>
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
+        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
           <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
             Featured and verified directories help buyers assess a store before opening the full profile.
           </Text>
@@ -1358,10 +1680,10 @@ export default function MarketHome() {
     }
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined }}>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
               {feedScope === "country"
                 ? "Showing only listings matched to your current country."
@@ -1380,13 +1702,13 @@ export default function MarketHome() {
               borderRadius: 14,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.08)",
+              backgroundColor: "rgba(255,253,247,0.08)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(255,253,247,0.12)",
               opacity: locatingCountry ? 0.6 : 1,
             }}
           >
-            {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={16} color="#fff" />}
+            {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={16} color={TEXT} />}
           </Pressable>
         </View>
 
@@ -1411,16 +1733,16 @@ export default function MarketHome() {
             borderRadius: 16,
             padding: 12,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.10)",
-            backgroundColor: "rgba(255,255,255,0.04)",
+            borderColor: "rgba(255,253,247,0.12)",
+            backgroundColor: "rgba(9,13,11,0.42)",
             flexDirection: "row",
             alignItems: "center",
             gap: 10,
           }}
         >
-          <Ionicons name="location-outline" size={18} color="rgba(255,255,255,0.78)" />
+          <Ionicons name="location-outline" size={18} color={TEAL} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
             <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }}>
               {feedScope === "country"
                 ? "Local listings show local currency plus USD reference."
@@ -1437,19 +1759,19 @@ export default function MarketHome() {
               padding: 12,
               borderWidth: 1,
               borderColor: BORDER,
-              backgroundColor: "rgba(255,255,255,0.04)",
+              backgroundColor: "rgba(255,253,247,0.055)",
             }}
           >
             <Text style={{ color: MUTED }}>Enable location to see listings near you. You can still use the Global feed.</Text>
             {countryErr ? (
-              <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{countryErr}</Text>
+              <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.55)", fontSize: 12 }}>{countryErr}</Text>
             ) : null}
           </View>
         ) : null}
 
         {categories.length ? (
           <>
-            <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Categories</Text>
+            <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 13 }}>Categories</Text>
             <View style={{ marginTop: 8 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
@@ -1468,18 +1790,18 @@ export default function MarketHome() {
               borderRadius: 16,
               padding: 12,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
-              backgroundColor: "rgba(255,255,255,0.04)",
+              borderColor: "rgba(255,253,247,0.12)",
+              backgroundColor: "rgba(255,253,247,0.055)",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>All listing types</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>All listing types</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
               This view mixes products and services together. Switch above when you want category-specific browsing.
             </Text>
           </View>
         )}
 
-        <Text style={{ marginTop: 14, color: "#fff", fontWeight: "900", fontSize: 13 }}>Sort</Text>
+        <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 13 }}>Sort</Text>
         <View style={{ marginTop: 8, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
           <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
           <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
@@ -1494,7 +1816,7 @@ export default function MarketHome() {
       return (
         <View style={{ paddingVertical: 18, alignItems: "center" }}>
           <ActivityIndicator />
-          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>Loading...</Text>
+          <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
         </View>
       );
     }
@@ -1502,7 +1824,7 @@ export default function MarketHome() {
     if (err) {
       return (
         <GlassPanel style={{ marginTop: 14, padding: 12 }}>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Couldn't load data</Text>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>Couldn't load data</Text>
           <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>
         </GlassPanel>
       );
@@ -1532,10 +1854,10 @@ export default function MarketHome() {
           style={{
             marginTop: 12,
             marginHorizontal: desktop ? 0 : -pagePadding,
-            backgroundColor: "#120E0C",
+            backgroundColor: "rgba(9,13,11,0.96)",
             borderTopWidth: 1,
             borderBottomWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: "rgba(255,253,247,0.10)",
             borderRadius: desktop ? 24 : 0,
             overflow: "hidden",
           }}
@@ -1545,7 +1867,7 @@ export default function MarketHome() {
               paddingHorizontal: desktop ? 18 : 16,
               paddingVertical: 14,
               borderBottomWidth: 1,
-              borderBottomColor: "rgba(255,255,255,0.08)",
+              borderBottomColor: "rgba(255,253,247,0.10)",
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1553,7 +1875,7 @@ export default function MarketHome() {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 18 }}>Seller board</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Seller board</Text>
               <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
                 Storefront updates, launches, and media from sellers you follow.
               </Text>
@@ -1563,13 +1885,13 @@ export default function MarketHome() {
               style={{
                 borderRadius: 999,
                 borderWidth: 1,
-                borderColor: "rgba(245,158,11,0.35)",
-                backgroundColor: "rgba(245,158,11,0.16)",
+                borderColor: "rgba(244,183,93,0.35)",
+                backgroundColor: "rgba(244,183,93,0.16)",
                 paddingHorizontal: 14,
                 paddingVertical: 10,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open board</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open board</Text>
             </Pressable>
           </View>
 
@@ -1625,8 +1947,8 @@ export default function MarketHome() {
           {renderHeroPanel(true)}
 
           <View style={{ width: 340, gap: 12 }}>
-            <GlassPanel style={{ padding: 16 }}>
-              <Text style={{ color: "rgba(255,255,255,0.56)", fontWeight: "900", fontSize: 11 }}>MARKET PULSE</Text>
+            <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
+              <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>MARKET PULSE</Text>
               <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
                 <MarketMetric
                   label="In view"
@@ -1637,7 +1959,7 @@ export default function MarketHome() {
                   label="Verified"
                   value={String(verifiedSellers.length)}
                   icon="checkmark-circle-outline"
-                  tone="#60A5FA"
+                  tone={BLUE}
                 />
               </View>
               <View style={{ marginTop: 10, flexDirection: "row", gap: 10 }}>
@@ -1676,7 +1998,7 @@ export default function MarketHome() {
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.15, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
+    <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
@@ -1721,8 +2043,8 @@ export default function MarketHome() {
         }
         ListEmptyComponent={
           !loading && section !== "social" ? (
-            <View style={{ marginTop: 14, marginHorizontal: 16, borderRadius: 16, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
-              <Text style={{ color: "#fff", fontWeight: "900" }}>No results</Text>
+            <View style={{ marginTop: 14, marginHorizontal: 16, borderRadius: 20, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+              <Text style={{ color: TEXT, fontWeight: "900" }}>No results</Text>
               <Text style={{ marginTop: 6, color: MUTED }}>
                 Try another filter, switch listing type, or use the Global feed.
               </Text>

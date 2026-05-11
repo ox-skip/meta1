@@ -5,17 +5,13 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 
-const BG = "#05040B";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.65)";
-const WHITE = "#FFFFFF";
-const PURPLE = "#7C3AED";
+const BG = "#090D0B";
+const CARD = "rgba(255,253,247,0.07)";
+const BORDER = "rgba(255,253,247,0.12)";
+const MUTED = "rgba(255,253,247,0.66)";
+const WHITE = "#FFFDF7";
 
-// ✅ Your PNG logo
 const APP_LOGO = require("@/assets/images/icon.png");
-// If your project doesn't support @ alias for assets:
-// const APP_LOGO = require("../../assets/images/icon.png");
 
 type Props = {
   title?: string;
@@ -78,7 +74,6 @@ export default function AppHeader({
     if (onBackPress) return onBackPress();
 
     if (canGoBack) {
-      // ✅ real "previous page/tab"
       // @ts-ignore
       navigation.goBack();
       return;
@@ -124,6 +119,10 @@ export default function AppHeader({
                 backgroundColor: CARD,
                 borderWidth: 1,
                 borderColor: BORDER,
+                shadowColor: "#000",
+                shadowOpacity: 0.14,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 7 },
               }}
             >
               <Ionicons name="chevron-back" size={22} color={WHITE} />
@@ -140,8 +139,8 @@ export default function AppHeader({
               borderRadius: 12,
               overflow: "hidden",
               borderWidth: 1,
-              borderColor: "rgba(124,58,237,0.45)",
-              backgroundColor: "rgba(124,58,237,0.15)",
+              borderColor: "rgba(45,212,191,0.42)",
+              backgroundColor: "rgba(45,212,191,0.14)",
             }}
           >
             <Image source={APP_LOGO} style={{ width: 34, height: 34 }} resizeMode="cover" />
@@ -175,9 +174,13 @@ export default function AppHeader({
                 borderRadius: 16,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(124,58,237,0.18)",
+                backgroundColor: "rgba(45,212,191,0.15)",
                 borderWidth: 1,
-                borderColor: "rgba(124,58,237,0.40)",
+                borderColor: "rgba(45,212,191,0.38)",
+                shadowColor: "#000",
+                shadowOpacity: 0.14,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 7 },
               }}
             >
               <Ionicons name="person-circle-outline" size={24} color={WHITE} />
@@ -187,7 +190,7 @@ export default function AppHeader({
       </View>
 
       {/* Accent line */}
-      <View style={{ marginTop: 10, height: 1, backgroundColor: "rgba(124,58,237,0.22)" }} />
+      <View style={{ marginTop: 10, height: 1, backgroundColor: "rgba(45,212,191,0.22)" }} />
     </View>
   );
 }
