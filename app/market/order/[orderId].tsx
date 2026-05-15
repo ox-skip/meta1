@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View, Linking, Alert, Modal } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View, Linking, Alert, Modal } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createPublicClient, http, keccak256, toHex } from "viem";
@@ -29,9 +29,19 @@ import {
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const PURPLE = "#8B5CF6";
+const AMBER = "#F4B75D";
+const BLUE = "#38BDF8";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
 
 // ✅ Real function names in your repo
 const RPC_SELLER_OUT_FOR_DELIVERY = "market_seller_out_for_delivery_rpc";
@@ -184,9 +194,9 @@ function isUuid(v?: string | null) {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    CREATED: { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: "Created" },
-    IN_ESCROW: { bg: "rgba(124,58,237,0.18)", fg: "#C4B5FD", label: "In Escrow" },
-    OUT_FOR_DELIVERY: { bg: "rgba(59,130,246,0.14)", fg: "#93C5FD", label: "Out for delivery" },
+    CREATED: { bg: CARD_RAISED, fg: MUTED, label: "Created" },
+    IN_ESCROW: { bg: "rgba(244,183,93,0.16)", fg: AMBER, label: "In Escrow" },
+    OUT_FOR_DELIVERY: { bg: "rgba(56,189,248,0.14)", fg: BLUE, label: "Out for delivery" },
     DELIVERED: { bg: "rgba(16,185,129,0.14)", fg: "#6EE7B7", label: "Delivered" },
     RELEASED: { bg: "rgba(16,185,129,0.14)", fg: "#34D399", label: "Released" },
     REFUNDED: { bg: "rgba(239,68,68,0.14)", fg: "#FCA5A5", label: "Refunded" },
@@ -204,7 +214,7 @@ function StatusBadge({ status }: { status: string }) {
         borderRadius: 999,
         backgroundColor: s.bg,
         borderWidth: 1,
-        borderColor: `${s.fg}55`,
+        borderColor: status === "CREATED" ? BORDER : `${s.fg}55`,
       }}
     >
       <Text style={{ color: s.fg, fontWeight: "900", fontSize: 12 }}>{s.label}</Text>
@@ -217,14 +227,15 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     <View
       style={{
         marginTop: 12,
-        borderRadius: 22,
+        borderRadius: 24,
         padding: 16,
-        backgroundColor: "rgba(255,255,255,0.05)",
+        backgroundColor: CARD,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
+        borderColor: BORDER,
+        borderTopColor: BORDER_TOP,
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>{title}</Text>
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{title}</Text>
       <View style={{ marginTop: 10 }}>{children}</View>
     </View>
   );
@@ -255,6 +266,8 @@ async function safeLoadListing(listingId: string) {
 
 export default function OrderDetails() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const contentMaxWidth = width >= 980 ? 1120 : 720;
   const { orderId, tx, uo } = useLocalSearchParams<{ orderId: string; tx?: string; uo?: string }>();
   const oid = useMemo(() => String(orderId || ""), [orderId]);
   const navTx = useMemo(() => String(tx || "").trim(), [tx]);
@@ -1182,12 +1195,13 @@ async function pickAndUpload(access: "preview" | "final") {
 
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
+      colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
     >
       <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
+        <View style={{ maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" }}>
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 }}>
           <Pressable
@@ -1196,19 +1210,20 @@ async function pickAndUpload(access: "preview" | "final") {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: CARD,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="arrow-back" size={20} color="#fff" />
+            <Ionicons name="arrow-back" size={20} color={TEXT} />
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Order</Text>
-            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+            <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900" }}>Order</Text>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, fontWeight: "800" }}>
               Escrow + OTP delivery protection
             </Text>
           </View>
@@ -1216,46 +1231,46 @@ async function pickAndUpload(access: "preview" | "final") {
 
         {loading ? (
           <View style={{ marginTop: 40, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading…</Text>
+            <ActivityIndicator color={AMBER} />
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
           </View>
         ) : !order ? (
-          <View style={{ marginTop: 18, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Order not found</Text>
-            {!!err && <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{err}</Text>}
+          <View style={{ marginTop: 18, borderRadius: 24, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Order not found</Text>
+            {!!err && <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>}
           </View>
         ) : (
           <>
             {/* Summary */}
-            <View style={{ marginTop: 6, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
+            <View style={{ marginTop: 6, borderRadius: 26, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Item</Text>
-                  <Text style={{ marginTop: 4, color: "#fff", fontWeight: "900" }}>
+                  <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Item</Text>
+                  <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900" }}>
                     {listing?.title ?? "Listing"}
                   </Text>
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
+                  <Text style={{ marginTop: 6, color: FAINT, fontSize: 12 }}>
                     {listing?.category ?? "—"} • {listing?.delivery_type ?? "—"} • {listing?.sub_category ?? "—"}
                   </Text>
                   {listing?.category === "product" && typeof listing?.stock_qty === "number" ? (
-                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
                       Stock left: {Math.max(0, listing.stock_qty)}
                     </Text>
                   ) : null}
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>
+                  <Text style={{ marginTop: 6, color: FAINT, fontSize: 12 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>
                       Seller: {seller?.business_name || seller?.display_name || "Seller"}{" "}
-                      {seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color="#3B82F6" /> : null} @{seller?.market_username || "seller"}
+                      {seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={BLUE} /> : null} @{seller?.market_username || "seller"}
                     </Text>
                   </Text>
                 </View>
 
                 <View style={{ alignItems: "flex-end" }}>
                   <StatusBadge status={order.status} />
-                  <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 18 }}>
+                  <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 20 }}>
                     {money(order.currency, order.amount)}
                   </Text>
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
+                  <Text style={{ marginTop: 4, color: FAINT, fontSize: 12 }}>
                     Qty: {order.quantity}
                   </Text>
                   <Pressable
@@ -1268,16 +1283,16 @@ async function pickAndUpload(access: "preview" | "final") {
                       borderRadius: 10,
                       paddingVertical: 6,
                       paddingHorizontal: 10,
-                      backgroundColor: "rgba(124,58,237,0.18)",
+                      backgroundColor: "rgba(244,183,93,0.16)",
                       borderWidth: 1,
-                      borderColor: "rgba(124,58,237,0.35)",
+                      borderColor: "rgba(244,183,93,0.42)",
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Copy Order ID</Text>
+                    <Text style={{ color: AMBER, fontWeight: "900", fontSize: 11 }}>Copy Order ID</Text>
                   </Pressable>
                 </View>
               </View>
-              <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
+              <Text style={{ marginTop: 8, color: FAINT, fontSize: 11 }}>
                 Order ID: {order.id}
               </Text>
             </View>
@@ -2077,7 +2092,7 @@ async function pickAndUpload(access: "preview" | "final") {
                     <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>
                       Your OTP code
                     </Text>
-                    <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 24, letterSpacing: 3 }}>
+                    <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: 24, letterSpacing: 0 }}>
                       {generatedOtpCode}
                     </Text>
                     <Pressable
@@ -2154,21 +2169,22 @@ async function pickAndUpload(access: "preview" | "final") {
                 paddingVertical: 14,
                 alignItems: "center",
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.14)",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                borderColor: BORDER,
+                backgroundColor: CARD_RAISED,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Refresh</Text>
+              <Text style={{ color: TEXT, fontWeight: "900" }}>Refresh</Text>
             </Pressable>
           </>
         )}
+        </View>
       </ScrollView>
 
       <Modal visible={reindexOpen} transparent animationType="slide" onRequestClose={() => setReindexOpen(false)}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 }}>
-          <View style={{ borderRadius: 20, padding: 16, backgroundColor: "#0F0B1D", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" }}>
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>Resync deposit</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+          <View style={{ width: "100%", maxWidth: 520, alignSelf: "center", borderRadius: 20, padding: 16, backgroundColor: BG0, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Resync deposit</Text>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
               Paste the deposit transaction hash (or UserOp hash) to force a resync.
             </Text>
             <TextInput
@@ -2181,8 +2197,9 @@ async function pickAndUpload(access: "preview" | "final") {
                 marginTop: 12,
                 borderRadius: 14,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
-                color: "#fff",
+                borderColor: BORDER,
+                color: TEXT,
+                backgroundColor: CARD,
                 paddingHorizontal: 12,
                 paddingVertical: 10,
               }}
@@ -2190,16 +2207,16 @@ async function pickAndUpload(access: "preview" | "final") {
             <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
               <Pressable
                 onPress={() => setReindexOpen(false)}
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(255,255,255,0.08)" }}
+                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: CARD_RAISED, borderWidth: 1, borderColor: BORDER }}
               >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Cancel</Text>
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={reindexDeposit}
                 disabled={busy}
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(124,58,237,0.30)" }}
+                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(244,183,93,0.18)", borderWidth: 1, borderColor: "rgba(244,183,93,0.42)" }}
               >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working..." : "Resync"}</Text>
+                <Text style={{ color: AMBER, fontWeight: "900" }}>{busy ? "Working..." : "Resync"}</Text>
               </Pressable>
             </View>
           </View>

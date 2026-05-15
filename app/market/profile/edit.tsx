@@ -23,14 +23,14 @@ import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 import { getCurrentLocationWithGeocode, syncManualLocationTextAddress, toProfileLocationAddress } from "@/utils/location";
 
-const BG0 = "#0B0907";
-const BG1 = "#22160D";
-const ACCENT = "#F59E0B";
-const CARD = "rgba(24,18,14,0.9)";
-const CARD_ALT = "rgba(255,255,255,0.04)";
-const BORDER = "rgba(245,158,11,0.16)";
-const TEXT = "#FFF7ED";
-const MUTED = "rgba(255,247,237,0.68)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const ACCENT = "#F4B75D";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_ALT = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
 const BUCKET = "market-sellers";
 
 type SocialKey =
@@ -609,7 +609,7 @@ export default function EditMarketProfile() {
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <Text style={{ marginTop: 18, marginBottom: 8, color: TEXT, fontWeight: "900", fontSize: 13, letterSpacing: 0.4 }}>
+    <Text style={{ marginTop: 18, marginBottom: 8, color: TEXT, fontWeight: "900", fontSize: 13, letterSpacing: 0 }}>
       {title.toUpperCase()}
     </Text>
   );
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
     color: ACCENT,
     fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -889,7 +889,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heroActionText: { color: ACCENT, fontWeight: "900", fontSize: 13 },
-  title: { color: TEXT, fontSize: 28, fontWeight: "900", marginTop: 12 },
+  title: { color: TEXT, fontSize: 28, fontWeight: "900", marginTop: 12, letterSpacing: 0 },
   subtitle: { color: MUTED, marginTop: 6, fontSize: 13, lineHeight: 20 },
   heroHint: { color: MUTED, marginTop: 14, fontSize: 12, lineHeight: 18 },
   loadingCard: {

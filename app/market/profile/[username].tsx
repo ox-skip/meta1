@@ -14,15 +14,15 @@ import { inferMarketMediaKind } from "@/utils/marketMedia";
 import { listingAllowsCrypto } from "@/utils/marketVisibility";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
-const BG0 = "#0B0907";
-const BG1 = "#22160D";
-const PANEL = "rgba(24,18,14,0.9)";
-const PANEL_ALT = "rgba(255,255,255,0.04)";
-const BORDER = "rgba(245,158,11,0.16)";
-const TEXT = "#FFF7ED";
-const MUTED = "rgba(255,247,237,0.68)";
-const ACCENT = "#F59E0B";
-const ACCENT_2 = "#FB923C";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const PANEL = "rgba(255,253,247,0.065)";
+const PANEL_ALT = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const ACCENT = "#F4B75D";
+const ACCENT_2 = "#2DD4BF";
 const SUCCESS = "#4ADE80";
 const BUCKET_SELLERS = "market-sellers";
 const BUCKET_LISTINGS = "market-listings";
@@ -847,7 +847,7 @@ export default function PublicSellerProfile() {
                 borderColor: "rgba(245,158,11,0.26)",
               }}
             >
-              <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0, textTransform: "uppercase" }}>
                 Public Store
               </Text>
             </View>
@@ -920,7 +920,7 @@ export default function PublicSellerProfile() {
           <View style={{ flexDirection: isDesktop ? "row" : "column", alignItems: isDesktop ? "center" : "flex-start", justifyContent: "space-between", gap: 14 }}>
             <View style={{ flex: 1 }}>
               <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.26)" }}>
-                <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Public Store</Text>
+                <Text style={{ color: ACCENT, fontSize: 11, fontWeight: "900", letterSpacing: 0, textTransform: "uppercase" }}>Public Store</Text>
               </View>
               <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Storefront profile</Text>
               <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>Browse store details, seller trust signals, reviews, and active listings.</Text>
@@ -933,8 +933,8 @@ export default function PublicSellerProfile() {
 
           <View style={{ marginTop: 20, borderRadius: 34, overflow: "hidden", borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL }}>
             <View style={{ height: isDesktop ? 240 : 196, backgroundColor: "#1A120C" }}>
-              {bannerUrl ? <Image source={{ uri: bannerUrl }} style={{ width: "100%", height: "100%" }} /> : <LinearGradient colors={["#5B3A11", "#1A120D"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: "100%", height: "100%" }} />}
-              <LinearGradient colors={["rgba(0,0,0,0.06)", "rgba(11,9,7,0.88)"]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+              {bannerUrl ? <Image source={{ uri: bannerUrl }} style={{ width: "100%", height: "100%" }} /> : <LinearGradient colors={["#2B2618", BG0]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: "100%", height: "100%" }} />}
+              <LinearGradient colors={["rgba(0,0,0,0.06)", "rgba(6,8,7,0.88)"]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
               <View style={{ position: "absolute", top: 18, left: 18, right: 18, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 <StoreTag icon="shield-checkmark-outline" label={seller.is_verified ? "Verified seller" : "Public seller"} tone={seller.is_verified ? SUCCESS : ACCENT} />
                 <StoreTag icon="wallet-outline" label={seller.payout_tier === "fast" ? "Fast payouts" : "Standard payouts"} tone={ACCENT_2} />

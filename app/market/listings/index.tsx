@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,10 +29,17 @@ import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 const BG0 = "#060807";
 const BG1 = "#10130E";
 const BG2 = "#171A13";
-const BRAND = "#2DD4BF";
+const BRAND = "#F4B75D";
+const TEAL = "#2DD4BF";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
 const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
 const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
 
 const LISTINGS_TABLE = "market_listings";
 const IMAGES_TABLE = "market_listing_images";
@@ -121,6 +129,10 @@ function mediaCount(listing: Listing) {
 
 export default function ListingsFeed() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 980;
+  const numColumns = isWide ? 3 : 2;
+  const cardWidth = isWide ? "31.8%" : "48%";
   const params = useLocalSearchParams<{
     category?: string;
     q?: string;
@@ -558,12 +570,13 @@ export default function ListingsFeed() {
           paddingHorizontal: 12,
           paddingVertical: 10,
           borderRadius: 999,
-          backgroundColor: active ? "rgba(45,212,191,0.18)" : "rgba(255,255,255,0.06)",
+          backgroundColor: active ? "rgba(244,183,93,0.16)" : CARD,
           borderWidth: 1,
-          borderColor: active ? "rgba(45,212,191,0.40)" : BORDER,
+          borderColor: active ? "rgba(244,183,93,0.46)" : BORDER,
+          borderTopColor: active ? "rgba(255,253,247,0.32)" : BORDER_TOP,
         }}
       >
-        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{label}</Text>
       </Pressable>
     );
 
@@ -578,9 +591,9 @@ export default function ListingsFeed() {
       onPress: () => void;
       tone?: "purple" | "neutral";
     }) => {
-      const bg = tone === "purple" ? (active ? BRAND : "rgba(255,255,255,0.06)") : active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)";
+      const bg = tone === "purple" ? (active ? "rgba(244,183,93,0.16)" : CARD) : active ? CARD_RAISED : CARD;
       const bd =
-        tone === "purple" ? (active ? BRAND : BORDER) : active ? "rgba(255,255,255,0.22)" : BORDER;
+        tone === "purple" ? (active ? "rgba(244,183,93,0.46)" : BORDER) : active ? BORDER_TOP : BORDER;
       return (
         <Pressable
           onPress={onPress}
@@ -591,21 +604,23 @@ export default function ListingsFeed() {
             backgroundColor: bg,
             borderWidth: 1,
             borderColor: bd,
+            borderTopColor: active ? BORDER_TOP : BORDER,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>{label}</Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{label}</Text>
         </Pressable>
       );
     };
 
     return (
       <View style={{ paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
+        <View style={{ maxWidth: 1180, width: "100%", alignSelf: "center" }}>
         <AppHeader title={title} subtitle={subtitle} />
 
         {/* Title row */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
           <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={{ color: "#fff", fontSize: 28, fontWeight: "900" }}>{title}</Text>
+            <Text style={{ color: TEXT, fontSize: 28, fontWeight: "900" }}>{title}</Text>
             <Text style={{ marginTop: 6, color: MUTED, fontSize: 13 }}>{subtitle}</Text>
           </View>
 
@@ -615,14 +630,15 @@ export default function ListingsFeed() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: CARD,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="person-circle-outline" size={22} color="#fff" />
+            <Ionicons name="person-circle-outline" size={22} color={TEXT} />
           </Pressable>
         </View>
 
@@ -636,17 +652,18 @@ export default function ListingsFeed() {
             padding: 12,
             borderWidth: 1,
             borderColor: BORDER,
-            backgroundColor: "rgba(255,255,255,0.06)",
+            backgroundColor: CARD,
+            borderTopColor: BORDER_TOP,
             alignItems: "center",
           }}
         >
-          <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.75)" />
+          <Ionicons name="search-outline" size={18} color={MUTED} />
           <TextInput
             value={q}
             onChangeText={setQ}
             placeholder="Search in this store…"
             placeholderTextColor="rgba(255,255,255,0.45)"
-            style={{ flex: 1, color: "#fff", fontWeight: "700" }}
+            style={{ flex: 1, color: TEXT, fontWeight: "700" }}
             returnKeyType="search"
             onSubmitEditing={onSearchSubmit}
             autoCapitalize="none"
@@ -661,12 +678,12 @@ export default function ListingsFeed() {
                 borderRadius: 12,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.08)",
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                borderColor: BORDER,
               }}
             >
-              <Ionicons name="close" size={16} color="#fff" />
+              <Ionicons name="close" size={16} color={TEXT} />
             </Pressable>
           )}
         </View>
@@ -699,12 +716,13 @@ export default function ListingsFeed() {
               marginTop: 14,
               borderRadius: 18,
               padding: 14,
-              backgroundColor: "rgba(255,255,255,0.05)",
+              backgroundColor: CARD,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Could not load listings</Text>
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Could not load listings</Text>
             <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>
 
             <Pressable
@@ -719,7 +737,7 @@ export default function ListingsFeed() {
                 borderColor: BRAND,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Retry</Text>
+              <Text style={{ color: BG0, fontWeight: "900" }}>Retry</Text>
             </Pressable>
           </View>
         ) : null}
@@ -732,12 +750,13 @@ export default function ListingsFeed() {
             </Text>
             {refreshing ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <ActivityIndicator />
+                <ActivityIndicator color={BRAND} />
                 <Text style={{ color: MUTED, fontWeight: "900", fontSize: 12 }}>Refreshing…</Text>
               </View>
             ) : null}
           </View>
         ) : null}
+        </View>
       </View>
     );
   }, [
@@ -761,18 +780,20 @@ export default function ListingsFeed() {
 
     return (
       <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+        <View style={{ maxWidth: 1180, width: "100%", alignSelf: "center" }}>
         <View
           style={{
             borderRadius: 22,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
             alignItems: "center",
           }}
         >
-          <Ionicons name="albums-outline" size={26} color="rgba(255,255,255,0.65)" />
-          <Text style={{ marginTop: 10, color: "#fff", fontWeight: "900", fontSize: 16 }}>No listings found</Text>
+          <Ionicons name="albums-outline" size={26} color={MUTED} />
+          <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 16 }}>No listings found</Text>
           <Text style={{ marginTop: 6, color: MUTED, textAlign: "center" }}>
             Try changing filters or clearing your search.
           </Text>
@@ -797,12 +818,13 @@ export default function ListingsFeed() {
               alignSelf: "stretch",
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Reset filters</Text>
+            <Text style={{ color: BG0, fontWeight: "900" }}>Reset filters</Text>
           </Pressable>
 
           <Pressable onPress={() => router.push("/market/(tabs)" as any)} style={{ marginTop: 12 }}>
-            <Text style={{ color: "#CCFBF1", fontWeight: "900" }}>Back to Marketplace</Text>
+            <Text style={{ color: BRAND, fontWeight: "900" }}>Back to Marketplace</Text>
           </Pressable>
+        </View>
         </View>
       </View>
     );
@@ -836,16 +858,17 @@ export default function ListingsFeed() {
       return (
         <View
           style={{
-            width: "48%",
+            width: cardWidth,
             borderRadius: 22,
             overflow: "hidden",
             backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
           <Pressable onPress={() => router.push(`/market/listing/${item.id}` as any)}>
-            <View style={{ height: 130, backgroundColor: "rgba(255,255,255,0.08)" }}>
+            <View style={{ height: isWide ? 158 : 130, backgroundColor: CARD_RAISED }}>
               {coverUrl ? (
                 <MarketMediaView
                   uri={coverUrl}
@@ -859,7 +882,7 @@ export default function ListingsFeed() {
                 />
               ) : (
                 <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="image-outline" size={28} color="rgba(255,255,255,0.55)" />
+                  <Ionicons name="image-outline" size={28} color={FAINT} />
                 </View>
               )}
 
@@ -869,9 +892,9 @@ export default function ListingsFeed() {
                     paddingHorizontal: 10,
                     paddingVertical: 8,
                     borderRadius: 14,
-                    backgroundColor: "rgba(0,0,0,0.55)",
+                    backgroundColor: "rgba(6,8,7,0.72)",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.10)",
+                    borderColor: BORDER,
                   }}
                 >
                   {showDiscount ? (
@@ -885,16 +908,16 @@ export default function ListingsFeed() {
                       <Text style={{ color: "#FCA5A5", fontWeight: "900", fontSize: 12 }}>
                         {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
                       </Text>
-                      <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 10 }}>
+                      <Text style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 10 }}>
                         USD {formatCurrency("USD", displayPrice.usdNow)}
                       </Text>
                     </>
                   ) : (
                     <>
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
                         {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
                       </Text>
-                      <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.7)", fontWeight: "800", fontSize: 10 }}>
+                      <Text style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 10 }}>
                         USD {formatCurrency("USD", displayPrice.usdNow)}
                       </Text>
                     </>
@@ -914,14 +937,14 @@ export default function ListingsFeed() {
                       borderColor: statusBd,
                     }}
                   >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>{statusTxt}</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>{statusTxt}</Text>
                   </View>
                 </View>
               ) : null}
             </View>
 
             <View style={{ padding: 12 }}>
-              <Text numberOfLines={1} style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
                 {item.title ?? "Untitled"}
               </Text>
 
@@ -966,7 +989,7 @@ export default function ListingsFeed() {
                 {busy ? (
                   <ActivityIndicator />
                 ) : (
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                  <Text style={{ color: !item.is_active && !cannotEnableOutOfStock ? BG0 : TEXT, fontWeight: "900", fontSize: 12 }}>
                     {cannotEnableOutOfStock ? "Restock first" : item.is_active ? "Disable" : "Enable"}
                   </Text>
                 )}
@@ -986,7 +1009,7 @@ export default function ListingsFeed() {
                   opacity: aiBusy ? 0.6 : 1,
                 }}
               >
-                {aiBusy ? <ActivityIndicator /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
+                {aiBusy ? <ActivityIndicator color={TEAL} /> : <Ionicons name="sparkles-outline" size={18} color={TEAL} />}
               </Pressable>
 
               <Pressable
@@ -1003,7 +1026,7 @@ export default function ListingsFeed() {
                   opacity: busy ? 0.6 : 1,
                 }}
               >
-                <Ionicons name="trash-outline" size={18} color="#fff" />
+                <Ionicons name="trash-outline" size={18} color={ROSE} />
               </Pressable>
             </View>
           ) : null}
@@ -1011,7 +1034,7 @@ export default function ListingsFeed() {
           {isMineView && aiResult ? (
             <View style={{ marginHorizontal: 12, marginBottom: 12, borderRadius: 16, padding: 12, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.25)", gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Gemini score</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Gemini score</Text>
                 <Text style={{ color: "#CCFBF1", fontWeight: "900", fontSize: 12 }}>{aiResult.performance_score}/100</Text>
               </View>
               {aiResult.summary ? (
@@ -1024,14 +1047,14 @@ export default function ListingsFeed() {
                 <Text style={{ color: "#CCFBF1", fontSize: 12, lineHeight: 18 }}>Next: {aiResult.action_items.slice(0, 3).join(" ")}</Text>
               ) : null}
               {aiResult.suggested_title ? (
-                <Text style={{ color: "#fff", fontSize: 12, lineHeight: 18 }}>Title: {aiResult.suggested_title}</Text>
+                <Text style={{ color: TEXT, fontSize: 12, lineHeight: 18 }}>Title: {aiResult.suggested_title}</Text>
               ) : null}
             </View>
           ) : null}
         </View>
       );
     },
-    [supabaseUrl, isMineView, rpcToggleActive, rpcDelete, busyId, listingAiBusyId, listingAiResults, runListingAiPerformance],
+    [supabaseUrl, isMineView, rpcToggleActive, rpcDelete, busyId, listingAiBusyId, listingAiResults, runListingAiPerformance, cardWidth, isWide],
   );
 
   // While redirecting away, avoid flicker
@@ -1048,20 +1071,23 @@ export default function ListingsFeed() {
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketListings} />
       {loading ? (
         <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}>
-          <AppHeader title={title} subtitle="Loading…" />
+          <View style={{ maxWidth: 1180, width: "100%", alignSelf: "center" }}>
+          <AppHeader title={title} subtitle="Loading..." />
           <View style={{ marginTop: 40, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading…</Text>
+            <ActivityIndicator color={BRAND} />
+            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
+          </View>
           </View>
         </View>
       ) : (
         <FlatList
           ref={listRef}
+          key={`listings-${numColumns}`}
           data={rows}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          numColumns={2}
-          columnWrapperStyle={{ paddingHorizontal: 16, justifyContent: "space-between", marginTop: 12 }}
+          numColumns={numColumns}
+          columnWrapperStyle={{ width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: 16, justifyContent: "space-between", marginTop: 12 }}
           contentContainerStyle={{ paddingBottom: 28 }}
           ListHeaderComponent={Header}
           ListEmptyComponent={EmptyState}
@@ -1070,16 +1096,18 @@ export default function ListingsFeed() {
           onEndReached={onEndReached}
           ListFooterComponent={
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 24 }}>
+              <View style={{ maxWidth: 1180, width: "100%", alignSelf: "center" }}>
               {loadingMore ? (
                 <View style={{ flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center" }}>
-                  <ActivityIndicator />
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>Loading more…</Text>
+                  <ActivityIndicator color={BRAND} />
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>Loading more...</Text>
                 </View>
               ) : !hasMore && rows.length > 0 ? (
-                <Text style={{ color: "rgba(255,255,255,0.60)", fontWeight: "900", textAlign: "center" }}>
+                <Text style={{ color: MUTED, fontWeight: "900", textAlign: "center" }}>
                   End of results
                 </Text>
               ) : null}
+              </View>
             </View>
           }
         />

@@ -13,6 +13,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -34,7 +35,18 @@ import { resolveUserCountry, type UserCountry } from "@/utils/country";
 const BG0 = "#060807";
 const BG1 = "#10130E";
 const BG2 = "#171A13";
-const BRAND = "#2DD4BF";
+const AMBER = "#F4B75D";
+const TEAL = "#2DD4BF";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
+const BRAND = AMBER;
 
 const LISTINGS_TABLE = "market_listings";
 const IMAGES_TABLE = "market_listing_images";
@@ -142,9 +154,14 @@ async function safeLoadListing(listingId: string) {
 
 export default function ListingDetails() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const listingId = useMemo(() => String(id || ""), [id]);
+  const isWide = width >= 900;
+  const contentMaxWidth = 1120;
+  const mediaCardWidth = Math.min(isWide ? 420 : 320, Math.max(244, width - 52));
+  const mediaCardHeight = isWide ? 250 : 206;
 
   const [loading, setLoading] = useState(true);
   const [listing, setListing] = useState<Listing | null>(null);
@@ -566,8 +583,8 @@ export default function ListingDetails() {
       >
         <AppHeader title="Listing" />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator />
-          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading...</Text>
+          <ActivityIndicator color={AMBER} />
+          <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
         </View>
       </LinearGradient>
     );
@@ -582,14 +599,14 @@ export default function ListingDetails() {
         style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
       >
         <AppHeader title="Listing" />
-        <View style={{ marginTop: 18, borderRadius: 22, padding: 16, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" }}>
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Listing not found</Text>
-          {!!err && <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>{err}</Text>}
+        <View style={{ marginTop: 18, borderRadius: 22, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>Listing not found</Text>
+          {!!err && <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>}
           <Pressable
             onPress={() => router.back()}
             style={{ marginTop: 12, borderRadius: 18, paddingVertical: 12, alignItems: "center", backgroundColor: BRAND, borderWidth: 1, borderColor: BRAND }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Go back</Text>
+            <Text style={{ color: BG0, fontWeight: "900" }}>Go back</Text>
           </Pressable>
         </View>
       </LinearGradient>
@@ -661,6 +678,7 @@ export default function ListingDetails() {
       />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 140 }}>
+        <View style={{ maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 }}>
           <Pressable
             onPress={() => router.back()}
@@ -668,21 +686,22 @@ export default function ListingDetails() {
               width: 44,
               height: 44,
               borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: CARD,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Ionicons name="arrow-back" size={20} color="#fff" />
+            <Ionicons name="arrow-back" size={20} color={TEXT} />
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ color: "#fff", fontSize: 18, fontWeight: "900" }}>
+            <Text numberOfLines={1} style={{ color: TEXT, fontSize: 20, fontWeight: "900" }}>
               {listing.title ?? "Listing"}
             </Text>
-            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, fontWeight: "800" }}>
               {listing.category ?? "-"} - {listing.delivery_type ?? "-"} - {listing.sub_category ?? "-"}
             </Text>
           </View>
@@ -696,13 +715,14 @@ export default function ListingDetails() {
                 onPress={() => (media ? openListingMediaPreview(media.url, media.kind, idx) : null)}
                 disabled={!media}
                 style={{
-                  width: 280,
-                  height: 200,
-                  borderRadius: 22,
+                  width: mediaCardWidth,
+                  height: mediaCardHeight,
+                  borderRadius: 24,
                   overflow: "hidden",
-                  backgroundColor: "rgba(255,255,255,0.06)",
+                  backgroundColor: CARD,
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
+                  borderColor: BORDER,
+                  borderTopColor: BORDER_TOP,
                 }}
               >
                 {media ? (
@@ -718,16 +738,16 @@ export default function ListingDetails() {
                       disablePointerEvents
                     />
                     {media.kind === "video" ? (
-                      <View style={{ position: "absolute", left: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(0,0,0,0.58)", flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Ionicons name="videocam-outline" size={14} color="#fff" />
-                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>Tap for full preview</Text>
+                      <View style={{ position: "absolute", left: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(6,8,7,0.70)", borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="videocam-outline" size={14} color={TEXT} />
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>Tap for full preview</Text>
                       </View>
                     ) : null}
                   </>
                 ) : (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="images-outline" size={34} color="rgba(255,255,255,0.55)" />
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontWeight: "800" }}>
+                    <Ionicons name="images-outline" size={34} color={FAINT} />
+                    <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>
                       No media
                     </Text>
                   </View>
@@ -737,7 +757,7 @@ export default function ListingDetails() {
           </View>
         </ScrollView>
         {listingMedia.length > 0 ? (
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.62)", fontSize: 12 }}>
+          <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
             Tap any image or video to view full preview.
           </Text>
         ) : null}
@@ -745,14 +765,15 @@ export default function ListingDetails() {
         <View
           style={{
             marginTop: 14,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(45,212,191,0.12)",
+            backgroundColor: "rgba(244,183,93,0.13)",
             borderWidth: 1,
-            borderColor: "rgba(45,212,191,0.40)",
+            borderColor: "rgba(244,183,93,0.42)",
+            borderTopColor: "rgba(255,253,247,0.26)",
           }}
         >
-          <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>
+          <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>
             Price
           </Text>
           {showDiscount ? (
@@ -760,7 +781,7 @@ export default function ListingDetails() {
               <Text
                 style={{
                   marginTop: 6,
-                  color: "rgba(255,255,255,0.6)",
+                  color: FAINT,
                   fontWeight: "800",
                   fontSize: 13,
                   textDecorationLine: "line-through",
@@ -771,7 +792,7 @@ export default function ListingDetails() {
               <Text
                 style={{
                   marginTop: 4,
-                  color: "rgba(255,255,255,0.55)",
+                  color: FAINT,
                   fontWeight: "800",
                   fontSize: 12,
                   textDecorationLine: "line-through",
@@ -781,15 +802,15 @@ export default function ListingDetails() {
               </Text>
             </>
           ) : null}
-          <Text style={{ marginTop: 8, color: "#fff", fontWeight: "900", fontSize: 28 }}>
+          <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 30 }}>
             {formatCurrency(displayPrice.localCurrency, displayPrice.localNow)}
           </Text>
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontWeight: "800", fontSize: 12 }}>
+          <Text style={{ marginTop: 6, color: MUTED, fontWeight: "800", fontSize: 12 }}>
             USD {formatCurrency("USD", displayPrice.usdNow)}
           </Text>
 
           {listing.stock_qty !== null && listing.category === "product" ? (
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)" }}>
+            <Text style={{ marginTop: 6, color: MUTED }}>
               Stock: {listing.stock_qty}
             </Text>
           ) : null}
@@ -801,11 +822,11 @@ export default function ListingDetails() {
                 borderRadius: 14,
                 padding: 12,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.14)",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                borderColor: BORDER,
+                backgroundColor: CARD,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Quantity</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Quantity</Text>
               <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 10 }}>
                 <Pressable
                   onPress={() => adjustOrderQty(-1)}
@@ -817,12 +838,12 @@ export default function ListingDetails() {
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: "rgba(255,255,255,0.08)",
+                    borderColor: BORDER,
+                    backgroundColor: CARD_RAISED,
                     opacity: orderQty <= 1 ? 0.5 : 1,
                   }}
                 >
-                  <Ionicons name="remove" size={18} color="#fff" />
+                  <Ionicons name="remove" size={18} color={TEXT} />
                 </Pressable>
 
                 <TextInput
@@ -835,11 +856,11 @@ export default function ListingDetails() {
                     paddingVertical: 8,
                     paddingHorizontal: 10,
                     textAlign: "center",
-                    color: "#fff",
+                    color: TEXT,
                     fontWeight: "900",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderColor: BORDER,
+                    backgroundColor: CARD,
                   }}
                 />
 
@@ -853,20 +874,20 @@ export default function ListingDetails() {
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.14)",
-                    backgroundColor: "rgba(255,255,255,0.08)",
+                    borderColor: BORDER,
+                    backgroundColor: CARD_RAISED,
                     opacity: orderQty >= maxOrderQty ? 0.5 : 1,
                   }}
                 >
-                  <Ionicons name="add" size={18} color="#fff" />
+                  <Ionicons name="add" size={18} color={TEXT} />
                 </Pressable>
 
-                <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginLeft: "auto" }}>
+                <Text style={{ color: MUTED, fontSize: 12, marginLeft: "auto" }}>
                   Max {maxOrderQty}
                 </Text>
               </View>
 
-              <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
+              <Text style={{ marginTop: 8, color: TEXT, fontWeight: "800", fontSize: 12 }}>
                 Total: {formatCurrency(displayPrice.localCurrency, totalLocal)} (USD {formatCurrency("USD", totalUsd)})
               </Text>
             </View>
@@ -878,9 +899,10 @@ export default function ListingDetails() {
             marginTop: 10,
             borderRadius: 18,
             padding: 12,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
@@ -901,8 +923,8 @@ export default function ListingDetails() {
               backgroundColor: myReaction === "like" ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.04)",
             }}
           >
-            <Ionicons name="thumbs-up-outline" size={16} color="#fff" />
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{likes}</Text>
+            <Ionicons name="thumbs-up-outline" size={16} color={TEXT} />
+            <Text style={{ color: TEXT, fontWeight: "900" }}>{likes}</Text>
           </Pressable>
 
           <Pressable
@@ -919,34 +941,35 @@ export default function ListingDetails() {
               backgroundColor: myReaction === "dislike" ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.04)",
             }}
           >
-            <Ionicons name="thumbs-down-outline" size={16} color="#fff" />
-            <Text style={{ color: "#fff", fontWeight: "900" }}>{dislikes}</Text>
+            <Ionicons name="thumbs-down-outline" size={16} color={TEXT} />
+            <Text style={{ color: TEXT, fontWeight: "900" }}>{dislikes}</Text>
           </Pressable>
 
           <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color="rgba(255,255,255,0.8)" />
-            <Text style={{ color: "rgba(255,255,255,0.8)", fontWeight: "900" }}>{commentCount}</Text>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={MUTED} />
+            <Text style={{ color: MUTED, fontWeight: "900" }}>{commentCount}</Text>
           </View>
         </View>
 
         <View
           style={{
             marginTop: 12,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Available in</Text>
-          <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.58)", fontWeight: "800", fontSize: 11 }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Available in</Text>
+          <Text style={{ marginTop: 10, color: FAINT, fontWeight: "800", fontSize: 11 }}>
             Listed from
           </Text>
           <View style={{ marginTop: 8 }}>
             <ListingOriginBadge availability={listing?.availability} paymentOptions={listing?.payment_options} />
           </View>
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
+          <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }}>
             {availabilitySummary}
           </Text>
           {listing?.availability?.scope === "radius" && listing?.availability?.center?.lat ? (
@@ -960,12 +983,12 @@ export default function ListingDetails() {
                 paddingHorizontal: 12,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                borderColor: BORDER,
+                backgroundColor: CARD_RAISED,
                 alignSelf: "flex-start",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open in Google Maps</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open in Google Maps</Text>
             </Pressable>
           ) : null}
         </View>
@@ -975,15 +998,16 @@ export default function ListingDetails() {
           <View
             style={{
               marginTop: 12,
-              borderRadius: 22,
+              borderRadius: 24,
               padding: 16,
-              backgroundColor: "rgba(255,255,255,0.05)",
+              backgroundColor: CARD,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Service previews</Text>
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Service previews</Text>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
               Tap any preview to open image, video, audio, file, or website in-app before purchase.
             </Text>
 
@@ -1004,20 +1028,20 @@ export default function ListingDetails() {
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                  <Ionicons name="globe-outline" size={18} color="#fff" />
+                  <Ionicons name="globe-outline" size={18} color={TEAL} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Open website preview</Text>
-                    <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>Open website preview</Text>
+                    <Text style={{ marginTop: 2, color: MUTED, fontSize: 12 }}>
                       DEMO LINK
                     </Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.65)" />
+                <Ionicons name="chevron-forward" size={16} color={MUTED} />
               </Pressable>
             ) : null}
 
             {listingPreviews.length === 0 && !String(listing.website_url || "").trim() ? (
-              <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.6)" }}>
+              <Text style={{ marginTop: 10, color: MUTED }}>
                 Seller has not added preview assets yet.
               </Text>
             ) : listingPreviews.length > 0 ? (
@@ -1031,23 +1055,23 @@ export default function ListingDetails() {
                       paddingVertical: 12,
                       paddingHorizontal: 12,
                       borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.12)",
-                      backgroundColor: "rgba(255,255,255,0.04)",
+                      borderColor: BORDER,
+                      backgroundColor: CARD_RAISED,
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "space-between",
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                      <Ionicons name={previewIcon(pv.kind) as any} size={18} color="#fff" />
+                      <Ionicons name={previewIcon(pv.kind) as any} size={18} color={TEXT} />
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: "#fff", fontWeight: "900" }}>{pv.title || `Preview ${pv.id.slice(0, 6)}`}</Text>
-                        <Text style={{ marginTop: 2, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                        <Text style={{ color: TEXT, fontWeight: "900" }}>{pv.title || `Preview ${pv.id.slice(0, 6)}`}</Text>
+                        <Text style={{ marginTop: 2, color: MUTED, fontSize: 12 }}>
                           {previewKind(pv.kind).toUpperCase()}
                         </Text>
                       </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.65)" />
+                    <Ionicons name="chevron-forward" size={16} color={MUTED} />
                   </Pressable>
                 ))}
               </View>
@@ -1058,15 +1082,16 @@ export default function ListingDetails() {
         <View
           style={{
             marginTop: 12,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Details</Text>
-          <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Details</Text>
+          <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }}>
             {listing.description ?? "No description provided."}
           </Text>
         </View>
@@ -1074,14 +1099,15 @@ export default function ListingDetails() {
         <View
           style={{
             marginTop: 12,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Seller</Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Seller</Text>
 
           <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 12 }}>
             <View
@@ -1090,9 +1116,9 @@ export default function ListingDetails() {
                 height: 56,
                 borderRadius: 18,
                 overflow: "hidden",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.08)",
+                borderColor: BORDER,
               }}
             >
               {seller?.logo_path ? (
@@ -1104,21 +1130,21 @@ export default function ListingDetails() {
                 />
               ) : (
                 <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="person-outline" size={24} color="rgba(255,255,255,0.55)" />
+                  <Ionicons name="person-outline" size={24} color={FAINT} />
                 </View>
               )}
             </View>
 
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
+                <Text style={{ color: TEXT, fontWeight: "900" }}>
                   {seller?.business_name || seller?.display_name || "Seller"}
                 </Text>
                 {seller?.is_verified ? (
-                  <Ionicons name="checkmark-circle" size={16} color="#38BDF8" />
+                  <Ionicons name="checkmark-circle" size={16} color={BLUE} />
                 ) : null}
               </View>
-              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+              <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
                 @{seller?.market_username || "seller"}
               </Text>
             </View>
@@ -1132,12 +1158,12 @@ export default function ListingDetails() {
                 paddingHorizontal: 12,
                 paddingVertical: 10,
                 borderRadius: 16,
-                backgroundColor: "rgba(255,255,255,0.06)",
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                borderColor: BORDER,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>View</Text>
+              <Text style={{ color: TEXT, fontWeight: "900" }}>View</Text>
             </Pressable>
           </View>
 
@@ -1154,7 +1180,7 @@ export default function ListingDetails() {
                 borderRadius: 16,
                 paddingVertical: 12,
                 alignItems: "center",
-                backgroundColor: "rgba(45,212,191,0.20)",
+                backgroundColor: "rgba(45,212,191,0.18)",
                 borderWidth: 1,
                 borderColor: "rgba(45,212,191,0.45)",
                 flexDirection: "row",
@@ -1162,13 +1188,13 @@ export default function ListingDetails() {
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Message seller</Text>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={TEAL} />
+              <Text style={{ color: TEXT, fontWeight: "900" }}>Message seller</Text>
             </Pressable>
           ) : null}
 
           {seller?.bio ? (
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
+            <Text style={{ marginTop: 10, color: MUTED, lineHeight: 20 }}>
               {seller.bio}
             </Text>
           ) : null}
@@ -1177,15 +1203,16 @@ export default function ListingDetails() {
         <View
           style={{
             marginTop: 12,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Delivery / Service location</Text>
-          <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Delivery / Service location</Text>
+          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
             Buyers set a delivery/service location when creating the order.
           </Text>
 
@@ -1197,17 +1224,17 @@ export default function ListingDetails() {
               borderRadius: 16,
               paddingVertical: 12,
               alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: CARD_RAISED,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: BORDER,
               flexDirection: "row",
               gap: 8,
               justifyContent: "center",
               opacity: locatingDelivery ? 0.7 : 1,
             }}
           >
-            {locatingDelivery ? <ActivityIndicator /> : <Ionicons name="locate-outline" size={18} color="#fff" />}
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Use my current location</Text>
+            {locatingDelivery ? <ActivityIndicator color={AMBER} /> : <Ionicons name="locate-outline" size={18} color={AMBER} />}
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Use my current location</Text>
           </Pressable>
 
           <TextInput
@@ -1220,15 +1247,15 @@ export default function ListingDetails() {
               borderRadius: 16,
               paddingHorizontal: 12,
               paddingVertical: 12,
-              color: "#fff",
-              backgroundColor: "rgba(255,255,255,0.06)",
+              color: TEXT,
+              backgroundColor: CARD_RAISED,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.10)",
+              borderColor: BORDER,
             }}
           />
 
           {deliveryGeo ? (
-            <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
+            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
               {deliveryGeo.label || deliveryLabel || "Current location set"} - {deliveryGeo.lat.toFixed(5)}, {deliveryGeo.lng.toFixed(5)}
             </Text>
           ) : null}
@@ -1237,14 +1264,15 @@ export default function ListingDetails() {
         <View
           style={{
             marginTop: 12,
-            borderRadius: 22,
+            borderRadius: 24,
             padding: 16,
-            backgroundColor: "rgba(255,255,255,0.05)",
+            backgroundColor: CARD,
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.08)",
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
           }}
         >
-          <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Comments</Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Comments</Text>
 
           <View style={{ marginTop: 10, flexDirection: "row", gap: 8 }}>
             <TextInput
@@ -1257,10 +1285,10 @@ export default function ListingDetails() {
                 borderRadius: 14,
                 paddingHorizontal: 12,
                 paddingVertical: 10,
-                color: "#fff",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                color: TEXT,
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                borderColor: BORDER,
               }}
             />
             <Pressable
@@ -1271,29 +1299,29 @@ export default function ListingDetails() {
                 borderRadius: 14,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(45,212,191,0.85)",
+                backgroundColor: TEAL,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.2)",
+                borderColor: TEAL,
                 opacity: commentBusy ? 0.7 : 1,
               }}
             >
-              {commentBusy ? <ActivityIndicator color="#fff" /> : <Ionicons name="send" size={16} color="#fff" />}
+              {commentBusy ? <ActivityIndicator color={BG0} /> : <Ionicons name="send" size={16} color={BG0} />}
             </Pressable>
           </View>
 
           <View style={{ marginTop: 12, gap: 10 }}>
             {recentComments.length === 0 ? (
-              <Text style={{ color: "rgba(255,255,255,0.6)" }}>No comments yet.</Text>
+              <Text style={{ color: MUTED }}>No comments yet.</Text>
             ) : (
               recentComments.map((c) => (
-                <View key={c.id} style={{ borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-                  <Text style={{ color: "#fff", fontWeight: "800" }}>
+                <View key={c.id} style={{ borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_RAISED }}>
+                  <Text style={{ color: TEXT, fontWeight: "800" }}>
                     @{c.profiles?.username || "user"}{" "}
-                    <Text style={{ color: "rgba(255,255,255,0.5)", fontWeight: "600", fontSize: 11 }}>
+                    <Text style={{ color: FAINT, fontWeight: "600", fontSize: 11 }}>
                       - {new Date(c.created_at).toLocaleString()}
                     </Text>
                   </Text>
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.7)" }}>{c.body}</Text>
+                  <Text style={{ marginTop: 6, color: MUTED }}>{c.body}</Text>
                 </View>
               ))
             )}
@@ -1307,12 +1335,12 @@ export default function ListingDetails() {
                 paddingVertical: 10,
                 borderRadius: 12,
                 alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.12)",
+                borderColor: BORDER,
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>See all comments</Text>
+              <Text style={{ color: TEXT, fontWeight: "900" }}>See all comments</Text>
             </Pressable>
           ) : null}
         </View>
@@ -1322,6 +1350,7 @@ export default function ListingDetails() {
             <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
           </View>
         ) : null}
+        </View>
       </ScrollView>
 
       <View
@@ -1333,9 +1362,9 @@ export default function ListingDetails() {
           paddingHorizontal: 16,
           paddingTop: 10,
           paddingBottom: Math.max(insets.bottom, 16),
-          backgroundColor: "rgba(6,8,7,0.92)",
+          backgroundColor: "rgba(6,8,7,0.94)",
           borderTopWidth: 1,
-          borderTopColor: "rgba(255,255,255,0.08)",
+          borderTopColor: BORDER,
         }}
       >
         <Pressable
@@ -1345,25 +1374,25 @@ export default function ListingDetails() {
             borderRadius: 22,
             paddingVertical: 16,
             alignItems: "center",
-            backgroundColor: isOutOfStock ? "rgba(255,255,255,0.2)" : BRAND,
+            backgroundColor: isOutOfStock ? "rgba(255,253,247,0.16)" : BRAND,
             borderWidth: 1,
-            borderColor: isOutOfStock ? "rgba(255,255,255,0.28)" : BRAND,
+            borderColor: isOutOfStock ? BORDER_TOP : BRAND,
             opacity: isOutOfStock || buyBusy ? 0.85 : 1,
           }}
         >
           {buyBusy ? (
             <>
-              <ActivityIndicator color="#fff" />
-              <Text style={{ marginTop: 6, color: "#fff", fontWeight: "900", fontSize: 16 }}>
+              <ActivityIndicator color={BG0} />
+              <Text style={{ marginTop: 6, color: BG0, fontWeight: "900", fontSize: 16 }}>
                 Starting checkout...
               </Text>
             </>
           ) : (
             <>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
+              <Text style={{ color: isOutOfStock ? TEXT : BG0, fontWeight: "900", fontSize: 16 }}>
                 {isOutOfStock ? "Out of stock" : hasStockCap ? `Buy ${orderQty} item${orderQty > 1 ? "s" : ""}` : "Buy now"}
               </Text>
-              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
+              <Text style={{ marginTop: 4, color: isOutOfStock ? MUTED : "rgba(6,8,7,0.72)", fontWeight: "800", fontSize: 12 }}>
                 {isOutOfStock
                   ? "Seller must restock before new orders."
                   : hasStockCap
@@ -1396,33 +1425,33 @@ export default function ListingDetails() {
               borderTopRightRadius: 20,
               padding: 16,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
+              borderColor: BORDER,
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>All comments</Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>All comments</Text>
               <Pressable onPress={() => setShowAllComments(false)}>
-                <Ionicons name="close" size={20} color="#fff" />
+                <Ionicons name="close" size={20} color={TEXT} />
               </Pressable>
             </View>
 
-            <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
               {commentCount} total comments
             </Text>
 
             <ScrollView contentContainerStyle={{ paddingVertical: 12, gap: 10 }}>
               {comments.length === 0 ? (
-                <Text style={{ color: "rgba(255,255,255,0.6)" }}>No comments yet.</Text>
+                <Text style={{ color: MUTED }}>No comments yet.</Text>
               ) : (
                 comments.map((c) => (
-                  <View key={c.id} style={{ borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", backgroundColor: "rgba(255,255,255,0.04)" }}>
-                    <Text style={{ color: "#fff", fontWeight: "800" }}>
+                  <View key={c.id} style={{ borderRadius: 14, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
+                    <Text style={{ color: TEXT, fontWeight: "800" }}>
                       @{c.profiles?.username || "user"}{" "}
-                      <Text style={{ color: "rgba(255,255,255,0.5)", fontWeight: "600", fontSize: 11 }}>
+                      <Text style={{ color: FAINT, fontWeight: "600", fontSize: 11 }}>
                         - {new Date(c.created_at).toLocaleString()}
                       </Text>
                     </Text>
-                    <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.7)" }}>{c.body}</Text>
+                    <Text style={{ marginTop: 6, color: MUTED }}>{c.body}</Text>
                   </View>
                 ))
               )}

@@ -13,6 +13,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -23,12 +24,16 @@ import { fetchWithTimeout } from "@/services/net";
 import { supabase } from "@/services/supabase";
 import { getCurrentLocationWithGeocode, syncManualLocationTextAddress, toProfileLocationAddress } from "@/utils/location";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const CARD = "rgba(255,255,255,0.06)";
-const BORDER = "rgba(255,255,255,0.10)";
-const MUTED = "rgba(255,255,255,0.62)";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const PURPLE = "#F4B75D";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
 const DANGER = "#FCA5A5";
 const SUCCESS = "rgba(187,247,208,0.95)";
 const BUCKET_SELLERS = "market-sellers";
@@ -208,6 +213,8 @@ async function updateProfileImagePathsDirect(userId: string, input: { logo_path?
 type NameStatus = "idle" | "invalid" | "checking" | "available" | "taken" | "error";
 
 export default function CreateMarketProfile() {
+  const { width } = useWindowDimensions();
+  const contentMaxWidth = width >= 980 ? 960 : 720;
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
 
@@ -495,7 +502,7 @@ export default function CreateMarketProfile() {
 
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
+      colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={{ flex: 1 }}
@@ -509,6 +516,7 @@ export default function CreateMarketProfile() {
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 130 }}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={{ maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" }}>
           {/* Header */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <Pressable
@@ -524,11 +532,11 @@ export default function CreateMarketProfile() {
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="arrow-back" size={20} color="#fff" />
+              <Ionicons name="arrow-back" size={20} color={TEXT} />
             </Pressable>
 
             <View style={{ flex: 1 }}>
-              <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>
+              <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900" }}>
                 Create Market Profile
               </Text>
               <Text style={{ color: MUTED, marginTop: 4, fontSize: 12 }}>
@@ -708,17 +716,17 @@ export default function CreateMarketProfile() {
               borderRadius: 14,
               paddingVertical: 12,
               alignItems: "center",
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: CARD_RAISED,
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: BORDER,
               flexDirection: "row",
               gap: 8,
               justifyContent: "center",
               opacity: locatingAddress ? 0.7 : 1,
             }}
           >
-            {locatingAddress ? <ActivityIndicator color="#fff" /> : <Ionicons name="locate-outline" size={18} color="#fff" />}
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Use my current location</Text>
+            {locatingAddress ? <ActivityIndicator color={PURPLE} /> : <Ionicons name="locate-outline" size={18} color={PURPLE} />}
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Use my current location</Text>
           </Pressable>
 
           <SectionTitle title="Social links" />
@@ -737,8 +745,8 @@ export default function CreateMarketProfile() {
             placeholder="We sell phones, accessories, and repairs…"
           />
 
-          <View style={{ borderRadius: 22, padding: 14, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD }}>
-            <Text style={{ color: "#fff", fontWeight: "900" }}>Service options (optional)</Text>
+          <View style={{ borderRadius: 22, padding: 14, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP, backgroundColor: CARD }}>
+            <Text style={{ color: TEXT, fontWeight: "900" }}>Service options (optional)</Text>
             <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
               If you offer services, choose how you deliver them.
             </Text>
@@ -748,15 +756,16 @@ export default function CreateMarketProfile() {
           </View>
 
           {stage ? (
-            <View style={{ marginTop: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", backgroundColor: "rgba(255,255,255,0.06)", flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <ActivityIndicator color="#fff" />
-              <Text style={{ color: "rgba(255,255,255,0.9)", fontWeight: "900" }}>{stage}</Text>
+            <View style={{ marginTop: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_RAISED, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ActivityIndicator color={PURPLE} />
+              <Text style={{ color: TEXT, fontWeight: "900" }}>{stage}</Text>
             </View>
           ) : null}
 
           <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 18 }}>
             By creating a profile, you agree to follow marketplace rules. Verification comes later.
           </Text>
+          </View>
         </ScrollView>
 
         {/* Sticky footer button */}
@@ -769,11 +778,12 @@ export default function CreateMarketProfile() {
             paddingHorizontal: 16,
             paddingTop: 10,
             paddingBottom: Platform.OS === "ios" ? 24 : 16,
-            backgroundColor: "rgba(5,4,11,0.92)",
+            backgroundColor: "rgba(6,8,7,0.94)",
             borderTopWidth: 1,
-            borderTopColor: "rgba(255,255,255,0.08)",
+            borderTopColor: BORDER,
           }}
         >
+          <View style={{ maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" }}>
           <Pressable
             onPress={submit}
             disabled={!canSubmit}
@@ -789,11 +799,11 @@ export default function CreateMarketProfile() {
           >
             {loading ? (
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <ActivityIndicator color="#fff" />
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Creating…</Text>
+                <ActivityIndicator color={BG0} />
+                <Text style={{ color: BG0, fontWeight: "900" }}>Creating...</Text>
               </View>
             ) : (
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 15 }}>
+              <Text style={{ color: BG0, fontWeight: "900", fontSize: 15 }}>
                 Create Profile
               </Text>
             )}
@@ -804,6 +814,7 @@ export default function CreateMarketProfile() {
               Enter a valid username and business name to continue.
             </Text>
           ) : null}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -865,9 +876,9 @@ function SocialLinksEditor(props: {
                   width: 46,
                   height: 28,
                   borderRadius: 999,
-                  backgroundColor: enabled ? "rgba(124,58,237,0.65)" : "rgba(255,255,255,0.15)",
+                  backgroundColor: enabled ? "rgba(244,183,93,0.65)" : "rgba(255,255,255,0.15)",
                   borderWidth: 1,
-                  borderColor: enabled ? "rgba(124,58,237,0.85)" : "rgba(255,255,255,0.18)",
+                  borderColor: enabled ? "rgba(244,183,93,0.85)" : "rgba(255,255,255,0.18)",
                   padding: 3,
                   justifyContent: "center",
                 }}
@@ -972,7 +983,7 @@ function UsernameField(props: {
       </View>
 
       <Text style={{ marginTop: 10, color: props.invalid || props.nameStatus === "taken" ? "#FCA5A5" : MUTED, fontSize: 12 }}>
-        Handle: <Text style={{ color: "#C4B5FD", fontWeight: "900" }}>@{props.usernameClean || "yourstore"}</Text>
+        Handle: <Text style={{ color: PURPLE, fontWeight: "900" }}>@{props.usernameClean || "yourstore"}</Text>
         {"  "}•{" "}
         <Text style={{ fontWeight: "800" }}>{props.nameHint}</Text>
       </Text>
@@ -1089,9 +1100,9 @@ function ToggleRow(props: { label: string; value: boolean; onToggle: () => void 
           width: 46,
           height: 28,
           borderRadius: 999,
-          backgroundColor: props.value ? "rgba(124,58,237,0.65)" : "rgba(255,255,255,0.15)",
+          backgroundColor: props.value ? "rgba(244,183,93,0.65)" : "rgba(255,255,255,0.15)",
           borderWidth: 1,
-          borderColor: props.value ? "rgba(124,58,237,0.85)" : "rgba(255,255,255,0.18)",
+          borderColor: props.value ? "rgba(244,183,93,0.85)" : "rgba(255,255,255,0.18)",
           padding: 3,
           justifyContent: "center",
         }}
