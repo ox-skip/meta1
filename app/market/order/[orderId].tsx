@@ -16,6 +16,7 @@ import { releasePiForOrder } from "@/services/market/piCheckout";
 import { getPreferredMarketChain } from "@/services/market/chainConfig";
 import { generateOrderAiRisk, type MarketOrderAiRiskResult } from "@/services/market/ai";
 import { friendlyMarketError } from "@/utils/marketUx";
+import { getRpcUrlForChain } from "@/utils/aaWallet";
 
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import {
@@ -914,7 +915,7 @@ async function releaseFunds() {
         const token = String(order.currency || "USDC").toUpperCase();
         const { data: cfgRow, error: cfgRowErr } = await supabase
           .from("market_chain_config")
-          .select("chain,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
+          .select("chain,chain_id,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
           .eq("active", true)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -932,13 +933,24 @@ async function releaseFunds() {
 
       const { data: cfg, error: cfgErr } = await supabase
         .from("market_chain_config")
-        .select("chain,rpc_url,escrow_address,confirmations_required")
+        .select("chain,chain_id,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
         .eq("chain", chainName)
         .eq("active", true)
         .maybeSingle();
-      if (cfgErr || !cfg?.rpc_url) throw new Error("Chain config missing.");
+      if (cfgErr || !cfg?.chain) throw new Error("Chain config missing.");
 
-      const client = createPublicClient({ transport: http(cfg.rpc_url) });
+      const rpcUrl = getRpcUrlForChain({
+        chain: String(cfg.chain || chainName),
+        chain_id: Number((cfg as any).chain_id ?? 0),
+        rpc_url: cfg.rpc_url ? String(cfg.rpc_url) : null,
+        usdc_address: String((cfg as any).usdc_address || ""),
+        escrow_address: String(cfg.escrow_address || escrowAddress || ""),
+        confirmations_required: Math.max(1, Number(cfg.confirmations_required ?? 1)),
+        active: true,
+      });
+      if (!rpcUrl) throw new Error("Chain RPC URL missing. Set rpc_url or the matching Alchemy RPC env for this chain.");
+
+      const client = createPublicClient({ transport: http(rpcUrl) });
       const requestCustomRpc = async (method: string, params: unknown[]) => {
         const req = client.request as unknown as (args: { method: string; params?: unknown[] }) => Promise<any>;
         return req({ method, params });

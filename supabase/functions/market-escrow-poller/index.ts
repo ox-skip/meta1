@@ -238,8 +238,17 @@ serve(async () => {
 
     for (const cfg of chains as ChainConfig[]) {
       const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
-      if (!rpcUrl || !cfg.escrow_address) {
-        results[cfg.chain] = { ok: false, reason: "rpc_url or escrow_address missing" };
+      if (!rpcUrl) {
+        const prefix = String(cfg.chain || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+        results[cfg.chain] = {
+          ok: false,
+          reason: "rpc_url missing",
+          message: `Set market_chain_config.rpc_url, ${prefix}_RPC_URL, ${prefix}_MAINNET_RPC_URL, or ALCHEMY_API_KEY.`,
+        };
+        continue;
+      }
+      if (!cfg.escrow_address) {
+        results[cfg.chain] = { ok: false, reason: "escrow_address missing" };
         continue;
       }
 

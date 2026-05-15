@@ -65,7 +65,10 @@ Deno.serve(async (req) => {
   if (cfgErr) return bad(cfgErr.message);
   if (!cfg) return bad("Active chain config not found");
   const rpcUrl = resolveRpcUrlForChain(esc.chain, cfg.rpc_url);
-  if (!rpcUrl) return bad("rpc_url missing for selected chain");
+  if (!rpcUrl) {
+    const prefix = String(esc.chain || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+    return bad(`rpc_url missing for selected chain. Set market_chain_config.rpc_url, ${prefix}_RPC_URL, ${prefix}_MAINNET_RPC_URL, or ALCHEMY_API_KEY.`);
+  }
 
   const expectedEscrow = String(esc.escrow_address || cfg.escrow_address || "").trim().toLowerCase();
   if (!expectedEscrow.startsWith("0x")) return bad("Escrow address missing for selected chain");

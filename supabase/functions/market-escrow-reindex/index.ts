@@ -142,9 +142,19 @@ serve(async (req) => {
       .eq("chain", esc.chain)
       .eq("active", true)
       .maybeSingle();
-    const rpcUrl = resolveRpcUrlForChain(esc.chain, cfg?.rpc_url);
-    if (cfgErr || !rpcUrl || !cfg?.escrow_address) {
-      return json(400, { ok: false, message: "Chain config missing" });
+    if (cfgErr) return json(400, { ok: false, message: cfgErr.message });
+    if (!cfg) return json(400, { ok: false, message: "Active chain config missing" });
+
+    const rpcUrl = resolveRpcUrlForChain(esc.chain, cfg.rpc_url);
+    if (!rpcUrl) {
+      const prefix = String(esc.chain || "").toUpperCase().replace(/[^A-Z0-9]/g, "_");
+      return json(400, {
+        ok: false,
+        message: `Chain RPC URL missing for ${esc.chain}. Set market_chain_config.rpc_url, ${prefix}_RPC_URL, ${prefix}_MAINNET_RPC_URL, or ALCHEMY_API_KEY.`,
+      });
+    }
+    if (!cfg.escrow_address) {
+      return json(400, { ok: false, message: `Escrow address missing for ${esc.chain}` });
     }
 
     const wantKey = normalizeOrderKey(esc.order_key);

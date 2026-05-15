@@ -58,6 +58,27 @@ function alchemyUrlForChainId(chainId: number, apiKey?: string) {
   return map[chainId] ?? "";
 }
 
+function envRpcUrlForChain(chainName?: string | null) {
+  const normalized = String(chainName || "").trim().toLowerCase();
+  const upper = normalized.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const aliases: Record<string, string[]> = {
+    ethereum: ["ETH"],
+    bnb: ["BSC"],
+  };
+  const prefixes = Array.from(new Set([upper, ...(aliases[normalized] ?? [])])).filter(Boolean);
+  const names = prefixes.flatMap((prefix) => [
+    `EXPO_PUBLIC_${prefix}_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_ALCHEMY_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_MAINNET_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_MAINNET_ALCHEMY_RPC_URL`,
+    `${prefix}_RPC_URL`,
+    `${prefix}_ALCHEMY_RPC_URL`,
+    `${prefix}_MAINNET_RPC_URL`,
+    `${prefix}_MAINNET_ALCHEMY_RPC_URL`,
+  ]);
+  return names.map((name) => String((process.env as any)?.[name] || "").trim()).find(Boolean) || "";
+}
+
 function toHexChainId(chainId: number) {
   return `0x${chainId.toString(16)}`;
 }
@@ -303,6 +324,7 @@ export function getRpcUrlForChain(chainConfig: MarketChainConfig, chainOverride?
 
   return (
     explicitAlchemy ||
+    envRpcUrlForChain((chainConfig as any).chain) ||
     (apiKey && chain?.rpcUrls?.alchemy?.http?.[0]?.replace("${ALCHEMY_API_KEY}", apiKey)) ||
     chainConfig.rpc_url ||
     chain?.rpcUrls?.default?.http?.[0] ||

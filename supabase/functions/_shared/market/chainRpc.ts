@@ -30,10 +30,20 @@ export function resolveRpcUrlForChain(chain: string, configured?: string | null)
   const direct = String(configured || "").trim();
   if (direct) return direct;
 
-  const upper = String(chain || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
-  const explicit =
-    String(Deno.env.get(`${upper}_RPC_URL`) || "").trim() ||
-    String(Deno.env.get(`${upper}_ALCHEMY_RPC_URL`) || "").trim();
+  const normalized = String(chain || "").trim().toLowerCase();
+  const upper = normalized.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const aliases: Record<string, string[]> = {
+    ethereum: ["ETH"],
+    bnb: ["BSC"],
+  };
+  const prefixes = Array.from(new Set([upper, ...(aliases[normalized] ?? [])]));
+  const envNames = prefixes.flatMap((prefix) => [
+    `${prefix}_RPC_URL`,
+    `${prefix}_ALCHEMY_RPC_URL`,
+    `${prefix}_MAINNET_RPC_URL`,
+    `${prefix}_MAINNET_ALCHEMY_RPC_URL`,
+  ]);
+  const explicit = envNames.map((name) => String(Deno.env.get(name) || "").trim()).find(Boolean) || "";
   if (explicit) return explicit;
 
   const alchemyKey =

@@ -52,6 +52,27 @@ function alchemyUrlForChainId(chainId: number) {
   return urls[chainId] ?? null;
 }
 
+function envRpcUrlForChain(chainName: unknown) {
+  const normalized = String(chainName || "").trim().toLowerCase();
+  const upper = normalized.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const aliases: Record<string, string[]> = {
+    ethereum: ["ETH"],
+    bnb: ["BSC"],
+  };
+  const prefixes = Array.from(new Set([upper, ...(aliases[normalized] ?? [])])).filter(Boolean);
+  const names = prefixes.flatMap((prefix) => [
+    `EXPO_PUBLIC_${prefix}_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_ALCHEMY_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_MAINNET_RPC_URL`,
+    `EXPO_PUBLIC_${prefix}_MAINNET_ALCHEMY_RPC_URL`,
+    `${prefix}_RPC_URL`,
+    `${prefix}_ALCHEMY_RPC_URL`,
+    `${prefix}_MAINNET_RPC_URL`,
+    `${prefix}_MAINNET_ALCHEMY_RPC_URL`,
+  ]);
+  return names.map((name) => String((process.env as any)?.[name] || "").trim()).find(Boolean) || null;
+}
+
 function isSupportedMainnetChain(input: unknown) {
   return MAINNET_CHAINS.has(String(input || "").trim().toLowerCase());
 }
@@ -59,7 +80,7 @@ function isSupportedMainnetChain(input: unknown) {
 export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
   const normalize = (input: any): MarketChainConfig => {
     const chainId = parseNumber(input?.chain_id, 0);
-    const rpcUrl = input?.rpc_url ? String(input.rpc_url) : alchemyUrlForChainId(chainId);
+    const rpcUrl = input?.rpc_url ? String(input.rpc_url) : envRpcUrlForChain(input?.chain) || alchemyUrlForChainId(chainId);
 
     return {
       chain: String(input?.chain ?? ""),
