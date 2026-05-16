@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { ethers } from "https://esm.sh/ethers@6.16.0";
 
-import { adminError, requireAdmin } from "../_shared/market/admin.ts";
+import { adminError, getAdminContext } from "../_shared/market/admin.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { orderKeyKeccak } from "../_shared/market/crypto.ts";
 import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
@@ -14,7 +14,8 @@ type AdminAction =
   | "update_fee_recipient"
   | "update_arbiter"
   | "allow_wallet"
-  | "emergency_withdraw";
+  | "emergency_withdraw"
+  | "rescue_deposit_tx";
 
 function envAny(...names: string[]) {
   for (const n of names) {
@@ -49,9 +50,14 @@ function normalizeAction(input: unknown): AdminAction | "" {
     raw === "update_arbiter" ||
     raw === "allow_wallet" ||
     raw === "emergency_withdraw" ||
-    raw === "arbiter_withdraw"
+    raw === "arbiter_withdraw" ||
+    raw === "rescue_deposit_tx" ||
+    raw === "rescue_missed_deposit" ||
+    raw === "return_missed_deposit"
   ) {
-    return raw === "arbiter_withdraw" ? "emergency_withdraw" : raw;
+    if (raw === "arbiter_withdraw") return "emergency_withdraw";
+    if (raw === "rescue_missed_deposit" || raw === "return_missed_deposit") return "rescue_deposit_tx";
+    return raw as AdminAction;
   }
   return "";
 }
@@ -83,12 +89,69 @@ function requireOrderKey(value: unknown) {
   return withPrefix;
 }
 
+function requireTxHash(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!/^0x[a-fA-F0-9]{64}$/.test(raw)) throw new Error("tx_hash must be a transaction hash");
+  return raw;
+}
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
 }
 
 function isOrderKey(value: string) {
   return /^(0x)?[a-fA-F0-9]{64}$/.test(value);
+}
+
+const depositEventMultiToken = ethers.id("EscrowDeposited(bytes32,address,address,address,uint256)");
+const depositEventSingleToken = ethers.id("EscrowDeposited(bytes32,address,address,uint256)");
+
+function addressFromTopic(topic: unknown) {
+  const raw = String(topic ?? "");
+  if (!/^0x[a-fA-F0-9]{64}$/.test(raw)) throw new Error("Invalid event address topic");
+  return ethers.getAddress(`0x${raw.slice(-40)}`);
+}
+
+function extractDepositEvent(receipt: any, escrowAddress: string) {
+  const escrow = ethers.getAddress(escrowAddress);
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const logs = Array.isArray(receipt?.logs) ? receipt.logs : [];
+
+  for (const log of logs) {
+    if (ethers.getAddress(String(log?.address ?? "0x0000000000000000000000000000000000000000")) !== escrow) continue;
+    const topics = Array.isArray(log?.topics) ? log.topics : [];
+    const topic0 = String(topics[0] ?? "").toLowerCase();
+    const orderKey = String(topics[1] ?? "");
+    if (!/^0x[a-fA-F0-9]{64}$/.test(orderKey)) continue;
+
+    if (topic0 === depositEventMultiToken.toLowerCase()) {
+      const decoded = coder.decode(["address", "uint256"], String(log.data ?? "0x"));
+      return {
+        orderKey,
+        buyer: addressFromTopic(topics[2]),
+        seller: addressFromTopic(topics[3]),
+        token: ethers.getAddress(String(decoded[0])),
+        amountRaw: decoded[1].toString(),
+      };
+    }
+
+    if (topic0 === depositEventSingleToken.toLowerCase()) {
+      const decoded = coder.decode(["uint256"], String(log.data ?? "0x"));
+      return {
+        orderKey,
+        buyer: addressFromTopic(topics[2]),
+        seller: addressFromTopic(topics[3]),
+        token: null,
+        amountRaw: decoded[0].toString(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function isSuperAdmin(ctx: { roleKey: string; permissions: string[] }) {
+  return ctx.roleKey === "super_admin" || ctx.permissions.includes("*");
 }
 
 async function resolveOrderKey(admin: any, body: any) {
@@ -122,13 +185,14 @@ const escrowAdminAbi = [
 ] as const;
 
 const ARBITER_ROLE = ethers.id("ARBITER_ROLE");
+const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
   try {
-    const authFail = await requireAdmin(req, { requireSession: true, permissions: ["chain.admin"] });
-    if (authFail) return authFail;
+    const ctx = await getAdminContext(req, { requireSession: true, permissions: ["chain.admin"] });
+    if (ctx instanceof Response) return ctx;
 
     const SB_URL = envAny("SB_URL", "SUPABASE_URL");
     const SB_SERVICE = envAny("SB_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY");
@@ -145,7 +209,10 @@ Deno.serve(async (req) => {
 
     if (!chain) return bad("chain required");
     if (!action) {
-      return bad("action must be one of pause, unpause, update_fee_bps, update_fee_recipient, update_arbiter, allow_wallet, emergency_withdraw");
+      return bad("action must be one of pause, unpause, update_fee_bps, update_fee_recipient, update_arbiter, allow_wallet, emergency_withdraw, rescue_deposit_tx");
+    }
+    if ((action === "emergency_withdraw" || action === "rescue_deposit_tx") && !isSuperAdmin(ctx)) {
+      return bad("Super admin only");
     }
 
     const { data: cfg, error: cfgErr } = await admin
@@ -160,7 +227,7 @@ Deno.serve(async (req) => {
     const adminKey = escrowAdminKeyForChain(cfg.chain);
     const arbiterKey = arbiterKeyForChain(cfg.chain);
     if (!rpcUrl) return bad("Missing RPC URL in secrets or chain config");
-    if (action === "emergency_withdraw" && !arbiterKey) {
+    if ((action === "emergency_withdraw" || action === "rescue_deposit_tx") && !arbiterKey) {
       return bad("Missing ARBITER_PRIVATE_KEY in secrets");
     }
     if (action !== "emergency_withdraw" && !adminKey) {
@@ -172,6 +239,11 @@ Deno.serve(async (req) => {
     const contract = new ethers.Contract(cfg.escrow_address, escrowAdminAbi, wallet);
 
     let tx: { hash: string; wait: () => Promise<unknown> };
+    let allowTxHash: string | null = null;
+    let cleanupTxHash: string | null = null;
+    let cleanupWarning: string | null = null;
+    let cleanupSettlementWallet: { contract: any; wallet: string } | null = null;
+    let depositTxHash: string | null = null;
     const response: Record<string, unknown> = { chain: cfg.chain, escrow_address: cfg.escrow_address, action };
 
     if (action === "pause" || action === "unpause") {
@@ -194,7 +266,7 @@ Deno.serve(async (req) => {
       tx = await contract.setSettlementWalletAllowed(walletAddress, allowed);
       response.wallet = walletAddress;
       response.allowed = allowed;
-    } else {
+    } else if (action === "emergency_withdraw") {
       const { orderKey, orderId } = await resolveOrderKey(admin, body);
       const recipient = requireAddress("recipient", body?.recipient);
       const signerAddress = await wallet.getAddress();
@@ -215,9 +287,67 @@ Deno.serve(async (req) => {
       if (orderId) response.order_id = orderId;
       response.recipient = recipient;
       response.signer = signerAddress;
+    } else {
+      depositTxHash = requireTxHash(body?.tx_hash ?? body?.txHash ?? body?.deposit_tx_hash ?? body?.depositTxHash);
+      const receipt = await provider.getTransactionReceipt(depositTxHash);
+      if (!receipt) return bad("Deposit transaction was not found on this chain.");
+      if (receipt.status === 0) return bad("Deposit transaction failed on-chain.");
+
+      const deposit = extractDepositEvent(receipt, cfg.escrow_address);
+      if (!deposit) {
+        return bad("No EscrowDeposited event from this chain escrow contract was found in that transaction.");
+      }
+
+      const adminWallet = new ethers.Wallet(adminKey, provider);
+      const arbiterWallet = new ethers.Wallet(arbiterKey, provider);
+      const adminContract = new ethers.Contract(cfg.escrow_address, escrowAdminAbi, adminWallet);
+      const arbiterContract = new ethers.Contract(cfg.escrow_address, escrowAdminAbi, arbiterWallet);
+
+      const adminAddress = await adminWallet.getAddress();
+      const arbiterAddress = await arbiterWallet.getAddress();
+      const hasDefaultAdminRole = await adminContract.hasRole(DEFAULT_ADMIN_ROLE, adminAddress);
+      if (!hasDefaultAdminRole) {
+        return bad(`Configured admin signer ${adminAddress} does not have DEFAULT_ADMIN_ROLE on this escrow contract.`);
+      }
+      const hasArbiterRole = await arbiterContract.hasRole(ARBITER_ROLE, arbiterAddress);
+      if (!hasArbiterRole) {
+        return bad(`Configured arbiter signer ${arbiterAddress} does not have ARBITER_ROLE on this escrow contract.`);
+      }
+
+      const allowed = await adminContract.settlementWalletAllowed(deposit.buyer);
+      if (!allowed) {
+        const allowTx = await adminContract.setSettlementWalletAllowed(deposit.buyer, true);
+        allowTxHash = allowTx.hash;
+        await allowTx.wait();
+        cleanupSettlementWallet = { contract: adminContract, wallet: deposit.buyer };
+      }
+
+      tx = await arbiterContract.arbiterWithdraw(deposit.orderKey, deposit.buyer);
+      response.deposit_tx_hash = depositTxHash;
+      response.order_key = deposit.orderKey;
+      response.recipient = deposit.buyer;
+      response.buyer = deposit.buyer;
+      response.seller = deposit.seller;
+      response.token_address = deposit.token;
+      response.amount_raw = deposit.amountRaw;
+      response.allow_tx_hash = allowTxHash;
+      response.admin_signer = adminAddress;
+      response.arbiter_signer = arbiterAddress;
     }
 
     await tx.wait();
+
+    if (cleanupSettlementWallet) {
+      try {
+        const cleanupTx = await cleanupSettlementWallet.contract.setSettlementWalletAllowed(cleanupSettlementWallet.wallet, false);
+        cleanupTxHash = cleanupTx.hash;
+        await cleanupTx.wait();
+        response.cleanup_tx_hash = cleanupTxHash;
+      } catch (cleanupError) {
+        cleanupWarning = String((cleanupError as any)?.message ?? cleanupError);
+        response.cleanup_warning = cleanupWarning;
+      }
+    }
 
     if (action === "update_fee_bps") {
       const { error: updateErr } = await admin
@@ -231,7 +361,7 @@ Deno.serve(async (req) => {
     }
 
     await admin.from("market_audit_logs").insert({
-      actor_id: null,
+      actor_id: ctx.userId === "service-token" ? null : ctx.userId,
       actor_type: "admin",
       action: `STABLE_ADMIN_${String(action).toUpperCase()}`,
       entity_type: "market_chain_config",
@@ -240,6 +370,10 @@ Deno.serve(async (req) => {
         chain: cfg.chain,
         escrow_address: cfg.escrow_address,
         tx_hash: tx.hash,
+        deposit_tx_hash: depositTxHash,
+        allow_tx_hash: allowTxHash,
+        cleanup_tx_hash: cleanupTxHash,
+        cleanup_warning: cleanupWarning,
         note,
         ...response,
       },
@@ -248,6 +382,10 @@ Deno.serve(async (req) => {
     return ok({
       ok: true,
       tx_hash: tx.hash,
+      deposit_tx_hash: depositTxHash,
+      allow_tx_hash: allowTxHash,
+      cleanup_tx_hash: cleanupTxHash,
+      cleanup_warning: cleanupWarning,
       ...response,
     });
   } catch (e) {

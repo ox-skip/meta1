@@ -605,6 +605,7 @@ export default function MarketAdminIndex() {
   const [chainArbiterAddresses, setChainArbiterAddresses] = useState<Record<string, string>>({});
   const [chainRescueRecipients, setChainRescueRecipients] = useState<Record<string, string>>({});
   const [chainRescueOrderKeys, setChainRescueOrderKeys] = useState<Record<string, string>>({});
+  const [chainRescueTxHashes, setChainRescueTxHashes] = useState<Record<string, string>>({});
 
   const visibleModules = useMemo(() => {
     const permissions = overview?.admin.permissions ?? [];
@@ -636,6 +637,10 @@ export default function MarketAdminIndex() {
 
   function setChainRescueOrderKey(chain: string, value: string) {
     setChainRescueOrderKeys((prev) => ({ ...prev, [chain]: value }));
+  }
+
+  function setChainRescueTxHash(chain: string, value: string) {
+    setChainRescueTxHashes((prev) => ({ ...prev, [chain]: value }));
   }
 
   function moduleItemCount(key: string) {
@@ -2073,6 +2078,7 @@ export default function MarketAdminIndex() {
     ]));
     const canSettle = hasPermission("escrow.settle");
     const canChainAdmin = hasPermission("chain.admin");
+    const isSuperAdmin = Boolean(overview?.admin.role_key === "super_admin" || overview?.admin.permissions?.includes("*"));
 
     return (
       <View style={{ marginTop: 18, gap: 14 }}>
@@ -2249,7 +2255,9 @@ export default function MarketAdminIndex() {
           const arbiterAddress = chainArbiterAddresses[chainKey] ?? "";
           const rescueRecipient = chainRescueRecipients[chainKey] ?? "";
           const rescueOrderKey = chainRescueOrderKeys[chainKey] ?? "";
-          const canRescue = canChainAdmin && rescueRecipient.trim().length > 0 && rescueOrderKey.trim().length > 0;
+          const rescueTxHash = chainRescueTxHashes[chainKey] ?? "";
+          const canReturnMissedDeposit = isSuperAdmin && rescueTxHash.trim().length > 0;
+          const canManualRescue = isSuperAdmin && rescueRecipient.trim().length > 0 && rescueOrderKey.trim().length > 0;
           return (
           <RecordCard key={chainKey}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -2325,9 +2333,48 @@ export default function MarketAdminIndex() {
 
             <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
               <View>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Rescue locked escrow</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Return missed deposit</Text>
                 <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                  For old test deposits that were locked on-chain but missed by the poller. The recipient must be allowlisted first.
+                  Super admin only. Paste the original deposit transaction hash; the system reads the escrow event, finds the depositor, allowlists that wallet if needed, and returns the locked funds to them.
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10, alignItems: isDesktop ? "center" : "stretch" }}>
+                <View style={{ flex: 1 }}>
+                  <AdminTextInput
+                    value={rescueTxHash}
+                    onChangeText={(value) => setChainRescueTxHash(chainKey, value)}
+                    autoCapitalize="none"
+                    placeholder="Deposit tx hash 0x..."
+                  />
+                </View>
+                <ActionButton
+                  icon="return-up-back-outline"
+                  label="Return to depositor"
+                  color={DANGER}
+                  disabled={!canReturnMissedDeposit}
+                  loading={workingKey === `chain-rescue-deposit-${chainKey}`}
+                  onPress={() =>
+                    performAction(
+                      `chain-rescue-deposit-${chainKey}`,
+                      {
+                        action: "stable_chain_action",
+                        chain: chain.chain,
+                        chain_action: "rescue_deposit_tx",
+                        tx_hash: rescueTxHash.trim(),
+                      },
+                      true,
+                    )
+                  }
+                />
+              </View>
+            </View>
+
+            <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+              <View>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Manual rescue by order key</Text>
+                <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  Super admin only. Use this only when you already know the exact bytes32 order key and the wallet that must receive the funds.
                 </Text>
               </View>
 
@@ -2355,7 +2402,7 @@ export default function MarketAdminIndex() {
                   icon="shield-checkmark-outline"
                   label="Allow rescue wallet"
                   color={WARNING}
-                  disabled={!canChainAdmin || !rescueRecipient.trim()}
+                  disabled={!isSuperAdmin || !rescueRecipient.trim()}
                   loading={workingKey === `chain-allow-wallet-${chainKey}`}
                   onPress={() =>
                     performAction(
@@ -2375,7 +2422,7 @@ export default function MarketAdminIndex() {
                   icon="download-outline"
                   label="Withdraw escrow"
                   color={DANGER}
-                  disabled={!canRescue}
+                  disabled={!canManualRescue}
                   loading={workingKey === `chain-emergency-withdraw-${chainKey}`}
                   onPress={() =>
                     performAction(
