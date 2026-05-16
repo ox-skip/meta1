@@ -54,6 +54,26 @@ async function markDisputeResolved(
   if (error) throw error;
 }
 
+async function functionInvokeErrorMessage(error: any) {
+  const fallback = String(error?.message || error || "Edge Function failed");
+  const context = error?.context;
+  if (!context || typeof context.text !== "function") return fallback;
+
+  try {
+    const res = typeof context.clone === "function" ? context.clone() : context;
+    const text = await res.text();
+    if (!text) return fallback;
+    try {
+      const json = JSON.parse(text);
+      return String(json?.error || json?.message || text || fallback);
+    } catch {
+      return text.length < 600 ? text : fallback;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -112,7 +132,7 @@ Deno.serve(async (req) => {
           body: { order_id, decision, note },
           headers: forwardedHeaders,
         });
-        if (releaseErr) return bad(releaseErr.message);
+        if (releaseErr) return bad(await functionInvokeErrorMessage(releaseErr));
         if (!(releaseOut as any)?.ok) {
           return bad(String((releaseOut as any)?.error || "Stable release function failed"));
         }
@@ -126,7 +146,7 @@ Deno.serve(async (req) => {
           body: { order_id, note },
           headers: forwardedHeaders,
         });
-        if (releasedErr) return bad(releasedErr.message);
+        if (releasedErr) return bad(await functionInvokeErrorMessage(releasedErr));
         if (!(releasedOut as any)?.ok) {
           return bad(String((releasedOut as any)?.error || "Pi release function failed"));
         }
@@ -185,7 +205,7 @@ Deno.serve(async (req) => {
         body: { order_id, decision, note },
         headers: forwardedHeaders,
       });
-      if (refundErr) return bad(refundErr.message);
+      if (refundErr) return bad(await functionInvokeErrorMessage(refundErr));
       if (!(refundOut as any)?.ok) {
         return bad(String((refundOut as any)?.error || "Stable refund function failed"));
       }
@@ -199,7 +219,7 @@ Deno.serve(async (req) => {
         body: { order_id, note },
         headers: forwardedHeaders,
       });
-      if (refundedErr) return bad(refundedErr.message);
+      if (refundedErr) return bad(await functionInvokeErrorMessage(refundedErr));
       if (!(refundedOut as any)?.ok) {
         return bad(String((refundedOut as any)?.error || "Pi refund function failed"));
       }

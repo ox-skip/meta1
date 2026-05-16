@@ -61,12 +61,32 @@ async function audit(admin: any, ctx: AdminContext, input: {
   if (error) console.warn("[market-admin-action] audit skipped:", error.message);
 }
 
+async function functionInvokeErrorMessage(error: any) {
+  const fallback = String(error?.message || error || "Edge Function failed");
+  const context = error?.context;
+  if (!context || typeof context.text !== "function") return fallback;
+
+  try {
+    const res = typeof context.clone === "function" ? context.clone() : context;
+    const text = await res.text();
+    if (!text) return fallback;
+    try {
+      const json = JSON.parse(text);
+      return String(json?.error || json?.message || text || fallback);
+    } catch {
+      return text.length < 600 ? text : fallback;
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 async function invokeAdminFunction(admin: any, req: Request, name: string, body: Record<string, unknown>) {
   const { data, error } = await admin.functions.invoke(name, {
     body,
     headers: getForwardedAdminHeaders(req),
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await functionInvokeErrorMessage(error));
   if ((data as any)?.error) throw new Error(String((data as any).error));
   return data;
 }

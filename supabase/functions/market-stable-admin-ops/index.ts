@@ -4,6 +4,7 @@ import { ethers } from "https://esm.sh/ethers@6.16.0";
 
 import { adminError, requireAdmin } from "../_shared/market/admin.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
+import { orderKeyKeccak } from "../_shared/market/crypto.ts";
 import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
 
 type AdminAction =
@@ -12,7 +13,8 @@ type AdminAction =
   | "update_fee_bps"
   | "update_fee_recipient"
   | "update_arbiter"
-  | "allow_wallet";
+  | "allow_wallet"
+  | "emergency_withdraw";
 
 function envAny(...names: string[]) {
   for (const n of names) {
@@ -32,6 +34,11 @@ function escrowAdminKeyForChain(chain: string) {
   );
 }
 
+function arbiterKeyForChain(chain: string) {
+  const upper = chain.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return envAny(`ARBITER_PRIVATE_KEY_${upper}`, "ARBITER_PRIVATE_KEY");
+}
+
 function normalizeAction(input: unknown): AdminAction | "" {
   const raw = String(input ?? "").trim().toLowerCase().replace(/-/g, "_");
   if (
@@ -40,9 +47,11 @@ function normalizeAction(input: unknown): AdminAction | "" {
     raw === "update_fee_bps" ||
     raw === "update_fee_recipient" ||
     raw === "update_arbiter" ||
-    raw === "allow_wallet"
+    raw === "allow_wallet" ||
+    raw === "emergency_withdraw" ||
+    raw === "arbiter_withdraw"
   ) {
-    return raw;
+    return raw === "arbiter_withdraw" ? "emergency_withdraw" : raw;
   }
   return "";
 }
@@ -67,14 +76,51 @@ function requireFeeBps(value: unknown) {
   return n;
 }
 
+function requireOrderKey(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!/^0x[a-fA-F0-9]{64}$/.test(raw)) throw new Error("order_key must be a 32-byte hex value");
+  return raw;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+}
+
+function isOrderKey(value: string) {
+  return /^0x[a-fA-F0-9]{64}$/.test(value);
+}
+
+async function resolveOrderKey(admin: any, body: any) {
+  const raw = String(body?.order_key ?? body?.orderKey ?? body?.order_id ?? body?.orderId ?? "").trim();
+  if (isOrderKey(raw)) return { orderKey: requireOrderKey(raw), orderId: null };
+  if (!isUuid(raw)) throw new Error("Enter a 32-byte order_key or an order UUID.");
+
+  const { data: escrowRow } = await admin
+    .from("market_crypto_escrows")
+    .select("order_key")
+    .eq("order_id", raw)
+    .maybeSingle();
+
+  const storedKey = String(escrowRow?.order_key ?? "").trim();
+  return {
+    orderKey: isOrderKey(storedKey) ? storedKey : orderKeyKeccak(raw),
+    orderId: raw,
+  };
+}
+
 const escrowAdminAbi = [
+  "function hasRole(bytes32 role, address account) view returns (bool)",
+  "function settlementWalletAllowed(address wallet) view returns (bool)",
   "function updateFeeBps(uint16 newBps) external",
   "function updateFeeRecipient(address newRecipient) external",
   "function updateArbiter(address newArbiter) external",
   "function pause() external",
   "function unpause() external",
   "function setSettlementWalletAllowed(address wallet, bool allowed) external",
+  "function arbiterWithdraw(bytes32 orderKey, address recipient) external",
 ] as const;
+
+const ARBITER_ROLE = ethers.id("ARBITER_ROLE");
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
@@ -98,7 +144,7 @@ Deno.serve(async (req) => {
 
     if (!chain) return bad("chain required");
     if (!action) {
-      return bad("action must be one of pause, unpause, update_fee_bps, update_fee_recipient, update_arbiter, allow_wallet");
+      return bad("action must be one of pause, unpause, update_fee_bps, update_fee_recipient, update_arbiter, allow_wallet, emergency_withdraw");
     }
 
     const { data: cfg, error: cfgErr } = await admin
@@ -111,10 +157,17 @@ Deno.serve(async (req) => {
 
     const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
     const adminKey = escrowAdminKeyForChain(cfg.chain);
-    if (!rpcUrl || !adminKey) return bad("Missing RPC URL or ESCROW_ADMIN_PRIVATE_KEY in secrets");
+    const arbiterKey = arbiterKeyForChain(cfg.chain);
+    if (!rpcUrl) return bad("Missing RPC URL in secrets or chain config");
+    if (action === "emergency_withdraw" && !arbiterKey) {
+      return bad("Missing ARBITER_PRIVATE_KEY in secrets");
+    }
+    if (action !== "emergency_withdraw" && !adminKey) {
+      return bad("Missing ESCROW_ADMIN_PRIVATE_KEY in secrets");
+    }
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(adminKey, provider);
+    const wallet = new ethers.Wallet(action === "emergency_withdraw" ? arbiterKey : adminKey, provider);
     const contract = new ethers.Contract(cfg.escrow_address, escrowAdminAbi, wallet);
 
     let tx: { hash: string; wait: () => Promise<unknown> };
@@ -134,12 +187,33 @@ Deno.serve(async (req) => {
       const arbiter = requireAddress("arbiter", body?.arbiter);
       tx = await contract.updateArbiter(arbiter);
       response.arbiter = arbiter;
-    } else {
+    } else if (action === "allow_wallet") {
       const walletAddress = requireAddress("wallet", body?.wallet);
       const allowed = requireBoolean("allowed", body?.allowed);
       tx = await contract.setSettlementWalletAllowed(walletAddress, allowed);
       response.wallet = walletAddress;
       response.allowed = allowed;
+    } else {
+      const { orderKey, orderId } = await resolveOrderKey(admin, body);
+      const recipient = requireAddress("recipient", body?.recipient);
+      const signerAddress = await wallet.getAddress();
+      const hasArbiterRole = await contract.hasRole(ARBITER_ROLE, signerAddress);
+      if (!hasArbiterRole) {
+        return bad(
+          `Configured arbiter signer ${signerAddress} does not have ARBITER_ROLE on this escrow contract.`,
+        );
+      }
+
+      const allowed = await contract.settlementWalletAllowed(recipient);
+      if (!allowed) {
+        return bad("recipient not allowed. Use Allow rescue wallet first, then retry the escrow withdrawal.");
+      }
+
+      tx = await contract.arbiterWithdraw(orderKey, recipient);
+      response.order_key = orderKey;
+      if (orderId) response.order_id = orderId;
+      response.recipient = recipient;
+      response.signer = signerAddress;
     }
 
     await tx.wait();

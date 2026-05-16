@@ -10,6 +10,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  type TextInputProps,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -411,6 +412,7 @@ function AdminTextInput({
   secureTextEntry,
   keyboardType,
   multiline,
+  autoCapitalize,
 }: {
   value: string;
   onChangeText: (value: string) => void;
@@ -418,6 +420,7 @@ function AdminTextInput({
   secureTextEntry?: boolean;
   keyboardType?: "default" | "email-address";
   multiline?: boolean;
+  autoCapitalize?: TextInputProps["autoCapitalize"];
 }) {
   return (
     <TextInput
@@ -425,7 +428,7 @@ function AdminTextInput({
       onChangeText={onChangeText}
       secureTextEntry={secureTextEntry}
       keyboardType={keyboardType}
-      autoCapitalize={keyboardType === "email-address" ? "none" : undefined}
+      autoCapitalize={autoCapitalize ?? (keyboardType === "email-address" ? "none" : undefined)}
       multiline={multiline}
       placeholder={placeholder}
       placeholderTextColor="rgba(248,250,252,0.36)"
@@ -588,6 +591,9 @@ export default function MarketAdminIndex() {
   const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
   const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
   const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
+  const [chainArbiterAddresses, setChainArbiterAddresses] = useState<Record<string, string>>({});
+  const [chainRescueRecipients, setChainRescueRecipients] = useState<Record<string, string>>({});
+  const [chainRescueOrderKeys, setChainRescueOrderKeys] = useState<Record<string, string>>({});
 
   const visibleModules = useMemo(() => {
     const permissions = overview?.admin.permissions ?? [];
@@ -607,6 +613,18 @@ export default function MarketAdminIndex() {
 
   function setCurrentModuleSearch(value: string) {
     setModuleSearch((prev) => ({ ...prev, [currentModule]: value }));
+  }
+
+  function setChainArbiterAddress(chain: string, value: string) {
+    setChainArbiterAddresses((prev) => ({ ...prev, [chain]: value }));
+  }
+
+  function setChainRescueRecipient(chain: string, value: string) {
+    setChainRescueRecipients((prev) => ({ ...prev, [chain]: value }));
+  }
+
+  function setChainRescueOrderKey(chain: string, value: string) {
+    setChainRescueOrderKeys((prev) => ({ ...prev, [chain]: value }));
   }
 
   function moduleItemCount(key: string) {
@@ -2075,8 +2093,14 @@ export default function MarketAdminIndex() {
         )) : null}
 
         {escrowTab === "chains" ? (
-          chains.length ? chains.map((chain: any) => (
-          <RecordCard key={String(chain.chain)}>
+          chains.length ? chains.map((chain: any) => {
+          const chainKey = String(chain.chain);
+          const arbiterAddress = chainArbiterAddresses[chainKey] ?? "";
+          const rescueRecipient = chainRescueRecipients[chainKey] ?? "";
+          const rescueOrderKey = chainRescueOrderKeys[chainKey] ?? "";
+          const canRescue = canChainAdmin && rescueRecipient.trim().length > 0 && rescueOrderKey.trim().length > 0;
+          return (
+          <RecordCard key={chainKey}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <View style={{ flex: 1, minWidth: 220 }}>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{String(chain.chain).replace(/_/g, " ")}</Text>
@@ -2109,8 +2133,118 @@ export default function MarketAdminIndex() {
                 onPress={() => performAction(`chain-unpause-${chain.chain}`, { action: "stable_chain_action", chain: chain.chain, chain_action: "unpause" }, true)}
               />
             </View>
+
+            <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+              <View>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Arbiter signer</Text>
+                <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  Set the wallet allowed to run admin release and refund transactions for disputes.
+                </Text>
+              </View>
+              <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10, alignItems: isDesktop ? "center" : "stretch" }}>
+                <View style={{ flex: 1 }}>
+                  <AdminTextInput
+                    value={arbiterAddress}
+                    onChangeText={(value) => setChainArbiterAddress(chainKey, value)}
+                    autoCapitalize="none"
+                    placeholder="Arbiter wallet address"
+                  />
+                </View>
+                <ActionButton
+                  icon="key-outline"
+                  label="Set arbiter"
+                  color={WARNING}
+                  disabled={!canChainAdmin || !arbiterAddress.trim()}
+                  loading={workingKey === `chain-arbiter-${chainKey}`}
+                  onPress={() =>
+                    performAction(
+                      `chain-arbiter-${chainKey}`,
+                      {
+                        action: "stable_chain_action",
+                        chain: chain.chain,
+                        chain_action: "update_arbiter",
+                        arbiter: arbiterAddress.trim(),
+                      },
+                      true,
+                    )
+                  }
+                />
+              </View>
+            </View>
+
+            <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+              <View>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Rescue locked escrow</Text>
+                <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  For old test deposits that were locked on-chain but missed by the poller. The recipient must be allowlisted first.
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <AdminTextInput
+                    value={rescueRecipient}
+                    onChangeText={(value) => setChainRescueRecipient(chainKey, value)}
+                    autoCapitalize="none"
+                    placeholder="Recipient wallet to receive rescued funds"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <AdminTextInput
+                    value={rescueOrderKey}
+                    onChangeText={(value) => setChainRescueOrderKey(chainKey, value)}
+                    autoCapitalize="none"
+                    placeholder="Order ID or order key 0x..."
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton
+                  icon="shield-checkmark-outline"
+                  label="Allow rescue wallet"
+                  color={WARNING}
+                  disabled={!canChainAdmin || !rescueRecipient.trim()}
+                  loading={workingKey === `chain-allow-wallet-${chainKey}`}
+                  onPress={() =>
+                    performAction(
+                      `chain-allow-wallet-${chainKey}`,
+                      {
+                        action: "stable_chain_action",
+                        chain: chain.chain,
+                        chain_action: "allow_wallet",
+                        wallet: rescueRecipient.trim(),
+                        allowed: true,
+                      },
+                      true,
+                    )
+                  }
+                />
+                <ActionButton
+                  icon="download-outline"
+                  label="Withdraw escrow"
+                  color={DANGER}
+                  disabled={!canRescue}
+                  loading={workingKey === `chain-emergency-withdraw-${chainKey}`}
+                  onPress={() =>
+                    performAction(
+                      `chain-emergency-withdraw-${chainKey}`,
+                      {
+                        action: "stable_chain_action",
+                        chain: chain.chain,
+                        chain_action: "emergency_withdraw",
+                        order_key: rescueOrderKey.trim(),
+                        recipient: rescueRecipient.trim(),
+                      },
+                      true,
+                    )
+                  }
+                />
+              </View>
+            </View>
           </RecordCard>
-        )) : (
+          );
+        }) : (
           <EmptyState title={allChains.length ? "No matching chains" : "No chain config"} subtitle={allChains.length ? "Try chain name, chain ID, escrow address, active, or inactive." : "Stable escrow contract controls appear after chain config is seeded."} />
         )) : null}
 
