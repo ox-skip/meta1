@@ -73,12 +73,11 @@ const REVIEW_RESPONSE_SCHEMA = {
   ],
 } as const;
 
-function requireUuid(name: string, value: unknown) {
+function uuidOrNull(value: unknown) {
   const raw = String(value ?? "").trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(raw)) {
-    throw new Error(`${name} must be a uuid`);
-  }
-  return raw;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(raw)
+    ? raw
+    : null;
 }
 
 function unique(values: Array<string | null | undefined>) {
@@ -252,12 +251,12 @@ async function loadSellers(admin: any, ids: string[]) {
   return byId(data, "user_id");
 }
 
-async function loadContext(admin: any, disputeId: string) {
-  const { data: dispute, error: disputeError } = await admin
+async function loadContext(admin: any, input: { disputeId?: string | null; orderId?: string | null }) {
+  let disputeQuery = admin
     .from("market_disputes")
-    .select("id,order_id,opened_by,reason,status,resolution,resolved_by,resolved_at,resolution_note,created_at,updated_at")
-    .eq("id", disputeId)
-    .maybeSingle();
+    .select("id,order_id,opened_by,reason,status,resolution,resolved_by,resolved_at,resolution_note,created_at,updated_at");
+  disputeQuery = input.disputeId ? disputeQuery.eq("id", input.disputeId) : disputeQuery.eq("order_id", input.orderId);
+  const { data: dispute, error: disputeError } = await disputeQuery.maybeSingle();
   if (disputeError) throw disputeError;
   if (!dispute?.id) throw new Error("Dispute not found");
 
@@ -499,10 +498,12 @@ Deno.serve(async (req) => {
     if (ctx instanceof Response) return ctx;
 
     const body = await req.json().catch(() => ({}));
-    const disputeId = requireUuid("dispute_id", body?.dispute_id);
+    const disputeId = uuidOrNull(body?.dispute_id ?? body?.disputeId);
+    const orderId = uuidOrNull(body?.order_id ?? body?.orderId);
+    if (!disputeId && !orderId) return bad("dispute_id or order_id must be a uuid");
     const admin = supabaseAdminClient();
 
-    const context = await loadContext(admin, disputeId);
+    const context = await loadContext(admin, { disputeId, orderId });
     if (!["OPEN", "UNDER_REVIEW"].includes(String(context.dispute.status ?? "").toUpperCase())) {
       return bad("Dispute is not open for AI review");
     }

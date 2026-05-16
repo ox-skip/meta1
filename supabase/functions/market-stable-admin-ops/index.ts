@@ -78,8 +78,9 @@ function requireFeeBps(value: unknown) {
 
 function requireOrderKey(value: unknown) {
   const raw = String(value ?? "").trim();
-  if (!/^0x[a-fA-F0-9]{64}$/.test(raw)) throw new Error("order_key must be a 32-byte hex value");
-  return raw;
+  const withPrefix = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(withPrefix)) throw new Error("order_key must be a 32-byte hex value");
+  return withPrefix;
 }
 
 function isUuid(value: string) {
@@ -87,7 +88,7 @@ function isUuid(value: string) {
 }
 
 function isOrderKey(value: string) {
-  return /^0x[a-fA-F0-9]{64}$/.test(value);
+  return /^(0x)?[a-fA-F0-9]{64}$/.test(value);
 }
 
 async function resolveOrderKey(admin: any, body: any) {
@@ -103,7 +104,7 @@ async function resolveOrderKey(admin: any, body: any) {
 
   const storedKey = String(escrowRow?.order_key ?? "").trim();
   return {
-    orderKey: isOrderKey(storedKey) ? storedKey : orderKeyKeccak(raw),
+    orderKey: isOrderKey(storedKey) ? requireOrderKey(storedKey) : orderKeyKeccak(raw),
     orderId: raw,
   };
 }

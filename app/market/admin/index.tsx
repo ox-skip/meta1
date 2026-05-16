@@ -1001,14 +1001,16 @@ export default function MarketAdminIndex() {
   }
 
   async function runDisputeAiReview(dispute: any) {
-    const disputeId = String(dispute?.id || "");
-    if (!disputeId) return;
-    setWorkingKey(`dispute-ai-${disputeId}`);
+    const disputeId = String(dispute?.id || "").trim();
+    const orderId = String(dispute?.order_id || "").trim();
+    const resultKey = disputeId || orderId;
+    if (!resultKey) return;
+    setWorkingKey(`dispute-ai-${resultKey}`);
     setError(null);
     setNotice(null);
     try {
-      const result = await generateDisputeAiReview(disputeId);
-      setDisputeAiResults((prev) => ({ ...prev, [disputeId]: result }));
+      const result = await generateDisputeAiReview(disputeId, orderId);
+      setDisputeAiResults((prev) => ({ ...prev, [resultKey]: result, [result.dispute_id]: result }));
       setNotice("Gemini dispute review is ready. Use it as guidance, then make the admin decision.");
     } catch (e: any) {
       setError(String(e?.message || e || "Could not generate dispute AI review."));
@@ -1194,8 +1196,10 @@ export default function MarketAdminIndex() {
   }
 
   function renderDisputeAiReview(dispute: any, canResolve: boolean) {
-    const disputeId = String(dispute?.id || "");
-    const result = disputeAiResults[disputeId];
+    const disputeId = String(dispute?.id || "").trim();
+    const orderId = String(dispute?.order_id || "").trim();
+    const resultKey = disputeId || orderId;
+    const result = disputeAiResults[disputeId] ?? disputeAiResults[orderId] ?? disputeAiResults[resultKey];
     const review = result?.review;
     if (!review) return null;
 
@@ -1281,7 +1285,7 @@ export default function MarketAdminIndex() {
               label="Refresh AI"
               color={ACCENT}
               disabled={!canResolve}
-              loading={workingKey === `dispute-ai-${disputeId}`}
+              loading={workingKey === `dispute-ai-${resultKey}`}
               onPress={() => void runDisputeAiReview(dispute)}
             />
             <ActionButton
@@ -1597,6 +1601,7 @@ export default function MarketAdminIndex() {
         {disputes.length ? disputes.map((dispute: any) => {
           const order = dispute.order ?? {};
           const currency = String(order.currency ?? "").toUpperCase();
+          const disputeKey = String(dispute.id || dispute.order_id || "");
           const needsEscrowPower = ["USDC", "USDT"].includes(currency) && !hasPermission("escrow.settle");
           const messages = Array.isArray(dispute.messages) ? dispute.messages : [];
           const evidenceCount = messages.reduce((sum: number, message: any) => sum + (message.attachments?.length ?? 0), 0);
@@ -1725,7 +1730,7 @@ export default function MarketAdminIndex() {
                   label="AI review"
                   color={SUCCESS}
                   disabled={!canResolve}
-                  loading={workingKey === `dispute-ai-${dispute.id}`}
+                  loading={workingKey === `dispute-ai-${disputeKey}`}
                   onPress={() => void runDisputeAiReview(dispute)}
                 />
                 <ActionButton

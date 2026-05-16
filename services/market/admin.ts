@@ -225,10 +225,10 @@ export async function generateSupportAiTriage(ticketId: string, options?: { forc
   );
 }
 
-export async function generateDisputeAiReview(disputeId: string) {
+export async function generateDisputeAiReview(disputeId: string, orderId?: string | null) {
   return await callAdminFn<MarketDisputeAiReviewResult>(
     "market-dispute-ai-review",
-    { dispute_id: disputeId },
+    { dispute_id: disputeId, order_id: orderId ?? null },
     60000,
   );
 }

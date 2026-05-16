@@ -21,6 +21,15 @@ function arbiterKeyForChain(chain: string) {
   return envAny(`ARBITER_PRIVATE_KEY_${upper}`, "ARBITER_PRIVATE_KEY");
 }
 
+function normalizeOrderKey(value: unknown) {
+  const raw = String(value ?? "").trim();
+  const withPrefix = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(withPrefix)) {
+    throw new Error("Stored escrow order_key must be a 32-byte hex value");
+  }
+  return withPrefix;
+}
+
 const escrowAbi = [
   "function hasRole(bytes32 role, address account) view returns (bool)",
   "function arbiterRelease(bytes32 orderKey) external",
@@ -78,6 +87,7 @@ Deno.serve(async (req) => {
       .eq("order_id", order_id)
       .maybeSingle();
     if (!esc?.order_key || !esc?.escrow_address) return bad("Crypto escrow mapping missing");
+    const orderKey = normalizeOrderKey(esc.order_key);
 
     const { data: cfg } = await admin
       .from("market_chain_config")
@@ -120,8 +130,8 @@ Deno.serve(async (req) => {
 
     const tx =
       decision === "RELEASE"
-        ? await contract.arbiterRelease(esc.order_key)
-        : await contract.refund(esc.order_key);
+        ? await contract.arbiterRelease(orderKey)
+        : await contract.refund(orderKey);
 
     await admin.rpc("market_set_crypto_intent", {
       p_order_id: order_id,
@@ -141,7 +151,7 @@ Deno.serve(async (req) => {
       action: `STABLE_${decision}_SUBMITTED`,
       entity_type: "market_orders",
       entity_id: order_id,
-      payload: { note, tx_hash: tx.hash, order_key: esc.order_key, chain: esc.chain, signer: signerAddress },
+      payload: { note, tx_hash: tx.hash, order_key: orderKey, chain: esc.chain, signer: signerAddress },
     });
 
     return ok({

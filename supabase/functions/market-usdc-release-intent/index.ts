@@ -1,6 +1,15 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 
+function normalizeOrderKey(value: unknown) {
+  const raw = String(value ?? "").trim();
+  const withPrefix = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[a-fA-F0-9]{64}$/.test(withPrefix)) {
+    throw new Error("Stored escrow order_key must be a 32-byte hex value");
+  }
+  return withPrefix;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -50,6 +59,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
 
   if (!esc?.order_key) return bad("Crypto escrow mapping missing");
+  const orderKey = normalizeOrderKey(esc.order_key);
   if (chain && esc.chain && chain !== esc.chain) return bad("Chain mismatch");
 
   const { data: listing } = await admin
@@ -85,17 +95,17 @@ Deno.serve(async (req) => {
     action: `${order.currency}_RELEASE_INTENT`,
     entity_type: "market_orders",
     entity_id: order_id,
-    payload: { order_key: esc.order_key, chain: esc.chain },
+    payload: { order_key: orderKey, chain: esc.chain },
   });
 
   return ok({
     ok: true,
     order_id,
-    order_key: esc.order_key,
+    order_key: orderKey,
     chain: esc.chain,
     escrow_address: esc.escrow_address,
     contract_method: "release(bytes32 orderKey)",
-    args: [esc.order_key],
+    args: [orderKey],
     note: "Client should send on-chain release tx, then indexer updates DB to RELEASED",
   });
 });
