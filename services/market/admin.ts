@@ -225,10 +225,19 @@ export async function generateSupportAiTriage(ticketId: string, options?: { forc
   );
 }
 
+function uuidOrNull(value?: string | null) {
+  const raw = String(value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)
+    ? raw
+    : null;
+}
+
 export async function generateDisputeAiReview(disputeId: string, orderId?: string | null) {
+  const cleanDisputeId = uuidOrNull(disputeId);
+  const cleanOrderId = uuidOrNull(orderId);
   return await callAdminFn<MarketDisputeAiReviewResult>(
     "market-dispute-ai-review",
-    { dispute_id: disputeId, order_id: orderId ?? null },
+    { dispute_id: cleanDisputeId, order_id: cleanOrderId },
     60000,
   );
 }

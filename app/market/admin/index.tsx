@@ -244,11 +244,6 @@ function openListing(listingId?: string | null) {
   if (id) router.push(`/market/listing/${encodeURIComponent(id)}` as any);
 }
 
-function openOrder(orderId?: string | null) {
-  const id = String(orderId ?? "").trim();
-  if (id) router.push(`/market/order/${encodeURIComponent(id)}` as any);
-}
-
 function dmSlugForUser(user: any) {
   return String(user?.seller?.market_username || user?.profile?.username || user?.id || "").trim();
 }
@@ -664,6 +659,15 @@ export default function MarketAdminIndex() {
   function hasPermission(permission: string) {
     const admin = overview?.admin;
     return Boolean(admin?.role_key === "super_admin" || admin?.permissions.includes("*") || admin?.permissions.includes(permission));
+  }
+
+  function openAdminOrder(orderId?: string | null) {
+    const id = String(orderId ?? "").trim();
+    if (!id) return;
+    setActiveModule("escrow");
+    setEscrowTab("orders");
+    setModuleSearch((prev) => ({ ...prev, escrow: id }));
+    setNotice("Order opened in the admin escrow workspace.");
   }
 
   async function loadUnlockedDashboard() {
@@ -1488,7 +1492,7 @@ export default function MarketAdminIndex() {
 
                     <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                       {selectedTicket.related_order_id ? (
-                        <ActionButton icon="receipt-outline" label="Open order" color={WARNING} onPress={() => openOrder(selectedTicket.related_order_id)} />
+                        <ActionButton icon="receipt-outline" label="Open order" color={WARNING} onPress={() => openAdminOrder(selectedTicket.related_order_id)} />
                       ) : null}
                       <ActionButton
                         icon="sparkles-outline"
@@ -1706,7 +1710,7 @@ export default function MarketAdminIndex() {
                   icon="receipt-outline"
                   label="Open order"
                   color={WARNING}
-                  onPress={() => openOrder(dispute.order_id)}
+                  onPress={() => openAdminOrder(dispute.order_id)}
                 />
                 <ActionButton
                   icon="person-circle-outline"
@@ -2151,7 +2155,7 @@ export default function MarketAdminIndex() {
                   icon="receipt-outline"
                   label="Open order"
                   color={WARNING}
-                  onPress={() => openOrder(order.id)}
+                  onPress={() => openAdminOrder(order.id)}
                 />
                 <ActionButton
                   icon="person-circle-outline"
