@@ -421,6 +421,86 @@ async function loadAdminMembers(admin: any) {
   };
 }
 
+async function loadRewards(admin: any) {
+  const [accountsRes, tasksRes, pendingRes, promotionsRes, ledgerRes, adSessionsRes] = await Promise.all([
+    admin
+      .from("market_reward_accounts")
+      .select("user_id,balance,lifetime_earned,lifetime_spent,tier_key,daily_streak,longest_streak,last_earned_at,last_spent_at,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_reward_tasks")
+      .select("id,task_key,title,description,category,trigger_type,reward_noms,cooldown_seconds,daily_cap,weekly_cap,lifetime_cap,requires_review,active,sort_order,action_route,icon,accent,rules,ui,created_at,updated_at")
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(120),
+    admin
+      .from("market_reward_task_completions")
+      .select("id,user_id,task_id,status,progress,evidence,review_note,reviewed_by,rewarded_at,created_at,updated_at")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_reward_promotions")
+      .select("id,placement_key,store_id,listing_id,title,subtitle,media_url,sponsor_label,cta_label,cta_route,priority,active,starts_at,ends_at,metadata,created_by,created_at,updated_at")
+      .order("priority", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(80),
+    admin
+      .from("market_reward_ledger")
+      .select("id,user_id,task_id,delta,balance_after,source,reason,entity_type,entity_id,status,metadata,created_at")
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_reward_ad_sessions")
+      .select("id,user_id,task_id,provider,platform,ad_unit_id,reward_noms,status,provider_transaction_id,created_at,shown_at,client_earned_at,verified_at,rewarded_at,expires_at")
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+  ]);
+
+  if (accountsRes.error) throw accountsRes.error;
+  if (tasksRes.error) throw tasksRes.error;
+  if (pendingRes.error) throw pendingRes.error;
+  if (promotionsRes.error) throw promotionsRes.error;
+  if (ledgerRes.error) throw ledgerRes.error;
+  if (adSessionsRes.error) throw adSessionsRes.error;
+
+  const tasksById = byId(tasksRes.data);
+  const profileIds = unique([
+    ...(accountsRes.data ?? []).map((row: any) => row.user_id),
+    ...(pendingRes.data ?? []).flatMap((row: any) => [row.user_id, row.reviewed_by]),
+    ...(ledgerRes.data ?? []).map((row: any) => row.user_id),
+    ...(adSessionsRes.data ?? []).map((row: any) => row.user_id),
+  ]);
+  const profiles = await loadProfiles(admin, profileIds);
+  const sellers = await loadSellerProfiles(admin, profileIds);
+
+  return {
+    accounts: (accountsRes.data ?? []).map((account: any) => ({
+      ...account,
+      user: userBundle(account.user_id, profiles, sellers),
+    })),
+    tasks: tasksRes.data ?? [],
+    pending_reviews: (pendingRes.data ?? []).map((completion: any) => ({
+      ...completion,
+      task: tasksById[String(completion.task_id)] ?? null,
+      user: userBundle(completion.user_id, profiles, sellers),
+      reviewed_by_user: userBundle(completion.reviewed_by, profiles, sellers),
+    })),
+    promotions: promotionsRes.data ?? [],
+    ledger: (ledgerRes.data ?? []).map((entry: any) => ({
+      ...entry,
+      task: tasksById[String(entry.task_id)] ?? null,
+      user: userBundle(entry.user_id, profiles, sellers),
+    })),
+    ad_sessions: (adSessionsRes.data ?? []).map((session: any) => ({
+      ...session,
+      task: tasksById[String(session.task_id)] ?? null,
+      user: userBundle(session.user_id, profiles, sellers),
+    })),
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -449,6 +529,10 @@ Deno.serve(async (req) => {
 
     if (canAny(ctx, ["admin.members.manage", "admin.roles.read"])) {
       modules.admins = await loadAdminMembers(admin);
+    }
+
+    if (canAny(ctx, ["rewards.read", "rewards.tasks.manage", "rewards.promotions.manage", "rewards.adjust", "rewards.review", "rewards.analytics"])) {
+      modules.rewards = await loadRewards(admin);
     }
 
     return ok({

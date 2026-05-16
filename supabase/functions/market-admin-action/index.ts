@@ -41,6 +41,39 @@ function adminPassword(input: unknown) {
   return password.trim() ? password : null;
 }
 
+function cleanText(input: unknown, max = 500) {
+  const value = String(input ?? "").trim();
+  return value ? value.slice(0, max) : null;
+}
+
+function cleanKey(name: string, input: unknown) {
+  const value = String(input ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_:-]{3,80}$/.test(value)) throw new Error(`${name} must be a lowercase key`);
+  return value;
+}
+
+function optionalUuid(name: string, value: unknown) {
+  const raw = String(value ?? "").trim();
+  return raw ? requireUuid(name, raw) : null;
+}
+
+function optionalInt(input: unknown, fallback: number | null, min = 0, max = 1000000) {
+  if (input === undefined || input === null || input === "") return fallback;
+  const value = Math.trunc(Number(input));
+  if (!Number.isFinite(value) || value < min || value > max) throw new Error(`number must be between ${min} and ${max}`);
+  return value;
+}
+
+function jsonObject(name: string, input: unknown) {
+  if (input === undefined || input === null || input === "") return {};
+  if (typeof input === "object" && !Array.isArray(input)) return input as Record<string, unknown>;
+  if (typeof input === "string") {
+    const parsed = JSON.parse(input);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  }
+  throw new Error(`${name} must be a JSON object`);
+}
+
 async function audit(admin: any, ctx: AdminContext, input: {
   action: string;
   entity_type: string;
@@ -590,6 +623,329 @@ async function setAdminUserActive(admin: any, ctx: AdminContext, body: any) {
   return ok({ ok: true, admin_user: data });
 }
 
+async function upsertRewardTask(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.tasks.manage");
+  if (blocked) return blocked;
+
+  const nowIso = new Date().toISOString();
+  const taskId = optionalUuid("task_id", body.task_id);
+  const category = String(body.category ?? "custom").trim().toLowerCase();
+  if (!["watch", "market", "social", "onchain", "custom"].includes(category)) return bad("Unsupported reward task category");
+
+  const triggerType = String(body.trigger_type ?? "client_claim").trim().toLowerCase();
+  if (!["client_claim", "system_event", "admin_review", "ad_reward", "manual_adjustment"].includes(triggerType)) {
+    return bad("Unsupported reward task trigger_type");
+  }
+
+  const title = cleanText(body.title, 140);
+  if (!title || title.length < 3) return bad("title required");
+
+  const patch: Record<string, unknown> = {
+    task_key: cleanKey("task_key", body.task_key),
+    title,
+    description: cleanText(body.description, 1200),
+    category,
+    trigger_type: triggerType,
+    reward_noms: optionalInt(body.reward_noms, 0, 0, 1000000),
+    cooldown_seconds: optionalInt(body.cooldown_seconds, 0, 0, 31536000),
+    daily_cap: optionalInt(body.daily_cap, null, 1, 1000000),
+    weekly_cap: optionalInt(body.weekly_cap, null, 1, 1000000),
+    lifetime_cap: optionalInt(body.lifetime_cap, null, 1, 1000000),
+    requires_review: body.requires_review === undefined ? triggerType === "admin_review" : requireBoolean("requires_review", body.requires_review),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    starts_at: cleanText(body.starts_at, 80),
+    ends_at: cleanText(body.ends_at, 80),
+    sort_order: optionalInt(body.sort_order, 100, -100000, 100000),
+    action_route: cleanText(body.action_route, 240),
+    icon: cleanText(body.icon, 80),
+    accent: cleanText(body.accent, 32),
+    rules: jsonObject("rules", body.rules),
+    ui: jsonObject("ui", body.ui),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: nowIso,
+  };
+
+  const query = taskId
+    ? admin.from("market_reward_tasks").update(patch).eq("id", taskId)
+    : admin.from("market_reward_tasks").upsert(
+        { ...patch, created_by: ctx.userId === "service-token" ? null : ctx.userId },
+        { onConflict: "task_key" },
+      );
+
+  const { data, error } = await query
+    .select("id,task_key,title,category,trigger_type,reward_noms,active,requires_review,sort_order,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: taskId ? "REWARD_TASK_UPDATED" : "REWARD_TASK_UPSERTED",
+    entity_type: "market_reward_tasks",
+    entity_id: data.id,
+    payload: { task_key: data.task_key, reward_noms: data.reward_noms, active: data.active, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, task: data });
+}
+
+async function setRewardTaskActive(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.tasks.manage");
+  if (blocked) return blocked;
+
+  const taskId = requireUuid("task_id", body.task_id);
+  const active = requireBoolean("active", body.active);
+  const { data, error } = await admin
+    .from("market_reward_tasks")
+    .update({
+      active,
+      updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .select("id,task_key,title,active,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: active ? "REWARD_TASK_ACTIVATED" : "REWARD_TASK_PAUSED",
+    entity_type: "market_reward_tasks",
+    entity_id: taskId,
+    payload: { task_key: data.task_key, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, task: data });
+}
+
+async function upsertRewardPromotion(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.promotions.manage");
+  if (blocked) return blocked;
+
+  const promotionId = optionalUuid("promotion_id", body.promotion_id);
+  const title = cleanText(body.title, 140);
+  if (!title || title.length < 3) return bad("title required");
+
+  const patch: Record<string, unknown> = {
+    placement_key: cleanKey("placement_key", body.placement_key ?? "rewards_top"),
+    store_id: optionalUuid("store_id", body.store_id),
+    listing_id: optionalUuid("listing_id", body.listing_id),
+    title,
+    subtitle: cleanText(body.subtitle, 600),
+    media_url: cleanText(body.media_url, 1000),
+    sponsor_label: cleanText(body.sponsor_label, 80) || "Promoted",
+    cta_label: cleanText(body.cta_label, 80),
+    cta_route: cleanText(body.cta_route, 240),
+    priority: optionalInt(body.priority, 100, -100000, 100000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    starts_at: cleanText(body.starts_at, 80),
+    ends_at: cleanText(body.ends_at, 80),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = promotionId
+    ? admin.from("market_reward_promotions").update(patch).eq("id", promotionId)
+    : admin.from("market_reward_promotions").insert({
+        ...patch,
+        created_by: ctx.userId === "service-token" ? null : ctx.userId,
+      });
+
+  const { data, error } = await query
+    .select("id,placement_key,title,subtitle,active,priority,starts_at,ends_at,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: promotionId ? "REWARD_PROMOTION_UPDATED" : "REWARD_PROMOTION_CREATED",
+    entity_type: "market_reward_promotions",
+    entity_id: data.id,
+    payload: { placement_key: data.placement_key, title: data.title, active: data.active, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, promotion: data });
+}
+
+async function setRewardPromotionActive(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.promotions.manage");
+  if (blocked) return blocked;
+
+  const promotionId = requireUuid("promotion_id", body.promotion_id);
+  const active = requireBoolean("active", body.active);
+  const { data, error } = await admin
+    .from("market_reward_promotions")
+    .update({
+      active,
+      updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", promotionId)
+    .select("id,placement_key,title,active,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: active ? "REWARD_PROMOTION_ACTIVATED" : "REWARD_PROMOTION_PAUSED",
+    entity_type: "market_reward_promotions",
+    entity_id: promotionId,
+    payload: { placement_key: data.placement_key, title: data.title, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, promotion: data });
+}
+
+async function adjustRewardBalance(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.adjust");
+  if (blocked) return blocked;
+
+  const userId = requireUuid("user_id", body.user_id);
+  const rawAmount = Math.trunc(Number(body.amount ?? body.delta ?? 0));
+  if (!Number.isFinite(rawAmount) || rawAmount === 0) return bad("amount must be a non-zero number");
+  const amount = Math.abs(rawAmount);
+  if (amount > 1000000) return bad("amount is too large");
+
+  const note = adminNote(body.reason ?? body.note) || "Reward admin adjustment";
+  const idempotencyKey = cleanText(body.idempotency_key, 160) || `admin-adjust:${ctx.userId}:${crypto.randomUUID()}`;
+  const createdBy = ctx.userId === "service-token" ? null : ctx.userId;
+
+  const rpcArgs = rawAmount > 0
+    ? {
+        p_user_id: userId,
+        p_amount: amount,
+        p_source: "admin_adjustment",
+        p_reason: note,
+        p_task_id: null,
+        p_completion_id: null,
+        p_entity_type: "admin_adjustment",
+        p_entity_id: createdBy,
+        p_idempotency_key: idempotencyKey,
+        p_metadata: { note, adjusted_by: createdBy },
+        p_created_by: createdBy,
+      }
+    : {
+        p_user_id: userId,
+        p_amount: amount,
+        p_source: "admin_adjustment",
+        p_reason: note,
+        p_entity_type: "admin_adjustment",
+        p_entity_id: createdBy,
+        p_idempotency_key: idempotencyKey,
+        p_metadata: { note, adjusted_by: createdBy },
+        p_created_by: createdBy,
+      };
+
+  const { data, error } = await admin.rpc(rawAmount > 0 ? "market_reward_credit" : "market_reward_debit", rpcArgs);
+  if (error) return bad(error.message);
+  const ledger = Array.isArray(data) ? data[0] : data;
+
+  await audit(admin, ctx, {
+    action: rawAmount > 0 ? "REWARD_BALANCE_CREDITED" : "REWARD_BALANCE_DEBITED",
+    entity_type: "market_reward_accounts",
+    entity_id: userId,
+    payload: { amount: rawAmount, ledger_id: ledger?.ledger_id ?? null, note },
+  });
+
+  return ok({ ok: true, ledger });
+}
+
+async function reviewRewardCompletion(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.review");
+  if (blocked) return blocked;
+
+  const completionId = requireUuid("completion_id", body.completion_id);
+  const decision = String(body.decision ?? body.status ?? "").trim().toLowerCase();
+  if (!["approve", "approved", "reward", "rewarded", "reject", "rejected"].includes(decision)) {
+    return bad("decision must be approve or reject");
+  }
+
+  const { data: completion, error: completionError } = await admin
+    .from("market_reward_task_completions")
+    .select("id,user_id,task_id,status,evidence,ledger_id")
+    .eq("id", completionId)
+    .maybeSingle();
+  if (completionError) return bad(completionError.message);
+  if (!completion?.id) return bad("Reward completion not found");
+
+  const nowIso = new Date().toISOString();
+  const reviewNote = adminNote(body.note);
+  const reviewer = ctx.userId === "service-token" ? null : ctx.userId;
+
+  if (["reject", "rejected"].includes(decision)) {
+    const { data, error } = await admin
+      .from("market_reward_task_completions")
+      .update({
+        status: "rejected",
+        reviewed_by: reviewer,
+        review_note: reviewNote,
+        rejected_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", completionId)
+      .select("id,user_id,task_id,status,review_note,rejected_at,updated_at")
+      .single();
+    if (error) return bad(error.message);
+
+    await audit(admin, ctx, {
+      action: "REWARD_COMPLETION_REJECTED",
+      entity_type: "market_reward_task_completions",
+      entity_id: completionId,
+      payload: { user_id: data.user_id, task_id: data.task_id, note: reviewNote },
+    });
+
+    return ok({ ok: true, completion: data });
+  }
+
+  const { data: task, error: taskError } = await admin
+    .from("market_reward_tasks")
+    .select("id,task_key,title,reward_noms")
+    .eq("id", completion.task_id)
+    .maybeSingle();
+  if (taskError) return bad(taskError.message);
+  if (!task?.id) return bad("Reward task not found");
+
+  let ledger: any = null;
+  if (Number(task.reward_noms ?? 0) > 0 && completion.status !== "rewarded") {
+    const { data: creditData, error: creditError } = await admin.rpc("market_reward_credit", {
+      p_user_id: completion.user_id,
+      p_amount: Number(task.reward_noms),
+      p_source: "admin_review",
+      p_reason: task.title,
+      p_task_id: task.id,
+      p_completion_id: completion.id,
+      p_entity_type: "reward_task_completion",
+      p_entity_id: completion.id,
+      p_idempotency_key: `review:${completion.id}`,
+      p_metadata: { task_key: task.task_key, review_note: reviewNote, evidence: completion.evidence ?? {} },
+      p_created_by: reviewer,
+    });
+    if (creditError) return bad(creditError.message);
+    ledger = Array.isArray(creditData) ? creditData[0] : creditData;
+  }
+
+  const { data, error } = await admin
+    .from("market_reward_task_completions")
+    .update({
+      status: Number(task.reward_noms ?? 0) > 0 ? "rewarded" : "approved",
+      ledger_id: ledger?.ledger_id ?? completion.ledger_id ?? null,
+      reviewed_by: reviewer,
+      review_note: reviewNote,
+      completed_at: nowIso,
+      rewarded_at: Number(task.reward_noms ?? 0) > 0 ? nowIso : null,
+      updated_at: nowIso,
+    })
+    .eq("id", completionId)
+    .select("id,user_id,task_id,status,ledger_id,review_note,rewarded_at,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "REWARD_COMPLETION_APPROVED",
+    entity_type: "market_reward_task_completions",
+    entity_id: completionId,
+    payload: { user_id: data.user_id, task_key: task.task_key, reward_noms: task.reward_noms, ledger_id: data.ledger_id, note: reviewNote },
+  });
+
+  return ok({ ok: true, completion: data, ledger });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -614,6 +970,12 @@ Deno.serve(async (req) => {
     if (action === "support_update_status") return await updateSupportTicketStatus(admin, ctx, body);
     if (action === "upsert_admin_user") return await upsertAdminUser(admin, ctx, body);
     if (action === "set_admin_active") return await setAdminUserActive(admin, ctx, body);
+    if (action === "upsert_reward_task") return await upsertRewardTask(admin, ctx, body);
+    if (action === "set_reward_task_active") return await setRewardTaskActive(admin, ctx, body);
+    if (action === "upsert_reward_promotion") return await upsertRewardPromotion(admin, ctx, body);
+    if (action === "set_reward_promotion_active") return await setRewardPromotionActive(admin, ctx, body);
+    if (action === "adjust_reward_balance") return await adjustRewardBalance(admin, ctx, body);
+    if (action === "review_reward_completion") return await reviewRewardCompletion(admin, ctx, body);
 
     return bad("Unsupported admin action");
   } catch (e) {

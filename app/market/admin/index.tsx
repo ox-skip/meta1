@@ -51,10 +51,11 @@ const SUCCESS = "#4ADE80";
 const WARNING = "#F59E0B";
 const DANGER = "#F87171";
 
-type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "admins";
+type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "rewards" | "admins";
 type ModerationTab = "sellers" | "listings";
 type EscrowTab = "orders" | "stocks" | "chains" | "audit";
 type AdminTab = "members" | "roles" | "invite";
+type RewardAdminTab = "tasks" | "promotions" | "reviews" | "accounts" | "ledger" | "build";
 type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
 type SupportPickedFile = SupportLocalFile & { id: string };
 
@@ -88,6 +89,12 @@ const MODULE_META: Record<ModuleKey, {
     eyebrow: "Money movement",
     accent: "#4ADE80",
   },
+  rewards: {
+    icon: "gift-outline",
+    shortTitle: "Rewards",
+    eyebrow: "Noms economy",
+    accent: "#2DD4BF",
+  },
   admins: {
     icon: "id-card-outline",
     shortTitle: "Admins",
@@ -119,6 +126,12 @@ const PERMISSION_LABELS: Record<string, string> = {
   "escrow.settle": "Release or refund escrow",
   "chain.read": "View chain configuration",
   "chain.admin": "Pause or resume chain controls",
+  "rewards.read": "View rewards",
+  "rewards.tasks.manage": "Manage reward tasks",
+  "rewards.promotions.manage": "Manage promoted placements",
+  "rewards.adjust": "Adjust Noms balances",
+  "rewards.review": "Review reward submissions",
+  "rewards.analytics": "View reward analytics",
   "audit.read": "View audit trail",
   "analytics.read": "View admin analytics",
 };
@@ -148,6 +161,11 @@ const PERMISSION_GROUPS = [
     title: "Escrow",
     permissions: ["escrow.read", "escrow.settle", "chain.read", "chain.admin"],
     icon: "wallet-outline" as keyof typeof Ionicons.glyphMap,
+  },
+  {
+    title: "Rewards",
+    permissions: ["rewards.read", "rewards.tasks.manage", "rewards.promotions.manage", "rewards.adjust", "rewards.review", "rewards.analytics"],
+    icon: "gift-outline" as keyof typeof Ionicons.glyphMap,
   },
   {
     title: "Oversight",
@@ -209,6 +227,8 @@ function roleFocus(roleKey?: string | null) {
       return "Support queues, complaints, and evidence";
     case "compliance_admin":
       return "Verification and trust review";
+    case "reward_admin":
+      return "Noms tasks, reward reviews, promoted placements, and reward analytics";
     default:
       return "Assigned admin workspace";
   }
@@ -588,11 +608,31 @@ export default function MarketAdminIndex() {
     moderation: "",
     verification: "",
     escrow: "",
+    rewards: "",
     admins: "",
   });
   const [moderationTab, setModerationTab] = useState<ModerationTab>("sellers");
   const [escrowTab, setEscrowTab] = useState<EscrowTab>("orders");
   const [adminTab, setAdminTab] = useState<AdminTab>("members");
+  const [rewardTab, setRewardTab] = useState<RewardAdminTab>("tasks");
+  const [rewardTaskKey, setRewardTaskKey] = useState("custom_campaign_review");
+  const [rewardTaskTitle, setRewardTaskTitle] = useState("");
+  const [rewardTaskDescription, setRewardTaskDescription] = useState("");
+  const [rewardTaskCategory, setRewardTaskCategory] = useState("custom");
+  const [rewardTaskTrigger, setRewardTaskTrigger] = useState("admin_review");
+  const [rewardTaskNoms, setRewardTaskNoms] = useState("100");
+  const [rewardTaskRoute, setRewardTaskRoute] = useState("");
+  const [rewardTaskRules, setRewardTaskRules] = useState("{\"check\":\"admin_review\"}");
+  const [rewardPromotionPlacement, setRewardPromotionPlacement] = useState("rewards_top");
+  const [rewardPromotionTitle, setRewardPromotionTitle] = useState("");
+  const [rewardPromotionSubtitle, setRewardPromotionSubtitle] = useState("");
+  const [rewardPromotionMediaUrl, setRewardPromotionMediaUrl] = useState("");
+  const [rewardPromotionCtaRoute, setRewardPromotionCtaRoute] = useState("");
+  const [rewardPromotionStoreId, setRewardPromotionStoreId] = useState("");
+  const [rewardPromotionListingId, setRewardPromotionListingId] = useState("");
+  const [rewardPromotionPriority, setRewardPromotionPriority] = useState("100");
+  const [rewardAdjustUserId, setRewardAdjustUserId] = useState("");
+  const [rewardAdjustAmount, setRewardAdjustAmount] = useState("");
   const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
   const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
   const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
@@ -614,7 +654,7 @@ export default function MarketAdminIndex() {
   useEffect(() => {
     const moduleParam = String(params.module || "").trim().toLowerCase();
     const ticketParam = String(params.ticket || "").trim();
-    if (moduleParam === "support") setActiveModule("support");
+    if (moduleParam && moduleParam in MODULE_META) setActiveModule(moduleParam as ModuleKey);
     if (ticketParam) openSupportTicket(ticketParam);
   }, [params.module, params.ticket]);
 
@@ -649,6 +689,13 @@ export default function MarketAdminIndex() {
         return modules?.verification?.requests?.length ?? 0;
       case "escrow":
         return (modules?.escrow?.orders?.length ?? 0) + (modules?.escrow?.stocks?.length ?? 0) + (modules?.escrow?.chains?.length ?? 0);
+      case "rewards":
+        return (
+          (modules?.rewards?.tasks?.length ?? 0) +
+          (modules?.rewards?.promotions?.length ?? 0) +
+          (modules?.rewards?.pending_reviews?.length ?? 0) +
+          (modules?.rewards?.accounts?.length ?? 0)
+        );
       case "admins":
         return (modules?.admins?.users?.length ?? 0) + (modules?.admins?.roles?.length ?? 0);
       default:
@@ -2466,6 +2513,524 @@ export default function MarketAdminIndex() {
     );
   }
 
+  function renderRewards() {
+    const rewards = workspace?.modules.rewards;
+    if (!rewards) {
+      return (
+        <View style={{ marginTop: 18 }}>
+          <EmptyState title="Rewards workspace unavailable" subtitle="This admin session does not include reward permissions." />
+        </View>
+      );
+    }
+
+    const tasks = (rewards.tasks ?? []).filter((task: any) => matchesSearch(currentModuleSearch, [
+      task.task_key,
+      task.title,
+      task.description,
+      task.category,
+      task.trigger_type,
+      task.active ? "active" : "paused",
+    ]));
+    const promotions = (rewards.promotions ?? []).filter((promo: any) => matchesSearch(currentModuleSearch, [
+      promo.placement_key,
+      promo.title,
+      promo.subtitle,
+      promo.sponsor_label,
+      promo.active ? "active" : "paused",
+    ]));
+    const reviews = (rewards.pending_reviews ?? []).filter((review: any) => matchesSearch(currentModuleSearch, [
+      review.id,
+      review.task?.title,
+      review.task?.task_key,
+      personLabel(review.user),
+      review.status,
+      JSON.stringify(review.evidence ?? {}),
+    ]));
+    const accounts = (rewards.accounts ?? []).filter((account: any) => matchesSearch(currentModuleSearch, [
+      account.user_id,
+      personLabel(account.user),
+      account.tier_key,
+      account.balance,
+    ]));
+    const ledger = (rewards.ledger ?? []).filter((entry: any) => matchesSearch(currentModuleSearch, [
+      entry.id,
+      entry.source,
+      entry.reason,
+      entry.delta,
+      personLabel(entry.user),
+      entry.task?.title,
+    ]));
+    const adSessions = rewards.ad_sessions ?? [];
+    const canManageTasks = hasPermission("rewards.tasks.manage");
+    const canManagePromotions = hasPermission("rewards.promotions.manage");
+    const canReview = hasPermission("rewards.review");
+    const canAdjust = hasPermission("rewards.adjust");
+
+    async function submitRewardTask() {
+      let rules: Record<string, unknown>;
+      try {
+        rules = rewardTaskRules.trim() ? JSON.parse(rewardTaskRules) : {};
+      } catch {
+        setError("Reward task rules must be valid JSON.");
+        return;
+      }
+      await performAction(
+        `reward-task-${rewardTaskKey.trim()}`,
+        {
+          action: "upsert_reward_task",
+          task_key: rewardTaskKey.trim(),
+          title: rewardTaskTitle.trim(),
+          description: rewardTaskDescription.trim(),
+          category: rewardTaskCategory,
+          trigger_type: rewardTaskTrigger,
+          reward_noms: rewardTaskNoms.trim(),
+          action_route: rewardTaskRoute.trim(),
+          requires_review: rewardTaskTrigger === "admin_review",
+          rules,
+          ui: { badge: rewardTaskCategory, primaryLabel: rewardTaskTrigger === "ad_reward" ? "Watch" : "Claim" },
+          active: true,
+        },
+        false,
+      );
+    }
+
+    async function submitRewardPromotion() {
+      await performAction(
+        `reward-promo-${rewardPromotionPlacement.trim()}-${rewardPromotionTitle.trim()}`,
+        {
+          action: "upsert_reward_promotion",
+          placement_key: rewardPromotionPlacement.trim(),
+          title: rewardPromotionTitle.trim(),
+          subtitle: rewardPromotionSubtitle.trim(),
+          media_url: rewardPromotionMediaUrl.trim(),
+          cta_route: rewardPromotionCtaRoute.trim(),
+          store_id: rewardPromotionStoreId.trim(),
+          listing_id: rewardPromotionListingId.trim(),
+          priority: rewardPromotionPriority.trim(),
+          sponsor_label: "Promoted",
+          cta_label: "View store",
+          metadata: { source: "admin_dashboard" },
+          active: true,
+        },
+        false,
+      );
+    }
+
+    async function submitRewardAdjustment() {
+      await performAction(
+        `reward-adjust-${rewardAdjustUserId.trim()}`,
+        {
+          action: "adjust_reward_balance",
+          user_id: rewardAdjustUserId.trim(),
+          amount: rewardAdjustAmount.trim(),
+        },
+        true,
+      );
+      setRewardAdjustAmount("");
+    }
+
+    function loadTaskIntoBuilder(task: any) {
+      setRewardTaskKey(String(task.task_key ?? ""));
+      setRewardTaskTitle(String(task.title ?? ""));
+      setRewardTaskDescription(String(task.description ?? ""));
+      setRewardTaskCategory(String(task.category ?? "custom"));
+      setRewardTaskTrigger(String(task.trigger_type ?? "client_claim"));
+      setRewardTaskNoms(String(task.reward_noms ?? 0));
+      setRewardTaskRoute(String(task.action_route ?? ""));
+      setRewardTaskRules(JSON.stringify(task.rules ?? {}, null, 2));
+      setRewardTab("build");
+    }
+
+    function loadPromotionIntoBuilder(promo: any) {
+      setRewardPromotionPlacement(String(promo.placement_key ?? "rewards_top"));
+      setRewardPromotionTitle(String(promo.title ?? ""));
+      setRewardPromotionSubtitle(String(promo.subtitle ?? ""));
+      setRewardPromotionMediaUrl(String(promo.media_url ?? ""));
+      setRewardPromotionCtaRoute(String(promo.cta_route ?? ""));
+      setRewardPromotionStoreId(String(promo.store_id ?? ""));
+      setRewardPromotionListingId(String(promo.listing_id ?? ""));
+      setRewardPromotionPriority(String(promo.priority ?? 100));
+      setRewardTab("build");
+    }
+
+    return (
+      <View style={{ marginTop: 18, gap: 14 }}>
+        <SectionHeader
+          icon="gift-outline"
+          title="Noms rewards and promoted placements"
+          subtitle="Control off-chain points, custom reward tasks, Google ad rewards, sponsored top display, reviews, and balance adjustments from the database."
+          count={
+            rewardTab === "tasks" ? tasks.length :
+            rewardTab === "promotions" ? promotions.length :
+            rewardTab === "reviews" ? reviews.length :
+            rewardTab === "accounts" ? accounts.length :
+            rewardTab === "ledger" ? ledger.length :
+            (rewards.tasks?.length ?? 0) + (rewards.promotions?.length ?? 0)
+          }
+        >
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <SearchBox
+              value={currentModuleSearch}
+              onChangeText={setCurrentModuleSearch}
+              placeholder="Search reward tasks, accounts, placements, reviews, or ledger"
+            />
+            <SegmentedControl
+              value={rewardTab}
+              onChange={setRewardTab}
+              options={[
+                { key: "tasks", label: "Tasks", count: tasks.length },
+                { key: "promotions", label: "Promotions", count: promotions.length },
+                { key: "reviews", label: "Reviews", count: reviews.length },
+                { key: "accounts", label: "Accounts", count: accounts.length },
+                { key: "ledger", label: "Ledger", count: ledger.length },
+                { key: "build", label: "Build" },
+              ]}
+            />
+          </View>
+        </SectionHeader>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 150 }}>
+            <RecordCard>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount(rewards.tasks?.length ?? 0)}</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Task definitions</Text>
+            </RecordCard>
+          </View>
+          <View style={{ flex: 1, minWidth: 150 }}>
+            <RecordCard>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount((rewards.promotions ?? []).filter((p: any) => p.active !== false).length)}</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Active promotions</Text>
+            </RecordCard>
+          </View>
+          <View style={{ flex: 1, minWidth: 150 }}>
+            <RecordCard>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount(reviews.length)}</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Pending reviews</Text>
+            </RecordCard>
+          </View>
+          <View style={{ flex: 1, minWidth: 150 }}>
+            <RecordCard>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount(adSessions.length)}</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Recent ad sessions</Text>
+            </RecordCard>
+          </View>
+        </View>
+
+        {rewardTab === "build" ? (
+          <View style={{ gap: 14 }}>
+            <RecordCard>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Create or update reward task</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                    Task rules live in the database. Use admin_review for custom tasks, ad_reward for rewarded video, and client_claim for marketplace checks.
+                  </Text>
+                </View>
+                <AdminTextInput value={rewardTaskKey} onChangeText={setRewardTaskKey} placeholder="task_key, for example follow_campaign_01" autoCapitalize="none" />
+                <AdminTextInput value={rewardTaskTitle} onChangeText={setRewardTaskTitle} placeholder="Task title shown to users" />
+                <AdminTextInput value={rewardTaskDescription} onChangeText={setRewardTaskDescription} placeholder="Task description" multiline />
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  {["watch", "market", "social", "onchain", "custom"].map((category) => (
+                    <Pressable
+                      key={category}
+                      onPress={() => setRewardTaskCategory(category)}
+                      style={{
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: rewardTaskCategory === category ? "rgba(45,212,191,0.16)" : "rgba(255,255,255,0.04)",
+                        borderWidth: 1,
+                        borderColor: rewardTaskCategory === category ? "rgba(45,212,191,0.42)" : BORDER,
+                      }}
+                    >
+                      <Text style={{ color: rewardTaskCategory === category ? "#2DD4BF" : MUTED, fontWeight: "900", fontSize: 12 }}>{labelFromKey(category)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  {["client_claim", "admin_review", "ad_reward", "system_event"].map((trigger) => (
+                    <Pressable
+                      key={trigger}
+                      onPress={() => setRewardTaskTrigger(trigger)}
+                      style={{
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: rewardTaskTrigger === trigger ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.04)",
+                        borderWidth: 1,
+                        borderColor: rewardTaskTrigger === trigger ? "rgba(245,158,11,0.42)" : BORDER,
+                      }}
+                    >
+                      <Text style={{ color: rewardTaskTrigger === trigger ? WARNING : MUTED, fontWeight: "900", fontSize: 12 }}>{labelFromKey(trigger)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 180 }}>
+                    <AdminTextInput value={rewardTaskNoms} onChangeText={setRewardTaskNoms} placeholder="Reward noms, for example 100" />
+                  </View>
+                  <View style={{ flex: 2, minWidth: 220 }}>
+                    <AdminTextInput value={rewardTaskRoute} onChangeText={setRewardTaskRoute} placeholder="Optional action route, for example /market/social" autoCapitalize="none" />
+                  </View>
+                </View>
+                <AdminTextInput value={rewardTaskRules} onChangeText={setRewardTaskRules} placeholder="{\"check\":\"admin_review\"}" multiline autoCapitalize="none" />
+                {renderActionNote()}
+                <ActionButton
+                  icon="save-outline"
+                  label="Save reward task"
+                  color={SUCCESS}
+                  disabled={!canManageTasks}
+                  loading={workingKey === `reward-task-${rewardTaskKey.trim()}`}
+                  onPress={submitRewardTask}
+                />
+              </View>
+            </RecordCard>
+
+            <RecordCard>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Create promoted top placement</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                    This powers the rewards top display for stores or listings that need promotion.
+                  </Text>
+                </View>
+                <AdminTextInput value={rewardPromotionPlacement} onChangeText={setRewardPromotionPlacement} placeholder="placement_key, for example rewards_top" autoCapitalize="none" />
+                <AdminTextInput value={rewardPromotionTitle} onChangeText={setRewardPromotionTitle} placeholder="Promotion title" />
+                <AdminTextInput value={rewardPromotionSubtitle} onChangeText={setRewardPromotionSubtitle} placeholder="Promotion subtitle" multiline />
+                <AdminTextInput value={rewardPromotionMediaUrl} onChangeText={setRewardPromotionMediaUrl} placeholder="Optional media URL" autoCapitalize="none" />
+                <AdminTextInput value={rewardPromotionCtaRoute} onChangeText={setRewardPromotionCtaRoute} placeholder="Optional app route, for example /market/profile/store" autoCapitalize="none" />
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <AdminTextInput value={rewardPromotionStoreId} onChangeText={setRewardPromotionStoreId} placeholder="Optional store user UUID" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <AdminTextInput value={rewardPromotionListingId} onChangeText={setRewardPromotionListingId} placeholder="Optional listing UUID" autoCapitalize="none" />
+                  </View>
+                  <View style={{ width: 130 }}>
+                    <AdminTextInput value={rewardPromotionPriority} onChangeText={setRewardPromotionPriority} placeholder="Priority" />
+                  </View>
+                </View>
+                {renderActionNote()}
+                <ActionButton
+                  icon="megaphone-outline"
+                  label="Save promotion"
+                  color={SUCCESS}
+                  disabled={!canManagePromotions}
+                  loading={workingKey === `reward-promo-${rewardPromotionPlacement.trim()}-${rewardPromotionTitle.trim()}`}
+                  onPress={submitRewardPromotion}
+                />
+              </View>
+            </RecordCard>
+
+            <RecordCard>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Manual Noms adjustment</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                    Positive numbers credit. Negative numbers debit. Every change writes to the reward ledger.
+                  </Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 2, minWidth: 250 }}>
+                    <AdminTextInput value={rewardAdjustUserId} onChangeText={setRewardAdjustUserId} placeholder="User UUID" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 160 }}>
+                    <AdminTextInput value={rewardAdjustAmount} onChangeText={setRewardAdjustAmount} placeholder="Amount, for example 250 or -50" />
+                  </View>
+                </View>
+                {renderActionNote()}
+                <ActionButton
+                  icon="cash-outline"
+                  label="Adjust balance"
+                  color={WARNING}
+                  disabled={!canAdjust}
+                  loading={workingKey === `reward-adjust-${rewardAdjustUserId.trim()}`}
+                  onPress={submitRewardAdjustment}
+                />
+              </View>
+            </RecordCard>
+          </View>
+        ) : null}
+
+        {rewardTab === "tasks" ? (
+          tasks.length ? tasks.map((task: any) => {
+            const active = task.active !== false;
+            return (
+              <RecordCard key={task.id}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{task.title}</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{task.task_key}</Text>
+                    <Text style={{ marginTop: 7, color: MUTED, fontSize: 12, lineHeight: 18 }}>{task.description || "No description"}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 8 }}>
+                    <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                    <Text style={{ color: WARNING, fontWeight: "900", fontSize: 14 }}>+{Number(task.reward_noms ?? 0).toLocaleString()} noms</Text>
+                  </View>
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <InfoLine label="Category" value={labelFromKey(task.category)} />
+                  <InfoLine label="Trigger" value={labelFromKey(task.trigger_type)} />
+                  <InfoLine label="Daily cap" value={task.daily_cap ?? "none"} />
+                  <InfoLine label="Cooldown" value={`${task.cooldown_seconds ?? 0}s`} />
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <ActionButton icon="create-outline" label="Edit in builder" color={ACCENT} disabled={!canManageTasks} onPress={() => loadTaskIntoBuilder(task)} />
+                  <ActionButton
+                    icon={active ? "pause-circle-outline" : "play-circle-outline"}
+                    label={active ? "Pause task" : "Activate task"}
+                    color={active ? DANGER : SUCCESS}
+                    disabled={!canManageTasks}
+                    loading={workingKey === `reward-task-active-${task.id}`}
+                    onPress={() => performAction(`reward-task-active-${task.id}`, { action: "set_reward_task_active", task_id: task.id, active: !active }, true)}
+                  />
+                </View>
+              </RecordCard>
+            );
+          }) : (
+            <EmptyState title="No reward tasks" subtitle="Create a task from the build panel. It will appear in the rewards tab without a redeploy." />
+          )
+        ) : null}
+
+        {rewardTab === "promotions" ? (
+          promotions.length ? promotions.map((promo: any) => {
+            const active = promo.active !== false;
+            return (
+              <RecordCard key={promo.id}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{promo.title}</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{promo.placement_key}</Text>
+                    <Text style={{ marginTop: 7, color: MUTED, fontSize: 12, lineHeight: 18 }}>{promo.subtitle || "No subtitle"}</Text>
+                  </View>
+                  <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <InfoLine label="Priority" value={promo.priority ?? 100} />
+                  <InfoLine label="Store" value={shortId(promo.store_id)} />
+                  <InfoLine label="Listing" value={shortId(promo.listing_id)} />
+                  <InfoLine label="Ends" value={formatDate(promo.ends_at)} />
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <ActionButton icon="create-outline" label="Edit in builder" color={ACCENT} disabled={!canManagePromotions} onPress={() => loadPromotionIntoBuilder(promo)} />
+                  <ActionButton
+                    icon={active ? "pause-circle-outline" : "play-circle-outline"}
+                    label={active ? "Pause promo" : "Activate promo"}
+                    color={active ? DANGER : SUCCESS}
+                    disabled={!canManagePromotions}
+                    loading={workingKey === `reward-promo-active-${promo.id}`}
+                    onPress={() => performAction(`reward-promo-active-${promo.id}`, { action: "set_reward_promotion_active", promotion_id: promo.id, active: !active }, true)}
+                  />
+                </View>
+              </RecordCard>
+            );
+          }) : (
+            <EmptyState title="No promoted placements" subtitle="Create a rewards_top placement from the build panel to advertise a store in the rewards tab." />
+          )
+        ) : null}
+
+        {rewardTab === "reviews" ? (
+          reviews.length ? reviews.map((review: any) => (
+            <RecordCard key={review.id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{review.task?.title ?? "Reward review"}</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{personLabel(review.user)} - {shortId(review.user_id)}</Text>
+                  <Text style={{ marginTop: 7, color: MUTED, fontSize: 12, lineHeight: 18 }} numberOfLines={4}>
+                    {JSON.stringify(review.evidence ?? {})}
+                  </Text>
+                </View>
+                <Pill label={String(review.status || "pending").toUpperCase()} color={statusTone(review.status)} />
+              </View>
+              {renderActionNote()}
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton
+                  icon="checkmark-circle-outline"
+                  label="Approve and reward"
+                  color={SUCCESS}
+                  disabled={!canReview}
+                  loading={workingKey === `reward-review-approve-${review.id}`}
+                  onPress={() => performAction(`reward-review-approve-${review.id}`, { action: "review_reward_completion", completion_id: review.id, decision: "approve" }, false)}
+                />
+                <ActionButton
+                  icon="close-circle-outline"
+                  label="Reject"
+                  color={DANGER}
+                  disabled={!canReview}
+                  loading={workingKey === `reward-review-reject-${review.id}`}
+                  onPress={() => performAction(`reward-review-reject-${review.id}`, { action: "review_reward_completion", completion_id: review.id, decision: "reject" }, true)}
+                />
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title="No pending reward reviews" subtitle="Admin-review tasks submitted by users will appear here." />
+          )
+        ) : null}
+
+        {rewardTab === "accounts" ? (
+          accounts.length ? accounts.map((account: any) => (
+            <RecordCard key={account.user_id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{personLabel(account.user)}</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{shortId(account.user_id)}</Text>
+                </View>
+                <Text style={{ color: WARNING, fontWeight: "900", fontSize: 18 }}>{Number(account.balance ?? 0).toLocaleString()} noms</Text>
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="Lifetime earned" value={Number(account.lifetime_earned ?? 0).toLocaleString()} />
+                <InfoLine label="Lifetime spent" value={Number(account.lifetime_spent ?? 0).toLocaleString()} />
+                <InfoLine label="Tier" value={account.tier_key ?? "starter"} />
+                <InfoLine label="Updated" value={formatDate(account.updated_at)} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton
+                  icon="cash-outline"
+                  label="Adjust this account"
+                  color={WARNING}
+                  disabled={!canAdjust}
+                  onPress={() => {
+                    setRewardAdjustUserId(account.user_id);
+                    setRewardTab("build");
+                  }}
+                />
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title="No reward accounts" subtitle="Accounts are created automatically when users open rewards or earn noms." />
+          )
+        ) : null}
+
+        {rewardTab === "ledger" ? (
+          ledger.length ? ledger.map((entry: any) => {
+            const positive = Number(entry.delta ?? 0) >= 0;
+            return (
+              <RecordCard key={entry.id}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{entry.reason || entry.source}</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{personLabel(entry.user)} - {formatDate(entry.created_at)}</Text>
+                  </View>
+                  <Text style={{ color: positive ? SUCCESS : DANGER, fontWeight: "900", fontSize: 17 }}>
+                    {positive ? "+" : ""}{Number(entry.delta ?? 0).toLocaleString()}
+                  </Text>
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <InfoLine label="Balance after" value={Number(entry.balance_after ?? 0).toLocaleString()} />
+                  <InfoLine label="Source" value={labelFromKey(entry.source)} />
+                  <InfoLine label="Task" value={entry.task?.title ?? "n/a"} />
+                  <InfoLine label="Status" value={entry.status ?? "settled"} />
+                </View>
+              </RecordCard>
+            );
+          }) : (
+            <EmptyState title="No ledger events" subtitle="Reward credits, debits, ad earnings, and admin adjustments will appear here." />
+          )
+        ) : null}
+      </View>
+    );
+  }
+
   function renderAdmins() {
     const adminData = workspace?.modules.admins;
     const allAdminUsers = adminData?.users ?? [];
@@ -2729,6 +3294,7 @@ export default function MarketAdminIndex() {
         {currentModule === "moderation" ? renderModeration() : null}
         {currentModule === "verification" ? renderVerification() : null}
         {currentModule === "escrow" ? renderEscrow() : null}
+        {currentModule === "rewards" ? renderRewards() : null}
         {currentModule === "admins" ? renderAdmins() : null}
       </View>
     );

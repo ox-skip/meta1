@@ -24,6 +24,10 @@ Deno.serve(async (req) => {
       sellersRes,
       usersRes,
       adminsRes,
+      rewardAccountsRes,
+      rewardTasksRes,
+      pendingRewardReviewsRes,
+      activeRewardPromotionsRes,
     ] = await Promise.all([
       admin.from("market_disputes").select("id", { count: "exact", head: true }).in("status", ["OPEN", "UNDER_REVIEW"]),
       canSeeSupportTickets
@@ -38,6 +42,10 @@ Deno.serve(async (req) => {
       admin.from("market_seller_profiles").select("user_id", { count: "exact", head: true }),
       admin.from("profiles").select("id", { count: "exact", head: true }),
       admin.from("market_admin_users").select("user_id", { count: "exact", head: true }).eq("is_active", true),
+      admin.from("market_reward_accounts").select("user_id", { count: "exact", head: true }),
+      admin.from("market_reward_tasks").select("id", { count: "exact", head: true }),
+      admin.from("market_reward_task_completions").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      admin.from("market_reward_promotions").select("id", { count: "exact", head: true }).eq("active", true),
     ]);
 
     const failures = [
@@ -52,6 +60,10 @@ Deno.serve(async (req) => {
       sellersRes.error,
       usersRes.error,
       adminsRes.error,
+      rewardAccountsRes.error,
+      rewardTasksRes.error,
+      pendingRewardReviewsRes.error,
+      activeRewardPromotionsRes.error,
     ].filter(Boolean);
     if (failures.length) return bad(String(failures[0]?.message ?? "Could not load admin overview"));
 
@@ -75,6 +87,10 @@ Deno.serve(async (req) => {
         seller_profiles: Number(sellersRes.count ?? 0),
         total_users: Number(usersRes.count ?? 0),
         active_admins: Number(adminsRes.count ?? 0),
+        reward_accounts: Number(rewardAccountsRes.count ?? 0),
+        reward_tasks: Number(rewardTasksRes.count ?? 0),
+        pending_reward_reviews: Number(pendingRewardReviewsRes.count ?? 0),
+        active_reward_promotions: Number(activeRewardPromotionsRes.count ?? 0),
       },
       modules: [
         {
@@ -100,6 +116,12 @@ Deno.serve(async (req) => {
           title: "Escrow and chain operations",
           description: "Track crypto settlement state, reconcile escrow events, and control chain-level operations.",
           permission: "escrow.settle",
+        },
+        {
+          key: "rewards",
+          title: "Rewards and promotions",
+          description: "Manage Noms tasks, rewarded ads, custom campaigns, sponsored placements, reviews, and balance adjustments.",
+          permission: "rewards.read",
         },
         {
           key: "admins",

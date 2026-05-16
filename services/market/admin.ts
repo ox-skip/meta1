@@ -51,6 +51,14 @@ export type MarketAdminWorkspace = {
       users: any[];
       roles: any[];
     };
+    rewards?: {
+      accounts: any[];
+      tasks: any[];
+      pending_reviews: any[];
+      promotions: any[];
+      ledger: any[];
+      ad_sessions: any[];
+    };
   };
 };
 
