@@ -6,7 +6,9 @@ import { Redirect, Slot, useGlobalSearchParams, usePathname, useSegments } from 
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -27,6 +29,14 @@ import { ExternalWalletProvider } from "@/services/wallet/externalWalletProvider
 
 import * as Application from "expo-application";
 import * as Linking from "expo-linking";
+
+const APP_LOGO = require("@/assets/images/icon.png");
+const BRAND_SURFACE = "#090D0B";
+const BRAND_SURFACE_DEEP = "#050706";
+const BRAND_TEAL = "#2DD4BF";
+const BRAND_GOLD = "#F4B75D";
+const BRAND_TEXT = "#FFFDF7";
+const BRAND_MUTED = "rgba(255,253,247,0.66)";
 
 /* ---------------- OPTIONAL: GLOBAL FETCH TIMEOUT ----------------
    If you already added a global fetch timeout elsewhere, remove this block.
@@ -71,6 +81,86 @@ const isOutdated = (current: string, min: string) => {
   }
   return false;
 };
+
+function BrandBootLoader() {
+  const spin = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const spinLoop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1180,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 760,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 760,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    spinLoop.start();
+    pulseLoop.start();
+    return () => {
+      spinLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [pulse, spin]);
+
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1.08],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.48, 0.86],
+  });
+
+  return (
+    <View style={styles.loader}>
+      <View style={styles.loaderGlow} />
+      <View style={styles.loaderCard}>
+        <Animated.View
+          style={[
+            styles.loaderPulse,
+            {
+              opacity: pulseOpacity,
+              transform: [{ scale: pulseScale }],
+            },
+          ]}
+        />
+        <Animated.View style={[styles.loaderRing, { transform: [{ rotate }] }]} />
+        <View style={styles.loaderLogoWrap}>
+          <Image source={APP_LOGO} style={styles.loaderLogo} resizeMode="cover" />
+        </View>
+      </View>
+      <Text style={styles.loaderTitle}>BestCity Market</Text>
+      <Text style={styles.loaderText}>Preparing your marketplace</Text>
+      <View style={styles.loaderDots}>
+        <View style={[styles.loaderDot, { backgroundColor: BRAND_TEAL }]} />
+        <View style={[styles.loaderDot, { backgroundColor: BRAND_GOLD }]} />
+        <View style={[styles.loaderDot, { backgroundColor: BRAND_TEAL }]} />
+      </View>
+    </View>
+  );
+}
 
 export default function RootLayout() {
   const { user, loading } = useAuth();
@@ -322,15 +412,17 @@ export default function RootLayout() {
 
   /* ---------------- GLOBAL BLOCK ---------------- */
   if ((booting || loading) && !bootError) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#8B5CF6" />
-        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontWeight: "800" }}>
+    return <BrandBootLoader />;
+  }
+
+  /*
           Loading…
         </Text>
       </View>
     );
   }
+
+  */
 
   if (bootError) {
     return (
@@ -423,13 +515,87 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   loader: {
     flex: 1,
-    backgroundColor: "#060B1A",
+    backgroundColor: BRAND_SURFACE,
     justifyContent: "center",
     alignItems: "center",
+    padding: 28,
+    overflow: "hidden",
+  },
+  loaderGlow: {
+    position: "absolute",
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: "rgba(45,212,191,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(244,183,93,0.12)",
+  },
+  loaderCard: {
+    width: 118,
+    height: 118,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loaderPulse: {
+    position: "absolute",
+    width: 96,
+    height: 96,
+    borderRadius: 34,
+    backgroundColor: "rgba(45,212,191,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.34)",
+  },
+  loaderRing: {
+    position: "absolute",
+    width: 112,
+    height: 112,
+    borderRadius: 40,
+    borderWidth: 4,
+    borderColor: "rgba(255,253,247,0.10)",
+    borderTopColor: BRAND_TEAL,
+    borderRightColor: BRAND_GOLD,
+  },
+  loaderLogoWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,253,247,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,253,247,0.18)",
+  },
+  loaderLogo: {
+    width: 62,
+    height: 62,
+  },
+  loaderTitle: {
+    marginTop: 20,
+    color: BRAND_TEXT,
+    fontSize: 20,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  loaderText: {
+    marginTop: 6,
+    color: BRAND_MUTED,
+    fontWeight: "800",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  loaderDots: {
+    marginTop: 16,
+    flexDirection: "row",
+    gap: 7,
+  },
+  loaderDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.82,
   },
   blockContainer: {
     flex: 1,
-    backgroundColor: "#050814",
+    backgroundColor: BRAND_SURFACE_DEEP,
     justifyContent: "center",
     alignItems: "center",
     padding: 28,
@@ -437,12 +603,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: "900",
-    color: "#fff",
+    color: BRAND_TEXT,
     marginBottom: 12,
     textAlign: "center",
   },
   message: {
-    color: "#9FA8C7",
+    color: BRAND_MUTED,
     textAlign: "center",
     marginBottom: 16,
   },
@@ -454,13 +620,13 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 10,
-    backgroundColor: "#8B5CF6",
+    backgroundColor: BRAND_GOLD,
     paddingVertical: 14,
     paddingHorizontal: 36,
     borderRadius: 18,
   },
   buttonText: {
-    color: "#050814",
+    color: BRAND_SURFACE_DEEP,
     fontWeight: "900",
     fontSize: 16,
   },
