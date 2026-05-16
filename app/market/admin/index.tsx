@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/services/supabase";
 import {
   clearAdminSessionToken,
+  generateDisputeAiReview,
   generateSupportAiTriage,
   hasStoredAdminSession,
   loadAdminOverview,
@@ -26,6 +27,7 @@ import {
   loginAdmin,
   logoutAdmin,
   runAdminAction,
+  type MarketDisputeAiReviewResult,
   type MarketAdminOverview,
   type MarketAdminWorkspace,
   type MarketSupportAiTriageResult,
@@ -285,6 +287,14 @@ function confidenceTone(confidence?: unknown) {
   if (c === "HIGH") return SUCCESS;
   if (c === "MEDIUM") return WARNING;
   return MUTED;
+}
+
+function recommendationTone(recommendation?: unknown) {
+  const r = String(recommendation ?? "").toUpperCase();
+  if (r === "RELEASE_TO_SELLER") return SUCCESS;
+  if (r === "REFUND_TO_BUYER") return DANGER;
+  if (r === "REQUEST_MORE_EVIDENCE") return WARNING;
+  return ACCENT;
 }
 
 function ActionButton({
@@ -572,6 +582,7 @@ export default function MarketAdminIndex() {
   const [actionNote, setActionNote] = useState("");
   const [supportReplies, setSupportReplies] = useState<Record<string, string>>({});
   const [supportAiResults, setSupportAiResults] = useState<Record<string, MarketSupportAiTriageResult>>({});
+  const [disputeAiResults, setDisputeAiResults] = useState<Record<string, MarketDisputeAiReviewResult>>({});
   const [workingKey, setWorkingKey] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminDisplayName, setAdminDisplayName] = useState("");
@@ -989,6 +1000,24 @@ export default function MarketAdminIndex() {
     }
   }
 
+  async function runDisputeAiReview(dispute: any) {
+    const disputeId = String(dispute?.id || "");
+    if (!disputeId) return;
+    setWorkingKey(`dispute-ai-${disputeId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await generateDisputeAiReview(disputeId);
+      setDisputeAiResults((prev) => ({ ...prev, [disputeId]: result }));
+      setNotice("Gemini dispute review is ready. Use it as guidance, then make the admin decision.");
+    } catch (e: any) {
+      setError(String(e?.message || e || "Could not generate dispute AI review."));
+    } finally {
+      setWorkingKey(null);
+      setCheckingSession(false);
+    }
+  }
+
   function renderSupportPendingFiles(ticketId: string) {
     const files = supportFiles[ticketId] ?? [];
     if (!files.length) return null;
@@ -1157,6 +1186,113 @@ export default function MarketAdminIndex() {
                 status: currentStatus,
                 priority: suggestedPriority,
               })}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  function renderDisputeAiReview(dispute: any, canResolve: boolean) {
+    const disputeId = String(dispute?.id || "");
+    const result = disputeAiResults[disputeId];
+    const review = result?.review;
+    if (!review) return null;
+
+    const recommendation = String(review.recommendation || "REQUEST_MORE_EVIDENCE").toUpperCase();
+    const note = String(review.suggested_resolution_note || "").trim();
+    const renderList = (title: string, values: string[], color: string) => {
+      const clean = values.map((value) => String(value || "").trim()).filter(Boolean);
+      if (!clean.length) return null;
+      return (
+        <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+          <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>{title}</Text>
+          {clean.map((value, index) => (
+            <View key={`${disputeId}-${title}-${index}`} style={{ flexDirection: "row", gap: 7, alignItems: "flex-start" }}>
+              <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: color, marginTop: 7 }} />
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18, flex: 1 }}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      );
+    };
+
+    return (
+      <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER, gap: 12 }}>
+        <View style={{ borderLeftWidth: 3, borderLeftColor: recommendationTone(recommendation), paddingLeft: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="sparkles-outline" size={16} color={recommendationTone(recommendation)} />
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Gemini dispute review</Text>
+              </View>
+              <Text style={{ marginTop: 5, color: FAINT, fontSize: 11, fontWeight: "800" }}>
+                Admin only - {result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+              <Pill label={labelFromKey(recommendation.toLowerCase())} color={recommendationTone(recommendation)} />
+              <Pill label={`${review.confidence} confidence`} color={confidenceTone(review.confidence)} />
+              <Pill label={`${result.image_count || 0} image${result.image_count === 1 ? "" : "s"} read`} color={ACCENT} />
+            </View>
+          </View>
+
+          {review.summary ? (
+            <Text style={{ color: TEXT, fontSize: 13, lineHeight: 20 }}>{review.summary}</Text>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            {review.buyer_claim ? <InfoLine label="Buyer claim" value={review.buyer_claim} /> : null}
+            {review.seller_claim ? <InfoLine label="Seller claim" value={review.seller_claim} /> : null}
+            {review.recommended_admin_action ? <InfoLine label="Admin next step" value={review.recommended_admin_action} /> : null}
+          </View>
+
+          {review.evidence_assessment ? (
+            <View style={{ gap: 7 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Evidence assessment</Text>
+              <Text style={{ color: MUTED, fontSize: 13, lineHeight: 20 }}>{review.evidence_assessment}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+            {renderList("Image observations", review.image_observations ?? [], ACCENT)}
+            {renderList("Key facts", review.key_facts ?? [], SUCCESS)}
+            {renderList("Contradictions", review.contradictions ?? [], WARNING)}
+            {renderList("Missing evidence", review.missing_evidence ?? [], WARNING)}
+            {renderList("Risk flags", review.risk_flags ?? [], DANGER)}
+          </View>
+
+          {result.skipped_images?.length ? (
+            <Text style={{ color: FAINT, fontSize: 12, lineHeight: 18 }}>
+              Some images were not read: {result.skipped_images.join("; ")}
+            </Text>
+          ) : null}
+
+          {note ? (
+            <View style={{ gap: 7 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Suggested internal note</Text>
+              <Text style={{ color: MUTED, fontSize: 13, lineHeight: 20 }}>{note}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            <ActionButton
+              icon="refresh-outline"
+              label="Refresh AI"
+              color={ACCENT}
+              disabled={!canResolve}
+              loading={workingKey === `dispute-ai-${disputeId}`}
+              onPress={() => void runDisputeAiReview(dispute)}
+            />
+            <ActionButton
+              icon="create-outline"
+              label="Use note"
+              color={SUCCESS}
+              disabled={!canResolve || !note}
+              onPress={() => {
+                setActionNote(note);
+                setNotice("Suggested dispute note copied into the decision note box.");
+              }}
             />
           </View>
         </View>
@@ -1493,6 +1629,8 @@ export default function MarketAdminIndex() {
                 </Text>
               ) : null}
 
+              {renderDisputeAiReview(dispute, canResolve)}
+
               <View style={{ marginTop: 14, gap: 10 }}>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Party statements</Text>
                 {messages.length ? messages.map((message: any) => (
@@ -1582,6 +1720,14 @@ export default function MarketAdminIndex() {
                     onPress={() => openListing(dispute.listing.id)}
                   />
                 ) : null}
+                <ActionButton
+                  icon="sparkles-outline"
+                  label="AI review"
+                  color={SUCCESS}
+                  disabled={!canResolve}
+                  loading={workingKey === `dispute-ai-${dispute.id}`}
+                  onPress={() => void runDisputeAiReview(dispute)}
+                />
                 <ActionButton
                   icon="eye-outline"
                   label="Under review"

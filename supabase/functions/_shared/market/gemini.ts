@@ -47,6 +47,10 @@ export function normalizeOneOf<T extends readonly string[]>(
     : fallback;
 }
 
+export type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
 function normalizeProviderErrorMessage(status: number, rawMessage: string) {
   const message = trimText(rawMessage, 500);
   const lower = message.toLowerCase();
@@ -111,6 +115,7 @@ function extractAssistantText(payload: unknown): string {
 
 export async function requestGeminiJson(input: {
   prompt: string;
+  parts?: GeminiPart[];
   responseSchema: unknown;
   temperature?: number;
   maxOutputTokens?: number;
@@ -126,6 +131,7 @@ export async function requestGeminiJson(input: {
     "https://generativelanguage.googleapis.com/v1beta",
   ).replace(/\/+$/, "");
   const modelPath = model.startsWith("models/") ? model : `models/${model}`;
+  const parts = input.parts?.length ? input.parts : [{ text: input.prompt }];
 
   const res = await fetch(`${baseUrl}/${modelPath}:generateContent`, {
     method: "POST",
@@ -137,7 +143,7 @@ export async function requestGeminiJson(input: {
       contents: [
         {
           role: "user",
-          parts: [{ text: input.prompt }],
+          parts,
         },
       ],
       generationConfig: {

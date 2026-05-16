@@ -89,6 +89,33 @@ export type MarketSupportAiTriageResult = {
   triage: MarketSupportAiTriage;
 };
 
+export type MarketDisputeAiReview = {
+  recommendation: "RELEASE_TO_SELLER" | "REFUND_TO_BUYER" | "REQUEST_MORE_EVIDENCE" | "ESCALATE";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  buyer_claim: string;
+  seller_claim: string;
+  evidence_assessment: string;
+  image_observations: string[];
+  key_facts: string[];
+  contradictions: string[];
+  missing_evidence: string[];
+  risk_flags: string[];
+  recommended_admin_action: string;
+  suggested_resolution_note: string;
+};
+
+export type MarketDisputeAiReviewResult = {
+  ok: true;
+  dispute_id: string;
+  order_id: string;
+  generated_at: string;
+  model?: string;
+  image_count: number;
+  skipped_images?: string[];
+  review: MarketDisputeAiReview;
+};
+
 async function getAdminSessionToken() {
   return (await SecureStore.getItemAsync(ADMIN_SESSION_KEY)) || "";
 }
@@ -195,6 +222,14 @@ export async function generateSupportAiTriage(ticketId: string, options?: { forc
     "market-support-ai-triage",
     { ticket_id: ticketId, force: options?.force === true },
     45000,
+  );
+}
+
+export async function generateDisputeAiReview(disputeId: string) {
+  return await callAdminFn<MarketDisputeAiReviewResult>(
+    "market-dispute-ai-review",
+    { dispute_id: disputeId },
+    60000,
   );
 }
 

@@ -2171,6 +2171,7 @@ export default function MarketHome() {
           renderSocialPanel(true)
         ) : (
           <>
+            {renderQuickActions()}
             <View style={{ marginTop: 16, flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
               {renderDirectoryChooser(true)}
               {renderScopeAndFilters(true)}
