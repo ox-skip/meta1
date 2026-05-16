@@ -2,16 +2,28 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import { syncSellerVerification, type MarketVerificationRequest } from "@/services/market/verification";
 import { supabase } from "@/services/supabase";
 
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
-const PURPLE = "#7C3AED";
-const BLUE = "#3B82F6";
+const BG0 = "#060807";
+const BG1 = "#10130E";
+const BG2 = "#171A13";
+const PURPLE = "#8B5CF6";
+const AMBER = "#F4B75D";
+const TEAL = "#2DD4BF";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const CARD = "rgba(255,253,247,0.065)";
+const CARD_RAISED = "rgba(255,253,247,0.09)";
+const BORDER = "rgba(255,253,247,0.12)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
+const FAINT = "rgba(255,253,247,0.44)";
 
 type SellerProfile = {
   user_id: string;
@@ -28,14 +40,14 @@ function pendingLabel(request: Pick<MarketVerificationRequest, "provider_review_
 
 function StatusPill({ request }: { request: MarketVerificationRequest }) {
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    PENDING: { bg: "rgba(59,130,246,0.16)", fg: "#93C5FD", label: pendingLabel(request) },
-    IN_REVIEW: { bg: "rgba(14,165,233,0.16)", fg: "#7DD3FC", label: "Under review" },
-    VERIFIED: { bg: "rgba(16,185,129,0.16)", fg: "#6EE7B7", label: "Verified" },
-    REJECTED: { bg: "rgba(239,68,68,0.16)", fg: "#FCA5A5", label: "Rejected" },
-    RESUBMISSION_REQUIRED: { bg: "rgba(245,158,11,0.16)", fg: "#FCD34D", label: "Retry required" },
-    EXPIRED: { bg: "rgba(148,163,184,0.16)", fg: "#CBD5E1", label: "Expired" },
+    PENDING: { bg: "rgba(56,189,248,0.14)", fg: BLUE, label: pendingLabel(request) },
+    IN_REVIEW: { bg: "rgba(244,183,93,0.16)", fg: AMBER, label: "Under review" },
+    VERIFIED: { bg: "rgba(45,212,191,0.15)", fg: TEAL, label: "Verified" },
+    REJECTED: { bg: "rgba(251,113,133,0.16)", fg: "#FDA4AF", label: "Rejected" },
+    RESUBMISSION_REQUIRED: { bg: "rgba(244,183,93,0.16)", fg: AMBER, label: "Retry required" },
+    EXPIRED: { bg: "rgba(255,253,247,0.08)", fg: MUTED, label: "Expired" },
   };
-  const s = map[request.status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: request.status };
+  const s = map[request.status] ?? { bg: "rgba(255,255,255,0.08)", fg: TEXT, label: request.status };
   return (
     <View
       style={{
@@ -60,7 +72,97 @@ function fmtDate(value: string | null | undefined) {
   return parsed.toLocaleString();
 }
 
+function Card({
+  title,
+  icon,
+  accent = PURPLE,
+  children,
+}: {
+  title: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  accent?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={{
+        borderRadius: 8,
+        padding: 16,
+        backgroundColor: CARD,
+        borderWidth: 1,
+        borderColor: BORDER,
+        borderTopColor: BORDER_TOP,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        {icon ? (
+          <View
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: `${accent}18`,
+              borderWidth: 1,
+              borderColor: `${accent}36`,
+            }}
+          >
+            <Ionicons name={icon} size={17} color={accent} />
+          </View>
+        ) : null}
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{title}</Text>
+      </View>
+      <View style={{ marginTop: 12 }}>{children}</View>
+    </View>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  accent = BLUE,
+}: {
+  label: string;
+  value?: string | null;
+  accent?: string;
+}) {
+  if (!value) return null;
+  return (
+    <View
+      style={{
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(255,255,255,0.07)",
+        flexDirection: "row",
+        gap: 12,
+        alignItems: "flex-start",
+      }}
+    >
+      <View style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: accent, marginTop: 6 }} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>{label}</Text>
+        <Text style={{ marginTop: 4, color: MUTED, lineHeight: 20 }}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function stageMeta(profile: SellerProfile | null, verified: boolean, reqRow: MarketVerificationRequest | null) {
+  if (!profile) return { icon: "person-add-outline" as const, color: AMBER, label: "Profile needed" };
+  if (verified) return { icon: "checkmark-circle" as const, color: TEAL, label: "Verified" };
+  if (!reqRow) return { icon: "ellipse-outline" as const, color: FAINT, label: "Not started" };
+  if (reqRow.status === "REJECTED") return { icon: "close-circle" as const, color: ROSE, label: "Rejected" };
+  if (reqRow.status === "RESUBMISSION_REQUIRED") return { icon: "refresh-circle" as const, color: AMBER, label: "Retry required" };
+  if (reqRow.status === "EXPIRED") return { icon: "time-outline" as const, color: MUTED, label: "Expired" };
+  return { icon: "hourglass-outline" as const, color: BLUE, label: "In progress" };
+}
+
 export default function VerificationStatus() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 920;
+  const contentMaxWidth = isDesktop ? 1120 : 720;
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [reqRow, setReqRow] = useState<MarketVerificationRequest | null>(null);
@@ -82,6 +184,9 @@ export default function VerificationStatus() {
     if (reqRow.status === "EXPIRED") return "Session expired";
     return "Verification";
   }, [profile, verified, reqRow]);
+
+  const stage = stageMeta(profile, verified, reqRow);
+  const storeName = profile?.business_name || "Your seller account";
 
   async function load(options: { sync?: boolean } = {}) {
     setLoading(true);
@@ -144,179 +249,221 @@ export default function VerificationStatus() {
 
   return (
     <LinearGradient
-      colors={[BG1, BG0]}
-      start={{ x: 0.15, y: 0 }}
+      colors={[BG2, BG1, BG0]}
+      start={{ x: 0.1, y: 0 }}
       end={{ x: 0.9, y: 1 }}
-      style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}
+      style={{ flex: 1 }}
     >
-      <AppHeader title="Verification" subtitle="Government ID status" />
-      <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Ionicons name="arrow-back" size={20} color="#fff" />
-          </Pressable>
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: "#fff", fontSize: 22, fontWeight: "900" }}>Verification</Text>
-            <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-              Government-issued ID trust badge
-            </Text>
-          </View>
+      <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: isDesktop ? 24 : 14 }}>
+        <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
+          <AppHeader title="Verification" subtitle="Government ID status" />
         </View>
 
-        {loading ? (
-          <View style={{ marginTop: 40, alignItems: "center" }}>
-            <ActivityIndicator />
-            <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)" }}>Loading...</Text>
-          </View>
-        ) : (
-          <View
-            style={{
-              borderRadius: 22,
-              padding: 16,
-              backgroundColor: "rgba(255,255,255,0.05)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-              {profile?.business_name ? profile.business_name : "Your seller account"}
-            </Text>
-
-            <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Ionicons
-                name={verified ? "checkmark-circle" : "alert-circle"}
-                size={20}
-                color={verified ? BLUE : "rgba(251,191,36,1)"}
-              />
-              <Text style={{ color: "#fff", fontWeight: "900" }}>{headline}</Text>
-            </View>
-
-            {reqRow ? (
-              <View style={{ marginTop: 12 }}>
-                <StatusPill request={reqRow} />
-
-                {!!reqRow.provider ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                    Provider: {reqRow.provider}
-                  </Text>
-                ) : null}
-
-                {!!reqRow.provider_review_status ? (
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                    Provider status: {reqRow.provider_review_status}
-                  </Text>
-                ) : null}
-
-                {!!reqRow.document_type ? (
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                    Document: {reqRow.document_type}
-                  </Text>
-                ) : null}
-
-                {!!reqRow.country_code ? (
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", lineHeight: 20 }}>
-                    Country: {reqRow.country_code}
-                  </Text>
-                ) : null}
-
-                {fmtDate(reqRow.submitted_at) ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                    Started: {fmtDate(reqRow.submitted_at)}
-                  </Text>
-                ) : null}
-
-                {fmtDate(reqRow.provider_last_event_at) ? (
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                    Last provider update: {fmtDate(reqRow.provider_last_event_at)}
-                  </Text>
-                ) : null}
-
-                {fmtDate(reqRow.verified_at) ? (
-                  <Text style={{ marginTop: 4, color: "#A7F3D0", fontSize: 12, fontWeight: "800" }}>
-                    Verified at: {fmtDate(reqRow.verified_at)}
-                  </Text>
-                ) : null}
-
-                {!!reqRow.last_error ? (
-                  <Text style={{ marginTop: 10, color: "#FCA5A5", lineHeight: 20 }}>
-                    Provider note: {reqRow.last_error}
-                  </Text>
-                ) : null}
-              </View>
-            ) : (
-              <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-                You have not started verification yet. Launch the provider session to begin.
-              </Text>
-            )}
-
-            <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-              Once the provider confirms your government issued ID, your store profile will be verified automatically.
-            </Text>
-
-            {!profile ? (
-              <Pressable
-                onPress={() => router.push("/market/profile/create" as any)}
-                style={{
-                  marginTop: 14,
-                  borderRadius: 18,
-                  paddingVertical: 14,
-                  alignItems: "center",
-                  backgroundColor: PURPLE,
-                  borderWidth: 1,
-                  borderColor: PURPLE,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Create seller profile</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={() => router.push("/market/verification/apply" as any)}
-                style={{
-                  marginTop: 14,
-                  borderRadius: 18,
-                  paddingVertical: 14,
-                  alignItems: "center",
-                  backgroundColor: PURPLE,
-                  borderWidth: 1,
-                  borderColor: PURPLE,
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
-                  {reqRow ? "Open verification flow" : "Start verification"}
-                </Text>
-              </Pressable>
-            )}
-
-            <Pressable
-              onPress={() => load({ sync: true })}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            alignSelf: "center",
+            width: "100%",
+            maxWidth: contentMaxWidth,
+            paddingBottom: Math.max(insets.bottom, 18) + 24,
+          }}
+        >
+          <View style={{ marginTop: 8, flexDirection: isDesktop ? "row" : "column", gap: 14 }}>
+            <View
               style={{
-                marginTop: 10,
-                borderRadius: 18,
-                paddingVertical: 14,
-                alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                flex: 1.2,
+                minHeight: isDesktop ? 300 : undefined,
+                borderRadius: 8,
+                padding: isDesktop ? 22 : 18,
+                backgroundColor: CARD_RAISED,
                 borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.10)",
+                borderColor: BORDER,
+                borderTopColor: BORDER_TOP,
+                justifyContent: "space-between",
               }}
             >
-              <Text style={{ color: "#fff", fontWeight: "900" }}>Refresh</Text>
-            </Pressable>
+              <View>
+                <Pressable
+                  onPress={() => router.back()}
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 8,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 18,
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={20} color={TEXT} />
+                </Pressable>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <View
+                    style={{
+                      width: 54,
+                      height: 54,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: `${stage.color}18`,
+                      borderWidth: 1,
+                      borderColor: `${stage.color}40`,
+                    }}
+                  >
+                    <Ionicons name={stage.icon} size={26} color={stage.color} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: isDesktop ? 34 : 27, lineHeight: isDesktop ? 40 : 33 }}>
+                      {headline}
+                    </Text>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 14, lineHeight: 20 }}>{storeName}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 24, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <View
+                  style={{
+                    flexGrow: 1,
+                    flexBasis: 160,
+                    borderRadius: 8,
+                    padding: 12,
+                    backgroundColor: "rgba(255,255,255,0.045)",
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                  }}
+                >
+                  <Text style={{ color: FAINT, fontWeight: "900", fontSize: 11, textTransform: "uppercase" }}>Badge</Text>
+                  <Text style={{ marginTop: 8, color: stage.color, fontWeight: "900", fontSize: 15 }}>{stage.label}</Text>
+                </View>
+                <View
+                  style={{
+                    flexGrow: 1,
+                    flexBasis: 160,
+                    borderRadius: 8,
+                    padding: 12,
+                    backgroundColor: "rgba(255,255,255,0.045)",
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                  }}
+                >
+                  <Text style={{ color: FAINT, fontWeight: "900", fontSize: 11, textTransform: "uppercase" }}>Payout</Text>
+                  <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 15 }}>{profile?.payout_tier || "standard"}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={{ width: isDesktop ? 360 : "100%", gap: 14 }}>
+              <Card title="Actions" icon="shield-checkmark-outline" accent={PURPLE}>
+                {loading ? (
+                  <View style={{ paddingVertical: 18, alignItems: "center" }}>
+                    <ActivityIndicator />
+                    <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
+                  </View>
+                ) : !profile ? (
+                  <Pressable
+                    onPress={() => router.push("/market/profile/create" as any)}
+                    style={{
+                      borderRadius: 8,
+                      paddingVertical: 14,
+                      alignItems: "center",
+                      backgroundColor: PURPLE,
+                      borderWidth: 1,
+                      borderColor: PURPLE,
+                    }}
+                  >
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>Create seller profile</Text>
+                  </Pressable>
+                ) : (
+                  <>
+                    <Pressable
+                      onPress={() => router.push("/market/verification/apply" as any)}
+                      style={{
+                        borderRadius: 8,
+                        paddingVertical: 14,
+                        alignItems: "center",
+                        backgroundColor: PURPLE,
+                        borderWidth: 1,
+                        borderColor: PURPLE,
+                      }}
+                    >
+                      <Text style={{ color: TEXT, fontWeight: "900" }}>{reqRow ? "Open verification flow" : "Start verification"}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => load({ sync: true })}
+                      style={{
+                        marginTop: 10,
+                        borderRadius: 8,
+                        paddingVertical: 14,
+                        alignItems: "center",
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor: BORDER,
+                      }}
+                    >
+                      <Text style={{ color: TEXT, fontWeight: "900" }}>Refresh status</Text>
+                    </Pressable>
+                  </>
+                )}
+              </Card>
+
+              {reqRow ? (
+                <Card title="Provider state" icon="scan-outline" accent={BLUE}>
+                  <StatusPill request={reqRow} />
+                  <Text style={{ marginTop: 10, color: MUTED, lineHeight: 20 }}>
+                    {reqRow.provider_review_status || "Waiting for provider update"}
+                  </Text>
+                </Card>
+              ) : null}
+            </View>
           </View>
-        )}
-      </ScrollView>
+
+          {!loading ? (
+            <View style={{ marginTop: 14, flexDirection: isDesktop ? "row" : "column", gap: 14, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, width: "100%" }}>
+                <Card title="Verification details" icon="document-text-outline" accent={AMBER}>
+                  {reqRow ? (
+                    <>
+                      <DetailRow label="Provider" value={reqRow.provider} accent={BLUE} />
+                      <DetailRow label="Provider status" value={reqRow.provider_review_status} accent={AMBER} />
+                      <DetailRow label="Document" value={reqRow.document_type} accent={PURPLE} />
+                      <DetailRow label="Country" value={reqRow.country_code} accent={TEAL} />
+                      <DetailRow label="Started" value={fmtDate(reqRow.submitted_at)} accent={BLUE} />
+                      <DetailRow label="Last provider update" value={fmtDate(reqRow.provider_last_event_at)} accent={AMBER} />
+                      <DetailRow label="Verified at" value={fmtDate(reqRow.verified_at)} accent={TEAL} />
+                      <DetailRow label="Provider note" value={reqRow.last_error} accent={ROSE} />
+                    </>
+                  ) : (
+                    <Text style={{ color: MUTED, lineHeight: 20 }}>
+                      Launch the provider session to begin verification.
+                    </Text>
+                  )}
+                </Card>
+              </View>
+
+              <View style={{ width: isDesktop ? 360 : "100%" }}>
+                <Card title="What happens next" icon="git-branch-outline" accent={TEAL}>
+                  <View style={{ gap: 10 }}>
+                    {[
+                      "Open the provider flow and submit a supported ID.",
+                      "Return here and refresh if the webhook is still pending.",
+                      "Your seller badge updates automatically when verified.",
+                    ].map((item) => (
+                      <View key={item} style={{ flexDirection: "row", gap: 9, alignItems: "flex-start" }}>
+                        <Ionicons name="checkmark-circle-outline" size={18} color={TEAL} />
+                        <Text style={{ flex: 1, color: MUTED, lineHeight: 20 }}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </Card>
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      </View>
     </LinearGradient>
   );
 }
