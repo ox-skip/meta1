@@ -12,7 +12,13 @@ function adUnitForPlatform(platform: string) {
   const p = platform.toLowerCase();
   if (p === "ios") return Deno.env.get("ADMOB_REWARDED_UNIT_ID_IOS") ?? Deno.env.get("ADMOB_REWARDED_UNIT_ID") ?? null;
   if (p === "android") return Deno.env.get("ADMOB_REWARDED_UNIT_ID_ANDROID") ?? Deno.env.get("ADMOB_REWARDED_UNIT_ID") ?? null;
-  return Deno.env.get("ADMOB_REWARDED_UNIT_ID_WEB") ?? Deno.env.get("ADMOB_REWARDED_UNIT_ID") ?? null;
+  if (p === "web") {
+    return Deno.env.get("GAM_REWARDED_AD_UNIT_PATH_WEB")
+      ?? Deno.env.get("GOOGLE_AD_MANAGER_REWARDED_UNIT_PATH_WEB")
+      ?? Deno.env.get("ADMOB_REWARDED_UNIT_ID_WEB")
+      ?? null;
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -38,7 +44,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const platform = cleanText(body.platform, 40) || "unknown";
+    const platform = (cleanText(body.platform, 40) || "unknown").toLowerCase();
     const sessionId = crypto.randomUUID();
     const nonce = crypto.randomUUID().replace(/-/g, "");
     const customData = `${sessionId}:${nonce}`;

@@ -169,12 +169,21 @@ export async function reportRewardedAdEvent(input: {
   return await callFn<any>("market-rewards-ad-client-event", input, 20000);
 }
 
+export async function grantRewardedWebAd(input: {
+  session_id: string;
+  reward?: any;
+}) {
+  return await callFn<any>("market-rewards-ad-web-grant", input, 20000);
+}
+
 export async function watchRewardedAdForNoms(taskKey = "watch_rewarded_video") {
   const start = await startRewardedAdTask(taskKey);
   const sessionId = start.session.id;
 
   let lastClientEvent: Promise<any> | null = null;
+  let earnedEventReported = false;
   const safeReport = (event: "loaded" | "shown" | "client_earned" | "error", payload?: any) => {
+    if (event === "client_earned") earnedEventReported = true;
     lastClientEvent = reportRewardedAdEvent({
       session_id: sessionId,
       event,
@@ -196,13 +205,20 @@ export async function watchRewardedAdForNoms(taskKey = "watch_rewarded_video") {
   });
 
   if (result.earned) {
-    safeReport("client_earned", result.reward ?? {});
+    if (!earnedEventReported) safeReport("client_earned", result.reward ?? {});
   } else if (result.error) {
     safeReport("error", result.error);
   }
 
   const report = lastClientEvent ? await lastClientEvent : null;
-  return { start, result, report };
+  const webGrant = Platform.OS === "web" && result.earned
+    ? await grantRewardedWebAd({
+        session_id: sessionId,
+        reward: result.reward ?? {},
+      }).catch((error) => ({ error: String(error?.message || error) }))
+    : null;
+
+  return { start, result, report, webGrant };
 }
 
 export async function recordRewardPromotionEvent(input: {
