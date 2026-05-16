@@ -906,7 +906,7 @@ export default function MarketAdminIndex() {
     try {
       const bucket = String(attachment?.storage_bucket || "market-support");
       const path = String(attachment?.storage_path || "");
-      let url = String(attachment?.public_url || "");
+      let url = String(attachment?.signed_url || attachment?.public_url || "");
       if (!url && path) {
         const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
         if (error) throw error;
@@ -1444,6 +1444,12 @@ export default function MarketAdminIndex() {
           const order = dispute.order ?? {};
           const currency = String(order.currency ?? "").toUpperCase();
           const needsEscrowPower = ["USDC", "USDT"].includes(currency) && !hasPermission("escrow.settle");
+          const messages = Array.isArray(dispute.messages) ? dispute.messages : [];
+          const evidenceCount = messages.reduce((sum: number, message: any) => sum + (message.attachments?.length ?? 0), 0);
+          const evidenceText = [
+            evidenceCount ? `${evidenceCount} proof file${evidenceCount === 1 ? "" : "s"}` : "No party proof",
+            dispute.deliverable ? "seller deliverable" : null,
+          ].filter(Boolean).join(" + ");
           return (
             <RecordCard key={dispute.id}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -1460,7 +1466,7 @@ export default function MarketAdminIndex() {
                 <InfoLine label="Buyer" value={personLabel(dispute.buyer)} />
                 <InfoLine label="Seller" value={personLabel(dispute.seller)} />
                 <InfoLine label="Opened" value={formatDate(dispute.created_at)} />
-                <InfoLine label="Evidence" value={dispute.deliverable ? "Deliverable uploaded" : "No deliverable"} />
+                <InfoLine label="Evidence" value={evidenceText} />
               </View>
 
               {needsEscrowPower ? (
@@ -1468,6 +1474,66 @@ export default function MarketAdminIndex() {
                   Stablecoin settlement needs escrow.settle permission.
                 </Text>
               ) : null}
+
+              <View style={{ marginTop: 14, gap: 10 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Party statements</Text>
+                {messages.length ? messages.map((message: any) => (
+                  <View
+                    key={message.id}
+                    style={{
+                      borderRadius: 8,
+                      padding: 12,
+                      backgroundColor: "rgba(255,255,255,0.045)",
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                        {message.sender_kind === "ADMIN" ? "Admin" : `${labelFromKey(String(message.sender_kind || "party").toLowerCase())}: ${personLabel(message.sender)}`}
+                      </Text>
+                      <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{formatDate(message.created_at)}</Text>
+                    </View>
+                    {message.body ? (
+                      <Text style={{ color: MUTED, lineHeight: 20, fontSize: 13 }}>{message.body}</Text>
+                    ) : (
+                      <Text style={{ color: FAINT, lineHeight: 20, fontSize: 13 }}>Proof attached.</Text>
+                    )}
+                    {message.attachments?.length ? (
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {message.attachments.map((attachment: any) => (
+                          <Pressable
+                            key={attachment.id}
+                            onPress={() => openSupportAttachment(attachment)}
+                            style={{
+                              borderRadius: 8,
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderWidth: 1,
+                              borderColor: "rgba(56,189,248,0.28)",
+                              backgroundColor: "rgba(56,189,248,0.10)",
+                              flexDirection: "row",
+                              gap: 7,
+                              alignItems: "center",
+                              maxWidth: "100%",
+                            }}
+                          >
+                            <Ionicons name={supportAttachmentIcon(attachment.kind)} size={15} color={ACCENT} />
+                            <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12, maxWidth: 220 }}>
+                              {attachment.file_name || "Open proof"}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                )) : (
+                  <Text style={{ color: MUTED, lineHeight: 20, fontSize: 13 }}>
+                    No buyer or seller statement yet. Ask both parties to add their side from the order page.
+                  </Text>
+                )}
+              </View>
 
               <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 <ActionButton

@@ -22,9 +22,12 @@ function arbiterKeyForChain(chain: string) {
 }
 
 const escrowAbi = [
+  "function hasRole(bytes32 role, address account) view returns (bool)",
   "function arbiterRelease(bytes32 orderKey) external",
   "function refund(bytes32 orderKey) external",
 ] as const;
+
+const ARBITER_ROLE = ethers.id("ARBITER_ROLE");
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
@@ -92,6 +95,17 @@ Deno.serve(async (req) => {
     const fromWallet = decision === "RELEASE" ? esc.escrow_address : esc.escrow_address;
     const toWallet = decision === "RELEASE" ? esc.seller_wallet : esc.buyer_wallet;
 
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const wallet = new ethers.Wallet(arbiterKey, provider);
+    const contract = new ethers.Contract(esc.escrow_address, escrowAbi, wallet);
+    const signerAddress = await wallet.getAddress();
+    const hasArbiterRole = await contract.hasRole(ARBITER_ROLE, signerAddress);
+    if (!hasArbiterRole) {
+      return bad(
+        `Configured arbiter signer ${signerAddress} does not have ARBITER_ROLE on this escrow contract. The DEFAULT_ADMIN_ROLE wallet must update the arbiter or grant the role before admin ${decision.toLowerCase()} can settle on-chain.`,
+      );
+    }
+
     await admin.rpc("market_set_crypto_intent", {
       p_order_id: order_id,
       p_intent_type: intentType,
@@ -103,10 +117,6 @@ Deno.serve(async (req) => {
       p_tx_hash: null,
       p_failure_reason: null,
     });
-
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(arbiterKey, provider);
-    const contract = new ethers.Contract(esc.escrow_address, escrowAbi, wallet);
 
     const tx =
       decision === "RELEASE"
@@ -131,7 +141,7 @@ Deno.serve(async (req) => {
       action: `STABLE_${decision}_SUBMITTED`,
       entity_type: "market_orders",
       entity_id: order_id,
-      payload: { note, tx_hash: tx.hash, order_key: esc.order_key, chain: esc.chain },
+      payload: { note, tx_hash: tx.hash, order_key: esc.order_key, chain: esc.chain, signer: signerAddress },
     });
 
     return ok({

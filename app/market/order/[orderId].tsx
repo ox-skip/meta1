@@ -26,6 +26,14 @@ import {
   insertFileDeliverable,
   guessKindFromMime,
 } from "@/services/market/orderDeliverables";
+import {
+  fetchOrderDispute,
+  openOrderDispute,
+  sendDisputeMessage,
+  type DisputeLocalFile,
+  type DisputeMessage,
+  type MarketDispute,
+} from "@/services/market/disputes";
 
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
@@ -50,7 +58,6 @@ const RPC_OTP_GENERATE = "market_otp_generate_rpc";
 const RPC_OTP_VERIFY = "market_otp_verify_rpc";
 
 const RPC_RELEASE_ESCROW = "market_release_escrow_rpc";
-const RPC_OPEN_DISPUTE = "market_open_dispute_rpc";
 const RPC_BUYER_CANCEL = "market_buyer_cancel_order_rpc";
 const RPC_CHAIN_TX_FINALIZE = "market_chain_tx_finalize_rpc";
 // Tables
@@ -307,6 +314,12 @@ export default function OrderDetails() {
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [reindexOpen, setReindexOpen] = useState(false);
   const [reindexTx, setReindexTx] = useState("");
+  const [dispute, setDispute] = useState<MarketDispute | null>(null);
+  const [disputeMessages, setDisputeMessages] = useState<DisputeMessage[]>([]);
+  const [disputeText, setDisputeText] = useState("");
+  const [disputeFiles, setDisputeFiles] = useState<DisputeLocalFile[]>([]);
+  const [disputeBusy, setDisputeBusy] = useState(false);
+  const [disputeErr, setDisputeErr] = useState<string | null>(null);
   const autoReindexKeyRef = useRef<string>("");
   const autoSyncBusyRef = useRef(false);
 
@@ -380,6 +393,16 @@ export default function OrderDetails() {
     buyerProfile?.username,
     order,
   ]);
+  const disputeStatus = useMemo(() => String(dispute?.status || "").toUpperCase(), [dispute?.status]);
+  const disputeClosed = disputeStatus === "RESOLVED";
+  const canUseDisputeCenter = useMemo(() => {
+    if (!order || (!isBuyer && !isSeller)) return false;
+    if (dispute && !disputeClosed) return true;
+    return ["IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED", "DELIVERED", "DISPUTED"].includes(
+      String(order.status || "").toUpperCase(),
+    );
+  }, [order, isBuyer, isSeller, dispute, disputeClosed]);
+  const disputeRoleLabel = isSeller ? "seller" : "buyer";
 
   async function runOrderRiskCheck() {
     if (!order?.id) return;
@@ -413,6 +436,16 @@ export default function OrderDetails() {
     if (!rel.length) return null;
     return rel.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
   }, [intents]);
+  const latestRefundIntent = useMemo(() => {
+    const ref = intents.filter((i) => String(i.intent_type || "").toUpperCase() === "REFUND");
+    if (!ref.length) return null;
+    return ref.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+  }, [intents]);
+  const latestSettlementIntent = useMemo(() => {
+    const candidates = [latestReleaseIntent, latestRefundIntent].filter(Boolean) as CryptoIntent[];
+    if (!candidates.length) return null;
+    return candidates.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+  }, [latestReleaseIntent, latestRefundIntent]);
   const latestPiPaymentStatus = useMemo(() => String(piPayment?.status || "").toUpperCase(), [piPayment?.status]);
   const isPiRailOrder = useMemo(
     () =>
@@ -600,6 +633,16 @@ export default function OrderDetails() {
         setDeliverables([]);
       }
 
+      try {
+        const disputeThread = await fetchOrderDispute(oid);
+        setDispute(disputeThread?.dispute ?? null);
+        setDisputeMessages(disputeThread?.messages ?? []);
+      } catch (e: any) {
+        console.log("[OrderDetails] dispute thread skipped:", e?.message ?? e);
+        setDispute(null);
+        setDisputeMessages([]);
+      }
+
       setOrder(o as any);
       setListing((l as any) ?? null);
       setSeller((s as any) ?? null);
@@ -619,6 +662,8 @@ export default function OrderDetails() {
       setIntents([]);
       setPiPayment(null);
       setDeliverables([]);
+      setDispute(null);
+      setDisputeMessages([]);
     } finally {
       setLoading(false);
       console.log("[OrderDetails] load end");
@@ -680,11 +725,13 @@ export default function OrderDetails() {
     if (String(order.status || "").toUpperCase() === "RELEASED") return;
     if (String(order.status || "").toUpperCase() === "REFUNDED") return;
 
-    const releaseStatus = String(latestReleaseIntent?.status || "").toUpperCase();
-    const releaseTx = String(latestReleaseIntent?.tx_hash || "").trim();
-    const releaseChain = String(latestReleaseIntent?.chain || "").trim();
-    if (!["SUBMITTED", "CONFIRMED", "PROCESSING", "CREATED"].includes(releaseStatus)) return;
-    if (!isHexHash(releaseTx) || !releaseChain) return;
+    const settlementType = String(latestSettlementIntent?.intent_type || "").toUpperCase();
+    const settlementStatus = String(latestSettlementIntent?.status || "").toUpperCase();
+    const settlementTx = String(latestSettlementIntent?.tx_hash || "").trim();
+    const settlementChain = String(latestSettlementIntent?.chain || "").trim();
+    if (!["RELEASE", "REFUND"].includes(settlementType)) return;
+    if (!["SUBMITTED", "CONFIRMED", "PROCESSING", "CREATED"].includes(settlementStatus)) return;
+    if (!isHexHash(settlementTx) || !settlementChain) return;
 
     let alive = true;
     const run = async () => {
@@ -694,9 +741,9 @@ export default function OrderDetails() {
         try {
           await supabase.rpc(RPC_CHAIN_TX_FINALIZE, {
             p_order_id: order.id,
-            p_chain: releaseChain,
-            p_tx_hash: releaseTx,
-            p_event_type: "RELEASE",
+            p_chain: settlementChain,
+            p_tx_hash: settlementTx,
+            p_event_type: settlementType,
           });
         } catch {
           // ignore; next loop/poller can settle
@@ -716,7 +763,16 @@ export default function OrderDetails() {
       alive = false;
       clearInterval(timer);
     };
-  }, [order?.id, order?.status, isStableOrder, isPiRailOrder, latestReleaseIntent?.status, latestReleaseIntent?.tx_hash, latestReleaseIntent?.chain]);
+  }, [
+    order?.id,
+    order?.status,
+    isStableOrder,
+    isPiRailOrder,
+    latestSettlementIntent?.intent_type,
+    latestSettlementIntent?.status,
+    latestSettlementIntent?.tx_hash,
+    latestSettlementIntent?.chain,
+  ]);
 
   // Buttons conditions (your existing logic)
   const canGoCheckout =
@@ -853,24 +909,112 @@ async function releaseFunds() {
     }
   }
 
-  async function openDispute() {
+  function prepareDispute() {
+    if (!canUseDisputeCenter) {
+      setDisputeErr("Disputes can be opened after payment enters escrow.");
+      return;
+    }
+    setDisputeErr("Describe what happened in the Dispute center, then submit it to admin.");
+    if (!disputeText.trim()) {
+      setDisputeText(isSeller ? "I need admin review because " : "I need a refund/admin review because ");
+    }
+  }
+
+  async function pickDisputeFiles() {
     if (!order) return;
-    setBusy(true);
+    setDisputeErr(null);
+    try {
+      const DocumentPicker = await import("expo-document-picker");
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+        type: "*/*",
+      });
+      if (res.canceled) return;
+      const picked: DisputeLocalFile[] = (res.assets ?? [])
+        .filter((asset: any) => !!asset?.uri)
+        .slice(0, 8)
+        .map((asset: any) => ({
+          uri: asset.uri,
+          name: asset.name ?? `dispute-proof-${Date.now()}`,
+          mimeType: asset.mimeType ?? null,
+          size: typeof asset.size === "number" ? asset.size : null,
+          fileBody: asset.file ?? null,
+        }));
+      if (!picked.length) return;
+      setDisputeFiles((prev) => [...prev, ...picked].slice(0, 8));
+    } catch (e: any) {
+      setDisputeErr(friendlyMarketError(e, "We couldn't attach that proof."));
+    }
+  }
+
+  function removeDisputeFile(index: number) {
+    setDisputeFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function openDisputeAttachment(attachment: any) {
+    try {
+      const bucket = String(attachment?.storage_bucket || "market-disputes");
+      const path = String(attachment?.storage_path || "");
+      let url = String(attachment?.signed_url || attachment?.public_url || "");
+      if (!url && path) {
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+        if (error) throw error;
+        url = String(data?.signedUrl || "");
+      }
+      if (url) await Linking.openURL(url);
+    } catch (e: any) {
+      setDisputeErr(friendlyMarketError(e, "We couldn't open this proof."));
+    }
+  }
+
+  async function submitDisputeStatement() {
+    if (!order || (!isBuyer && !isSeller)) return;
+    if (!canUseDisputeCenter || disputeClosed) {
+      setDisputeErr(disputeClosed ? "This dispute has already been resolved." : "Disputes can be opened after payment enters escrow.");
+      return;
+    }
+
+    const body = disputeText.trim();
+    if (!body && !disputeFiles.length) {
+      setDisputeErr("Explain what happened or attach proof before sending.");
+      return;
+    }
+
+    setDisputeBusy(true);
+    setDisputeErr(null);
     setErr(null);
     try {
-      const reason = isSeller
-        ? "Seller reported buyer manipulation / policy violation"
-        : "Buyer requested refund / issue with delivery";
-      const { error } = await supabase.rpc(RPC_OPEN_DISPUTE, {
-        p_order_id: order.id,
-        p_reason: reason,
-      });
-      if (error) throw error;
+      const senderKind = isSeller ? "SELLER" : "BUYER";
+      if (dispute?.id) {
+        const next = await sendDisputeMessage({
+          disputeId: dispute.id,
+          orderId: order.id,
+          senderKind,
+          body,
+          attachments: disputeFiles,
+        });
+        setDispute(next?.dispute ?? dispute);
+        setDisputeMessages(next?.messages ?? []);
+      } else {
+        const summary = `${isSeller ? "Seller" : "Buyer"} complaint: ${body || "Proof attached"}`;
+        const next = await openOrderDispute({
+          orderId: order.id,
+          senderKind,
+          reason: summary,
+          body,
+          attachments: disputeFiles,
+        });
+        setDispute(next?.dispute ?? null);
+        setDisputeMessages(next?.messages ?? []);
+      }
+      setDisputeText("");
+      setDisputeFiles([]);
       await load();
     } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't open a dispute right now."));
+      setDisputeErr(friendlyMarketError(e, "We couldn't send this dispute update."));
     } finally {
-      setBusy(false);
+      setDisputeBusy(false);
     }
   }
 
@@ -1087,7 +1231,7 @@ async function releaseFunds() {
     const next = String(action || "").trim().toLowerCase();
     if (!next) return;
     if (next === "open_dispute") {
-      await openDispute();
+      prepareDispute();
       return;
     }
     if (next === "go_checkout" && canGoCheckout && order?.id) {
@@ -1930,6 +2074,214 @@ async function pickAndUpload(access: "preview" | "final") {
               }}
             />
 
+            <Card title="Dispute center">
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      backgroundColor: disputeClosed
+                        ? "rgba(16,185,129,0.14)"
+                        : dispute
+                          ? "rgba(244,183,93,0.16)"
+                          : "rgba(255,255,255,0.06)",
+                      borderWidth: 1,
+                      borderColor: disputeClosed
+                        ? "rgba(16,185,129,0.35)"
+                        : dispute
+                          ? "rgba(244,183,93,0.40)"
+                          : "rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <Text style={{ color: disputeClosed ? "#6EE7B7" : dispute ? AMBER : MUTED, fontWeight: "900", fontSize: 12 }}>
+                      {dispute ? dispute.status.replace(/_/g, " ") : "No dispute opened"}
+                    </Text>
+                  </View>
+                  {dispute?.resolution ? (
+                    <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>
+                      Resolution: {String(dispute.resolution).replace(/_/g, " ").toLowerCase()}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {dispute ? (
+                  <View style={{ gap: 10 }}>
+                    {disputeMessages.length ? (
+                      disputeMessages.map((message) => {
+                        const mine = message.sender_id === me;
+                        const speaker =
+                          message.sender_kind === "ADMIN"
+                            ? "Admin"
+                            : message.sender_kind === "SELLER"
+                              ? "Seller"
+                              : "Buyer";
+                        return (
+                          <View
+                            key={message.id}
+                            style={{
+                              borderRadius: 16,
+                              padding: 12,
+                              backgroundColor: mine ? "rgba(124,58,237,0.14)" : "rgba(255,255,255,0.06)",
+                              borderWidth: 1,
+                              borderColor: mine ? "rgba(124,58,237,0.28)" : "rgba(255,255,255,0.10)",
+                              gap: 8,
+                            }}
+                          >
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
+                              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{mine ? "You" : speaker}</Text>
+                              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{new Date(message.created_at).toLocaleString()}</Text>
+                            </View>
+                            {message.body ? (
+                              <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>{message.body}</Text>
+                            ) : (
+                              <Text style={{ color: FAINT, lineHeight: 20 }}>Proof attached.</Text>
+                            )}
+                            {message.attachments?.length ? (
+                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                                {message.attachments.map((attachment) => (
+                                  <Pressable
+                                    key={attachment.id}
+                                    onPress={() => openDisputeAttachment(attachment)}
+                                    style={{
+                                      borderRadius: 999,
+                                      paddingHorizontal: 10,
+                                      paddingVertical: 7,
+                                      borderWidth: 1,
+                                      borderColor: "rgba(56,189,248,0.28)",
+                                      backgroundColor: "rgba(56,189,248,0.12)",
+                                      flexDirection: "row",
+                                      gap: 6,
+                                      alignItems: "center",
+                                      maxWidth: "100%",
+                                    }}
+                                  >
+                                    <Ionicons name="document-attach-outline" size={14} color={BLUE} />
+                                    <Text numberOfLines={1} style={{ color: "#E0F2FE", fontWeight: "900", fontSize: 12, maxWidth: 180 }}>
+                                      {attachment.file_name || "Proof"}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })
+                    ) : (
+                      <Text style={{ color: MUTED, lineHeight: 20 }}>No statements yet. Send your side clearly and attach screenshots, receipts, chat logs, or delivery proof.</Text>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={{ color: MUTED, lineHeight: 20 }}>
+                    If this trade has a problem, write what happened and attach proof before admin reviews it.
+                  </Text>
+                )}
+
+                {!disputeClosed ? (
+                  <View style={{ gap: 10 }}>
+                    <TextInput
+                      value={disputeText}
+                      onChangeText={setDisputeText}
+                      placeholder={`Write your ${disputeRoleLabel} statement`}
+                      placeholderTextColor="rgba(255,255,255,0.42)"
+                      multiline
+                      textAlignVertical="top"
+                      style={{
+                        minHeight: 104,
+                        borderRadius: 18,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.12)",
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        color: TEXT,
+                        lineHeight: 20,
+                      }}
+                    />
+
+                    {disputeFiles.length ? (
+                      <View style={{ gap: 8 }}>
+                        {disputeFiles.map((file, index) => (
+                          <View
+                            key={`${file.uri}-${index}`}
+                            style={{
+                              borderRadius: 14,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              backgroundColor: "rgba(255,255,255,0.06)",
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.10)",
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <Ionicons name="document-attach-outline" size={16} color={BLUE} />
+                            <Text numberOfLines={1} style={{ flex: 1, color: MUTED, fontWeight: "800" }}>{file.name || "Proof"}</Text>
+                            <Pressable onPress={() => removeDisputeFile(index)} hitSlop={8}>
+                              <Ionicons name="close-circle-outline" size={20} color="#FCA5A5" />
+                            </Pressable>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {disputeErr ? (
+                      <Text style={{ color: disputeErr.includes("Describe") ? AMBER : "#FCA5A5", fontWeight: "800", lineHeight: 18 }}>
+                        {disputeErr}
+                      </Text>
+                    ) : null}
+
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <Pressable
+                        disabled={!canUseDisputeCenter || disputeBusy}
+                        onPress={pickDisputeFiles}
+                        style={{
+                          flexGrow: 1,
+                          borderRadius: 18,
+                          paddingVertical: 13,
+                          paddingHorizontal: 14,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "rgba(56,189,248,0.12)",
+                          borderWidth: 1,
+                          borderColor: "rgba(56,189,248,0.28)",
+                          opacity: canUseDisputeCenter ? 1 : 0.55,
+                          flexDirection: "row",
+                          gap: 8,
+                        }}
+                      >
+                        <Ionicons name="attach-outline" size={17} color={BLUE} />
+                        <Text style={{ color: "#E0F2FE", fontWeight: "900" }}>Attach proof</Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={!canUseDisputeCenter || disputeBusy}
+                        onPress={submitDisputeStatement}
+                        style={{
+                          flexGrow: 1,
+                          borderRadius: 18,
+                          paddingVertical: 13,
+                          paddingHorizontal: 14,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: canUseDisputeCenter ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.06)",
+                          borderWidth: 1,
+                          borderColor: canUseDisputeCenter ? "rgba(239,68,68,0.34)" : "rgba(255,255,255,0.10)",
+                          opacity: canUseDisputeCenter ? 1 : 0.55,
+                          flexDirection: "row",
+                          gap: 8,
+                        }}
+                      >
+                        {disputeBusy ? <ActivityIndicator /> : <Ionicons name="shield-outline" size={17} color="#FCA5A5" />}
+                        <Text style={{ color: "#fff", fontWeight: "900" }}>{dispute ? "Send update" : "Open dispute"}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            </Card>
+
             {/* Crypto intents */}
             <Card title="Crypto activity (USDC / USDT / PI)">
               {intents.length === 0 ? (
@@ -2055,7 +2407,7 @@ async function pickAndUpload(access: "preview" | "final") {
 
                 <Pressable
                   disabled={busy}
-                  onPress={openDispute}
+                  onPress={prepareDispute}
                   style={{
                     marginTop: 10,
                     borderRadius: 18,
@@ -2150,7 +2502,7 @@ async function pickAndUpload(access: "preview" | "final") {
 
                 <Pressable
                   disabled={busy}
-                  onPress={openDispute}
+                  onPress={prepareDispute}
                   style={{
                     marginTop: 10,
                     borderRadius: 18,

@@ -4,6 +4,56 @@ import { supabaseAdminClient } from "../_shared/market/supabase.ts";
 
 type Decision = "REFUND" | "RELEASE";
 
+function resolutionForDecision(decision: Decision) {
+  return decision === "RELEASE" ? "RELEASE_TO_SELLER" : "REFUND_TO_BUYER";
+}
+
+async function markDisputeSettlementSubmitted(
+  admin: any,
+  ctx: any,
+  orderId: string,
+  decision: Decision,
+  note: string | null,
+) {
+  const resolution = resolutionForDecision(decision);
+  const { error } = await admin
+    .from("market_disputes")
+    .update({
+      status: "UNDER_REVIEW",
+      resolution,
+      resolved_by: ctx.userId,
+      resolution_note: note,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("order_id", orderId)
+    .in("status", ["OPEN", "UNDER_REVIEW"]);
+  if (error) throw error;
+}
+
+async function markDisputeResolved(
+  admin: any,
+  ctx: any,
+  orderId: string,
+  decision: Decision,
+  note: string | null,
+) {
+  const resolution = resolutionForDecision(decision);
+  const nowIso = new Date().toISOString();
+  const { error } = await admin
+    .from("market_disputes")
+    .update({
+      status: "RESOLVED",
+      resolution,
+      resolved_by: ctx.userId,
+      resolved_at: nowIso,
+      resolution_note: note,
+      updated_at: nowIso,
+    })
+    .eq("order_id", orderId)
+    .in("status", ["OPEN", "UNDER_REVIEW", "RESOLVED"]);
+  if (error) throw error;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -67,6 +117,7 @@ Deno.serve(async (req) => {
           return bad(String((releaseOut as any)?.error || "Stable release function failed"));
         }
 
+        await markDisputeSettlementSubmitted(admin, ctx, order_id, decision, note);
         return ok({ order: releaseOut, dispute_resolution: "RELEASE_TO_SELLER" });
       }
 
@@ -80,6 +131,7 @@ Deno.serve(async (req) => {
           return bad(String((releasedOut as any)?.error || "Pi release function failed"));
         }
 
+        await markDisputeResolved(admin, ctx, order_id, decision, note);
         return ok({ order: releasedOut, dispute_resolution: "RELEASE_TO_SELLER" });
       }
 
@@ -109,6 +161,9 @@ Deno.serve(async (req) => {
         status: "RESOLVED",
         resolution: "RELEASE_TO_SELLER",
         resolved_by: ctx.userId,
+        resolved_at: new Date().toISOString(),
+        resolution_note: note,
+        updated_at: new Date().toISOString(),
       }).eq("order_id", order_id);
 
       await admin.from("market_audit_logs").insert({
@@ -135,6 +190,7 @@ Deno.serve(async (req) => {
         return bad(String((refundOut as any)?.error || "Stable refund function failed"));
       }
 
+      await markDisputeSettlementSubmitted(admin, ctx, order_id, decision, note);
       return ok({ order: refundOut, dispute_resolution: "REFUND_TO_BUYER" });
     }
 
@@ -148,6 +204,7 @@ Deno.serve(async (req) => {
         return bad(String((refundedOut as any)?.error || "Pi refund function failed"));
       }
 
+      await markDisputeResolved(admin, ctx, order_id, decision, note);
       return ok({ order: refundedOut, dispute_resolution: "REFUND_TO_BUYER" });
     }
 
@@ -163,6 +220,9 @@ Deno.serve(async (req) => {
       status: "RESOLVED",
       resolution: "REFUND_TO_BUYER",
       resolved_by: ctx.userId,
+      resolved_at: new Date().toISOString(),
+      resolution_note: note,
+      updated_at: new Date().toISOString(),
     }).eq("order_id", order_id);
 
     await admin.from("market_audit_logs").insert({

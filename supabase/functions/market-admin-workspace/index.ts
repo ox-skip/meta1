@@ -3,6 +3,7 @@ import { methodNotAllowed, ok } from "../_shared/market/http.ts";
 import { supabaseAdminClient } from "../_shared/market/supabase.ts";
 
 const DEFAULT_LIMIT = 30;
+const DISPUTE_BUCKET = "market-disputes";
 
 function can(ctx: AdminContext, permission: string) {
   return ctx.roleKey === "super_admin" || ctx.permissions.includes("*") || ctx.permissions.includes(permission);
@@ -83,6 +84,20 @@ function userBundle(userId: string | null | undefined, profiles: Record<string, 
   };
 }
 
+async function signAttachment(admin: any, attachment: any) {
+  const publicUrl = String(attachment?.public_url || "");
+  const bucket = String(attachment?.storage_bucket || DISPUTE_BUCKET);
+  const path = String(attachment?.storage_path || "");
+  if (publicUrl || !path) return { ...attachment, signed_url: publicUrl || null };
+
+  try {
+    const { data } = await admin.storage.from(bucket).createSignedUrl(path, 3600);
+    return { ...attachment, signed_url: data?.signedUrl ?? null };
+  } catch {
+    return { ...attachment, signed_url: null };
+  }
+}
+
 async function loadSupport(admin: any, ctx: AdminContext) {
   const canUseTicketQueue = ctx.roleKey === "super_admin" || ctx.roleKey === "support_admin";
   const [disputesRes, ticketsRes] = await Promise.all([
@@ -116,6 +131,43 @@ async function loadSupport(admin: any, ctx: AdminContext) {
     : { data: [], error: null };
   if (deliverableError) throw deliverableError;
   const deliverablesByOrder = byId(deliverables, "order_id");
+
+  const disputeIds = unique((disputes ?? []).map((row: any) => row.id));
+  const { data: disputeMessages, error: disputeMessagesError } = disputeIds.length
+    ? await admin
+        .from("market_dispute_messages")
+        .select("id,dispute_id,order_id,sender_id,sender_kind,body,created_at")
+        .in("dispute_id", disputeIds)
+        .order("created_at", { ascending: true })
+        .limit(400)
+    : { data: [], error: null };
+  if (disputeMessagesError) throw disputeMessagesError;
+
+  const disputeMessageIds = unique((disputeMessages ?? []).map((row: any) => row.id));
+  const { data: disputeAttachments, error: disputeAttachmentsError } = disputeMessageIds.length
+    ? await admin
+        .from("market_dispute_attachments")
+        .select("id,dispute_id,message_id,order_id,uploaded_by,kind,storage_bucket,storage_path,public_url,mime_type,file_name,file_size,created_at")
+        .in("message_id", disputeMessageIds)
+        .order("created_at", { ascending: true })
+        .limit(800)
+    : { data: [], error: null };
+  if (disputeAttachmentsError) throw disputeAttachmentsError;
+
+  const signedDisputeAttachments = await Promise.all((disputeAttachments ?? []).map((attachment: any) => signAttachment(admin, attachment)));
+  const disputeAttachmentsByMessage: Record<string, any[]> = {};
+  for (const attachment of signedDisputeAttachments) {
+    const messageId = String(attachment?.message_id ?? "");
+    if (!messageId) continue;
+    disputeAttachmentsByMessage[messageId] = [...(disputeAttachmentsByMessage[messageId] ?? []), attachment];
+  }
+
+  const messagesByDispute: Record<string, any[]> = {};
+  for (const message of disputeMessages ?? []) {
+    const disputeId = String(message.dispute_id ?? "");
+    if (!disputeId) continue;
+    messagesByDispute[disputeId] = [...(messagesByDispute[disputeId] ?? []), message];
+  }
 
   const ticketIds = unique((tickets ?? []).map((row: any) => row.id));
   const { data: ticketMessages, error: ticketMessagesError } = ticketIds.length
@@ -157,6 +209,8 @@ async function loadSupport(admin: any, ctx: AdminContext) {
     ...(disputes ?? []).flatMap((row: any) => [row.opened_by, row.resolved_by]),
     ...Object.values(orders).flatMap((row: any) => [row?.buyer_id, row?.seller_id]),
     ...Object.values(listings).map((row: any) => row?.seller_id),
+    ...(disputeMessages ?? []).map((row: any) => row.sender_id),
+    ...(disputeAttachments ?? []).map((row: any) => row.uploaded_by),
     ...(tickets ?? []).flatMap((row: any) => [row.user_id, row.assigned_admin_id]),
     ...(ticketMessages ?? []).map((row: any) => row.sender_id),
   ]);
@@ -175,6 +229,11 @@ async function loadSupport(admin: any, ctx: AdminContext) {
         opened_by_user: userBundle(dispute.opened_by, profiles, sellers),
         buyer: userBundle(order?.buyer_id, profiles, sellers),
         seller: userBundle(order?.seller_id, profiles, sellers),
+        messages: (messagesByDispute[String(dispute.id)] ?? []).map((message: any) => ({
+          ...message,
+          sender: userBundle(message.sender_id, profiles, sellers),
+          attachments: disputeAttachmentsByMessage[String(message.id)] ?? [],
+        })),
       };
     }),
     tickets: (tickets ?? []).map((ticket: any) => ({
