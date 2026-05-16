@@ -2773,7 +2773,7 @@ export default function MarketAdminIndex() {
                     <AdminTextInput value={rewardTaskRoute} onChangeText={setRewardTaskRoute} placeholder="Optional action route, for example /market/social" autoCapitalize="none" />
                   </View>
                 </View>
-                <AdminTextInput value={rewardTaskRules} onChangeText={setRewardTaskRules} placeholder="{\"check\":\"admin_review\"}" multiline autoCapitalize="none" />
+                <AdminTextInput value={rewardTaskRules} onChangeText={setRewardTaskRules} placeholder={'{"check":"admin_review"}'} multiline autoCapitalize="none" />
                 {renderActionNote()}
                 <ActionButton
                   icon="save-outline"
