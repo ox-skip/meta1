@@ -422,7 +422,7 @@ async function loadAdminMembers(admin: any) {
 }
 
 async function loadRewards(admin: any) {
-  const [accountsRes, tasksRes, pendingRes, promotionsRes, ledgerRes, adSessionsRes] = await Promise.all([
+  const [accountsRes, tasksRes, pendingRes, promotionsRes, ledgerRes, adSessionsRes, storeRes, listingRes] = await Promise.all([
     admin
       .from("market_reward_accounts")
       .select("user_id,balance,lifetime_earned,lifetime_spent,tier_key,daily_streak,longest_streak,last_earned_at,last_spent_at,created_at,updated_at")
@@ -456,6 +456,16 @@ async function loadRewards(admin: any) {
       .select("id,user_id,task_id,provider,platform,ad_unit_id,reward_noms,status,provider_transaction_id,created_at,shown_at,client_earned_at,verified_at,rewarded_at,expires_at")
       .order("created_at", { ascending: false })
       .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_seller_profiles")
+      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(100),
+    admin
+      .from("market_listings")
+      .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(100),
   ]);
 
   if (accountsRes.error) throw accountsRes.error;
@@ -464,6 +474,8 @@ async function loadRewards(admin: any) {
   if (promotionsRes.error) throw promotionsRes.error;
   if (ledgerRes.error) throw ledgerRes.error;
   if (adSessionsRes.error) throw adSessionsRes.error;
+  if (storeRes.error) throw storeRes.error;
+  if (listingRes.error) throw listingRes.error;
 
   const tasksById = byId(tasksRes.data);
   const profileIds = unique([
@@ -471,6 +483,8 @@ async function loadRewards(admin: any) {
     ...(pendingRes.data ?? []).flatMap((row: any) => [row.user_id, row.reviewed_by]),
     ...(ledgerRes.data ?? []).map((row: any) => row.user_id),
     ...(adSessionsRes.data ?? []).map((row: any) => row.user_id),
+    ...(storeRes.data ?? []).map((row: any) => row.user_id),
+    ...(listingRes.data ?? []).map((row: any) => row.seller_id),
   ]);
   const profiles = await loadProfiles(admin, profileIds);
   const sellers = await loadSellerProfiles(admin, profileIds);
@@ -486,6 +500,14 @@ async function loadRewards(admin: any) {
       task: tasksById[String(completion.task_id)] ?? null,
       user: userBundle(completion.user_id, profiles, sellers),
       reviewed_by_user: userBundle(completion.reviewed_by, profiles, sellers),
+    })),
+    stores: (storeRes.data ?? []).map((seller: any) => ({
+      ...seller,
+      profile: profiles[String(seller.user_id)] ?? null,
+    })),
+    listings: (listingRes.data ?? []).map((listing: any) => ({
+      ...listing,
+      seller: userBundle(listing.seller_id, profiles, sellers),
     })),
     promotions: promotionsRes.data ?? [],
     ledger: (ledgerRes.data ?? []).map((entry: any) => ({

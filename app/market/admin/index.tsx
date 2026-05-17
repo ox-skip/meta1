@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -370,6 +371,34 @@ function InfoLine({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+async function copyTextValue(label: string, value?: string | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return;
+  try {
+    await Clipboard.setStringAsync(text);
+    Alert.alert("Copied", `${label} copied.`);
+  } catch {
+    Alert.alert("Copy failed", `Unable to copy ${label.toLowerCase()} right now.`);
+  }
+}
+
+function CopyableIdLine({ label, value }: { label: string; value?: string | null }) {
+  const text = String(value ?? "").trim();
+  return (
+    <View style={{ flex: 1, minWidth: 260 }}>
+      <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>{label}</Text>
+      <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text selectable numberOfLines={2} style={{ flex: 1, color: TEXT, fontSize: 12, fontWeight: "800" }}>{text || "n/a"}</Text>
+        {text ? (
+          <Pressable onPress={() => void copyTextValue(label, text)} hitSlop={10} style={{ padding: 4 }}>
+            <Ionicons name="copy-outline" size={16} color={ACCENT} />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function RecordCard({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ borderRadius: 8, padding: 16, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: BORDER }}>
@@ -699,6 +728,8 @@ export default function MarketAdminIndex() {
         return (
           (modules?.rewards?.tasks?.length ?? 0) +
           (modules?.rewards?.promotions?.length ?? 0) +
+          (modules?.rewards?.stores?.length ?? 0) +
+          (modules?.rewards?.listings?.length ?? 0) +
           (modules?.rewards?.pending_reviews?.length ?? 0) +
           (modules?.rewards?.accounts?.length ?? 0)
         );
@@ -712,6 +743,53 @@ export default function MarketAdminIndex() {
   function hasPermission(permission: string) {
     const admin = overview?.admin;
     return Boolean(admin?.role_key === "super_admin" || admin?.permissions.includes("*") || admin?.permissions.includes(permission));
+  }
+
+  function useStoreForRewardFeature(seller: any) {
+    const storeId = String(seller?.user_id ?? seller?.id ?? "").trim();
+    if (!storeId) return;
+    const name = String(seller?.business_name || seller?.display_name || seller?.market_username || seller?.profile?.full_name || seller?.profile?.username || "Featured store");
+    setRewardPromotionId("");
+    setRewardPromotionPlacement("rewards_top");
+    setRewardPromotionTitle(name);
+    setRewardPromotionSubtitle(seller?.market_username ? `Shop @${seller.market_username} and discover their latest offers.` : "Shop this featured store and discover their latest offers.");
+    setRewardPromotionMediaUrl("");
+    setRewardPromotionSponsorLabel("Featured");
+    setRewardPromotionCtaLabel("View store");
+    setRewardPromotionCtaRoute("");
+    setRewardPromotionStoreId(storeId);
+    setRewardPromotionListingId("");
+    setRewardPromotionPriority("100");
+    setRewardPromotionStartsAt("");
+    setRewardPromotionEndsAt("");
+    setRewardPromotionMetadata(JSON.stringify({ source: "admin_dashboard", feature_type: "store", store_id: storeId }, null, 2));
+    setActiveModule("rewards");
+    setRewardTab("build");
+    setNotice("Store UUID added to the rewards feature builder.");
+  }
+
+  function useListingForRewardFeature(listing: any) {
+    const listingId = String(listing?.id ?? "").trim();
+    if (!listingId) return;
+    const storeId = String(listing?.seller_id ?? listing?.seller?.id ?? "").trim();
+    const title = String(listing?.title || "Featured listing");
+    setRewardPromotionId("");
+    setRewardPromotionPlacement("rewards_top");
+    setRewardPromotionTitle(title);
+    setRewardPromotionSubtitle(`Feature this listing for shoppers looking at rewards.`);
+    setRewardPromotionMediaUrl("");
+    setRewardPromotionSponsorLabel("Featured");
+    setRewardPromotionCtaLabel("View listing");
+    setRewardPromotionCtaRoute("");
+    setRewardPromotionStoreId(storeId);
+    setRewardPromotionListingId(listingId);
+    setRewardPromotionPriority("100");
+    setRewardPromotionStartsAt("");
+    setRewardPromotionEndsAt("");
+    setRewardPromotionMetadata(JSON.stringify({ source: "admin_dashboard", feature_type: "listing", listing_id: listingId, store_id: storeId || undefined }, null, 2));
+    setActiveModule("rewards");
+    setRewardTab("build");
+    setNotice("Listing UUID added to the rewards feature builder.");
   }
 
   function openAdminOrder(orderId?: string | null) {
@@ -1857,6 +1935,7 @@ export default function MarketAdminIndex() {
     const canModerateUsers = hasPermission("users.moderate");
     const canModerateListings = hasPermission("listings.moderate");
     const canBanUsers = hasPermission("users.delete");
+    const canFeaturePromotions = hasPermission("rewards.promotions.manage");
 
     return (
       <View style={{ marginTop: 18, gap: 14 }}>
@@ -1901,6 +1980,7 @@ export default function MarketAdminIndex() {
               </View>
 
               <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <CopyableIdLine label="Store UUID" value={seller.user_id} />
                 <InfoLine label="Username" value={seller.market_username ? `@${seller.market_username}` : "n/a"} />
                 <InfoLine label="Risk" value={String(seller.risk_score ?? 0)} />
                 <InfoLine label="Verified" value={seller.is_verified ? "Yes" : "No"} />
@@ -1914,6 +1994,19 @@ export default function MarketAdminIndex() {
                   color={WARNING}
                   disabled={!canOpenSellerProfile(seller)}
                   onPress={() => openSellerProfile(seller)}
+                />
+                <ActionButton
+                  icon="copy-outline"
+                  label="Copy store UUID"
+                  color={ACCENT}
+                  onPress={() => void copyTextValue("Store UUID", seller.user_id)}
+                />
+                <ActionButton
+                  icon="megaphone-outline"
+                  label="Feature store"
+                  color={SUCCESS}
+                  disabled={!canFeaturePromotions}
+                  onPress={() => useStoreForRewardFeature(seller)}
                 />
                 <ActionButton
                   icon={active ? "pause-circle-outline" : "play-circle-outline"}
@@ -1957,6 +2050,8 @@ export default function MarketAdminIndex() {
               </View>
 
               <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <CopyableIdLine label="Listing UUID" value={listing.id} />
+                <CopyableIdLine label="Store UUID" value={listing.seller_id} />
                 <InfoLine label="Price" value={money(listing.price_amount, listing.currency)} />
                 <InfoLine label="Category" value={`${listing.category ?? "n/a"} / ${listing.sub_category ?? "n/a"}`} />
                 <InfoLine label="Delivery" value={listing.delivery_type ?? "n/a"} />
@@ -1969,6 +2064,19 @@ export default function MarketAdminIndex() {
                   label="Open listing"
                   color={WARNING}
                   onPress={() => openListing(listing.id)}
+                />
+                <ActionButton
+                  icon="copy-outline"
+                  label="Copy listing UUID"
+                  color={ACCENT}
+                  onPress={() => void copyTextValue("Listing UUID", listing.id)}
+                />
+                <ActionButton
+                  icon="megaphone-outline"
+                  label="Feature listing"
+                  color={SUCCESS}
+                  disabled={!canFeaturePromotions}
+                  onPress={() => useListingForRewardFeature(listing)}
                 />
                 <ActionButton
                   icon="person-circle-outline"
@@ -2566,6 +2674,27 @@ export default function MarketAdminIndex() {
       personLabel(entry.user),
       entry.task?.title,
     ]));
+    const rewardStores = (rewards.stores ?? []).filter((seller: any) => matchesSearch(currentModuleSearch, [
+      seller.user_id,
+      seller.business_name,
+      seller.display_name,
+      seller.market_username,
+      seller.profile?.email,
+      seller.profile?.full_name,
+      seller.active === false ? "paused" : "active",
+      seller.is_verified ? "verified" : "unverified",
+    ]));
+    const rewardListings = (rewards.listings ?? []).filter((listing: any) => matchesSearch(currentModuleSearch, [
+      listing.id,
+      listing.seller_id,
+      listing.title,
+      listing.category,
+      listing.sub_category,
+      listing.currency,
+      listing.delivery_type,
+      listing.is_active === false ? "disabled" : "live",
+      personLabel(listing.seller),
+    ]));
     const adSessions = rewards.ad_sessions ?? [];
     const canManageTasks = hasPermission("rewards.tasks.manage");
     const canManagePromotions = hasPermission("rewards.promotions.manage");
@@ -2704,14 +2833,14 @@ export default function MarketAdminIndex() {
             rewardTab === "reviews" ? reviews.length :
             rewardTab === "accounts" ? accounts.length :
             rewardTab === "ledger" ? ledger.length :
-            (rewards.tasks?.length ?? 0) + (rewards.promotions?.length ?? 0)
+            (rewards.tasks?.length ?? 0) + (rewards.promotions?.length ?? 0) + (rewards.stores?.length ?? 0) + (rewards.listings?.length ?? 0)
           }
         >
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
             <SearchBox
               value={currentModuleSearch}
               onChangeText={setCurrentModuleSearch}
-              placeholder="Search reward tasks, accounts, placements, reviews, or ledger"
+              placeholder="Search rewards, stores, listings, UUIDs, accounts, reviews, or ledger"
             />
             <SegmentedControl
               value={rewardTab}
@@ -2888,6 +3017,68 @@ export default function MarketAdminIndex() {
                   loading={workingKey === `reward-promo-${rewardPromotionPlacement.trim()}-${rewardPromotionTitle.trim()}`}
                   onPress={submitRewardPromotion}
                 />
+              </View>
+            </RecordCard>
+
+            <RecordCard>
+              <View style={{ gap: 12 }}>
+                <View>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Store and listing UUID finder</Text>
+                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                    Search above by store name, username, email, listing title, or UUID. Copy an ID, or send it straight into the feature form.
+                  </Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <View style={{ flex: 1, minWidth: 280, gap: 10 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Stores</Text>
+                    {rewardStores.slice(0, 6).length ? rewardStores.slice(0, 6).map((seller: any) => (
+                      <View key={seller.user_id} style={{ borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.035)", padding: 12, gap: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <View style={{ flex: 1, minWidth: 180 }}>
+                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{seller.business_name || seller.display_name || seller.market_username || "Store"}</Text>
+                            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{seller.market_username ? `@${seller.market_username}` : seller.profile?.email ?? "No username"}</Text>
+                          </View>
+                          <Pill label={seller.active === false ? "PAUSED" : "ACTIVE"} color={seller.active === false ? DANGER : SUCCESS} />
+                        </View>
+                        <CopyableIdLine label="Store UUID" value={seller.user_id} />
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          <ActionButton icon="copy-outline" label="Copy ID" color={ACCENT} onPress={() => void copyTextValue("Store UUID", seller.user_id)} />
+                          <ActionButton icon="megaphone-outline" label="Use store" color={SUCCESS} disabled={!canManagePromotions} onPress={() => useStoreForRewardFeature(seller)} />
+                        </View>
+                      </View>
+                    )) : (
+                      <View style={{ paddingVertical: 8 }}>
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>No stores found</Text>
+                        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>Try a store name, username, email, or UUID in the rewards search box.</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, minWidth: 280, gap: 10 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Listings</Text>
+                    {rewardListings.slice(0, 6).length ? rewardListings.slice(0, 6).map((listing: any) => (
+                      <View key={listing.id} style={{ borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.035)", padding: 12, gap: 8 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <View style={{ flex: 1, minWidth: 180 }}>
+                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{listing.title || "Listing"}</Text>
+                            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{personLabel(listing.seller)}</Text>
+                          </View>
+                          <Pill label={listing.is_active === false ? "DISABLED" : "LIVE"} color={listing.is_active === false ? DANGER : SUCCESS} />
+                        </View>
+                        <CopyableIdLine label="Listing UUID" value={listing.id} />
+                        <CopyableIdLine label="Store UUID" value={listing.seller_id} />
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          <ActionButton icon="copy-outline" label="Copy ID" color={ACCENT} onPress={() => void copyTextValue("Listing UUID", listing.id)} />
+                          <ActionButton icon="megaphone-outline" label="Use listing" color={SUCCESS} disabled={!canManagePromotions} onPress={() => useListingForRewardFeature(listing)} />
+                        </View>
+                      </View>
+                    )) : (
+                      <View style={{ paddingVertical: 8 }}>
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>No listings found</Text>
+                        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>Try a listing title, seller, category, or UUID in the rewards search box.</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
               </View>
             </RecordCard>
 
