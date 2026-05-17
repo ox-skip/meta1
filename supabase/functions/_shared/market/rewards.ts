@@ -136,15 +136,16 @@ export async function loadTaskCompletions(admin: any, userId: string, taskIds: s
 function countRewarded(completions: any[], since?: Date) {
   const sinceMs = since ? since.getTime() : null;
   return completions.filter((row) => {
-    if (!["approved", "rewarded"].includes(String(row.status ?? ""))) return false;
+    if (String(row.status ?? "") !== "rewarded" && !row.ledger_id) return false;
     if (!sinceMs) return true;
     const at = Date.parse(String(row.rewarded_at || row.completed_at || row.created_at || ""));
     return Number.isFinite(at) && at >= sinceMs;
   }).length;
 }
 
-function latestCompletion(completions: any[]) {
+function latestRewardedCompletion(completions: any[]) {
   return completions
+    .filter((row) => String(row.status ?? "") === "rewarded" || row.ledger_id)
     .slice()
     .sort((a, b) => Date.parse(String(b.created_at ?? "")) - Date.parse(String(a.created_at ?? "")))[0] ?? null;
 }
@@ -198,7 +199,7 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
       ok: profile.exists,
       current: profile.exists ? 1 : 0,
       target: 1,
-      reason: profile.exists ? null : "Create your store profile first.",
+      reason: profile.exists ? null : "Create your store profile to unlock this reward.",
     };
   }
 
@@ -209,7 +210,7 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
       ok: profile.score >= target,
       current: profile.score,
       target,
-      reason: profile.score >= target ? null : "Complete more store profile details.",
+      reason: profile.score >= target ? null : "Add more store details to unlock this reward.",
     };
   }
 
@@ -217,42 +218,42 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
     const current = await countRows(admin, "market_listings", (query) =>
       query.eq("seller_id", userId).eq("is_active", true)
     );
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Publish an active listing first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Publish an active listing to unlock this reward." };
   }
 
   if (check === "buyer_released_order_count") {
     const current = await countRows(admin, "market_orders", (query) =>
       query.eq("buyer_id", userId).not("released_at", "is", null)
     );
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete a purchase first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete a marketplace purchase to unlock this reward." };
   }
 
   if (check === "seller_released_order_count") {
     const current = await countRows(admin, "market_orders", (query) =>
       query.eq("seller_id", userId).not("released_at", "is", null)
     );
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete a sale first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete a marketplace sale to unlock this reward." };
   }
 
   if (check === "follow_count") {
     const current = await countRows(admin, "market_profile_follows", (query) =>
       query.eq("follower_id", userId)
     );
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Follow a store first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Follow a store to unlock this reward." };
   }
 
   if (check === "social_post_count") {
     const current = await countRows(admin, "market_social_posts", (query) =>
       query.eq("author_id", userId)
     );
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Create a market social post first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Share a market post to unlock this reward." };
   }
 
   if (check === "stock_identity_exists") {
     const current = await countRows(admin, "market_stock_identities", (query) =>
       query.eq("store_id", userId).eq("active", true)
     );
-    return { ok: current >= 1, current, target: 1, reason: current >= 1 ? null : "Create your store stock identity first." };
+    return { ok: current >= 1, current, target: 1, reason: current >= 1 ? null : "Create your store stock identity to unlock this reward." };
   }
 
   if (check === "stock_trade_count") {
@@ -261,14 +262,14 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
       const q = query.eq("user_id", userId);
       return side ? q.eq("side", side) : q;
     });
-    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete the required stock trade first." };
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete this stock action to unlock the reward." };
   }
 
   if (check === "admin_review") {
-    return { ok: false, current: 0, target: 1, reason: "This task needs reward admin review." };
+    return { ok: false, current: 0, target: 1, reason: "Submit proof so this reward can be reviewed." };
   }
 
-  return { ok: false, current: 0, target: 1, reason: "This task is waiting for a supported rule." };
+  return { ok: false, current: 0, target: 1, reason: "This reward is not ready yet." };
 }
 
 export async function getTaskAvailability(
@@ -294,14 +295,14 @@ export async function getTaskAvailability(
   const daily = countRewarded(completions, startOfUtcDay());
   const weekly = countRewarded(completions, startOfUtcWeek());
   const lifetime = countRewarded(completions);
-  const latest = latestCompletion(completions);
+  const latest = latestRewardedCompletion(completions);
 
   const pendingReview = completions.some((row: any) => String(row.status ?? "") === "pending");
   if (pendingReview && task.requires_review) {
     return {
       available: false,
       status: "review_pending",
-      reason: "Your submission is waiting for reward admin review.",
+      reason: "Your submission is waiting for review.",
       progress_current: 1,
       progress_target: 1,
       next_available_at: null,
@@ -313,7 +314,7 @@ export async function getTaskAvailability(
     return {
       available: false,
       status: "completed",
-      reason: "This reward has already been completed.",
+      reason: "This reward has already been added to your balance.",
       progress_current: lifetime,
       progress_target: task.lifetime_cap,
       next_available_at: null,
@@ -354,8 +355,8 @@ export async function getTaskAvailability(
     const nextMs = latestMs + task.cooldown_seconds * 1000;
     if (Number.isFinite(nextMs) && nextMs > Date.now()) {
       return {
-        available: false,
-        status: "cooldown",
+      available: false,
+      status: "cooldown",
         reason: "This reward is cooling down.",
         progress_current: 0,
         progress_target: 1,

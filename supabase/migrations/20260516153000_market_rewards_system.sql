@@ -526,7 +526,7 @@ INSERT INTO public.market_admin_roles (key, name, description, permissions, rank
 VALUES (
   'reward_admin',
   'Reward Admin',
-  'Manages noms, reward tasks, promoted placements, and manual reward review without escrow or account-control powers.',
+  'Manages noms, reward tasks, sponsored placements, reviews, and balance adjustments.',
   '["rewards.read","rewards.tasks.manage","rewards.promotions.manage","rewards.adjust","rewards.review","rewards.analytics"]'::jsonb,
   25
 )
@@ -575,8 +575,8 @@ INSERT INTO public.market_reward_tasks (
 VALUES
   (
     'watch_rewarded_video',
-    'Watch a rewarded video',
-    'Watch an available sponsored video and earn noms after verification.',
+    'Watch a sponsored video',
+    'Watch a short sponsored video and earn noms when it finishes.',
     'watch',
     'ad_reward',
     8,
@@ -590,12 +590,12 @@ VALUES
     'videocam-outline',
     '#38BDF8',
     '{"provider":"admob","requires_ssv":true}'::jsonb,
-    '{"tone":"blue","badge":"Daily","primaryLabel":"Watch"}'::jsonb
+    '{"tone":"gold","badge":"Daily","primaryLabel":"Watch"}'::jsonb
   ),
   (
     'create_store_profile',
-    'Create your store profile',
-    'Open a public seller identity so buyers can trust who they are buying from.',
+    'Open your store',
+    'Create your public store profile so buyers can recognize and trust you.',
     'market',
     'client_claim',
     80,
@@ -609,12 +609,12 @@ VALUES
     'person-add-outline',
     '#F59E0B',
     '{"check":"seller_profile_exists"}'::jsonb,
-    '{"badge":"Core","primaryLabel":"Create"}'::jsonb
+    '{"badge":"Starter","primaryLabel":"Create profile"}'::jsonb
   ),
   (
     'complete_store_profile',
-    'Complete your store presence',
-    'Add username, logo, bio, location, and contact details for a stronger storefront.',
+    'Make your store stand out',
+    'Add your logo, bio, location, contact, and delivery details.',
     'market',
     'client_claim',
     120,
@@ -628,12 +628,12 @@ VALUES
     'storefront-outline',
     '#F97316',
     '{"check":"seller_profile_complete","min_fields":6}'::jsonb,
-    '{"badge":"Trust","primaryLabel":"Complete"}'::jsonb
+    '{"badge":"Trust","primaryLabel":"Finish profile"}'::jsonb
   ),
   (
     'publish_first_listing',
-    'Publish your first listing',
-    'Create one active product or service listing in the marketplace.',
+    'List your first item',
+    'Add a product or service buyers can discover in the marketplace.',
     'market',
     'client_claim',
     150,
@@ -647,12 +647,12 @@ VALUES
     'add-circle-outline',
     '#FBBF24',
     '{"check":"active_listing_count","min":1}'::jsonb,
-    '{"badge":"Seller","primaryLabel":"Sell"}'::jsonb
+    '{"badge":"Seller","primaryLabel":"Create listing"}'::jsonb
   ),
   (
     'first_purchase_completed',
-    'Complete your first purchase',
-    'Buy through the marketplace and finish the order flow.',
+    'Make your first purchase',
+    'Complete one marketplace order as a buyer.',
     'market',
     'client_claim',
     200,
@@ -670,8 +670,8 @@ VALUES
   ),
   (
     'first_sale_completed',
-    'Complete your first sale',
-    'Sell through the marketplace and receive a completed order.',
+    'Make your first sale',
+    'Complete one marketplace order as a seller.',
     'market',
     'client_claim',
     240,
@@ -685,12 +685,12 @@ VALUES
     'receipt-outline',
     '#22C55E',
     '{"check":"seller_released_order_count","min":1}'::jsonb,
-    '{"badge":"Seller","primaryLabel":"Orders"}'::jsonb
+    '{"badge":"Seller","primaryLabel":"View orders"}'::jsonb
   ),
   (
     'follow_first_store',
     'Follow a store',
-    'Follow a seller to personalize your market feed.',
+    'Follow a seller you want to keep up with.',
     'social',
     'client_claim',
     40,
@@ -704,12 +704,12 @@ VALUES
     'people-outline',
     '#A78BFA',
     '{"check":"follow_count","min":1}'::jsonb,
-    '{"badge":"Social","primaryLabel":"Follow"}'::jsonb
+    '{"badge":"Social","primaryLabel":"Find stores"}'::jsonb
   ),
   (
     'create_social_post',
-    'Post a market update',
-    'Share an update, launch, or discovery in the market social feed.',
+    'Share a market update',
+    'Post a launch, find, or update in the market feed.',
     'social',
     'client_claim',
     60,
@@ -727,8 +727,8 @@ VALUES
   ),
   (
     'create_stock_identity',
-    'Create a store stock identity',
-    'Launch the off-chain reward milestone for creating your marketplace stock identity.',
+    'Launch your store stock',
+    'Create your store stock profile for the stock market.',
     'onchain',
     'client_claim',
     350,
@@ -742,12 +742,12 @@ VALUES
     'trending-up-outline',
     '#2DD4BF',
     '{"check":"stock_identity_exists"}'::jsonb,
-    '{"badge":"Growth","primaryLabel":"Create"}'::jsonb
+    '{"badge":"Growth","primaryLabel":"Create stock"}'::jsonb
   ),
   (
     'buy_store_stock',
     'Buy store stock',
-    'Support a store by buying its digital stock from the stock market.',
+    'Support a store by buying its digital stock.',
     'onchain',
     'client_claim',
     75,
@@ -761,12 +761,12 @@ VALUES
     'arrow-up-circle-outline',
     '#14B8A6',
     '{"check":"stock_trade_count","side":"buy","min":1}'::jsonb,
-    '{"badge":"Trade","primaryLabel":"Buy"}'::jsonb
+    '{"badge":"Trade","primaryLabel":"Buy stock"}'::jsonb
   ),
   (
     'sell_store_stock',
     'Sell store stock',
-    'Complete a sell trade from your digital stock position.',
+    'Complete a sell trade from your stock portfolio.',
     'onchain',
     'client_claim',
     75,
@@ -784,8 +784,8 @@ VALUES
   ),
   (
     'custom_campaign_review',
-    'Custom campaign review',
-    'Admin-managed campaign task for manually verified marketplace activities.',
+    'Bonus challenge',
+    'Complete a featured marketplace challenge and submit proof.',
     'custom',
     'admin_review',
     0,
@@ -799,7 +799,7 @@ VALUES
     'sparkles-outline',
     '#F472B6',
     '{"check":"admin_review"}'::jsonb,
-    '{"badge":"Campaign","primaryLabel":"Submit"}'::jsonb
+    '{"badge":"Bonus","primaryLabel":"Submit proof"}'::jsonb
   )
 ON CONFLICT (task_key) DO UPDATE
 SET
@@ -839,9 +839,9 @@ VALUES
         {"key":"elite","label":"Elite Operator","min":15000}
       ],
       "redemption_catalog":[
-        {"key":"listing_boost","title":"Listing Boost","subtitle":"Push one listing into stronger discovery after reward admin fulfillment.","cost_noms":750,"icon":"rocket-outline","accent":"#2DD4BF"},
-        {"key":"sponsored_top_display","title":"Sponsored Top Display","subtitle":"Request a top rewards placement for a store campaign controlled by reward admins.","cost_noms":2500,"icon":"megaphone-outline","accent":"#F4B75D"},
-        {"key":"profile_glow","title":"Profile Glow","subtitle":"Reserve a premium profile treatment for high-trust stores and creators.","cost_noms":1200,"icon":"diamond-outline","accent":"#A78BFA"}
+        {"key":"listing_boost","title":"Listing Boost","subtitle":"Give one listing a stronger spotlight in buyer discovery.","cost_noms":750,"icon":"rocket-outline","accent":"#2DD4BF"},
+        {"key":"sponsored_top_display","title":"Sponsored Top Display","subtitle":"Put your store in a premium rewards placement for shoppers to notice.","cost_noms":2500,"icon":"megaphone-outline","accent":"#F4B75D"},
+        {"key":"profile_glow","title":"Profile Glow","subtitle":"Add a premium look to your store profile when this reward opens.","cost_noms":1200,"icon":"diamond-outline","accent":"#A78BFA"}
       ]
     }'::jsonb,
     true
@@ -850,9 +850,9 @@ VALUES
     'rewards_ui',
     '{
       "hero_title":"Noms Rewards",
-      "hero_subtitle":"Earn off-chain loyalty points for useful marketplace activity.",
-      "empty_promotion_title":"Promote a store here",
-      "empty_promotion_subtitle":"Reward admins can control this top placement from the admin dashboard."
+      "hero_subtitle":"Earn noms for videos, store activity, shopping, social actions, and stock milestones.",
+      "empty_promotion_title":"Featured stores",
+      "empty_promotion_subtitle":"Sponsored stores and special offers can appear here."
     }'::jsonb,
     true
   )

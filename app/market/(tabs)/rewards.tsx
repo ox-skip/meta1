@@ -62,14 +62,14 @@ const CATEGORY_COPY: Record<RewardCategory, { label: string; color: string; icon
   market: { label: "Market", color: TEAL, icon: "storefront-outline" },
   social: { label: "Social", color: BLUE, icon: "people-outline" },
   onchain: { label: "Stock", color: "#A78BFA", icon: "trending-up-outline" },
-  custom: { label: "Custom", color: "#FB7185", icon: "flash-outline" },
+  custom: { label: "Bonus", color: "#FB7185", icon: "flash-outline" },
 };
 
 const DEFAULT_REDEMPTIONS = [
   {
     key: "listing_boost",
     title: "Listing Boost",
-    subtitle: "Push one listing into stronger discovery once redemption fulfillment is enabled.",
+    subtitle: "Give one listing a stronger spotlight in buyer discovery.",
     cost_noms: 750,
     icon: "rocket-outline" as keyof typeof Ionicons.glyphMap,
     accent: TEAL,
@@ -77,7 +77,7 @@ const DEFAULT_REDEMPTIONS = [
   {
     key: "sponsored_top_display",
     title: "Sponsored Top Display",
-    subtitle: "Request a top rewards placement for a store campaign controlled by reward admins.",
+    subtitle: "Put your store in a premium rewards placement for shoppers to notice.",
     cost_noms: 2500,
     icon: "megaphone-outline" as keyof typeof Ionicons.glyphMap,
     accent: GOLD,
@@ -85,7 +85,7 @@ const DEFAULT_REDEMPTIONS = [
   {
     key: "profile_glow",
     title: "Profile Glow",
-    subtitle: "Reserve a premium profile treatment for high-trust stores and creators.",
+    subtitle: "Add a premium look to your store profile when this reward opens.",
     cost_noms: 1200,
     icon: "diamond-outline" as keyof typeof Ionicons.glyphMap,
     accent: "#A78BFA",
@@ -133,13 +133,59 @@ function statusLabel(task: RewardTask) {
 }
 
 function actionLabel(task: RewardTask) {
+  if (task.availability?.status === "completed") return "Earned";
+  if (task.availability?.status === "review_pending") return "In review";
+  if (task.availability?.available && task.trigger_type === "client_claim") return "Claim noms";
+  if (task.trigger_type === "ad_reward") return "Watch";
+  if (task.trigger_type === "admin_review") return "Submit proof";
+  if (task.availability?.available) return "Claim noms";
   const custom = typeof task.ui?.primaryLabel === "string" ? task.ui.primaryLabel : null;
   if (custom) return custom;
-  if (task.trigger_type === "ad_reward") return "Watch";
-  if (task.trigger_type === "admin_review") return "Submit";
-  if (task.availability?.available) return "Claim";
   if (task.action_route) return "Open";
   return "Locked";
+}
+
+function taskDiagnostic(task: RewardTask) {
+  const availability = task.availability;
+  if (!availability) return "Checking this reward against your account.";
+  if (availability.status === "available") {
+    if (task.trigger_type === "ad_reward") return "Ready. Watch the full ad to earn this reward.";
+    if (task.trigger_type === "admin_review") return "Ready. Submit proof and a reward reviewer will check it.";
+    return "Requirement met. Tap Claim noms to add this reward.";
+  }
+  if (availability.status === "completed") return "Already added to your Noms balance.";
+  if (availability.status === "review_pending") return "Submitted. A reward reviewer will check it.";
+  if (availability.status === "cooldown") {
+    return availability.next_available_at
+      ? `You can earn this again ${shortTime(availability.next_available_at)}.`
+      : "This reward is cooling down.";
+  }
+  if (availability.status === "capped") return availability.reason || "You reached the limit for this reward.";
+  if (availability.status === "inactive") return "This reward is paused right now.";
+  return availability.reason || "Finish the requirement to unlock this reward.";
+}
+
+function taskDiagnosticIcon(task: RewardTask): keyof typeof Ionicons.glyphMap {
+  const status = task.availability?.status;
+  if (status === "available") return "checkmark-circle-outline";
+  if (status === "completed") return "ribbon-outline";
+  if (status === "review_pending") return "hourglass-outline";
+  if (status === "cooldown" || status === "capped") return "time-outline";
+  return "information-circle-outline";
+}
+
+function taskDiagnosticColor(task: RewardTask) {
+  const status = task.availability?.status;
+  if (status === "available" || status === "completed") return GREEN;
+  if (status === "review_pending" || status === "cooldown" || status === "capped") return GOLD;
+  return MUTED;
+}
+
+function taskPrimaryEnabled(task: RewardTask) {
+  const availability = task.availability;
+  if (availability?.status === "completed" || availability?.status === "review_pending") return false;
+  if (availability?.available) return true;
+  return Boolean(task.action_route && availability?.status === "locked");
 }
 
 function StatPill({
@@ -233,10 +279,11 @@ function TaskCard({
   const target = Math.max(1, availability?.progress_target ?? 1);
   const current = Math.max(0, availability?.progress_current ?? 0);
   const pct = Math.max(0, Math.min(1, current / target));
-  const ready = availability?.available || task.trigger_type === "ad_reward";
   const completed = availability?.status === "completed";
   const pending = availability?.status === "review_pending";
-  const disabled = busy || (!ready && !task.action_route);
+  const disabled = busy || !taskPrimaryEnabled(task);
+  const diagnostic = taskDiagnostic(task);
+  const diagnosticColor = taskDiagnosticColor(task);
 
   return (
     <View
@@ -328,6 +375,12 @@ function TaskCard({
             }}
           >
             <View style={{ width: `${pct * 100}%`, height: "100%", backgroundColor: completed ? GREEN : accent }} />
+          </View>
+          <View style={{ marginTop: 9, flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+            <Ionicons name={taskDiagnosticIcon(task)} size={13} color={diagnosticColor} style={{ marginTop: 2 }} />
+            <Text style={{ flex: 1, color: diagnosticColor, fontSize: 11.5, lineHeight: 16, fontWeight: "800" }}>
+              {diagnostic}
+            </Text>
           </View>
         </View>
 
@@ -470,7 +523,7 @@ function RedemptionShelf({ home }: { home: RewardsHome }) {
     <View style={{ gap: 12 }}>
       <SectionTitle
         title="Redeem noms"
-        subtitle="Noms stay off-chain. The catalog is designed to be managed from the database and reward admin dashboard."
+        subtitle="Use your noms for marketplace perks as new offers open."
       />
       {catalog.map((item: any) => {
         const cost = Number(item.cost_noms ?? item.cost ?? 0);
@@ -508,7 +561,7 @@ function RedemptionShelf({ home }: { home: RewardsHome }) {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>{String(item.title || "Reward")}</Text>
               <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                {String(item.subtitle || item.description || "Reward admin managed benefit.")}
+                {String(item.subtitle || item.description || "Marketplace perk.")}
               </Text>
             </View>
             <View style={{ alignItems: "flex-end", gap: 8 }}>
@@ -570,7 +623,7 @@ function LedgerList({ home }: { home: RewardsHome }) {
 
   return (
     <View style={{ gap: 10 }}>
-      <SectionTitle title="Noms ledger" subtitle="Every balance change is written as an immutable reward event." />
+      <SectionTitle title="Noms history" subtitle="Every nom you earn or spend appears here." />
       {home.ledger.map((entry) => {
         const positive = entry.delta >= 0;
         return (
@@ -689,11 +742,11 @@ export default function RewardsScreen() {
 
   const uiConfig = home?.config?.rewards_ui ?? {};
   const heroTitle = String(uiConfig.hero_title || "Noms Rewards");
-  const heroSubtitle = String(uiConfig.hero_subtitle || "Earn off-chain loyalty points for useful marketplace activity.");
+  const heroSubtitle = String(uiConfig.hero_subtitle || "Earn noms for videos, store activity, shopping, social actions, and stock milestones.");
 
   async function handlePromotionPress(promotion: RewardPromotion | null) {
     if (!promotion) {
-      Alert.alert("Top placement", "Reward admins can publish a sponsored store placement here from the admin dashboard.");
+      Alert.alert("Featured stores", "Sponsored stores and special offers can appear here.");
       return;
     }
     await recordRewardPromotionEvent({
@@ -720,10 +773,24 @@ export default function RewardsScreen() {
     if (busyKey) return;
     setBusyKey(task.id);
     try {
+      if (task.availability?.status === "completed") {
+        Alert.alert("Already earned", "This reward has already been added to your Noms balance.");
+        return;
+      }
+
+      if (task.availability?.status === "review_pending") {
+        Alert.alert("Review in progress", taskDiagnostic(task));
+        return;
+      }
+
       if (task.trigger_type === "ad_reward") {
+        if (!task.availability?.available) {
+          Alert.alert("Reward not ready", taskDiagnostic(task));
+          return;
+        }
         const result = await watchRewardedAdForNoms(task.task_key);
         if (result.result.earned) {
-          Alert.alert("Ad completed", "Noms are awarded after the Google server callback confirms the reward.");
+          Alert.alert("Ad completed", "If the reward was granted, your Noms balance will update after refresh.");
         } else {
           Alert.alert("Ad not completed", result.result.error || "Watch the full rewarded video to earn noms.");
         }
@@ -734,7 +801,7 @@ export default function RewardsScreen() {
       if (task.availability?.available) {
         const claim = await claimRewardTask({ task_id: task.id });
         if (claim.status === "pending_review") {
-          Alert.alert("Submitted", "This task is now waiting for reward admin review.");
+          Alert.alert("Submitted", "Your proof is in review. You will see the reward here once it is approved.");
         } else {
           Alert.alert("Noms added", `You earned ${formatNoms(task.reward_noms)}.`);
         }
@@ -747,7 +814,7 @@ export default function RewardsScreen() {
         return;
       }
 
-      Alert.alert("Not ready yet", task.availability?.reason || statusLabel(task));
+      Alert.alert("Not ready yet", taskDiagnostic(task));
     } catch (e) {
       Alert.alert("Reward action failed", String((e as any)?.message || e || "Please try again."));
     } finally {
@@ -760,7 +827,7 @@ export default function RewardsScreen() {
       return (
         <View style={{ padding: 22, alignItems: "center" }}>
           <ActivityIndicator color={TEAL} />
-          <Text style={{ marginTop: 12, color: MUTED, fontSize: 13 }}>Loading your Noms economy...</Text>
+          <Text style={{ marginTop: 12, color: MUTED, fontSize: 13 }}>Loading rewards...</Text>
         </View>
       );
     }
@@ -781,8 +848,8 @@ export default function RewardsScreen() {
     return (
       <View style={{ gap: 12 }}>
         <SectionTitle
-          title={tab === "earn" ? "Available tasks" : `${TABS.find((item) => item.key === tab)?.label || "Reward"} tasks`}
-          subtitle="Tasks, reward values, caps, and review rules are loaded from the database."
+          title={tab === "earn" ? "Earn noms" : `${TABS.find((item) => item.key === tab)?.label || "Reward"} rewards`}
+          subtitle="Complete eligible actions, then claim your noms."
         />
         {visibleTasks.length ? (
           visibleTasks.map((task) => (
@@ -791,8 +858,8 @@ export default function RewardsScreen() {
         ) : (
           <EmptyState
             icon="gift-outline"
-            title="No tasks in this lane yet"
-            subtitle="Reward admins can add, pause, and tune tasks without redeploying the app."
+            title="More rewards coming"
+            subtitle="New earning chances will appear here."
           />
         )}
       </View>
@@ -859,7 +926,7 @@ export default function RewardsScreen() {
                 }}
               >
                 <Ionicons name="shield-outline" size={13} color={TEAL} />
-                <Text style={{ color: TEXT, fontSize: 11, fontWeight: "900" }}>Off-chain loyalty points</Text>
+                <Text style={{ color: TEXT, fontSize: 11, fontWeight: "900" }}>Marketplace loyalty points</Text>
               </View>
               <Text style={{ marginTop: 16, color: TEXT, fontSize: 31, lineHeight: 36, fontWeight: "900" }}>{heroTitle}</Text>
               <Text style={{ marginTop: 8, maxWidth: 560, color: "rgba(255,253,247,0.74)", fontSize: 14, lineHeight: 21 }}>
@@ -899,7 +966,7 @@ export default function RewardsScreen() {
           promotion={topPromotion}
           fallbackTitle={String(uiConfig.empty_promotion_title || "Promote a store here")}
           fallbackSubtitle={String(
-            uiConfig.empty_promotion_subtitle || "Reward admins can control this top placement from the admin dashboard.",
+            uiConfig.empty_promotion_subtitle || "Featured stores and special offers can appear here.",
           )}
           onPress={() => handlePromotionPress(topPromotion)}
         />
@@ -967,9 +1034,9 @@ export default function RewardsScreen() {
             }}
           >
             <View style={{ flex: 1 }}>
-              <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>Production reward economy</Text>
+              <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }}>Your rewards</Text>
               <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                Noms are off-chain only. Ads, task rules, top placements, reviews, and future redemption catalog entries are database controlled.
+                Noms are BestCity loyalty points. Earn them for useful marketplace actions and spend them on perks as new offers open.
               </Text>
             </View>
             <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Updated {shortDate(home.generated_at)}</Text>
