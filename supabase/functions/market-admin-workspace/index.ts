@@ -460,12 +460,12 @@ async function loadRewards(admin: any) {
       .from("market_seller_profiles")
       .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
       .order("updated_at", { ascending: false })
-      .limit(100),
+      .limit(250),
     admin
       .from("market_listings")
       .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
       .order("updated_at", { ascending: false })
-      .limit(100),
+      .limit(250),
   ]);
 
   if (accountsRes.error) throw accountsRes.error;

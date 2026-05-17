@@ -745,51 +745,140 @@ export default function MarketAdminIndex() {
     return Boolean(admin?.role_key === "super_admin" || admin?.permissions.includes("*") || admin?.permissions.includes(permission));
   }
 
-  function useStoreForRewardFeature(seller: any) {
+  function storeFeatureDraft(seller: any) {
     const storeId = String(seller?.user_id ?? seller?.id ?? "").trim();
-    if (!storeId) return;
     const name = String(seller?.business_name || seller?.display_name || seller?.market_username || seller?.profile?.full_name || seller?.profile?.username || "Featured store");
+    return {
+      storeId,
+      title: name,
+      subtitle: seller?.market_username ? `Shop @${seller.market_username} and discover their latest offers.` : "Shop this featured store and discover their latest offers.",
+      metadata: { source: "admin_dashboard", feature_type: "store", store_id: storeId },
+    };
+  }
+
+  function listingFeatureDraft(listing: any) {
+    const listingId = String(listing?.id ?? "").trim();
+    const storeId = String(listing?.seller_id ?? listing?.seller?.id ?? "").trim();
+    const title = String(listing?.title || "Featured listing");
+    return {
+      listingId,
+      storeId,
+      title,
+      subtitle: "Feature this listing for shoppers looking at rewards.",
+      metadata: { source: "admin_dashboard", feature_type: "listing", listing_id: listingId, store_id: storeId || undefined },
+    };
+  }
+
+  function useStoreForRewardFeature(seller: any) {
+    const draft = storeFeatureDraft(seller);
+    if (!draft.storeId) return;
     setRewardPromotionId("");
     setRewardPromotionPlacement("rewards_top");
-    setRewardPromotionTitle(name);
-    setRewardPromotionSubtitle(seller?.market_username ? `Shop @${seller.market_username} and discover their latest offers.` : "Shop this featured store and discover their latest offers.");
+    setRewardPromotionTitle(draft.title);
+    setRewardPromotionSubtitle(draft.subtitle);
     setRewardPromotionMediaUrl("");
     setRewardPromotionSponsorLabel("Featured");
     setRewardPromotionCtaLabel("View store");
     setRewardPromotionCtaRoute("");
-    setRewardPromotionStoreId(storeId);
+    setRewardPromotionStoreId(draft.storeId);
     setRewardPromotionListingId("");
     setRewardPromotionPriority("100");
     setRewardPromotionStartsAt("");
     setRewardPromotionEndsAt("");
-    setRewardPromotionMetadata(JSON.stringify({ source: "admin_dashboard", feature_type: "store", store_id: storeId }, null, 2));
+    setRewardPromotionMetadata(JSON.stringify(draft.metadata, null, 2));
     setActiveModule("rewards");
     setRewardTab("build");
     setNotice("Store UUID added to the rewards feature builder.");
   }
 
   function useListingForRewardFeature(listing: any) {
-    const listingId = String(listing?.id ?? "").trim();
-    if (!listingId) return;
-    const storeId = String(listing?.seller_id ?? listing?.seller?.id ?? "").trim();
-    const title = String(listing?.title || "Featured listing");
+    const draft = listingFeatureDraft(listing);
+    if (!draft.listingId) return;
     setRewardPromotionId("");
     setRewardPromotionPlacement("rewards_top");
-    setRewardPromotionTitle(title);
-    setRewardPromotionSubtitle(`Feature this listing for shoppers looking at rewards.`);
+    setRewardPromotionTitle(draft.title);
+    setRewardPromotionSubtitle(draft.subtitle);
     setRewardPromotionMediaUrl("");
     setRewardPromotionSponsorLabel("Featured");
     setRewardPromotionCtaLabel("View listing");
     setRewardPromotionCtaRoute("");
-    setRewardPromotionStoreId(storeId);
-    setRewardPromotionListingId(listingId);
+    setRewardPromotionStoreId(draft.storeId);
+    setRewardPromotionListingId(draft.listingId);
     setRewardPromotionPriority("100");
     setRewardPromotionStartsAt("");
     setRewardPromotionEndsAt("");
-    setRewardPromotionMetadata(JSON.stringify({ source: "admin_dashboard", feature_type: "listing", listing_id: listingId, store_id: storeId || undefined }, null, 2));
+    setRewardPromotionMetadata(JSON.stringify(draft.metadata, null, 2));
     setActiveModule("rewards");
     setRewardTab("build");
     setNotice("Listing UUID added to the rewards feature builder.");
+  }
+
+  function useCampaignForRewardFeature() {
+    setRewardPromotionId("");
+    setRewardPromotionPlacement("rewards_top");
+    setRewardPromotionTitle("");
+    setRewardPromotionSubtitle("");
+    setRewardPromotionMediaUrl("");
+    setRewardPromotionSponsorLabel("Campaign");
+    setRewardPromotionCtaLabel("View offer");
+    setRewardPromotionCtaRoute("/market/(tabs)");
+    setRewardPromotionStoreId("");
+    setRewardPromotionListingId("");
+    setRewardPromotionPriority("100");
+    setRewardPromotionStartsAt("");
+    setRewardPromotionEndsAt("");
+    setRewardPromotionMetadata(JSON.stringify({ source: "admin_dashboard", feature_type: "campaign" }, null, 2));
+    setActiveModule("rewards");
+    setRewardTab("build");
+    setNotice("Campaign feature builder is ready.");
+  }
+
+  async function createStoreFeatureNow(seller: any) {
+    const draft = storeFeatureDraft(seller);
+    if (!draft.storeId) return;
+    await performAction(
+      `reward-feature-store-${draft.storeId}`,
+      {
+        action: "upsert_reward_promotion",
+        placement_key: "rewards_top",
+        title: draft.title,
+        subtitle: draft.subtitle,
+        media_url: "",
+        sponsor_label: "Featured",
+        cta_label: "View store",
+        cta_route: "",
+        store_id: draft.storeId,
+        listing_id: "",
+        priority: "100",
+        metadata: draft.metadata,
+        active: true,
+      },
+      false,
+    );
+  }
+
+  async function createListingFeatureNow(listing: any) {
+    const draft = listingFeatureDraft(listing);
+    if (!draft.listingId) return;
+    await performAction(
+      `reward-feature-listing-${draft.listingId}`,
+      {
+        action: "upsert_reward_promotion",
+        placement_key: "rewards_top",
+        title: draft.title,
+        subtitle: draft.subtitle,
+        media_url: "",
+        sponsor_label: "Featured",
+        cta_label: "View listing",
+        cta_route: "",
+        store_id: draft.storeId,
+        listing_id: draft.listingId,
+        priority: "100",
+        metadata: draft.metadata,
+        active: true,
+      },
+      false,
+    );
   }
 
   function openAdminOrder(orderId?: string | null) {
@@ -1616,6 +1705,8 @@ export default function MarketAdminIndex() {
                     <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                       <InfoLine label="User" value={personLabel(selectedTicket.user)} />
                       <InfoLine label="User slug" value={ticketDmSlug ? `@${ticketDmSlug}` : "n/a"} />
+                      <CopyableIdLine label="User UUID" value={selectedTicket.user_id ?? selectedTicket.user?.id} />
+                      {selectedTicket.user?.seller ? <CopyableIdLine label="Store UUID" value={selectedTicket.user?.seller?.user_id ?? selectedTicket.user_id ?? selectedTicket.user?.id} /> : null}
                       <InfoLine label="Order" value={selectedTicket.related_order_id ? shortId(selectedTicket.related_order_id) : "n/a"} />
                       <InfoLine label="Assigned" value={selectedTicket.assigned_admin ? personLabel(selectedTicket.assigned_admin) : "Unassigned"} />
                       <InfoLine label="Last message" value={formatDate(selectedTicket.last_message_at)} />
@@ -2009,6 +2100,14 @@ export default function MarketAdminIndex() {
                   onPress={() => useStoreForRewardFeature(seller)}
                 />
                 <ActionButton
+                  icon="flash-outline"
+                  label="Feature now"
+                  color={SUCCESS}
+                  disabled={!canFeaturePromotions}
+                  loading={workingKey === `reward-feature-store-${seller.user_id}`}
+                  onPress={() => void createStoreFeatureNow(seller)}
+                />
+                <ActionButton
                   icon={active ? "pause-circle-outline" : "play-circle-outline"}
                   label={active ? "Pause store" : "Activate store"}
                   color={active ? DANGER : SUCCESS}
@@ -2077,6 +2176,14 @@ export default function MarketAdminIndex() {
                   color={SUCCESS}
                   disabled={!canFeaturePromotions}
                   onPress={() => useListingForRewardFeature(listing)}
+                />
+                <ActionButton
+                  icon="flash-outline"
+                  label="Feature now"
+                  color={SUCCESS}
+                  disabled={!canFeaturePromotions}
+                  loading={workingKey === `reward-feature-listing-${listing.id}`}
+                  onPress={() => void createListingFeatureNow(listing)}
                 />
                 <ActionButton
                   icon="person-circle-outline"
@@ -2963,7 +3070,10 @@ export default function MarketAdminIndex() {
                       Show a store, listing, or seasonal campaign at the top of the rewards page.
                     </Text>
                   </View>
-                  <ActionButton icon="add-circle-outline" label="New feature" color={ACCENT} disabled={!canManagePromotions} onPress={resetPromotionBuilder} />
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                    <ActionButton icon="add-circle-outline" label="New feature" color={ACCENT} disabled={!canManagePromotions} onPress={resetPromotionBuilder} />
+                    <ActionButton icon="sparkles-outline" label="New campaign" color={WARNING} disabled={!canManagePromotions} onPress={useCampaignForRewardFeature} />
+                  </View>
                 </View>
                 {rewardPromotionId ? <Pill label={`EDITING ${shortId(rewardPromotionId)}`} color={ACCENT} /> : null}
                 <View style={{ borderRadius: 8, padding: 12, backgroundColor: "rgba(45,212,191,0.08)", borderWidth: 1, borderColor: "rgba(45,212,191,0.2)", gap: 8 }}>
@@ -3044,6 +3154,14 @@ export default function MarketAdminIndex() {
                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                           <ActionButton icon="copy-outline" label="Copy ID" color={ACCENT} onPress={() => void copyTextValue("Store UUID", seller.user_id)} />
                           <ActionButton icon="megaphone-outline" label="Use store" color={SUCCESS} disabled={!canManagePromotions} onPress={() => useStoreForRewardFeature(seller)} />
+                          <ActionButton
+                            icon="flash-outline"
+                            label="Feature now"
+                            color={SUCCESS}
+                            disabled={!canManagePromotions}
+                            loading={workingKey === `reward-feature-store-${seller.user_id}`}
+                            onPress={() => void createStoreFeatureNow(seller)}
+                          />
                         </View>
                       </View>
                     )) : (
@@ -3069,6 +3187,14 @@ export default function MarketAdminIndex() {
                         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                           <ActionButton icon="copy-outline" label="Copy ID" color={ACCENT} onPress={() => void copyTextValue("Listing UUID", listing.id)} />
                           <ActionButton icon="megaphone-outline" label="Use listing" color={SUCCESS} disabled={!canManagePromotions} onPress={() => useListingForRewardFeature(listing)} />
+                          <ActionButton
+                            icon="flash-outline"
+                            label="Feature now"
+                            color={SUCCESS}
+                            disabled={!canManagePromotions}
+                            loading={workingKey === `reward-feature-listing-${listing.id}`}
+                            onPress={() => void createListingFeatureNow(listing)}
+                          />
                         </View>
                       </View>
                     )) : (

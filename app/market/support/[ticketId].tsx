@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -16,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Clipboard from "expo-clipboard";
 
 import AppHeader from "@/components/common/AppHeader";
 import {
@@ -202,6 +204,34 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+async function copyValue(label: string, value?: string | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return;
+  try {
+    await Clipboard.setStringAsync(text);
+    Alert.alert("Copied", `${label} copied.`);
+  } catch {
+    Alert.alert("Copy failed", `Unable to copy ${label.toLowerCase()} right now.`);
+  }
+}
+
+function CopyableInfoLine({ label, value }: { label: string; value?: string | null }) {
+  const text = String(value ?? "").trim();
+  return (
+    <View style={{ minWidth: 190, flex: 1 }}>
+      <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800", textTransform: "uppercase" }}>{label}</Text>
+      <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 7 }}>
+        <Text selectable numberOfLines={1} style={{ flex: 1, color: TEXT, fontSize: 12, fontWeight: "900" }}>{text || "n/a"}</Text>
+        {text ? (
+          <Pressable onPress={() => void copyValue(label, text)} hitSlop={10} style={{ padding: 3 }}>
+            <Ionicons name="copy-outline" size={15} color={AMBER} />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function PendingFiles({ files, onRemove }: { files: PickedFile[]; onRemove: (id: string) => void }) {
   if (!files.length) return null;
   return (
@@ -320,6 +350,12 @@ function MessageBubble({
           </Text>
           <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900" }}>{messageSlug(message)}</Text>
         </View>
+        {adminMode && !fromAdmin && message.sender_id ? (
+          <Pressable onPress={() => void copyValue("Sender UUID", message.sender_id)} style={{ marginTop: 5, flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start" }}>
+            <Text selectable style={{ color: FAINT, fontSize: 10, fontWeight: "800" }}>UUID {message.sender_id}</Text>
+            <Ionicons name="copy-outline" size={12} color={AMBER} />
+          </Pressable>
+        ) : null}
         {message.body ? <Text style={{ marginTop: 7, color: TEXT, fontSize: 14, lineHeight: 21 }}>{message.body}</Text> : null}
         <AttachmentList attachments={message.attachments as SupportAttachment[] | undefined} onOpen={onOpenAttachment} />
       </View>
@@ -586,6 +622,8 @@ export default function SupportTicketThreadScreen() {
                   <InfoLine label="Status" value={labelFromKey(ticket.status)} />
                   <InfoLine label="Priority" value={labelFromKey(ticket.priority)} />
                   <InfoLine label={adminMode ? "User" : "Created"} value={adminMode ? personLabel(ticket.user) : formatDate(ticket.created_at)} />
+                  {adminMode ? <CopyableInfoLine label="User UUID" value={ticket.user_id || ticket.user?.id} /> : null}
+                  {adminMode && ticket.user?.seller ? <CopyableInfoLine label="Store UUID" value={ticket.user?.seller?.user_id || ticket.user_id || ticket.user?.id} /> : null}
                   <InfoLine label="Last message" value={formatDate(ticket.last_message_at)} />
                 </View>
               ) : null}
