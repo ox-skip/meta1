@@ -344,14 +344,14 @@ BEGIN
   BEGIN
     PERFORM public.market_reward_ensure_account(p_user_id);
 
-    UPDATE public.market_reward_accounts
+    UPDATE public.market_reward_accounts AS account
     SET
-      balance = balance + p_amount,
-      lifetime_earned = lifetime_earned + p_amount,
+      balance = account.balance + p_amount,
+      lifetime_earned = account.lifetime_earned + p_amount,
       last_earned_at = now(),
       updated_at = now()
-    WHERE user_id = p_user_id
-    RETURNING market_reward_accounts.balance INTO v_balance;
+    WHERE account.user_id = p_user_id
+    RETURNING account.balance INTO v_balance;
 
     INSERT INTO public.market_reward_ledger (
       user_id,
@@ -456,15 +456,15 @@ BEGIN
   BEGIN
     PERFORM public.market_reward_ensure_account(p_user_id);
 
-    UPDATE public.market_reward_accounts
+    UPDATE public.market_reward_accounts AS account
     SET
-      balance = balance - p_amount,
-      lifetime_spent = lifetime_spent + p_amount,
+      balance = account.balance - p_amount,
+      lifetime_spent = account.lifetime_spent + p_amount,
       last_spent_at = now(),
       updated_at = now()
-    WHERE user_id = p_user_id
-      AND balance >= p_amount
-    RETURNING market_reward_accounts.balance INTO v_balance;
+    WHERE account.user_id = p_user_id
+      AND account.balance >= p_amount
+    RETURNING account.balance INTO v_balance;
 
     IF v_balance IS NULL THEN
       RAISE EXCEPTION 'insufficient noms balance';

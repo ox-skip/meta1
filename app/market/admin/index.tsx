@@ -623,14 +623,20 @@ export default function MarketAdminIndex() {
   const [rewardTaskNoms, setRewardTaskNoms] = useState("100");
   const [rewardTaskRoute, setRewardTaskRoute] = useState("");
   const [rewardTaskRules, setRewardTaskRules] = useState("{\"check\":\"admin_review\"}");
+  const [rewardPromotionId, setRewardPromotionId] = useState("");
   const [rewardPromotionPlacement, setRewardPromotionPlacement] = useState("rewards_top");
   const [rewardPromotionTitle, setRewardPromotionTitle] = useState("");
   const [rewardPromotionSubtitle, setRewardPromotionSubtitle] = useState("");
   const [rewardPromotionMediaUrl, setRewardPromotionMediaUrl] = useState("");
+  const [rewardPromotionSponsorLabel, setRewardPromotionSponsorLabel] = useState("Featured");
+  const [rewardPromotionCtaLabel, setRewardPromotionCtaLabel] = useState("View store");
   const [rewardPromotionCtaRoute, setRewardPromotionCtaRoute] = useState("");
   const [rewardPromotionStoreId, setRewardPromotionStoreId] = useState("");
   const [rewardPromotionListingId, setRewardPromotionListingId] = useState("");
   const [rewardPromotionPriority, setRewardPromotionPriority] = useState("100");
+  const [rewardPromotionStartsAt, setRewardPromotionStartsAt] = useState("");
+  const [rewardPromotionEndsAt, setRewardPromotionEndsAt] = useState("");
+  const [rewardPromotionMetadata, setRewardPromotionMetadata] = useState("{\"source\":\"admin_dashboard\"}");
   const [rewardAdjustUserId, setRewardAdjustUserId] = useState("");
   const [rewardAdjustAmount, setRewardAdjustAmount] = useState("");
   const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
@@ -2595,21 +2601,31 @@ export default function MarketAdminIndex() {
     }
 
     async function submitRewardPromotion() {
+      let metadata: Record<string, unknown> = {};
+      try {
+        metadata = rewardPromotionMetadata.trim() ? JSON.parse(rewardPromotionMetadata) : {};
+      } catch {
+        setError("Promotion metadata must be valid JSON.");
+        return;
+      }
       await performAction(
         `reward-promo-${rewardPromotionPlacement.trim()}-${rewardPromotionTitle.trim()}`,
         {
           action: "upsert_reward_promotion",
+          promotion_id: rewardPromotionId.trim(),
           placement_key: rewardPromotionPlacement.trim(),
           title: rewardPromotionTitle.trim(),
           subtitle: rewardPromotionSubtitle.trim(),
           media_url: rewardPromotionMediaUrl.trim(),
+          sponsor_label: rewardPromotionSponsorLabel.trim(),
+          cta_label: rewardPromotionCtaLabel.trim(),
           cta_route: rewardPromotionCtaRoute.trim(),
           store_id: rewardPromotionStoreId.trim(),
           listing_id: rewardPromotionListingId.trim(),
           priority: rewardPromotionPriority.trim(),
-          sponsor_label: "Promoted",
-          cta_label: "View store",
-          metadata: { source: "admin_dashboard" },
+          starts_at: rewardPromotionStartsAt.trim(),
+          ends_at: rewardPromotionEndsAt.trim(),
+          metadata,
           active: true,
         },
         false,
@@ -2641,15 +2657,38 @@ export default function MarketAdminIndex() {
       setRewardTab("build");
     }
 
+    function resetPromotionBuilder() {
+      setRewardPromotionId("");
+      setRewardPromotionPlacement("rewards_top");
+      setRewardPromotionTitle("");
+      setRewardPromotionSubtitle("");
+      setRewardPromotionMediaUrl("");
+      setRewardPromotionSponsorLabel("Featured");
+      setRewardPromotionCtaLabel("View store");
+      setRewardPromotionCtaRoute("");
+      setRewardPromotionStoreId("");
+      setRewardPromotionListingId("");
+      setRewardPromotionPriority("100");
+      setRewardPromotionStartsAt("");
+      setRewardPromotionEndsAt("");
+      setRewardPromotionMetadata("{\"source\":\"admin_dashboard\"}");
+    }
+
     function loadPromotionIntoBuilder(promo: any) {
+      setRewardPromotionId(String(promo.id ?? ""));
       setRewardPromotionPlacement(String(promo.placement_key ?? "rewards_top"));
       setRewardPromotionTitle(String(promo.title ?? ""));
       setRewardPromotionSubtitle(String(promo.subtitle ?? ""));
       setRewardPromotionMediaUrl(String(promo.media_url ?? ""));
+      setRewardPromotionSponsorLabel(String(promo.sponsor_label ?? "Featured"));
+      setRewardPromotionCtaLabel(String(promo.cta_label ?? "View store"));
       setRewardPromotionCtaRoute(String(promo.cta_route ?? ""));
       setRewardPromotionStoreId(String(promo.store_id ?? ""));
       setRewardPromotionListingId(String(promo.listing_id ?? ""));
       setRewardPromotionPriority(String(promo.priority ?? 100));
+      setRewardPromotionStartsAt(String(promo.starts_at ?? ""));
+      setRewardPromotionEndsAt(String(promo.ends_at ?? ""));
+      setRewardPromotionMetadata(JSON.stringify(promo.metadata ?? { source: "admin_dashboard" }, null, 2));
       setRewardTab("build");
     }
 
@@ -2658,7 +2697,7 @@ export default function MarketAdminIndex() {
         <SectionHeader
           icon="gift-outline"
           title="Noms rewards and promoted placements"
-          subtitle="Control off-chain points, custom reward tasks, Google ad rewards, sponsored top display, reviews, and balance adjustments from the database."
+          subtitle="Manage noms, reward tasks, featured stores, sponsored videos, reviews, and balance adjustments in one place."
           count={
             rewardTab === "tasks" ? tasks.length :
             rewardTab === "promotions" ? promotions.length :
@@ -2723,7 +2762,7 @@ export default function MarketAdminIndex() {
                 <View>
                   <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Create or update reward task</Text>
                   <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                    Task rules live in the database. Use admin_review for custom tasks, ad_reward for rewarded video, and client_claim for marketplace checks.
+                    Use review tasks for proof-based challenges, ad rewards for sponsored videos, and claim tasks for marketplace milestones.
                   </Text>
                 </View>
                 <AdminTextInput value={rewardTaskKey} onChangeText={setRewardTaskKey} placeholder="task_key, for example follow_campaign_01" autoCapitalize="none" />
@@ -2788,16 +2827,37 @@ export default function MarketAdminIndex() {
 
             <RecordCard>
               <View style={{ gap: 12 }}>
-                <View>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Create promoted top placement</Text>
-                  <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-                    This powers the rewards top display for stores or listings that need promotion.
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <View style={{ flex: 1, minWidth: 240 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Feature a store or campaign</Text>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                      Show a store, listing, or seasonal campaign at the top of the rewards page.
+                    </Text>
+                  </View>
+                  <ActionButton icon="add-circle-outline" label="New feature" color={ACCENT} disabled={!canManagePromotions} onPress={resetPromotionBuilder} />
+                </View>
+                {rewardPromotionId ? <Pill label={`EDITING ${shortId(rewardPromotionId)}`} color={ACCENT} /> : null}
+                <View style={{ borderRadius: 8, padding: 12, backgroundColor: "rgba(45,212,191,0.08)", borderWidth: 1, borderColor: "rgba(45,212,191,0.2)", gap: 8 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Quick guide</Text>
+                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    Use rewards_top for the rewards page banner. For a store feature, paste the store user UUID. For a listing feature, paste the listing UUID. For a campaign, leave both IDs blank and add the route shoppers should open.
+                  </Text>
+                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    Lower priority numbers appear first. Leave dates blank to show it whenever Active is on.
                   </Text>
                 </View>
                 <AdminTextInput value={rewardPromotionPlacement} onChangeText={setRewardPromotionPlacement} placeholder="placement_key, for example rewards_top" autoCapitalize="none" />
                 <AdminTextInput value={rewardPromotionTitle} onChangeText={setRewardPromotionTitle} placeholder="Promotion title" />
                 <AdminTextInput value={rewardPromotionSubtitle} onChangeText={setRewardPromotionSubtitle} placeholder="Promotion subtitle" multiline />
                 <AdminTextInput value={rewardPromotionMediaUrl} onChangeText={setRewardPromotionMediaUrl} placeholder="Optional media URL" autoCapitalize="none" />
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 180 }}>
+                    <AdminTextInput value={rewardPromotionSponsorLabel} onChangeText={setRewardPromotionSponsorLabel} placeholder="Sponsor label, for example Featured" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 180 }}>
+                    <AdminTextInput value={rewardPromotionCtaLabel} onChangeText={setRewardPromotionCtaLabel} placeholder="Button text, for example View store" />
+                  </View>
+                </View>
                 <AdminTextInput value={rewardPromotionCtaRoute} onChangeText={setRewardPromotionCtaRoute} placeholder="Optional app route, for example /market/profile/store" autoCapitalize="none" />
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                   <View style={{ flex: 1, minWidth: 220 }}>
@@ -2810,10 +2870,19 @@ export default function MarketAdminIndex() {
                     <AdminTextInput value={rewardPromotionPriority} onChangeText={setRewardPromotionPriority} placeholder="Priority" />
                   </View>
                 </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <AdminTextInput value={rewardPromotionStartsAt} onChangeText={setRewardPromotionStartsAt} placeholder="Optional starts_at, ISO time" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <AdminTextInput value={rewardPromotionEndsAt} onChangeText={setRewardPromotionEndsAt} placeholder="Optional ends_at, ISO time" autoCapitalize="none" />
+                  </View>
+                </View>
+                <AdminTextInput value={rewardPromotionMetadata} onChangeText={setRewardPromotionMetadata} placeholder={'{"campaign":"summer_drop"}'} multiline autoCapitalize="none" />
                 {renderActionNote()}
                 <ActionButton
                   icon="megaphone-outline"
-                  label="Save promotion"
+                  label={rewardPromotionId ? "Update feature" : "Save feature"}
                   color={SUCCESS}
                   disabled={!canManagePromotions}
                   loading={workingKey === `reward-promo-${rewardPromotionPlacement.trim()}-${rewardPromotionTitle.trim()}`}
@@ -2903,12 +2972,18 @@ export default function MarketAdminIndex() {
                     <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{promo.placement_key}</Text>
                     <Text style={{ marginTop: 7, color: MUTED, fontSize: 12, lineHeight: 18 }}>{promo.subtitle || "No subtitle"}</Text>
                   </View>
-                  <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                  <View style={{ alignItems: "flex-end", gap: 8 }}>
+                    <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                    {promo.sponsor_label ? <Pill label={String(promo.sponsor_label).toUpperCase()} color={ACCENT} /> : null}
+                  </View>
                 </View>
                 <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                   <InfoLine label="Priority" value={promo.priority ?? 100} />
                   <InfoLine label="Store" value={shortId(promo.store_id)} />
                   <InfoLine label="Listing" value={shortId(promo.listing_id)} />
+                  <InfoLine label="CTA" value={promo.cta_label || "View"} />
+                  <InfoLine label="Route" value={promo.cta_route || "auto"} />
+                  <InfoLine label="Starts" value={formatDate(promo.starts_at)} />
                   <InfoLine label="Ends" value={formatDate(promo.ends_at)} />
                 </View>
                 <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
