@@ -108,7 +108,10 @@ export type RewardClaimResult = {
   ok: true;
   status: "pending_review" | "rewarded" | "already_rewarded";
   duplicate?: boolean;
+  message?: string;
+  warning?: string;
   credit?: any;
+  account?: RewardAccount | null;
   task: RewardTask;
   completion: any;
 };

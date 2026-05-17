@@ -417,7 +417,9 @@ export async function creditReward(admin: any, input: {
     p_created_by: input.createdBy ?? null,
   });
   if (error) throw new Error(error.message);
-  return Array.isArray(data) ? data[0] : data;
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result?.ledger_id) throw new Error("Reward credit did not return a ledger id.");
+  return result;
 }
 
 export async function rewardAdSession(admin: any, session: any, metadata: Record<string, unknown> = {}) {

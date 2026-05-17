@@ -126,7 +126,10 @@ Deno.serve(async (req) => {
     if (!session?.id) return bad("Ad session not found");
     if (String(session.user_id) !== userId) return bad("Ad session user mismatch");
 
-    const payload = Object.fromEntries(url.searchParams.entries());
+    const payload: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      payload[key] = value;
+    });
     if (!verified) {
       await admin
         .from("market_reward_ad_sessions")

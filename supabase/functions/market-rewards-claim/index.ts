@@ -39,6 +39,16 @@ async function insertOrLoadCompletion(admin: any, row: Record<string, unknown>) 
   return { completion: existing, duplicate: true };
 }
 
+async function loadRewardAccount(admin: any, userId: string) {
+  const { data, error } = await admin
+    .from("market_reward_accounts")
+    .select("user_id,balance,lifetime_earned,lifetime_spent,tier_key,daily_streak,longest_streak,last_earned_at,last_spent_at,metadata,created_at,updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ?? null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -82,6 +92,8 @@ Deno.serve(async (req) => {
         ok: true,
         status: "pending_review",
         duplicate,
+        message: "Your proof is waiting for review.",
+        account: await loadRewardAccount(admin, user.id),
         task: publicTask(task, await getTaskAvailability(admin, user.id, task)),
         completion,
       });
@@ -92,6 +104,8 @@ Deno.serve(async (req) => {
         ok: true,
         status: "already_rewarded",
         duplicate: true,
+        message: "This reward was already added to your balance.",
+        account: await loadRewardAccount(admin, user.id),
         task: publicTask(task, await getTaskAvailability(admin, user.id, task)),
         completion,
       });
@@ -124,13 +138,27 @@ Deno.serve(async (req) => {
       .eq("id", completion.id)
       .select("id,user_id,task_id,status,progress,evidence,ledger_id,idempotency_key,review_note,completed_at,rewarded_at,rejected_at,created_at,updated_at")
       .single();
-    if (updateError) return bad(updateError.message);
+    if (updateError) {
+      return ok({
+        ok: true,
+        status: "rewarded",
+        duplicate: Boolean(credit.duplicate || duplicate),
+        warning: `Noms were credited, but the completion row did not update: ${updateError.message}`,
+        message: `Reward credited. Balance is now ${Number(credit.balance ?? 0).toLocaleString()} noms.`,
+        credit,
+        account: await loadRewardAccount(admin, user.id),
+        task: publicTask(task, await getTaskAvailability(admin, user.id, task)),
+        completion,
+      });
+    }
 
     return ok({
       ok: true,
       status: "rewarded",
       duplicate: Boolean(credit.duplicate || duplicate),
+      message: `Reward credited. Balance is now ${Number(credit.balance ?? 0).toLocaleString()} noms.`,
       credit,
+      account: await loadRewardAccount(admin, user.id),
       task: publicTask(task, await getTaskAvailability(admin, user.id, task)),
       completion: updated,
     });

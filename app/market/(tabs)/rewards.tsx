@@ -40,6 +40,11 @@ const RED = "#F87171";
 const BLUE = "#60A5FA";
 
 type TabKey = "earn" | "watch" | "market" | "social" | "onchain" | "redeem" | "history";
+type ActionNotice = {
+  tone: "success" | "warning" | "error" | "info";
+  title: string;
+  message: string;
+};
 
 type TabDef = {
   key: TabKey;
@@ -188,6 +193,23 @@ function taskPrimaryEnabled(task: RewardTask) {
   return Boolean(task.action_route && availability?.status === "locked");
 }
 
+function claimSuccessMessage(task: RewardTask, claim: any) {
+  const credited = Number(claim?.credit?.delta ?? task.reward_noms ?? 0);
+  const balance = Number(claim?.credit?.balance ?? claim?.account?.balance ?? NaN);
+  const parts = [`+${Number(credited).toLocaleString()} noms added.`];
+  if (Number.isFinite(balance)) parts.push(`Balance: ${balance.toLocaleString()} noms.`);
+  if (claim?.duplicate) parts.push("Safe repeat claim: no double count.");
+  if (claim?.warning) parts.push(String(claim.warning));
+  return parts.join(" ");
+}
+
+function errorDetail(error: unknown) {
+  const base = String((error as any)?.message || error || "Please try again.");
+  const json = (error as any)?.details?.json;
+  const extra = json?.task?.availability?.reason || json?.task?.availability?.status || json?.message || null;
+  return extra && !base.includes(String(extra)) ? `${base} ${String(extra)}` : base;
+}
+
 function StatPill({
   label,
   value,
@@ -260,6 +282,42 @@ function EmptyState({
       </View>
       <Text style={{ marginTop: 14, color: TEXT, fontSize: 16, fontWeight: "900", textAlign: "center" }}>{title}</Text>
       <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 19, textAlign: "center" }}>{subtitle}</Text>
+    </View>
+  );
+}
+
+function NoticeBanner({ notice, onDismiss }: { notice: ActionNotice; onDismiss: () => void }) {
+  const color = notice.tone === "success" ? GREEN : notice.tone === "error" ? RED : notice.tone === "warning" ? GOLD : TEAL;
+  const icon: keyof typeof Ionicons.glyphMap =
+    notice.tone === "success"
+      ? "checkmark-circle-outline"
+      : notice.tone === "error"
+        ? "warning-outline"
+        : notice.tone === "warning"
+          ? "alert-circle-outline"
+          : "information-circle-outline";
+
+  return (
+    <View
+      style={{
+        borderRadius: 20,
+        padding: 14,
+        backgroundColor: `${color}12`,
+        borderWidth: 1,
+        borderColor: `${color}42`,
+        flexDirection: "row",
+        gap: 11,
+        alignItems: "flex-start",
+      }}
+    >
+      <Ionicons name={icon} size={20} color={color} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }}>{notice.title}</Text>
+        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 17 }}>{notice.message}</Text>
+      </View>
+      <Pressable onPress={onDismiss} hitSlop={10}>
+        <Ionicons name="close" size={18} color={MUTED} />
+      </Pressable>
     </View>
   );
 }
@@ -681,6 +739,7 @@ export default function RewardsScreen() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("earn");
   const [error, setError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<ActionNotice | null>(null);
   const impressions = useRef(new Set<string>());
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
@@ -801,9 +860,17 @@ export default function RewardsScreen() {
       if (task.availability?.available) {
         const claim = await claimRewardTask({ task_id: task.id });
         if (claim.status === "pending_review") {
-          Alert.alert("Submitted", "Your proof is in review. You will see the reward here once it is approved.");
+          const message = claim.message || "Your proof is in review. You will see the reward here once it is approved.";
+          setActionNotice({ tone: "info", title: "Submitted", message });
+          Alert.alert("Submitted", message);
+        } else if (claim.status === "already_rewarded") {
+          const message = claim.message || "This reward was already added to your balance.";
+          setActionNotice({ tone: "warning", title: "Already earned", message });
+          Alert.alert("Already earned", message);
         } else {
-          Alert.alert("Noms added", `You earned ${formatNoms(task.reward_noms)}.`);
+          const message = claimSuccessMessage(task, claim);
+          setActionNotice({ tone: claim.warning ? "warning" : "success", title: "Noms added", message });
+          Alert.alert("Noms added", message);
         }
         await load("refresh");
         return;
@@ -816,7 +883,9 @@ export default function RewardsScreen() {
 
       Alert.alert("Not ready yet", taskDiagnostic(task));
     } catch (e) {
-      Alert.alert("Reward action failed", String((e as any)?.message || e || "Please try again."));
+      const message = errorDetail(e);
+      setActionNotice({ tone: "error", title: "Reward action failed", message });
+      Alert.alert("Reward action failed", message);
     } finally {
       setBusyKey(null);
     }
@@ -964,12 +1033,14 @@ export default function RewardsScreen() {
 
         <PromotionHero
           promotion={topPromotion}
-          fallbackTitle={String(uiConfig.empty_promotion_title || "Promote a store here")}
+          fallbackTitle={String(uiConfig.empty_promotion_title || "Featured stores")}
           fallbackSubtitle={String(
             uiConfig.empty_promotion_subtitle || "Featured stores and special offers can appear here.",
           )}
           onPress={() => handlePromotionPress(topPromotion)}
         />
+
+        {actionNotice ? <NoticeBanner notice={actionNotice} onDismiss={() => setActionNotice(null)} /> : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 4 }}>
           {TABS.map((item) => {
