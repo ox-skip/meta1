@@ -93,7 +93,7 @@ export default function StockHomeScreen() {
   async function load() {
     setErr(null);
     try {
-      const res = await fetchStocksOverview(80, 0, "all");
+      const res = await fetchStocksOverview(80, 0, "evm");
       setItems(res.items ?? []);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "Unable to load digital stock market right now."));
@@ -146,8 +146,7 @@ export default function StockHomeScreen() {
     const marketCap = items.reduce((sum, item) => sum + Number(item.market_cap || 0), 0);
     const volume = items.reduce((sum, item) => sum + Number(item.volume_24h_quote || 0), 0);
     const active = items.filter((item) => String(item.status || "").toUpperCase() === "ACTIVE").length;
-    const pi = items.filter((item) => String(item.chain || "").toLowerCase() === "pi_testnet").length;
-    return { marketCap, volume, active, pi };
+    return { marketCap, volume, active };
   }, [items]);
 
   return (
@@ -186,7 +185,6 @@ export default function StockHomeScreen() {
           <View style={{ marginTop: 16, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
             <StockMetric label="24h Volume" value={formatStockMoney(summary.volume)} tone="cyan" />
             <StockMetric label="Listed" value={String(items.length)} caption={`${summary.active} active`} />
-            <StockMetric label="Pi Rails" value={String(summary.pi)} tone="amber" />
           </View>
         </StockPanel>
 
@@ -204,13 +202,6 @@ export default function StockHomeScreen() {
             caption="Positions"
             tone="cyan"
             onPress={() => router.push("/market/stock/portfolio" as any)}
-          />
-          <StockActionTile
-            icon="planet-outline"
-            label="Create Pi"
-            caption="Pi native"
-            tone="amber"
-            onPress={() => router.push("/pi/stock/market/create" as any)}
           />
         </View>
 

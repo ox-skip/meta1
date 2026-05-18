@@ -549,9 +549,9 @@ export default function SupportTicketThreadScreen() {
       if (!reply.trim() && result.triage?.suggested_admin_reply) {
         setReply(result.triage.suggested_admin_reply);
       }
-      setNotice("Gemini triage ready.");
+      setNotice("BestCity Ai triage ready.");
     } catch (e: any) {
-      setError(e?.message || "Could not run Gemini triage.");
+      setError(e?.message || "Could not run BestCity Ai triage.");
     } finally {
       setAiLoading(false);
     }
@@ -648,7 +648,7 @@ export default function SupportTicketThreadScreen() {
                 />
                 {adminMode ? (
                   <ActionButton
-                    label={aiLoading ? "Triage" : "Gemini triage"}
+                    label={aiLoading ? "Triage" : "BestCity Ai triage"}
                     icon="sparkles-outline"
                     color={LIME}
                     loading={aiLoading}
@@ -703,7 +703,7 @@ export default function SupportTicketThreadScreen() {
               <View style={{ borderRadius: 18, padding: 13, backgroundColor: "rgba(138,230,110,0.10)", borderWidth: 1, borderColor: "rgba(138,230,110,0.25)", gap: 8 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Ionicons name="sparkles-outline" size={16} color={LIME} />
-                  <Text style={{ color: TEXT, fontWeight: "900" }}>Gemini triage</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>BestCity Ai triage</Text>
                   <Pill label={labelFromKey(aiResult.triage.priority)} color={priorityColor(aiResult.triage.priority)} />
                   <Pill label={labelFromKey(aiResult.triage.confidence)} color={TEAL} />
                 </View>

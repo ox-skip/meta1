@@ -670,7 +670,7 @@ export default function MarketSupportScreen() {
         attachments: newFiles,
       });
       setSupportAiResult(result);
-      setNotice("Gemini reviewed your ticket draft. Apply only if it matches what happened.");
+      setNotice("BestCity Ai reviewed your ticket draft. Apply only if it matches what happened.");
     } catch (e: any) {
       setError(e?.message || "Could not improve this support ticket.");
     } finally {
@@ -685,7 +685,7 @@ export default function MarketSupportScreen() {
     setCategory(suggestion.category || category);
     setPriority(suggestion.priority || priority);
     setBody(suggestion.improved_body || body);
-    setNotice("Gemini suggestion applied. Review before sending.");
+    setNotice("BestCity Ai suggestion applied. Review before sending.");
   }
 
   async function submitReply() {
@@ -834,7 +834,7 @@ export default function MarketSupportScreen() {
                         <View style={{ borderRadius: 16, padding: 13, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.25)", gap: 10 }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <Ionicons name="sparkles-outline" size={16} color={TEAL} />
-                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Gemini ticket check</Text>
+                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>BestCity Ai ticket check</Text>
                             <Pill label={labelFromKey(supportAiResult.suggestion.category)} color={TEAL} />
                             <Pill label={labelFromKey(supportAiResult.suggestion.priority)} color={priorityColor(supportAiResult.suggestion.priority)} />
                           </View>
@@ -864,7 +864,7 @@ export default function MarketSupportScreen() {
                       ) : null}
                       <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                         <PrimaryButton
-                          label={supportAiLoading ? "Checking" : "Gemini help"}
+                          label={supportAiLoading ? "Checking" : "BestCity Ai help"}
                           icon="sparkles-outline"
                           color={LIME}
                           loading={supportAiLoading}

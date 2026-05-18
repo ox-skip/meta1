@@ -556,7 +556,7 @@ export default function ListingsFeed() {
       const result = await generateListingAiPerformance(listing.id);
       setListingAiResults((prev) => ({ ...prev, [listing.id]: result }));
     } catch (e: any) {
-      Alert.alert("Gemini unavailable", e?.message ?? "Could not analyze this listing.");
+      Alert.alert("BestCity Ai unavailable", e?.message ?? "Could not analyze this listing.");
     } finally {
       setListingAiBusyId(null);
     }
@@ -1034,7 +1034,7 @@ export default function ListingsFeed() {
           {isMineView && aiResult ? (
             <View style={{ marginHorizontal: 12, marginBottom: 12, borderRadius: 16, padding: 12, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.25)", gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Gemini score</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>BestCity Ai score</Text>
                 <Text style={{ color: "#CCFBF1", fontWeight: "900", fontSize: 12 }}>{aiResult.performance_score}/100</Text>
               </View>
               {aiResult.summary ? (

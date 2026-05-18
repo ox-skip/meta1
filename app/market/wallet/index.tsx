@@ -27,7 +27,7 @@ export default function MarketWallet() {
         ]}
       >
         <View style={[styles.inner, wide ? styles.innerWide : undefined]}>
-          <AppHeader title="Wallet" subtitle="Dapp wallet, stable balances, PI payout, and market portfolio" />
+          <AppHeader title="Wallet" subtitle="Dapp wallet, stable balances, and market portfolio" />
           <UnifiedWalletPanel
             wallet={wallet}
             onOpenNgnWallet={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}

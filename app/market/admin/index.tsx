@@ -1220,9 +1220,9 @@ export default function MarketAdminIndex() {
           ? { ...prev, [ticketId]: suggestedReply }
           : prev
       ));
-      setNotice(result.cached ? "Cached Gemini triage loaded." : "Gemini triage is ready. Review it before sending or changing priority.");
+      setNotice(result.cached ? "Cached BestCity Ai triage loaded." : "BestCity Ai triage is ready. Review it before sending or changing priority.");
     } catch (e: any) {
-      setError(String(e?.message || e || "Could not generate Gemini triage."));
+      setError(String(e?.message || e || "Could not generate BestCity Ai triage."));
     } finally {
       setWorkingKey(null);
       setCheckingSession(false);
@@ -1240,9 +1240,9 @@ export default function MarketAdminIndex() {
     try {
       const result = await generateDisputeAiReview(disputeId, orderId);
       setDisputeAiResults((prev) => ({ ...prev, [resultKey]: result, [result.dispute_id]: result }));
-      setNotice("Gemini dispute review is ready. Use it as guidance, then make the admin decision.");
+      setNotice("BestCity Ai dispute review is ready. Use it as guidance, then make the admin decision.");
     } catch (e: any) {
-      setError(String(e?.message || e || "Could not generate dispute AI review."));
+      setError(String(e?.message || e || "Could not generate BestCity Ai dispute review."));
     } finally {
       setWorkingKey(null);
       setCheckingSession(false);
@@ -1350,7 +1350,7 @@ export default function MarketAdminIndex() {
             <View style={{ flex: 1, minWidth: 220 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="sparkles-outline" size={16} color={SUCCESS} />
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Gemini triage</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>BestCity Ai triage</Text>
               </View>
               <Text style={{ marginTop: 5, color: FAINT, fontSize: 11, fontWeight: "800" }}>
                 {result.cached ? "Cached - " : ""}{result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
@@ -1389,7 +1389,7 @@ export default function MarketAdminIndex() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
             <ActionButton
               icon="refresh-outline"
-              label="Refresh AI"
+              label="Refresh BestCity Ai"
               color={ACCENT}
               disabled={!canRespond}
               loading={workingKey === `support-ai-${ticketId}`}
@@ -1457,7 +1457,7 @@ export default function MarketAdminIndex() {
             <View style={{ flex: 1, minWidth: 220 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="sparkles-outline" size={16} color={recommendationTone(recommendation)} />
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Gemini dispute review</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>BestCity Ai dispute review</Text>
               </View>
               <Text style={{ marginTop: 5, color: FAINT, fontSize: 11, fontWeight: "800" }}>
                 Admin only - {result.model ? `${result.model} - ` : ""}{formatDate(result.generated_at)}
@@ -1511,7 +1511,7 @@ export default function MarketAdminIndex() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
             <ActionButton
               icon="refresh-outline"
-              label="Refresh AI"
+              label="Refresh BestCity Ai"
               color={ACCENT}
               disabled={!canResolve}
               loading={workingKey === `dispute-ai-${resultKey}`}
@@ -1718,7 +1718,7 @@ export default function MarketAdminIndex() {
                       ) : null}
                       <ActionButton
                         icon="sparkles-outline"
-                        label="Gemini triage"
+                        label="BestCity Ai triage"
                         color={SUCCESS}
                         disabled={!canRespond}
                         loading={workingKey === `support-ai-${selectedTicket.id}`}
@@ -1958,7 +1958,7 @@ export default function MarketAdminIndex() {
                 ) : null}
                 <ActionButton
                   icon="sparkles-outline"
-                  label="AI review"
+                  label="BestCity Ai review"
                   color={SUCCESS}
                   disabled={!canResolve}
                   loading={workingKey === `dispute-ai-${disputeKey}`}

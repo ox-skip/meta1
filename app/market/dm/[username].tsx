@@ -570,7 +570,7 @@ export default function DMChat() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="shield-checkmark-outline" size={16} color={safetyColor(safetyResult.safety.risk_level)} />
                 <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                  Gemini safety: {safetyResult.safety.risk_level}
+                  BestCity Ai safety: {safetyResult.safety.risk_level}
                 </Text>
               </View>
               {safetyResult.safety.summary ? (

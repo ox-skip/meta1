@@ -2008,7 +2008,7 @@ async function pickAndUpload(access: "preview" | "final") {
               </View>
             ) : null}
 
-            <Card title="Gemini order risk">
+            <Card title="BestCity Ai order risk">
               <View style={{ gap: 10 }}>
                 <Text style={{ color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
                   Check payment, delivery, escrow, and dispute signals for this order.

@@ -774,7 +774,7 @@ export default function Checkout() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Gemini order risk</Text>
+              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>BestCity Ai order risk</Text>
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
                 Check payment, delivery, escrow, and dispute signals before you pay.
               </Text>

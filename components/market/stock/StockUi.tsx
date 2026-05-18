@@ -77,7 +77,7 @@ export function formatStockPct(value: unknown) {
 export function stockChainLabel(chain?: unknown) {
   const raw = String(chain || "").trim();
   if (!raw) return "EVM";
-  if (raw.toLowerCase() === "pi_testnet") return "PI";
+  if (raw.toLowerCase() === "pi_testnet") return "External";
   return raw.toUpperCase().replace(/_/g, " ");
 }
 

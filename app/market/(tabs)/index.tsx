@@ -627,6 +627,7 @@ export default function MarketHome() {
   const [sellersMap, setSellersMap] = useState<Record<string, SellerCard>>({});
   const [statsMap, setStatsMap] = useState<Record<string, { completed: number; cancelled: number; failed: number }>>({});
   const [featuredSellers, setFeaturedSellers] = useState<SellerCard[]>([]);
+  const [featuredListings, setFeaturedListings] = useState<ListingRow[]>([]);
   const [verifiedSellers, setVerifiedSellers] = useState<SellerCard[]>([]);
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [countryErr, setCountryErr] = useState<string | null>(null);
@@ -712,6 +713,60 @@ export default function MarketHome() {
 
     setFeaturedSellers(featured);
     setVerifiedSellers(verified);
+    await loadFeaturedListings(featured);
+  }
+
+  async function loadFeaturedListings(sellers: SellerCard[]) {
+    const sellerIds = sellers.map((seller) => String(seller.user_id || "").trim()).filter(Boolean);
+    if (!sellerIds.length) {
+      setFeaturedListings([]);
+      return;
+    }
+
+    const runQuery = async (selectClause: string, useDeletedFilter: boolean) => {
+      let query = supabase
+        .from(LISTINGS_TABLE)
+        .select(selectClause)
+        .eq("is_active", true)
+        .in("seller_id", sellerIds)
+        .order("created_at", { ascending: false })
+        .limit(36);
+
+      if (useDeletedFilter) query = query.is("deleted_at", null);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return normalizeListingRows((data ?? []) as any[]);
+    };
+
+    const attempts: Array<[string, boolean]> = [
+      [LISTING_RICH_SELECT, true],
+      [LISTING_RICH_SELECT, false],
+      [LISTING_BASIC_SELECT, false],
+    ];
+
+    let nextRows: ListingRow[] = [];
+    for (const [selectClause, useDeletedFilter] of attempts) {
+      try {
+        const fetched = await runQuery(selectClause, useDeletedFilter);
+        nextRows = selectClause === LISTING_BASIC_SELECT ? await fetchListingImagesFor(fetched) : fetched;
+        break;
+      } catch {
+        nextRows = [];
+      }
+    }
+
+    const sellerRank = new Map(sellerIds.map((id, index) => [id, index]));
+    const visible = nextRows
+      .filter((row) => !listingIsExpired(row))
+      .sort((a, b) => {
+        const rankA = sellerRank.get(a.seller_id) ?? 9999;
+        const rankB = sellerRank.get(b.seller_id) ?? 9999;
+        if (rankA !== rankB) return rankA - rankB;
+        return new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime();
+      });
+
+    setFeaturedListings(visible.slice(0, 12));
   }
 
   async function fetchListingImagesFor(rows: ListingRow[]) {
@@ -975,18 +1030,18 @@ export default function MarketHome() {
     section === "social"
       ? "Stay close to marketplace activity"
       : section === "service"
-      ? "Hire trusted services"
+      ? "Featured services"
       : section === "product"
-      ? "Shop trusted products"
-      : "Discover trusted listings";
+      ? "Featured products"
+      : "Featured projects";
   const heroSubtitle =
     section === "social"
       ? "Browse fresh seller updates, launches, and media from the marketplace."
       : section === "service"
-      ? "Browse service providers, compare offers, and move into escrow-backed checkout when you're ready."
+      ? "Service picks from featured accounts, kept tight so buyers can move fast."
       : section === "product"
-      ? "Discover local and global listings, compare prices quickly, and buy through escrow-backed checkout."
-      : "Browse products and services together, compare prices fast, and move into escrow-backed checkout when you're ready.";
+      ? "Product picks from featured accounts, with price and media visible at a glance."
+      : "Products and services surfaced from featured BestCity accounts.";
   const resultTitle =
     directoryMode === "listings"
       ? `${resultCount} ${feedLabel} in view`
@@ -1007,23 +1062,28 @@ export default function MarketHome() {
     section === "service" ? TEAL : section === "product" ? BLUE : section === "social" ? AMBER : PURPLE;
   const heroPreviewListings = useMemo(
     () =>
-      rows.slice(0, 3).map((item, index) => {
+      featuredListings
+        .filter((item) => !main || item.category === main)
+        .slice(0, 3)
+        .map((item, index) => {
         const mediaSource = resolveMarketMediaSource(
           [item.cover ?? null, ...sortMarketMedia(item.images ?? [])],
           supabaseUrl,
           LISTING_IMAGES_BUCKET,
         );
         const displayPrice = getListingPriceDisplay(item as any);
+        const seller = featuredSellers.find((s) => s.user_id === item.seller_id);
         return {
           id: item.id,
           title: item.title || "Untitled listing",
           price: formatCurrency(displayPrice.localCurrency, displayPrice.localNow),
+          seller: seller?.business_name || seller?.display_name || (seller?.market_username ? `@${seller.market_username}` : "Featured store"),
           uri: mediaSource?.url ?? null,
           kind: mediaSource?.kind ?? "image",
           accent: [TEAL, AMBER, BLUE][index % 3],
         };
       }),
-    [rows, supabaseUrl],
+    [featuredListings, featuredSellers, main, supabaseUrl],
   );
 
   const renderListing = ({ item }: { item: ListingRow }) => {
@@ -1501,10 +1561,10 @@ export default function MarketHome() {
             <Ionicons name="sparkles-outline" size={18} color={TEAL} />
           </View>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: compact ? 13 : 15 }}>
-            Featured media listings
+            Featured projects
           </Text>
           <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>
-            No media listings available for this view.
+            Featured account listings will appear here when available.
           </Text>
         </View>
       );
@@ -1552,7 +1612,10 @@ export default function MarketHome() {
                 <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
                   {item.title}
                 </Text>
-                <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                  {item.seller}
+                </Text>
+                <Text numberOfLines={1} style={{ marginTop: 3, color: item.accent, fontWeight: "900", fontSize: 12 }}>
                   {item.price}
                 </Text>
               </View>
@@ -1564,7 +1627,7 @@ export default function MarketHome() {
 
     return (
       <View style={{ gap: 10 }}>
-        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>LIVE SHELF</Text>
+        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED PROJECTS</Text>
         {heroPreviewListings.map((item) => (
           <Pressable
             key={item.id}
@@ -1600,7 +1663,10 @@ export default function MarketHome() {
               <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
                 {item.title}
               </Text>
-              <Text numberOfLines={1} style={{ marginTop: 5, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+              <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontWeight: "800", fontSize: 11 }}>
+                {item.seller}
+              </Text>
+              <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
                 {item.price}
               </Text>
             </View>
@@ -2106,9 +2172,7 @@ export default function MarketHome() {
           renderSocialPanel(false)
         ) : (
           <>
-            {renderQuickActions()}
             {renderDirectoryChooser(false)}
-            {renderScopeAndFilters(false)}
             {renderStatusBlock()}
           </>
         )}
@@ -2171,7 +2235,6 @@ export default function MarketHome() {
           renderSocialPanel(true)
         ) : (
           <>
-            {renderQuickActions()}
             <View style={{ marginTop: 16, flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
               {renderDirectoryChooser(true)}
               {renderScopeAndFilters(true)}

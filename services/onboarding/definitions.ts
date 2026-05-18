@@ -68,7 +68,7 @@ export const tutorialFlows = {
       },
       {
         title: "Use the shortcuts",
-        body: "Create EVM Stock, Create Pi Stock, and My Portfolio are the main entry points for launching or managing stock positions.",
+        body: "Create EVM Stock and My Portfolio are the main entry points for launching or managing stock positions.",
       },
       {
         title: "Open Market for execution",

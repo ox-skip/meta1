@@ -434,6 +434,11 @@ export default function StockDetailScreen() {
         candle_limit: 140,
         trade_limit: 50,
       });
+      if (String(res?.identity?.chain || "").toLowerCase() === "pi_testnet") {
+        setErr("This stock is not available in the public stock market view.");
+        setDetail(null);
+        return;
+      }
       setDetail(res);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "Unable to load stock details."));
@@ -582,7 +587,7 @@ export default function StockDetailScreen() {
             amount_usdc: Number(pendingTrade.amount_usdc || 0),
           }),
           25_000,
-          "Pi checkout is taking longer than expected. Retry once, then open Pi Browser manually.",
+          "Checkout is taking longer than expected. Retry once, then continue on your phone if needed.",
         );
 
         if (res?.handoff_required) {
@@ -599,16 +604,16 @@ export default function StockDetailScreen() {
           if (!opened) {
             throw new Error(
               desktopWeb
-                ? "Unable to open the Pi stock handoff page. Open this stock on your phone and retry."
-                : "Unable to open Pi Browser. Open Pi Browser and retry this stock buy.",
+                ? "Unable to open the stock handoff page. Open this stock on your phone and retry."
+                : "Unable to open the secure checkout. Retry this stock buy.",
             );
           }
 
           Alert.alert(
-            desktopWeb ? "Open on your phone" : "Continue in Pi Browser",
+            desktopWeb ? "Open on your phone" : "Continue checkout",
             desktopWeb
-              ? "A Pi checkout page opened. Scan its QR code or copy the link to your phone, then continue in Pi Browser."
-              : "Pi checkout was opened. Complete the payment there, then return and refresh your position.",
+              ? "A checkout page opened. Scan its QR code or copy the link to your phone, then continue there."
+              : "Checkout was opened. Complete the payment there, then return and refresh your position.",
           );
           setPendingTrade(null);
           return;
@@ -616,11 +621,11 @@ export default function StockDetailScreen() {
 
         setSuccessTxHash(String(res?.txid || "") || null);
         setSuccessExplorer(null);
-        setSuccessMessage("Pi payment confirmed and your shares are now in your stock position.");
+        setSuccessMessage("Payment confirmed and your shares are now in your stock position.");
       } else if (pendingTrade.rail === "pi" && pendingTrade.side === "sell") {
         const lockedQuote = pendingTrade.lockedQuote;
         if (!lockedQuote?.quote_ref || !lockedQuote?.quote_signature) {
-          throw new Error("Locked sell quote missing. Request a fresh Pi sell quote.");
+          throw new Error("Locked sell quote missing. Request a fresh sell quote.");
         }
         const res = await submitPiStockSell({
           stock_id: detail?.identity?.id,
@@ -629,9 +634,7 @@ export default function StockDetailScreen() {
         });
         setSuccessTxHash(null);
         setSuccessExplorer(null);
-        setSuccessMessage(
-          `Sell accepted. ${Number(res.locked_payout_pi || 0).toFixed(8)} PI is locked at this quote and queued at position #${Number(res.queue_position || 0)}.`,
-        );
+        setSuccessMessage(`Sell accepted. Payout is locked at this quote and queued at position #${Number(res.queue_position || 0)}.`);
       } else {
         const res = await withTimeout(
           submitStockTradeOnchain({
@@ -736,7 +739,7 @@ export default function StockDetailScreen() {
         });
         setConfirmVisible(true);
       } catch (e: any) {
-        setQuoteErr(friendlyMarketError(e, "Unable to lock the Pi sell quote."));
+        setQuoteErr(friendlyMarketError(e, "Unable to lock the sell quote."));
       } finally {
         setSubmitting(false);
       }
@@ -976,13 +979,13 @@ export default function StockDetailScreen() {
                   borderColor: piLpi >= 1.5 ? "rgba(251,191,36,0.35)" : "rgba(56,189,248,0.28)",
                 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>Pi Liquidity Pressure</Text>
+                <Text style={{ color: "#fff", fontWeight: "900" }}>Liquidity pressure</Text>
                 <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-                  LPI {piLpi.toFixed(2)} - Coverage {piCoverageRatio.toFixed(2)} - Queue budget {piQueueBudget.toFixed(8)} PI / 24h
+                  LPI {piLpi.toFixed(2)} - Coverage {piCoverageRatio.toFixed(2)} - Queue budget {piQueueBudget.toFixed(8)} / 24h
                 </Text>
                 <Text style={{ marginTop: 4, color: piSellsPaused ? "#FCA5A5" : "#BFDBFE", fontSize: 12, fontWeight: "800" }}>
                   {piSellsPaused
-                    ? "New Pi sells are paused until coverage improves. Existing locked sells remain honored."
+                    ? "New sells are paused until coverage improves. Existing locked sells remain honored."
                     : "Sell spreads, cooldowns, and supply release adjust with LPI."}
                 </Text>
               </View>
@@ -1039,7 +1042,7 @@ export default function StockDetailScreen() {
                   <View style={{ marginBottom: 10, borderRadius: 10, padding: 10, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.28)" }}>
                     <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>EVM Settlement</Text>
                     <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                      This market settles on EVM. Pi settlement is available on Pi-native stock identities.
+                      This market settles on EVM.
                     </Text>
                   </View>
                 ) : null}
@@ -1119,7 +1122,7 @@ export default function StockDetailScreen() {
                     </Text>
                     <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
                       {tradeRail === "pi"
-                        ? `${side === "buy" ? "Pay" : "Locked payout"} ${Number((side === "buy" ? quote.gross_pi : quote.net_pi) || 0).toFixed(8)} PI`
+                        ? `${side === "buy" ? "Pay" : "Locked payout"} ${Number((side === "buy" ? quote.gross_pi : quote.net_pi) || 0).toFixed(8)} settlement units`
                         : `Max trade (quote): $${Number(quote.max_trade_usdc || 0).toFixed(6)} USDC`}
                     </Text>
                     {tradeRail === "pi" ? (
@@ -1135,13 +1138,13 @@ export default function StockDetailScreen() {
                     {tradeRail === "pi" && side === "buy" && !isPiBrowser ? (
                       <Text style={{ marginTop: 3, color: "#BFDBFE", fontSize: 12 }}>
                         {isDesktopWeb
-                          ? "Desktop will open a phone handoff page with QR and copy-link. Continue on your phone in Pi Browser."
-                          : "Pi buy opens Pi Browser before confirmed shares are added."}
+                          ? "Desktop will open a phone handoff page with QR and copy-link. Continue on your phone."
+                          : "Buy checkout opens before confirmed shares are added."}
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && side === "sell" && piSellsPaused ? (
                       <Text style={{ marginTop: 3, color: "#FCA5A5", fontSize: 12, fontWeight: "700" }}>
-                        New Pi sells are paused by the circuit breaker for this stock.
+                        New sells are paused by the circuit breaker for this stock.
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && myPiRedemptions.length > 0 ? (
@@ -1177,10 +1180,10 @@ export default function StockDetailScreen() {
                     {tradeRail === "pi" && side === "buy" ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
                         {isPiBrowser
-                          ? "Pay with Pi is available in this browser."
+                          ? "Payment is available in this browser."
                           : isDesktopWeb
                           ? "Desktop opens a phone handoff page. Scan the QR code there or copy the link to your phone."
-                          : "Open in Pi Browser is required to authorize this payment."}
+                          : "Open the secure browser to authorize this payment."}
                       </Text>
                     ) : null}
                   </View>
@@ -1222,14 +1225,14 @@ export default function StockDetailScreen() {
                       ? "Trading Paused"
                       : tradeRail === "pi" && side === "buy"
                       ? isPiBrowser
-                        ? "Pay With Pi"
+                        ? "Pay"
                         : isDesktopWeb
                         ? "Continue On Phone"
-                        : "Open In Pi Browser"
+                        : "Open Secure Browser"
                       : tradeRail === "pi" && side === "sell"
                       ? piSellsPaused
-                        ? "Pi Sells Paused"
-                        : "Lock Pi Sell"
+                        ? "Sells Paused"
+                        : "Lock Sell"
                       : side === "buy"
                       ? "Submit Buy"
                       : "Submit Sell"}
@@ -1265,7 +1268,7 @@ export default function StockDetailScreen() {
                           Queue #{Number(row.queue_seq || 0)} - {String(row.status || "").toUpperCase()}
                         </Text>
                         <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                          Locked {Number(row.locked_net_payout_pi || 0).toFixed(8)} PI for {Number(row.quantity_locked || 0).toFixed(6)} {symbol}
+                          Locked payout for {Number(row.quantity_locked || 0).toFixed(6)} {symbol}
                         </Text>
                         {row.next_retry_at ? (
                           <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
@@ -1459,8 +1462,8 @@ export default function StockDetailScreen() {
             <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
               {pendingTrade?.rail === "pi"
                 ? pendingTrade?.side === "buy"
-                  ? "Confirm Pi Payment"
-                  : "Confirm Locked Pi Sell"
+                  ? "Confirm Payment"
+                  : "Confirm Locked Sell"
                 : "Confirm On-Chain Trade"}
             </Text>
             <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
@@ -1480,14 +1483,14 @@ export default function StockDetailScreen() {
               <>
                 <Text style={{ marginTop: 6, color: "#BFDBFE", fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
-                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} PI will be authorized after payment confirmation.`
-                    : `${Number(confirmQuote?.net_pi || 0).toFixed(8)} PI is locked at this sell quote and will pay out from the queue budget.`}
+                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} settlement units will be authorized after payment confirmation.`
+                    : `${Number(confirmQuote?.net_pi || 0).toFixed(8)} settlement units are locked at this sell quote and will pay out from the queue budget.`}
                 </Text>
                 <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
                     ? isPiBrowser
-                      ? "Pi Browser payment approval runs before shares are added."
-                      : "This opens Pi Browser; shares are added after Pi confirms payment."
+                      ? "Payment approval runs before shares are added."
+                      : "This opens secure checkout; shares are added after payment confirms."
                     : "Shares are held for redemption immediately after acceptance. Queue retries are idempotent."}
                 </Text>
               </>

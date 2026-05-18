@@ -6,6 +6,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, Text, useWindowDimensi
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import MarketMenuModal from "@/components/market/MarketMenuModal";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { recordAuthSessionNotification } from "@/services/market/notifications";
@@ -210,6 +211,7 @@ export default function MarketAccountTab() {
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [stats, setStats] = useState<StatState>({ activeListings: 0, allListings: 0, orders: 0, completedOrders: 0 });
   const [adminAccess, setAdminAccess] = useState<AdminAccessState>({ isAdmin: false, roleKey: null });
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const logo = publicUrl("market-sellers", profile?.logo_path);
   const banner = publicUrl("market-sellers", profile?.banner_path);
@@ -308,6 +310,12 @@ export default function MarketAccountTab() {
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <HeaderButton
+          icon="grid-outline"
+          label="Menu"
+          accent={SUCCESS}
+          onPress={() => setMenuOpen(true)}
+        />
         {adminAccess.isAdmin ? (
           <HeaderButton
             icon="shield-checkmark-outline"
@@ -662,6 +670,18 @@ export default function MarketAccountTab() {
           </View>
         </View>
       </ScrollView>
+      <MarketMenuModal
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={(route) => router.push(route as any)}
+        profile={{
+          name: storeName,
+          handle,
+          logoUri: logo,
+          verified,
+          roleLabel: adminAccess.isAdmin ? (adminAccess.roleKey === "super_admin" ? "Super admin" : "Admin") : undefined,
+        }}
+      />
     </LinearGradient>
   );
 }

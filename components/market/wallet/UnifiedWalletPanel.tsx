@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import BalanceVisibilityToggle from "@/components/common/BalanceVisibilityToggle";
@@ -40,13 +40,6 @@ function shortAddress(value?: string | null) {
   const v = String(value || "").trim();
   if (!v) return "Not set";
   if (isAddress(v)) return `${v.slice(0, 6)}...${v.slice(-4)}`;
-  if (v.length <= 16) return v;
-  return `${v.slice(0, 8)}...${v.slice(-6)}`;
-}
-
-function shortValue(value?: string | null) {
-  const v = String(value || "").trim();
-  if (!v) return "Not set";
   if (v.length <= 16) return v;
   return `${v.slice(0, 8)}...${v.slice(-6)}`;
 }
@@ -237,11 +230,6 @@ export default function UnifiedWalletPanel({
   const [sendTo, setSendTo] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [sendToken, setSendToken] = useState<"USDC" | "USDT">("USDC");
-  const [piAddressInput, setPiAddressInput] = useState(wallet.savedPiAddress || "");
-
-  useEffect(() => {
-    setPiAddressInput(wallet.savedPiAddress || "");
-  }, [wallet.savedPiAddress]);
 
   const connected = Boolean(wallet.connectedAddress);
   const activeWalletMode = wallet.connectedMode ?? wallet.walletMode;
@@ -252,15 +240,12 @@ export default function UnifiedWalletPanel({
   const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
   const canSendUsdc = isAddress(wallet.chain?.usdc_address || "");
   const canSendUsdt = isAddress(wallet.chain?.usdt_address || "");
-  const piChainSelected = String(wallet.chain?.chain || "").toLowerCase().includes("pi");
   const sendDisabled =
     wallet.sendBusy ||
     !wallet.chain?.active ||
     !sendTo.trim() ||
     !sendAmount.trim() ||
     (sendToken === "USDC" ? !canSendUsdc : !canSendUsdt);
-  const piSaveDisabled =
-    wallet.piSaving || piAddressInput.trim() === String(wallet.savedPiAddress || "").trim();
 
   const primaryCtaIcon = connected ? "power-outline" : activeWalletMode === "base_smart" ? "ellipse" : "link-outline";
 
@@ -279,7 +264,7 @@ export default function UnifiedWalletPanel({
     if (mode === "walletconnect" && walletConnectBlocked) return;
     if (mode === "base_smart" && baseSmartBlocked) return;
     if (activeWalletMode !== mode) await wallet.setWalletMode(mode);
-    if (!connected && !String(wallet.chain?.chain || "").toLowerCase().includes("pi")) {
+    if (!connected) {
       await wallet.connectWallet();
     }
   }
@@ -296,16 +281,6 @@ export default function UnifiedWalletPanel({
       Alert.alert("Transfer submitted", `Tx: ${out.txHash}`);
     } catch (e: any) {
       Alert.alert("Transfer failed", String(e?.message || e || "Unable to send crypto right now."));
-    }
-  }
-
-  async function savePiWallet() {
-    try {
-      const out = await wallet.savePiAddress(piAddressInput);
-      setPiAddressInput(String(out?.address || ""));
-      Alert.alert("Saved", out?.address ? "PI wallet address updated." : "PI wallet address cleared.");
-    } catch (e: any) {
-      Alert.alert("Save failed", String(e?.message || e || "Unable to save PI wallet address."));
     }
   }
 
@@ -389,8 +364,8 @@ export default function UnifiedWalletPanel({
 
         <Pressable
           onPress={connected ? wallet.disconnectWallet : wallet.connectWallet}
-          disabled={wallet.busy || !wallet.chain?.active || (!connected && piChainSelected)}
-          style={[styles.primaryAction, wallet.busy || !wallet.chain?.active || (!connected && piChainSelected) ? styles.dimmed : undefined]}
+          disabled={wallet.busy || !wallet.chain?.active}
+          style={[styles.primaryAction, wallet.busy || !wallet.chain?.active ? styles.dimmed : undefined]}
         >
           {wallet.busy ? (
             <ActivityIndicator color={connected ? ROSE : INK} />
@@ -451,12 +426,6 @@ export default function UnifiedWalletPanel({
             value={shortAddress(wallet.connectedAddress)}
             onCopy={wallet.connectedAddress ? () => copyText(wallet.connectedAddress, "Connected wallet copied.") : undefined}
           />
-          <AddressRow
-            icon="logo-usd"
-            label="PI payout"
-            value={shortValue(wallet.savedPiAddress)}
-            onCopy={wallet.savedPiAddress ? () => copyText(wallet.savedPiAddress, "PI wallet address copied.") : undefined}
-          />
         </View>
 
         <View style={styles.buttonRow}>
@@ -480,25 +449,6 @@ export default function UnifiedWalletPanel({
           </Pressable>
         </View>
       </View>
-
-      {!compact ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>PI payout</Text>
-          <TextInput
-            value={piAddressInput}
-            onChangeText={setPiAddressInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="PI wallet address"
-            placeholderTextColor={FAINT}
-            style={styles.input}
-          />
-          <Pressable onPress={savePiWallet} disabled={piSaveDisabled} style={[styles.secondaryAction, piSaveDisabled ? styles.dimmed : undefined]}>
-            <Ionicons name="save-outline" size={15} color={TEXT} />
-            <Text style={styles.secondaryActionText}>{wallet.piSaving ? "Saving" : "Save PI wallet"}</Text>
-          </Pressable>
-        </View>
-      ) : null}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Transfer</Text>

@@ -224,8 +224,14 @@ export function useUnifiedWallet() {
     try {
       setChainErr(null);
       const all = await fetchMarketChains();
-      setChains(all);
-      const preferred = (await getPreferredMarketChain()) ?? all.find((c) => c.active) ?? all[0] ?? null;
+      const visibleChains = all.filter((c) => !isPiChain(c.chain));
+      setChains(visibleChains);
+      const savedPreferred = await getPreferredMarketChain();
+      const preferred =
+        (savedPreferred && !isPiChain(savedPreferred.chain) ? savedPreferred : null) ??
+        visibleChains.find((c) => c.active) ??
+        visibleChains[0] ??
+        null;
       setChain(preferred);
       await refreshChainBalances(preferred);
     } catch (e: any) {
@@ -271,7 +277,7 @@ export function useUnifiedWallet() {
     try {
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
-        throw new Error("PI uses a saved payout address.");
+        throw new Error("This network uses a saved payout address.");
       }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await ensureWalletAddressOnChain(chain);
@@ -290,7 +296,7 @@ export function useUnifiedWallet() {
     try {
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
-        throw new Error("PI uses a saved payout address.");
+        throw new Error("This network uses a saved payout address.");
       }
       await connectActiveWalletEvm(60_000, { forceModal: true });
       const out = await replaceSavedWalletWithDevice(chain);
@@ -331,14 +337,14 @@ export function useUnifiedWallet() {
     setError(null);
     try {
       if (normalized && !isPiWalletAddress(normalized)) {
-        throw new Error("Enter a valid PI wallet address.");
+        throw new Error("Enter a valid payout address.");
       }
       const out = await saveMyPiWallet(normalized);
       const next = String((out as any)?.address || "").trim();
       setSavedPiAddress(next);
       return { address: next };
     } catch (e: any) {
-      const msg = friendlyMarketError(e, "Unable to save PI wallet address.");
+      const msg = friendlyMarketError(e, "Unable to save payout address.");
       setError(msg);
       throw new Error(msg);
     } finally {

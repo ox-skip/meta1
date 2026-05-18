@@ -827,8 +827,8 @@ export default function SellTab() {
       mediaAssets.length > 0;
 
     if (!hasMeaningfulInput) {
-      setAiError("Add at least a title, description, website URL, or media before using AI.");
-      setAiDebug("AI input validation failed: no title, description, website URL, or media.");
+      setAiError("Add at least a title, description, website URL, or media before using BestCity Ai.");
+      setAiDebug("BestCity Ai input validation failed: no title, description, website URL, or media.");
       return;
     }
 
@@ -858,14 +858,14 @@ export default function SellTab() {
       setAiDraft(result.draft);
       setAiModel(String(result.model || ""));
     } catch (error) {
-      console.log("[SellTab] AI listing assistant failed", error);
+      console.log("[SellTab] BestCity Ai listing assistant failed", error);
       const rawMessage = String((error as any)?.message || error || "").trim();
       const status = Number((error as any)?.details?.status || 0);
       setAiDebug(rawMessage ? `status=${status || "n/a"} message=${rawMessage}` : `status=${status || "n/a"}`);
-      const friendly = friendlyMarketError(error, "AI could not prepare listing suggestions right now.");
+      const friendly = friendlyMarketError(error, "BestCity Ai could not prepare listing suggestions right now.");
 
       if (status === 404 || rawMessage.toLowerCase().includes("function market-ai-draft-listing failed")) {
-        setAiError("AI function is not deployed yet. Deploy the market-ai-draft-listing Supabase function first.");
+        setAiError("BestCity Ai function is not deployed yet. Deploy the market-ai-draft-listing Supabase function first.");
       } else if (
         rawMessage &&
         (
@@ -2022,7 +2022,7 @@ export default function SellTab() {
         <CardBox>
           <SectionTitle
             title="Listing story"
-            subtitle="Write the buyer-facing promise. AI can help polish the wording after you add a few details."
+            subtitle="Write the buyer-facing promise. BestCity Ai can help polish the wording after you add a few details."
             icon="create-outline"
             tone={PURPLE}
           />
@@ -2043,7 +2043,7 @@ export default function SellTab() {
             }}
           >
             <SectionTitle
-              title="AI listing assistant"
+              title="BestCity Ai listing help"
               subtitle="Improve the title, description, sub-category hints, and buyer-facing details. This does not publish or overwrite anything unless you apply it."
               icon="sparkles-outline"
               tone={PURPLE}
@@ -2069,11 +2069,11 @@ export default function SellTab() {
             >
               {aiBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="sparkles-outline" size={18} color={TEXT} />}
               <Text style={{ color: TEXT, fontWeight: "900" }}>
-                {aiBusy ? "Generating AI suggestions..." : "Generate with AI"}
+                {aiBusy ? "Generating BestCity Ai suggestions..." : "Generate with BestCity Ai"}
               </Text>
             </Pressable>
 
-            {aiError ? <FeedbackBox tone="error" title="AI could not generate suggestions" message={aiError} /> : null}
+            {aiError ? <FeedbackBox tone="error" title="BestCity Ai could not generate suggestions" message={aiError} /> : null}
 
             {__DEV__ && aiDebug ? (
               <Text style={{ marginTop: 10, color: FAINT, fontSize: 11, lineHeight: 16 }}>
@@ -2095,7 +2095,7 @@ export default function SellTab() {
               >
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
                   <View style={{ flex: 1, minWidth: 180 }}>
-                    <Text style={{ color: TEXT, fontWeight: "900" }}>AI suggestions</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>BestCity Ai suggestions</Text>
                     {aiModel ? (
                       <Text style={{ marginTop: 4, color: MUTED, fontSize: 11 }}>Model: {aiModel}</Text>
                     ) : null}
