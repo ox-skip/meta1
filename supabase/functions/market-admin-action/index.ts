@@ -846,6 +846,55 @@ async function adjustRewardBalance(admin: any, ctx: AdminContext, body: any) {
   return ok({ ok: true, ledger });
 }
 
+async function updateRewardReferralConfig(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "rewards.tasks.manage");
+  if (blocked) return blocked;
+
+  const enabled = body.enabled === undefined ? true : requireBoolean("enabled", body.enabled);
+  const botEnabled = body.bot_filter_enabled === undefined ? true : requireBoolean("bot_filter_enabled", body.bot_filter_enabled);
+  const joinerReward = optionalInt(body.joiner_reward_noms, 25, 0, 1000000);
+  const referrerReward = optionalInt(body.referrer_reward_noms, 5, 0, 1000000);
+  const maxIp = optionalInt(body.max_referrals_per_ip_hash, 5, 0, 1000000);
+  const maxUserAgent = optionalInt(body.max_referrals_per_user_agent_hash, 10, 0, 1000000);
+  const shareBaseUrl = cleanText(body.share_base_url, 500) || "https://bestcity.app/register";
+
+  const value = {
+    enabled,
+    joiner_reward_noms: joinerReward,
+    referrer_reward_noms: referrerReward,
+    qualification: "signup",
+    share_base_url: shareBaseUrl,
+    bot_filter: {
+      enabled: botEnabled,
+      max_referrals_per_ip_hash: maxIp,
+      max_referrals_per_user_agent_hash: maxUserAgent,
+      block_self_referral: true,
+    },
+  };
+
+  const { data, error } = await admin
+    .from("market_reward_config")
+    .upsert({
+      key: "referrals",
+      value,
+      public_read: true,
+      updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "key" })
+    .select("key,value,public_read,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "REWARD_REFERRAL_CONFIG_UPDATED",
+    entity_type: "market_reward_config",
+    entity_id: "referrals",
+    payload: { value, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, config: data });
+}
+
 async function reviewRewardCompletion(admin: any, ctx: AdminContext, body: any) {
   const blocked = requirePermission(ctx, "rewards.review");
   if (blocked) return blocked;
@@ -975,6 +1024,7 @@ Deno.serve(async (req) => {
     if (action === "upsert_reward_promotion") return await upsertRewardPromotion(admin, ctx, body);
     if (action === "set_reward_promotion_active") return await setRewardPromotionActive(admin, ctx, body);
     if (action === "adjust_reward_balance") return await adjustRewardBalance(admin, ctx, body);
+    if (action === "update_reward_referral_config") return await updateRewardReferralConfig(admin, ctx, body);
     if (action === "review_reward_completion") return await reviewRewardCompletion(admin, ctx, body);
 
     return bad("Unsupported admin action");

@@ -422,7 +422,7 @@ async function loadAdminMembers(admin: any) {
 }
 
 async function loadRewards(admin: any) {
-  const [accountsRes, tasksRes, pendingRes, promotionsRes, ledgerRes, adSessionsRes, storeRes, listingRes] = await Promise.all([
+  const [accountsRes, tasksRes, pendingRes, promotionsRes, ledgerRes, adSessionsRes, storeRes, listingRes, configRes, referralsRes, referralLeaderboardRes] = await Promise.all([
     admin
       .from("market_reward_accounts")
       .select("user_id,balance,lifetime_earned,lifetime_spent,tier_key,daily_streak,longest_streak,last_earned_at,last_spent_at,created_at,updated_at")
@@ -466,6 +466,21 @@ async function loadRewards(admin: any) {
       .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
       .order("updated_at", { ascending: false })
       .limit(250),
+    admin
+      .from("market_reward_config")
+      .select("key,value,public_read,updated_at")
+      .in("key", ["referrals", "noms_economy", "rewards_ui"]),
+    admin
+      .from("market_referrals")
+      .select("id,referrer_id,referred_user_id,referral_code,status,joiner_reward_noms,referrer_reward_noms,bot_score,bot_signals,qualified_at,rewarded_at,rejected_at,created_at,updated_at")
+      .order("created_at", { ascending: false })
+      .limit(DEFAULT_LIMIT),
+    admin
+      .from("market_referral_leaderboard_v")
+      .select("user_id,code,username,full_name,public_uid,market_username,display_name,business_name,total_referrals,successful_referrals,referral_noms_earned,balance,lifetime_earned,last_referral_at")
+      .order("successful_referrals", { ascending: false })
+      .order("balance", { ascending: false })
+      .limit(30),
   ]);
 
   if (accountsRes.error) throw accountsRes.error;
@@ -476,8 +491,15 @@ async function loadRewards(admin: any) {
   if (adSessionsRes.error) throw adSessionsRes.error;
   if (storeRes.error) throw storeRes.error;
   if (listingRes.error) throw listingRes.error;
+  if (configRes.error) throw configRes.error;
+  if (referralsRes.error) throw referralsRes.error;
+  if (referralLeaderboardRes.error) throw referralLeaderboardRes.error;
 
   const tasksById = byId(tasksRes.data);
+  const config: Record<string, unknown> = {};
+  for (const row of configRes.data ?? []) {
+    config[String(row.key)] = row.value ?? {};
+  }
   const profileIds = unique([
     ...(accountsRes.data ?? []).map((row: any) => row.user_id),
     ...(pendingRes.data ?? []).flatMap((row: any) => [row.user_id, row.reviewed_by]),
@@ -485,6 +507,8 @@ async function loadRewards(admin: any) {
     ...(adSessionsRes.data ?? []).map((row: any) => row.user_id),
     ...(storeRes.data ?? []).map((row: any) => row.user_id),
     ...(listingRes.data ?? []).map((row: any) => row.seller_id),
+    ...(referralsRes.data ?? []).flatMap((row: any) => [row.referrer_id, row.referred_user_id]),
+    ...(referralLeaderboardRes.data ?? []).map((row: any) => row.user_id),
   ]);
   const profiles = await loadProfiles(admin, profileIds);
   const sellers = await loadSellerProfiles(admin, profileIds);
@@ -520,6 +544,13 @@ async function loadRewards(admin: any) {
       task: tasksById[String(session.task_id)] ?? null,
       user: userBundle(session.user_id, profiles, sellers),
     })),
+    config,
+    referrals: (referralsRes.data ?? []).map((referral: any) => ({
+      ...referral,
+      referrer: userBundle(referral.referrer_id, profiles, sellers),
+      referred_user: userBundle(referral.referred_user_id, profiles, sellers),
+    })),
+    referral_leaderboard: referralLeaderboardRes.data ?? [],
   };
 }
 

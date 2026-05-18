@@ -60,6 +60,9 @@ export type MarketAdminWorkspace = {
       promotions: any[];
       ledger: any[];
       ad_sessions: any[];
+      config?: Record<string, any>;
+      referrals?: any[];
+      referral_leaderboard?: any[];
     };
   };
 };

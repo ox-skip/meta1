@@ -17,6 +17,19 @@ function activeWindowFilter(row: any) {
   return row?.active !== false;
 }
 
+function unique(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function byId(rows: any[] | null | undefined, key = "id") {
+  const map: Record<string, any> = {};
+  for (const row of rows ?? []) {
+    const id = String(row?.[key] ?? "");
+    if (id) map[id] = row;
+  }
+  return map;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -35,6 +48,10 @@ Deno.serve(async (req) => {
       configRes,
       pendingRes,
       redemptionsRes,
+      referralCodeRes,
+      referralsRes,
+      referredByRes,
+      referralLeaderboardRes,
     ] = await Promise.all([
       admin
         .from("market_reward_accounts")
@@ -72,6 +89,24 @@ Deno.serve(async (req) => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(20),
+      admin.rpc("market_referral_ensure_code", { p_user_id: user.id }),
+      admin
+        .from("market_referrals")
+        .select("id,referrer_id,referred_user_id,referral_code,status,joiner_reward_noms,referrer_reward_noms,bot_score,bot_signals,qualified_at,rewarded_at,rejected_at,created_at,updated_at")
+        .eq("referrer_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(30),
+      admin
+        .from("market_referrals")
+        .select("id,referrer_id,referred_user_id,referral_code,status,joiner_reward_noms,referrer_reward_noms,bot_score,bot_signals,qualified_at,rewarded_at,rejected_at,created_at,updated_at")
+        .eq("referred_user_id", user.id)
+        .maybeSingle(),
+      admin
+        .from("market_referral_leaderboard_v")
+        .select("user_id,code,username,full_name,public_uid,market_username,display_name,business_name,total_referrals,successful_referrals,referral_noms_earned,balance,lifetime_earned,last_referral_at")
+        .order("successful_referrals", { ascending: false })
+        .order("balance", { ascending: false })
+        .limit(25),
     ]);
 
     if (accountRes.error) return bad(accountRes.error.message);
@@ -80,6 +115,10 @@ Deno.serve(async (req) => {
     if (configRes.error) return bad(configRes.error.message);
     if (pendingRes.error) return bad(pendingRes.error.message);
     if (redemptionsRes.error) return bad(redemptionsRes.error.message);
+    if (referralCodeRes.error) return bad(referralCodeRes.error.message);
+    if (referralsRes.error) return bad(referralsRes.error.message);
+    if (referredByRes.error) return bad(referredByRes.error.message);
+    if (referralLeaderboardRes.error) return bad(referralLeaderboardRes.error.message);
 
     const taskIds = tasks.map((task) => task.id);
     const completions = await loadTaskCompletions(admin, user.id, taskIds);
@@ -92,6 +131,37 @@ Deno.serve(async (req) => {
       config[String(row.key)] = row.value ?? {};
     }
 
+    const invited = referralsRes.data ?? [];
+    const referredBy = referredByRes.data ?? null;
+    const referralProfileIds = unique([
+      ...invited.map((row: any) => row.referred_user_id),
+      referredBy?.referrer_id,
+    ]);
+    const { data: referralProfiles, error: referralProfilesError } = referralProfileIds.length
+      ? await admin
+          .from("profiles")
+          .select("id,email,username,full_name,public_uid,created_at")
+          .in("id", referralProfileIds)
+      : { data: [], error: null };
+    if (referralProfilesError) return bad(referralProfilesError.message);
+    const profileMap = byId(referralProfiles);
+    const enrichedInvited = invited.map((row: any) => ({
+      ...row,
+      referred_user: profileMap[String(row.referred_user_id)] ?? null,
+    }));
+    const enrichedReferredBy = referredBy
+      ? {
+          ...referredBy,
+          referrer: profileMap[String(referredBy.referrer_id)] ?? null,
+        }
+      : null;
+    const successfulReferrals = invited.filter((row: any) => row.status === "rewarded").length;
+    const pendingReferrals = invited.filter((row: any) => row.status === "pending" || row.status === "qualified").length;
+    const rejectedReferrals = invited.filter((row: any) => row.status === "rejected").length;
+    const referralEarned = invited.reduce((sum: number, row: any) => (
+      row.status === "rewarded" ? sum + Number(row.referrer_reward_noms ?? 0) : sum
+    ), 0);
+
     return ok({
       ok: true,
       generated_at: new Date().toISOString(),
@@ -102,6 +172,20 @@ Deno.serve(async (req) => {
       pending_reviews: pendingRes.data ?? [],
       redemptions: redemptionsRes.data ?? [],
       config,
+      referrals: {
+        code: referralCodeRes.data ?? null,
+        summary: {
+          total: invited.length,
+          successful: successfulReferrals,
+          pending: pendingReferrals,
+          rejected: rejectedReferrals,
+          earned_noms: referralEarned,
+        },
+        invited: enrichedInvited,
+        referred_by: enrichedReferredBy,
+        leaderboard: referralLeaderboardRes.data ?? [],
+        config: (config.referrals ?? {}) as Record<string, unknown>,
+      },
     });
   } catch (e) {
     return bad(String((e as any)?.message || e || "Unable to load rewards"));

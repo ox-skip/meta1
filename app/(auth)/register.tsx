@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { Link, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -44,10 +44,16 @@ function TrustPill({ icon, label }: { icon: IconName; label: string }) {
   );
 }
 
+function cleanReferralInput(value: unknown) {
+  return String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+}
+
 export default function Register() {
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   const [email, setEmail] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -59,10 +65,16 @@ export default function Register() {
   const [pendingEmail, setPendingEmail] = useState("");
 
   const normalizedEmail = email.trim().toLowerCase();
+  const normalizedReferralCode = cleanReferralInput(referralCode);
   const canSubmit = useMemo(
     () => !!normalizedEmail && !!password && !!confirm,
     [normalizedEmail, password, confirm],
   );
+
+  useEffect(() => {
+    const fromLink = cleanReferralInput(params.ref || params.referral || params.referral_code);
+    if (fromLink) setReferralCode(fromLink);
+  }, [params.ref, params.referral, params.referral_code]);
 
   const handleRegister = async () => {
     if (loading) return;
@@ -80,6 +92,7 @@ export default function Register() {
         password,
         options: {
           emailRedirectTo: AUTH_CONFIRM_REDIRECT,
+          ...(normalizedReferralCode ? { data: { referral_code: normalizedReferralCode } } : {}),
         },
       });
 
@@ -93,7 +106,12 @@ export default function Register() {
       setPendingEmail(normalizedEmail);
       setPassword("");
       setConfirm("");
-      setNoticeMsg("Confirmation email sent. Check your inbox before logging in.");
+      setReferralCode("");
+      setNoticeMsg(
+        normalizedReferralCode
+          ? "Confirmation email sent. Your referral reward will appear after the account is created."
+          : "Confirmation email sent. Check your inbox before logging in.",
+      );
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Registration failed");
     } finally {
@@ -163,6 +181,7 @@ export default function Register() {
             <View style={styles.trustRow}>
               <TrustPill icon="shield-checkmark-outline" label="Email protected" />
               <TrustPill icon="storefront-outline" label="Market ready" />
+              <TrustPill icon="gift-outline" label="Referral rewards" />
             </View>
 
             <View style={styles.card}>
@@ -233,6 +252,17 @@ export default function Register() {
                     textContentType="emailAddress"
                     value={email}
                     onChangeText={setEmail}
+                  />
+
+                  <Text style={styles.label}>Referral code</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Optional invite code"
+                    placeholderTextColor={FAINT}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    value={referralCode}
+                    onChangeText={(value) => setReferralCode(cleanReferralInput(value))}
                   />
 
                   <Text style={styles.label}>Password</Text>

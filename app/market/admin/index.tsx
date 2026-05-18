@@ -56,7 +56,7 @@ type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "rewards
 type ModerationTab = "sellers" | "listings";
 type EscrowTab = "orders" | "stocks" | "chains" | "audit";
 type AdminTab = "members" | "roles" | "invite";
-type RewardAdminTab = "tasks" | "promotions" | "reviews" | "accounts" | "ledger" | "build";
+type RewardAdminTab = "tasks" | "promotions" | "referrals" | "reviews" | "accounts" | "ledger" | "build";
 type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
 type SupportPickedFile = SupportLocalFile & { id: string };
 
@@ -668,6 +668,13 @@ export default function MarketAdminIndex() {
   const [rewardPromotionMetadata, setRewardPromotionMetadata] = useState("{\"source\":\"admin_dashboard\"}");
   const [rewardAdjustUserId, setRewardAdjustUserId] = useState("");
   const [rewardAdjustAmount, setRewardAdjustAmount] = useState("");
+  const [rewardReferralEnabled, setRewardReferralEnabled] = useState(true);
+  const [rewardReferralBotFilterEnabled, setRewardReferralBotFilterEnabled] = useState(true);
+  const [rewardReferralJoinerNoms, setRewardReferralJoinerNoms] = useState("25");
+  const [rewardReferralReferrerNoms, setRewardReferralReferrerNoms] = useState("5");
+  const [rewardReferralMaxIp, setRewardReferralMaxIp] = useState("5");
+  const [rewardReferralMaxUserAgent, setRewardReferralMaxUserAgent] = useState("10");
+  const [rewardReferralShareBaseUrl, setRewardReferralShareBaseUrl] = useState("https://bestcity.app/register");
   const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
   const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
   const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
@@ -692,6 +699,19 @@ export default function MarketAdminIndex() {
     if (moduleParam && moduleParam in MODULE_META) setActiveModule(moduleParam as ModuleKey);
     if (ticketParam) openSupportTicket(ticketParam);
   }, [params.module, params.ticket]);
+
+  useEffect(() => {
+    const config = workspace?.modules.rewards?.config?.referrals;
+    if (!config) return;
+    const botFilter = config.bot_filter ?? {};
+    setRewardReferralEnabled(config.enabled !== false);
+    setRewardReferralBotFilterEnabled(botFilter.enabled !== false);
+    setRewardReferralJoinerNoms(String(config.joiner_reward_noms ?? 25));
+    setRewardReferralReferrerNoms(String(config.referrer_reward_noms ?? 5));
+    setRewardReferralMaxIp(String(botFilter.max_referrals_per_ip_hash ?? 5));
+    setRewardReferralMaxUserAgent(String(botFilter.max_referrals_per_user_agent_hash ?? 10));
+    setRewardReferralShareBaseUrl(String(config.share_base_url || "https://bestcity.app/register"));
+  }, [workspace?.generated_at]);
 
   function setCurrentModuleSearch(value: string) {
     setModuleSearch((prev) => ({ ...prev, [currentModule]: value }));
@@ -2781,6 +2801,26 @@ export default function MarketAdminIndex() {
       personLabel(entry.user),
       entry.task?.title,
     ]));
+    const referrals = (rewards.referrals ?? []).filter((referral: any) => matchesSearch(currentModuleSearch, [
+      referral.id,
+      referral.referral_code,
+      referral.status,
+      referral.bot_score,
+      personLabel(referral.referrer),
+      personLabel(referral.referred_user),
+      referral.referrer_id,
+      referral.referred_user_id,
+    ]));
+    const referralLeaderboard = (rewards.referral_leaderboard ?? []).filter((entry: any) => matchesSearch(currentModuleSearch, [
+      entry.code,
+      entry.username,
+      entry.full_name,
+      entry.market_username,
+      entry.display_name,
+      entry.business_name,
+      entry.balance,
+      entry.successful_referrals,
+    ]));
     const rewardStores = (rewards.stores ?? []).filter((seller: any) => matchesSearch(currentModuleSearch, [
       seller.user_id,
       seller.business_name,
@@ -2807,6 +2847,7 @@ export default function MarketAdminIndex() {
     const canManagePromotions = hasPermission("rewards.promotions.manage");
     const canReview = hasPermission("rewards.review");
     const canAdjust = hasPermission("rewards.adjust");
+    const canManageReferrals = canManageTasks;
 
     async function submitRewardTask() {
       let rules: Record<string, unknown>;
@@ -2881,6 +2922,23 @@ export default function MarketAdminIndex() {
       setRewardAdjustAmount("");
     }
 
+    async function submitReferralConfig() {
+      await performAction(
+        "reward-referral-config",
+        {
+          action: "update_reward_referral_config",
+          enabled: rewardReferralEnabled,
+          joiner_reward_noms: rewardReferralJoinerNoms.trim(),
+          referrer_reward_noms: rewardReferralReferrerNoms.trim(),
+          bot_filter_enabled: rewardReferralBotFilterEnabled,
+          max_referrals_per_ip_hash: rewardReferralMaxIp.trim(),
+          max_referrals_per_user_agent_hash: rewardReferralMaxUserAgent.trim(),
+          share_base_url: rewardReferralShareBaseUrl.trim(),
+        },
+        false,
+      );
+    }
+
     function loadTaskIntoBuilder(task: any) {
       setRewardTaskKey(String(task.task_key ?? ""));
       setRewardTaskTitle(String(task.title ?? ""));
@@ -2937,6 +2995,7 @@ export default function MarketAdminIndex() {
           count={
             rewardTab === "tasks" ? tasks.length :
             rewardTab === "promotions" ? promotions.length :
+            rewardTab === "referrals" ? referrals.length :
             rewardTab === "reviews" ? reviews.length :
             rewardTab === "accounts" ? accounts.length :
             rewardTab === "ledger" ? ledger.length :
@@ -2955,6 +3014,7 @@ export default function MarketAdminIndex() {
               options={[
                 { key: "tasks", label: "Tasks", count: tasks.length },
                 { key: "promotions", label: "Promotions", count: promotions.length },
+                { key: "referrals", label: "Referrals", count: referrals.length },
                 { key: "reviews", label: "Reviews", count: reviews.length },
                 { key: "accounts", label: "Accounts", count: accounts.length },
                 { key: "ledger", label: "Ledger", count: ledger.length },
@@ -2979,6 +3039,12 @@ export default function MarketAdminIndex() {
           </View>
           <View style={{ flex: 1, minWidth: 150 }}>
             <RecordCard>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount((rewards.referrals ?? []).filter((r: any) => r.status === "rewarded").length)}</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Successful referrals</Text>
+            </RecordCard>
+          </View>
+          <View style={{ flex: 1, minWidth: 150 }}>
+            <RecordCard>
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>{compactCount(reviews.length)}</Text>
               <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>Pending reviews</Text>
             </RecordCard>
@@ -2990,6 +3056,169 @@ export default function MarketAdminIndex() {
             </RecordCard>
           </View>
         </View>
+
+        {rewardTab === "referrals" ? (
+          <View style={{ gap: 14 }}>
+            <RecordCard>
+              <View style={{ gap: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+                  <View style={{ flex: 1, minWidth: 240 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Referral program</Text>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                      Configure signup rewards, inviter rewards, share links, and bot filters without redeploying the app.
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                    <Pressable
+                      onPress={() => setRewardReferralEnabled((value) => !value)}
+                      style={{
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: rewardReferralEnabled ? "rgba(74,222,128,0.14)" : "rgba(248,113,113,0.12)",
+                        borderWidth: 1,
+                        borderColor: rewardReferralEnabled ? "rgba(74,222,128,0.34)" : "rgba(248,113,113,0.32)",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <Ionicons name={rewardReferralEnabled ? "checkmark-circle-outline" : "pause-circle-outline"} size={16} color={rewardReferralEnabled ? SUCCESS : DANGER} />
+                      <Text style={{ color: rewardReferralEnabled ? SUCCESS : DANGER, fontWeight: "900", fontSize: 12 }}>
+                        {rewardReferralEnabled ? "Live" : "Paused"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setRewardReferralBotFilterEnabled((value) => !value)}
+                      style={{
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: rewardReferralBotFilterEnabled ? "rgba(45,212,191,0.14)" : "rgba(255,255,255,0.04)",
+                        borderWidth: 1,
+                        borderColor: rewardReferralBotFilterEnabled ? "rgba(45,212,191,0.34)" : BORDER,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <Ionicons name="shield-checkmark-outline" size={16} color={rewardReferralBotFilterEnabled ? ACCENT : MUTED} />
+                      <Text style={{ color: rewardReferralBotFilterEnabled ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>
+                        Bot filter {rewardReferralBotFilterEnabled ? "on" : "off"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 190 }}>
+                    <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>New user reward</Text>
+                    <AdminTextInput value={rewardReferralJoinerNoms} onChangeText={setRewardReferralJoinerNoms} placeholder="25" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 190 }}>
+                    <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Inviter reward</Text>
+                    <AdminTextInput value={rewardReferralReferrerNoms} onChangeText={setRewardReferralReferrerNoms} placeholder="5" />
+                  </View>
+                  <View style={{ flex: 2, minWidth: 240 }}>
+                    <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Share base URL</Text>
+                    <AdminTextInput value={rewardReferralShareBaseUrl} onChangeText={setRewardReferralShareBaseUrl} placeholder="https://bestcity.app/register" autoCapitalize="none" />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Max referrals per IP hash</Text>
+                    <AdminTextInput value={rewardReferralMaxIp} onChangeText={setRewardReferralMaxIp} placeholder="5" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Max referrals per device signature</Text>
+                    <AdminTextInput value={rewardReferralMaxUserAgent} onChangeText={setRewardReferralMaxUserAgent} placeholder="10" />
+                  </View>
+                </View>
+
+                <View style={{ borderRadius: 8, padding: 12, backgroundColor: "rgba(45,212,191,0.08)", borderWidth: 1, borderColor: "rgba(45,212,191,0.2)" }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Bot filtering</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    The app hashes IP and device signature before storage. Referrals over these limits are rejected before noms are paid.
+                  </Text>
+                </View>
+
+                {renderActionNote()}
+                <ActionButton
+                  icon="save-outline"
+                  label="Save referral settings"
+                  color={SUCCESS}
+                  disabled={!canManageReferrals}
+                  loading={workingKey === "reward-referral-config"}
+                  onPress={submitReferralConfig}
+                />
+              </View>
+            </RecordCard>
+
+            <RecordCard>
+              <View style={{ gap: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Lifetime referral leaderboard</Text>
+                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                      Ranked by successful referrals, then current noms balance.
+                    </Text>
+                  </View>
+                  <Pill label={`${referralLeaderboard.length} ranked`} color={ACCENT} />
+                </View>
+
+                {referralLeaderboard.length ? referralLeaderboard.slice(0, 12).map((entry: any, index: number) => {
+                  const label = entry.business_name || entry.display_name || (entry.market_username ? `@${entry.market_username}` : "") || entry.full_name || entry.username || shortId(entry.user_id);
+                  return (
+                    <View key={`${entry.user_id}-${index}`} style={{ borderRadius: 8, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: index < 3 ? "rgba(245,158,11,0.10)" : "rgba(255,255,255,0.035)", flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: index < 3 ? "rgba(245,158,11,0.18)" : "rgba(255,255,255,0.06)" }}>
+                        <Text style={{ color: index < 3 ? WARNING : MUTED, fontWeight: "900", fontSize: 12 }}>#{index + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{label}</Text>
+                        <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>{shortId(entry.user_id)} - code {entry.code}</Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={{ color: SUCCESS, fontWeight: "900", fontSize: 13 }}>{Number(entry.successful_referrals ?? 0).toLocaleString()} referrals</Text>
+                        <Text style={{ marginTop: 3, color: WARNING, fontWeight: "900", fontSize: 12 }}>{Number(entry.balance ?? 0).toLocaleString()} noms</Text>
+                      </View>
+                    </View>
+                  );
+                }) : (
+                  <EmptyState title="No referral leaders yet" subtitle="Successful referrals will populate the lifetime board automatically." />
+                )}
+              </View>
+            </RecordCard>
+
+            {referrals.length ? referrals.map((referral: any) => (
+              <RecordCard key={referral.id}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{personLabel(referral.referrer)} invited {personLabel(referral.referred_user)}</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{referral.referral_code} - {formatDate(referral.created_at)}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 8 }}>
+                    <Pill label={String(referral.status || "pending").toUpperCase()} color={statusTone(referral.status)} />
+                    {Number(referral.bot_score ?? 0) > 0 ? <Pill label={`BOT ${referral.bot_score}`} color={Number(referral.bot_score) >= 70 ? DANGER : WARNING} /> : null}
+                  </View>
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <InfoLine label="New user reward" value={`${Number(referral.joiner_reward_noms ?? 0).toLocaleString()} noms`} />
+                  <InfoLine label="Inviter reward" value={`${Number(referral.referrer_reward_noms ?? 0).toLocaleString()} noms`} />
+                  <InfoLine label="Rewarded" value={formatDate(referral.rewarded_at)} />
+                  <InfoLine label="Rejected" value={formatDate(referral.rejected_at)} />
+                </View>
+                {Number(referral.bot_score ?? 0) > 0 ? (
+                  <Text style={{ marginTop: 10, color: MUTED, fontSize: 12, lineHeight: 18 }} numberOfLines={3}>
+                    {JSON.stringify(referral.bot_signals ?? {})}
+                  </Text>
+                ) : null}
+              </RecordCard>
+            )) : (
+              <EmptyState title="No referral records" subtitle="Referral attempts and successful signups will appear here." />
+            )}
+          </View>
+        ) : null}
 
         {rewardTab === "build" ? (
           <View style={{ gap: 14 }}>

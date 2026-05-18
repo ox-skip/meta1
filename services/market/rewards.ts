@@ -92,6 +92,66 @@ export type RewardPromotion = {
   updated_at: string;
 };
 
+export type RewardReferralCode = {
+  user_id: string;
+  code: string;
+  active: boolean;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RewardReferralRow = {
+  id: string;
+  referrer_id: string;
+  referred_user_id: string;
+  referral_code: string;
+  status: "pending" | "qualified" | "rewarded" | "rejected" | "void";
+  joiner_reward_noms: number;
+  referrer_reward_noms: number;
+  bot_score: number;
+  bot_signals: Record<string, any>;
+  qualified_at: string | null;
+  rewarded_at: string | null;
+  rejected_at: string | null;
+  created_at: string;
+  updated_at: string;
+  referred_user?: any | null;
+  referrer?: any | null;
+};
+
+export type RewardReferralLeaderboardEntry = {
+  user_id: string;
+  code: string;
+  username: string | null;
+  full_name: string | null;
+  public_uid: string | null;
+  market_username: string | null;
+  display_name: string | null;
+  business_name: string | null;
+  total_referrals: number;
+  successful_referrals: number;
+  referral_noms_earned: number;
+  balance: number;
+  lifetime_earned: number;
+  last_referral_at: string | null;
+};
+
+export type RewardReferralHome = {
+  code: RewardReferralCode | null;
+  summary: {
+    total: number;
+    successful: number;
+    pending: number;
+    rejected: number;
+    earned_noms: number;
+  };
+  invited: RewardReferralRow[];
+  referred_by: RewardReferralRow | null;
+  leaderboard: RewardReferralLeaderboardEntry[];
+  config: Record<string, any>;
+};
+
 export type RewardsHome = {
   ok: true;
   generated_at: string;
@@ -102,6 +162,7 @@ export type RewardsHome = {
   pending_reviews: any[];
   redemptions: any[];
   config: Record<string, any>;
+  referrals?: RewardReferralHome;
 };
 
 export type RewardClaimResult = {
@@ -138,6 +199,18 @@ export type RewardAdStartResult = {
   task: RewardTask;
 };
 
+export type RewardReferralClaimResult = {
+  ok: boolean;
+  status: string;
+  message?: string;
+  duplicate?: boolean;
+  referral_id?: string;
+  joiner_reward_noms?: number;
+  referrer_reward_noms?: number;
+  bot_score?: number;
+  bot_signals?: Record<string, any>;
+};
+
 export async function fetchRewardsHome() {
   return await callFn<RewardsHome>("market-rewards-home", {}, 25000);
 }
@@ -149,6 +222,10 @@ export async function claimRewardTask(input: {
   idempotency_key?: string;
 }) {
   return await callFn<RewardClaimResult>("market-rewards-claim", input, 25000);
+}
+
+export async function claimReferralCode(code: string) {
+  return await callFn<RewardReferralClaimResult>("market-referral-claim", { code, surface: "rewards" }, 20000);
 }
 
 export async function startRewardedAdTask(taskKey = "watch_rewarded_video") {

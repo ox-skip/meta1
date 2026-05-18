@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -17,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import {
+  claimReferralCode,
   claimRewardTask,
   fetchRewardsHome,
   recordRewardPromotionEvent,
@@ -39,7 +42,7 @@ const GREEN = "#4ADE80";
 const RED = "#F87171";
 const BLUE = "#60A5FA";
 
-type TabKey = "earn" | "watch" | "market" | "social" | "onchain" | "redeem" | "history";
+type TabKey = "earn" | "watch" | "market" | "social" | "onchain" | "referrals" | "redeem" | "history";
 type ActionNotice = {
   tone: "success" | "warning" | "error" | "info";
   title: string;
@@ -58,6 +61,7 @@ const TABS: TabDef[] = [
   { key: "market", label: "Market", icon: "storefront-outline" },
   { key: "social", label: "Social", icon: "people-outline" },
   { key: "onchain", label: "Stocks", icon: "trending-up-outline" },
+  { key: "referrals", label: "Invite", icon: "person-add-outline" },
   { key: "redeem", label: "Redeem", icon: "ticket-outline" },
   { key: "history", label: "History", icon: "time-outline" },
 ];
@@ -729,6 +733,317 @@ function LedgerList({ home }: { home: RewardsHome }) {
   );
 }
 
+function referralProfileLabel(profile: any) {
+  return (
+    profile?.full_name ||
+    profile?.username ||
+    profile?.email ||
+    "New member"
+  );
+}
+
+function referralLeaderboardLabel(entry: any) {
+  return (
+    entry?.business_name ||
+    entry?.display_name ||
+    (entry?.market_username ? `@${entry.market_username}` : "") ||
+    entry?.full_name ||
+    entry?.username ||
+    "BestCity member"
+  );
+}
+
+function ReferralMetric({ label, value, icon, color }: { label: string; value: string; icon: keyof typeof Ionicons.glyphMap; color: string }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 120,
+        borderRadius: 18,
+        padding: 14,
+        backgroundColor: "rgba(255,253,247,0.055)",
+        borderWidth: 1,
+        borderColor: `${color}33`,
+      }}
+    >
+      <Ionicons name={icon} size={17} color={color} />
+      <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 18 }}>{value}</Text>
+      <Text style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 11 }}>{label}</Text>
+    </View>
+  );
+}
+
+function ReferralPanel({
+  home,
+  onApplied,
+  onNotice,
+}: {
+  home: RewardsHome;
+  onApplied: () => Promise<void>;
+  onNotice: (notice: ActionNotice) => void;
+}) {
+  const referrals = home.referrals;
+  const [claimCode, setClaimCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const code = referrals?.code?.code ?? "";
+  const config = referrals?.config ?? {};
+  const joinerReward = Number(config.joiner_reward_noms ?? 25);
+  const referrerReward = Number(config.referrer_reward_noms ?? 5);
+  const shareBase = String(config.share_base_url || "https://bestcity.app/register");
+  const shareUrl = code ? `${shareBase}${shareBase.includes("?") ? "&" : "?"}ref=${encodeURIComponent(code)}` : "";
+
+  async function copyInvite() {
+    if (!code) return;
+    const text = shareUrl || code;
+    try {
+      await Clipboard.setStringAsync(text);
+      Alert.alert("Invite copied", "Your referral invite is ready to share.");
+    } catch {
+      Alert.alert("Copy failed", "Unable to copy your referral invite right now.");
+    }
+  }
+
+  async function submitClaim() {
+    const clean = claimCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+    if (!clean || busy) return;
+    setBusy(true);
+    try {
+      const result = await claimReferralCode(clean);
+      const ok = result.ok !== false;
+      const message =
+        result.message ||
+        (ok
+          ? `Referral applied. You can earn ${formatNoms(joinerReward)} when eligible.`
+          : "That referral code could not be applied.");
+      onNotice({
+        tone: ok ? "success" : "warning",
+        title: ok ? "Referral applied" : "Referral not applied",
+        message,
+      });
+      Alert.alert(ok ? "Referral applied" : "Referral not applied", message);
+      if (ok) {
+        setClaimCode("");
+        await onApplied();
+      }
+    } catch (e) {
+      const message = errorDetail(e);
+      onNotice({ tone: "error", title: "Referral failed", message });
+      Alert.alert("Referral failed", message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!referrals) {
+    return <EmptyState icon="person-add-outline" title="Referrals are loading" subtitle="Pull to refresh and your referral code will appear here." />;
+  }
+
+  return (
+    <View style={{ gap: 12 }}>
+      <SectionTitle
+        title="Invite and earn"
+        subtitle={`Friends get ${formatNoms(joinerReward)}. You earn ${formatNoms(referrerReward)} for each successful referral.`}
+      />
+
+      <LinearGradient
+        colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.10)", "rgba(255,253,247,0.055)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          borderRadius: 26,
+          padding: 16,
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.14)",
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+          <View
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(45,212,191,0.18)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.38)",
+            }}
+          >
+            <Ionicons name="person-add-outline" size={23} color={TEAL} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Your referral code</Text>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Share the code with real users. Bot-like referral patterns are filtered before rewards are paid.
+            </Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            marginTop: 14,
+            borderRadius: 20,
+            padding: 13,
+            backgroundColor: "rgba(8,11,10,0.48)",
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.13)",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <Text selectable numberOfLines={1} adjustsFontSizeToFit style={{ flex: 1, color: TEXT, fontWeight: "900", fontSize: 25, letterSpacing: 0 }}>
+            {code || "CREATING"}
+          </Text>
+          <Pressable
+            onPress={copyInvite}
+            disabled={!code}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(45,212,191,0.18)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.42)",
+              opacity: code ? 1 : 0.55,
+            }}
+          >
+            <Ionicons name="copy-outline" size={18} color={TEXT} />
+          </Pressable>
+        </View>
+
+        {shareUrl ? (
+          <Text numberOfLines={1} style={{ marginTop: 9, color: "rgba(255,253,247,0.58)", fontSize: 11, fontWeight: "800" }}>
+            {shareUrl}
+          </Text>
+        ) : null}
+      </LinearGradient>
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <ReferralMetric label="Successful referrals" value={String(referrals.summary.successful)} icon="checkmark-circle-outline" color={GREEN} />
+        <ReferralMetric label="Referral noms earned" value={formatNoms(referrals.summary.earned_noms)} icon="cash-outline" color={GOLD} />
+        <ReferralMetric label="Current balance" value={formatNoms(home.account.balance)} icon="wallet-outline" color={TEAL} />
+      </View>
+
+      {!referrals.referred_by ? (
+        <View
+          style={{
+            borderRadius: 22,
+            padding: 14,
+            backgroundColor: PANEL_STRONG,
+            borderWidth: 1,
+            borderColor: BORDER,
+            gap: 10,
+          }}
+        >
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Have an invite code?</Text>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <TextInput
+              value={claimCode}
+              onChangeText={(value) => setClaimCode(value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16))}
+              placeholder="Enter code"
+              placeholderTextColor="rgba(255,253,247,0.42)"
+              autoCapitalize="characters"
+              style={{
+                flex: 1,
+                minHeight: 48,
+                borderRadius: 16,
+                paddingHorizontal: 13,
+                color: TEXT,
+                fontWeight: "900",
+                backgroundColor: "rgba(255,253,247,0.065)",
+                borderWidth: 1,
+                borderColor: BORDER,
+              }}
+            />
+            <Pressable
+              onPress={submitClaim}
+              disabled={busy || !claimCode.trim()}
+              style={{
+                width: 50,
+                height: 48,
+                borderRadius: 16,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(45,212,191,0.18)",
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.42)",
+                opacity: busy || !claimCode.trim() ? 0.55 : 1,
+              }}
+            >
+              {busy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="arrow-forward" size={18} color={TEXT} />}
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={{ borderRadius: 20, padding: 14, backgroundColor: "rgba(74,222,128,0.10)", borderWidth: 1, borderColor: "rgba(74,222,128,0.25)" }}>
+          <Text style={{ color: GREEN, fontWeight: "900", fontSize: 13 }}>You joined through {referralProfileLabel(referrals.referred_by.referrer)}.</Text>
+        </View>
+      )}
+
+      <View style={{ borderRadius: 22, padding: 14, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER }}>
+        <SectionTitle title="Lifetime leaderboard" subtitle="Top inviters ranked by successful referrals and current noms balance." />
+        <View style={{ gap: 9 }}>
+          {referrals.leaderboard.slice(0, 10).map((entry, index) => (
+            <View
+              key={`${entry.user_id}-${index}`}
+              style={{
+                minHeight: 58,
+                borderRadius: 17,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                backgroundColor: index < 3 ? "rgba(244,183,93,0.10)" : "rgba(255,253,247,0.045)",
+                borderWidth: 1,
+                borderColor: index < 3 ? "rgba(244,183,93,0.24)" : BORDER,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 11,
+              }}
+            >
+              <View style={{ width: 32, height: 32, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: index < 3 ? "rgba(244,183,93,0.18)" : "rgba(255,253,247,0.07)" }}>
+                <Text style={{ color: index < 3 ? GOLD : MUTED, fontWeight: "900", fontSize: 12 }}>#{index + 1}</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{referralLeaderboardLabel(entry)}</Text>
+                <Text style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 11 }}>
+                  {Number(entry.successful_referrals ?? 0).toLocaleString()} referrals
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ color: TEAL, fontWeight: "900", fontSize: 12 }}>{formatNoms(entry.balance)}</Text>
+                <Text style={{ marginTop: 3, color: GOLD, fontWeight: "800", fontSize: 10 }}>+{Number(entry.referral_noms_earned ?? 0).toLocaleString()}</Text>
+              </View>
+            </View>
+          ))}
+          {!referrals.leaderboard.length ? (
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>The referral leaderboard will appear once users start inviting successful accounts.</Text>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={{ gap: 9 }}>
+        <SectionTitle title="Recent invites" subtitle="The latest accounts created with your code." />
+        {referrals.invited.length ? referrals.invited.slice(0, 8).map((row) => (
+          <View key={row.id} style={{ borderRadius: 18, padding: 13, backgroundColor: PANEL_STRONG, borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Ionicons name={row.status === "rewarded" ? "checkmark-circle-outline" : row.status === "rejected" ? "alert-circle-outline" : "time-outline"} size={20} color={row.status === "rewarded" ? GREEN : row.status === "rejected" ? RED : GOLD} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{referralProfileLabel(row.referred_user)}</Text>
+              <Text style={{ marginTop: 3, color: MUTED, fontSize: 11 }}>{shortTime(row.rewarded_at || row.created_at)}</Text>
+            </View>
+            <Text style={{ color: row.status === "rewarded" ? GREEN : MUTED, fontWeight: "900", fontSize: 12 }}>
+              {String(row.status).replace(/_/g, " ")}
+            </Text>
+          </View>
+        )) : (
+          <EmptyState icon="send-outline" title="No invites yet" subtitle="Share your code with real people and successful signups will appear here." />
+        )}
+      </View>
+    </View>
+  );
+}
+
 export default function RewardsScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -790,7 +1105,7 @@ export default function RewardsScreen() {
   const visibleTasks = useMemo(() => {
     const tasks = home?.tasks ?? [];
     if (tab === "earn") return tasks;
-    if (tab === "redeem" || tab === "history") return [];
+    if (tab === "redeem" || tab === "history" || tab === "referrals") return [];
     const category = tab === "onchain" ? "onchain" : tab;
     return tasks.filter((task) => task.category === category);
   }, [home?.tasks, tab]);
@@ -911,6 +1226,9 @@ export default function RewardsScreen() {
       );
     }
 
+    if (tab === "referrals") {
+      return <ReferralPanel home={home} onApplied={() => load("refresh")} onNotice={setActionNotice} />;
+    }
     if (tab === "redeem") return <RedemptionShelf home={home} />;
     if (tab === "history") return <LedgerList home={home} />;
 
@@ -1026,6 +1344,7 @@ export default function RewardsScreen() {
                 <StatPill label="Spent" value={formatNoms(home?.account.lifetime_spent)} icon="arrow-down-circle-outline" color={RED} />
                 <StatPill label="Streak" value={`${home?.account.daily_streak ?? 0} days`} icon="flame-outline" color={GOLD} />
                 <StatPill label="Tier" value={String(home?.account.tier_key || "starter")} icon="ribbon-outline" color={TEAL} />
+                <StatPill label="Referrals" value={String(home?.referrals?.summary.successful ?? 0)} icon="person-add-outline" color={BLUE} />
               </View>
             </View>
           </View>
@@ -1048,6 +1367,8 @@ export default function RewardsScreen() {
             const count =
               item.key === "earn"
                 ? home?.tasks.length ?? 0
+                : item.key === "referrals"
+                  ? home?.referrals?.summary.successful ?? 0
                 : item.key === "redeem"
                   ? redemptionCount
                   : item.key === "history"
