@@ -59,6 +59,40 @@ type AdminTab = "members" | "roles" | "invite";
 type RewardAdminTab = "tasks" | "promotions" | "referrals" | "reviews" | "accounts" | "ledger" | "build";
 type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
 type SupportPickedFile = SupportLocalFile & { id: string };
+type RewardRuleCheck =
+  | "referral_count"
+  | "purchase_count"
+  | "purchase_volume"
+  | "stock_trade_volume"
+  | "stock_trade_count"
+  | "active_listing_count"
+  | "follow_count"
+  | "social_post_count"
+  | "seller_profile_exists"
+  | "seller_profile_complete"
+  | "admin_review";
+type RewardWindowMode = "all_time" | "campaign" | "after_first_progress";
+type RewardTimeUnit = "minutes" | "hours" | "days";
+
+const REWARD_RULE_OPTIONS: Array<{ key: RewardRuleCheck; label: string; description: string; category: string }> = [
+  { key: "referral_count", label: "Referrals", description: "Invite a number of people.", category: "social" },
+  { key: "purchase_count", label: "Purchases", description: "Buy from the market, a store, or a listing.", category: "market" },
+  { key: "purchase_volume", label: "Purchase value", description: "Spend a target amount in orders.", category: "market" },
+  { key: "stock_trade_volume", label: "Stock volume", description: "Reach a total stock trade value.", category: "onchain" },
+  { key: "stock_trade_count", label: "Stock trades", description: "Make a number of buy or sell trades.", category: "onchain" },
+  { key: "active_listing_count", label: "Listings", description: "Publish active listings.", category: "market" },
+  { key: "follow_count", label: "Follow stores", description: "Follow one or more stores.", category: "social" },
+  { key: "social_post_count", label: "Market posts", description: "Post in the market feed.", category: "social" },
+  { key: "seller_profile_exists", label: "Open store", description: "Create a store profile.", category: "market" },
+  { key: "seller_profile_complete", label: "Complete store", description: "Fill out store details.", category: "market" },
+  { key: "admin_review", label: "Manual proof", description: "User submits proof for admin review.", category: "custom" },
+];
+
+const REWARD_WINDOW_OPTIONS: Array<{ key: RewardWindowMode; label: string; description: string }> = [
+  { key: "all_time", label: "Any time", description: "Count progress whenever it happens." },
+  { key: "campaign", label: "Campaign dates", description: "Count progress during the task start and end dates." },
+  { key: "after_first_progress", label: "Timed challenge", description: "Count progress inside a time limit after the first action." },
+];
 
 const MODULE_META: Record<ModuleKey, {
   icon: keyof typeof Ionicons.glyphMap;
@@ -206,6 +240,25 @@ function permissionLabel(permission: string) {
 function compactCount(value: number) {
   if (value > 999) return `${(value / 1000).toFixed(value > 9999 ? 0 : 1)}k`;
   return String(value);
+}
+
+function numericText(value: string, fallback = 1) {
+  const n = Number(String(value || "").replace(/,/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function timeUnitSeconds(unit: RewardTimeUnit) {
+  if (unit === "minutes") return 60;
+  if (unit === "days") return 86400;
+  return 3600;
+}
+
+function splitSeconds(seconds: unknown): { amount: string; unit: RewardTimeUnit } {
+  const value = Math.max(0, Math.trunc(Number(seconds ?? 0)));
+  if (value > 0 && value % 86400 === 0) return { amount: String(value / 86400), unit: "days" };
+  if (value > 0 && value % 3600 === 0) return { amount: String(value / 3600), unit: "hours" };
+  if (value > 0 && value % 60 === 0) return { amount: String(value / 60), unit: "minutes" };
+  return { amount: value ? String(Math.max(1, Math.round(value / 60))) : "0", unit: value ? "minutes" : "hours" };
 }
 
 function normalizeText(value: unknown) {
@@ -467,6 +520,7 @@ function AdminTextInput({
   keyboardType,
   multiline,
   autoCapitalize,
+  editable,
 }: {
   value: string;
   onChangeText: (value: string) => void;
@@ -475,11 +529,13 @@ function AdminTextInput({
   keyboardType?: "default" | "email-address";
   multiline?: boolean;
   autoCapitalize?: TextInputProps["autoCapitalize"];
+  editable?: boolean;
 }) {
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
+      editable={editable}
       secureTextEntry={secureTextEntry}
       keyboardType={keyboardType}
       autoCapitalize={autoCapitalize ?? (keyboardType === "email-address" ? "none" : undefined)}
@@ -497,6 +553,7 @@ function AdminTextInput({
         paddingVertical: 11,
         fontSize: 14,
         textAlignVertical: multiline ? "top" : "center",
+        opacity: editable === false ? 0.72 : 1,
       }}
     />
   );
@@ -613,6 +670,7 @@ export default function MarketAdminIndex() {
   const params = useLocalSearchParams<{ module?: string; ticket?: string }>();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 920;
+  const isCompact = width < 720;
   const [booting, setBooting] = useState(true);
   const [checkingSession, setCheckingSession] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -644,14 +702,32 @@ export default function MarketAdminIndex() {
   const [escrowTab, setEscrowTab] = useState<EscrowTab>("orders");
   const [adminTab, setAdminTab] = useState<AdminTab>("members");
   const [rewardTab, setRewardTab] = useState<RewardAdminTab>("tasks");
-  const [rewardTaskKey, setRewardTaskKey] = useState("custom_campaign_review");
+  const [rewardTaskKey, setRewardTaskKey] = useState("custom_reward_task");
   const [rewardTaskTitle, setRewardTaskTitle] = useState("");
   const [rewardTaskDescription, setRewardTaskDescription] = useState("");
   const [rewardTaskCategory, setRewardTaskCategory] = useState("custom");
-  const [rewardTaskTrigger, setRewardTaskTrigger] = useState("admin_review");
+  const [rewardTaskTrigger, setRewardTaskTrigger] = useState("client_claim");
   const [rewardTaskNoms, setRewardTaskNoms] = useState("100");
   const [rewardTaskRoute, setRewardTaskRoute] = useState("");
-  const [rewardTaskRules, setRewardTaskRules] = useState("{\"check\":\"admin_review\"}");
+  const [rewardTaskCooldownAmount, setRewardTaskCooldownAmount] = useState("0");
+  const [rewardTaskCooldownUnit, setRewardTaskCooldownUnit] = useState<RewardTimeUnit>("hours");
+  const [rewardTaskDailyCap, setRewardTaskDailyCap] = useState("");
+  const [rewardTaskWeeklyCap, setRewardTaskWeeklyCap] = useState("");
+  const [rewardTaskLifetimeCap, setRewardTaskLifetimeCap] = useState("1");
+  const [rewardTaskStartsAt, setRewardTaskStartsAt] = useState("");
+  const [rewardTaskEndsAt, setRewardTaskEndsAt] = useState("");
+  const [rewardTaskRules, setRewardTaskRules] = useState("");
+  const [rewardRuleCheck, setRewardRuleCheck] = useState<RewardRuleCheck>("referral_count");
+  const [rewardRuleMin, setRewardRuleMin] = useState("2");
+  const [rewardRuleValue, setRewardRuleValue] = useState("40");
+  const [rewardRuleWindowMode, setRewardRuleWindowMode] = useState<RewardWindowMode>("all_time");
+  const [rewardRuleWindowAmount, setRewardRuleWindowAmount] = useState("5");
+  const [rewardRuleWindowUnit, setRewardRuleWindowUnit] = useState<RewardTimeUnit>("hours");
+  const [rewardRuleStoreId, setRewardRuleStoreId] = useState("");
+  const [rewardRuleListingId, setRewardRuleListingId] = useState("");
+  const [rewardRuleStockId, setRewardRuleStockId] = useState("");
+  const [rewardRuleSide, setRewardRuleSide] = useState("any");
+  const [rewardRulePurchaseRole, setRewardRulePurchaseRole] = useState("buyer");
   const [rewardPromotionId, setRewardPromotionId] = useState("");
   const [rewardPromotionPlacement, setRewardPromotionPlacement] = useState("rewards_top");
   const [rewardPromotionTitle, setRewardPromotionTitle] = useState("");
@@ -692,6 +768,95 @@ export default function MarketAdminIndex() {
   const currentModule = (activeModule ?? visibleModules[0]?.key ?? "support") as ModuleKey;
   const currentModuleMeta = MODULE_META[currentModule] ?? MODULE_META.support;
   const currentModuleSearch = moduleSearch[currentModule] ?? "";
+  const rewardRuleDraft = useMemo(() => {
+    const addWindow = (rule: Record<string, unknown>) => {
+      if (rewardRuleWindowMode === "after_first_progress") {
+        return {
+          ...rule,
+          window: {
+            mode: "after_first_progress",
+            seconds: Math.max(60, Math.trunc(numericText(rewardRuleWindowAmount, 1) * timeUnitSeconds(rewardRuleWindowUnit))),
+          },
+        };
+      }
+      if (rewardRuleWindowMode === "campaign") {
+        return { ...rule, window: { mode: "campaign" } };
+      }
+      return rule;
+    };
+    const min = Math.max(1, Math.trunc(numericText(rewardRuleMin, 1)));
+    const value = numericText(rewardRuleValue, 1);
+    const storeId = rewardRuleStoreId.trim();
+    const listingId = rewardRuleListingId.trim();
+    const stockId = rewardRuleStockId.trim();
+    const side = rewardRuleSide === "any" ? "" : rewardRuleSide;
+
+    if (rewardRuleCheck === "seller_profile_exists") return { check: "seller_profile_exists" };
+    if (rewardRuleCheck === "seller_profile_complete") return { check: "seller_profile_complete", min_fields: min };
+    if (rewardRuleCheck === "admin_review") return { check: "admin_review" };
+    if (rewardRuleCheck === "referral_count") {
+      return addWindow({ check: "referral_count", min, statuses: ["qualified", "rewarded"] });
+    }
+    if (rewardRuleCheck === "purchase_count") {
+      return addWindow({
+        check: "purchase_count",
+        min,
+        role: rewardRulePurchaseRole,
+        ...(storeId ? { store_id: storeId } : {}),
+        ...(listingId ? { listing_id: listingId } : {}),
+      });
+    }
+    if (rewardRuleCheck === "purchase_volume") {
+      return addWindow({
+        check: "purchase_volume",
+        min_amount: value,
+        role: rewardRulePurchaseRole,
+        ...(storeId ? { store_id: storeId } : {}),
+        ...(listingId ? { listing_id: listingId } : {}),
+      });
+    }
+    if (rewardRuleCheck === "stock_trade_volume") {
+      return addWindow({
+        check: "stock_trade_volume",
+        min_volume_usd: value,
+        ...(side ? { side } : {}),
+        ...(stockId ? { stock_id: stockId } : {}),
+      });
+    }
+    if (rewardRuleCheck === "stock_trade_count") {
+      return addWindow({
+        check: "stock_trade_count",
+        min,
+        ...(side ? { side } : {}),
+        ...(stockId ? { stock_id: stockId } : {}),
+      });
+    }
+    if (rewardRuleCheck === "follow_count") {
+      return addWindow({
+        check: "follow_count",
+        min,
+        ...(storeId ? { store_id: storeId } : {}),
+      });
+    }
+    if (rewardRuleCheck === "social_post_count") return addWindow({ check: "social_post_count", min });
+    return addWindow({ check: "active_listing_count", min });
+  }, [
+    rewardRuleCheck,
+    rewardRuleListingId,
+    rewardRuleMin,
+    rewardRulePurchaseRole,
+    rewardRuleSide,
+    rewardRuleStockId,
+    rewardRuleStoreId,
+    rewardRuleValue,
+    rewardRuleWindowAmount,
+    rewardRuleWindowMode,
+    rewardRuleWindowUnit,
+  ]);
+
+  useEffect(() => {
+    setRewardTaskRules(JSON.stringify(rewardRuleDraft, null, 2));
+  }, [rewardRuleDraft]);
 
   useEffect(() => {
     const moduleParam = String(params.module || "").trim().toLowerCase();
@@ -2849,14 +3014,56 @@ export default function MarketAdminIndex() {
     const canAdjust = hasPermission("rewards.adjust");
     const canManageReferrals = canManageTasks;
 
-    async function submitRewardTask() {
-      let rules: Record<string, unknown>;
-      try {
-        rules = rewardTaskRules.trim() ? JSON.parse(rewardTaskRules) : {};
-      } catch {
-        setError("Reward task rules must be valid JSON.");
-        return;
+    function selectRewardRule(check: RewardRuleCheck) {
+      const option = REWARD_RULE_OPTIONS.find((item) => item.key === check);
+      setRewardRuleCheck(check);
+      if (option?.category) setRewardTaskCategory(option.category);
+      if (check === "admin_review") {
+        setRewardTaskTrigger("admin_review");
+      } else if (rewardTaskTrigger === "admin_review") {
+        setRewardTaskTrigger("client_claim");
       }
+    }
+
+    function hydrateRewardRuleBuilder(rawRules: Record<string, unknown>) {
+      const check = String(rawRules?.check ?? "referral_count") as RewardRuleCheck;
+      const validCheck = REWARD_RULE_OPTIONS.some((option) => option.key === check) ? check : "referral_count";
+      const window = rawRules?.window && typeof rawRules.window === "object" && !Array.isArray(rawRules.window)
+        ? (rawRules.window as Record<string, unknown>)
+        : {};
+      const seconds = Number(window.seconds ?? 0);
+
+      setRewardRuleCheck(validCheck);
+      setRewardRuleMin(String(rawRules.min_fields ?? rawRules.min ?? 1));
+      setRewardRuleValue(String(rawRules.min_volume_usd ?? rawRules.min_amount ?? rawRules.min_volume ?? rawRules.min ?? 40));
+      setRewardRuleStoreId(String(rawRules.store_id ?? ""));
+      setRewardRuleListingId(String(rawRules.listing_id ?? ""));
+      setRewardRuleStockId(String(rawRules.stock_id ?? ""));
+      setRewardRuleSide(String(rawRules.side ?? "any") || "any");
+      setRewardRulePurchaseRole(String(rawRules.role ?? "buyer") || "buyer");
+      const mode = String(window.mode ?? "all_time") as RewardWindowMode;
+      setRewardRuleWindowMode(REWARD_WINDOW_OPTIONS.some((option) => option.key === mode) ? mode : "all_time");
+      if (Number.isFinite(seconds) && seconds > 0) {
+        if (seconds % 86400 === 0) {
+          setRewardRuleWindowAmount(String(seconds / 86400));
+          setRewardRuleWindowUnit("days");
+        } else if (seconds % 3600 === 0) {
+          setRewardRuleWindowAmount(String(seconds / 3600));
+          setRewardRuleWindowUnit("hours");
+        } else {
+          setRewardRuleWindowAmount(String(Math.max(1, Math.round(seconds / 60))));
+          setRewardRuleWindowUnit("minutes");
+        }
+      }
+    }
+
+    async function submitRewardTask() {
+      const rules = rewardRuleDraft;
+      const triggerType = rewardRuleCheck === "admin_review"
+        ? "admin_review"
+        : rewardTaskTrigger === "admin_review"
+          ? "client_claim"
+          : rewardTaskTrigger;
       await performAction(
         `reward-task-${rewardTaskKey.trim()}`,
         {
@@ -2865,12 +3072,18 @@ export default function MarketAdminIndex() {
           title: rewardTaskTitle.trim(),
           description: rewardTaskDescription.trim(),
           category: rewardTaskCategory,
-          trigger_type: rewardTaskTrigger,
+          trigger_type: triggerType,
           reward_noms: rewardTaskNoms.trim(),
+          cooldown_seconds: String(Math.max(0, Math.trunc(numericText(rewardTaskCooldownAmount, 0) * timeUnitSeconds(rewardTaskCooldownUnit)))),
+          daily_cap: rewardTaskDailyCap.trim(),
+          weekly_cap: rewardTaskWeeklyCap.trim(),
+          lifetime_cap: rewardTaskLifetimeCap.trim(),
+          starts_at: rewardTaskStartsAt.trim(),
+          ends_at: rewardTaskEndsAt.trim(),
           action_route: rewardTaskRoute.trim(),
-          requires_review: rewardTaskTrigger === "admin_review",
+          requires_review: triggerType === "admin_review",
           rules,
-          ui: { badge: rewardTaskCategory, primaryLabel: rewardTaskTrigger === "ad_reward" ? "Watch" : "Claim" },
+          ui: { badge: rewardTaskCategory, primaryLabel: triggerType === "ad_reward" ? "Watch" : triggerType === "admin_review" ? "Submit proof" : "Claim" },
           active: true,
         },
         false,
@@ -2947,6 +3160,15 @@ export default function MarketAdminIndex() {
       setRewardTaskTrigger(String(task.trigger_type ?? "client_claim"));
       setRewardTaskNoms(String(task.reward_noms ?? 0));
       setRewardTaskRoute(String(task.action_route ?? ""));
+      const cooldown = splitSeconds(task.cooldown_seconds ?? 0);
+      setRewardTaskCooldownAmount(cooldown.amount);
+      setRewardTaskCooldownUnit(cooldown.unit);
+      setRewardTaskDailyCap(task.daily_cap === null || task.daily_cap === undefined ? "" : String(task.daily_cap));
+      setRewardTaskWeeklyCap(task.weekly_cap === null || task.weekly_cap === undefined ? "" : String(task.weekly_cap));
+      setRewardTaskLifetimeCap(task.lifetime_cap === null || task.lifetime_cap === undefined ? "" : String(task.lifetime_cap));
+      setRewardTaskStartsAt(String(task.starts_at ?? ""));
+      setRewardTaskEndsAt(String(task.ends_at ?? ""));
+      hydrateRewardRuleBuilder((task.rules ?? {}) as Record<string, unknown>);
       setRewardTaskRules(JSON.stringify(task.rules ?? {}, null, 2));
       setRewardTab("build");
     }
@@ -3277,7 +3499,205 @@ export default function MarketAdminIndex() {
                     <AdminTextInput value={rewardTaskRoute} onChangeText={setRewardTaskRoute} placeholder="Optional action route, for example /market/social" autoCapitalize="none" />
                   </View>
                 </View>
-                <AdminTextInput value={rewardTaskRules} onChangeText={setRewardTaskRules} placeholder={'{"check":"admin_review"}'} multiline autoCapitalize="none" />
+                <View style={{ borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: "rgba(255,255,255,0.035)", padding: 12, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Limits and timing</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <View style={{ width: 150 }}>
+                      <AdminTextInput value={rewardTaskCooldownAmount} onChangeText={setRewardTaskCooldownAmount} placeholder="Cooldown" />
+                    </View>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                      {(["minutes", "hours", "days"] as RewardTimeUnit[]).map((unit) => (
+                        <Pressable
+                          key={`cooldown-${unit}`}
+                          onPress={() => setRewardTaskCooldownUnit(unit)}
+                          style={{
+                            borderRadius: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            backgroundColor: rewardTaskCooldownUnit === unit ? "rgba(45,212,191,0.16)" : "rgba(255,255,255,0.04)",
+                            borderWidth: 1,
+                            borderColor: rewardTaskCooldownUnit === unit ? "rgba(45,212,191,0.42)" : BORDER,
+                          }}
+                        >
+                          <Text style={{ color: rewardTaskCooldownUnit === unit ? "#2DD4BF" : MUTED, fontWeight: "900", fontSize: 12 }}>{labelFromKey(unit)}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <View style={{ flex: 1, minWidth: 160 }}>
+                      <AdminTextInput value={rewardTaskDailyCap} onChangeText={setRewardTaskDailyCap} placeholder="Daily cap, blank for none" />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 160 }}>
+                      <AdminTextInput value={rewardTaskWeeklyCap} onChangeText={setRewardTaskWeeklyCap} placeholder="Weekly cap, blank for none" />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 160 }}>
+                      <AdminTextInput value={rewardTaskLifetimeCap} onChangeText={setRewardTaskLifetimeCap} placeholder="Lifetime cap, for example 1" />
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <View style={{ flex: 1, minWidth: 220 }}>
+                      <AdminTextInput value={rewardTaskStartsAt} onChangeText={setRewardTaskStartsAt} placeholder="Optional start date, ISO format" autoCapitalize="none" />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 220 }}>
+                      <AdminTextInput value={rewardTaskEndsAt} onChangeText={setRewardTaskEndsAt} placeholder="Optional end date, ISO format" autoCapitalize="none" />
+                    </View>
+                  </View>
+                </View>
+                <View style={{ borderRadius: 8, borderWidth: 1, borderColor: "rgba(45,212,191,0.22)", backgroundColor: "rgba(45,212,191,0.07)", padding: 12, gap: 12 }}>
+                  <View>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>How users earn this</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                      Pick the condition in plain words. The saved rule preview updates for you.
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    {REWARD_RULE_OPTIONS.map((option) => {
+                      const selected = rewardRuleCheck === option.key;
+                      return (
+                        <Pressable
+                          key={option.key}
+                          onPress={() => selectRewardRule(option.key)}
+                          style={{
+                            width: isCompact ? "100%" : "31.5%",
+                            minWidth: 190,
+                            borderRadius: 8,
+                            padding: 12,
+                            backgroundColor: selected ? "rgba(45,212,191,0.16)" : "rgba(255,255,255,0.045)",
+                            borderWidth: 1,
+                            borderColor: selected ? "rgba(45,212,191,0.5)" : BORDER,
+                          }}
+                        >
+                          <Text style={{ color: selected ? "#2DD4BF" : TEXT, fontWeight: "900", fontSize: 13 }}>{option.label}</Text>
+                          <Text style={{ marginTop: 4, color: MUTED, fontSize: 11, lineHeight: 16 }}>{option.description}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {rewardRuleCheck === "seller_profile_complete" ? (
+                    <AdminTextInput value={rewardRuleMin} onChangeText={setRewardRuleMin} placeholder="Required profile details, for example 6" />
+                  ) : null}
+                  {["referral_count", "purchase_count", "stock_trade_count", "active_listing_count", "follow_count", "social_post_count"].includes(rewardRuleCheck) ? (
+                    <AdminTextInput value={rewardRuleMin} onChangeText={setRewardRuleMin} placeholder="How many actions are required, for example 2" />
+                  ) : null}
+                  {["purchase_volume", "stock_trade_volume"].includes(rewardRuleCheck) ? (
+                    <AdminTextInput value={rewardRuleValue} onChangeText={setRewardRuleValue} placeholder={rewardRuleCheck === "stock_trade_volume" ? "Target stock volume in USDC, for example 40" : "Target purchase value, for example 40"} />
+                  ) : null}
+                  {["purchase_count", "purchase_volume"].includes(rewardRuleCheck) ? (
+                    <View style={{ gap: 10 }}>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        {["buyer", "seller"].map((role) => (
+                          <Pressable
+                            key={role}
+                            onPress={() => setRewardRulePurchaseRole(role)}
+                            style={{
+                              borderRadius: 8,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              backgroundColor: rewardRulePurchaseRole === role ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.04)",
+                              borderWidth: 1,
+                              borderColor: rewardRulePurchaseRole === role ? "rgba(245,158,11,0.42)" : BORDER,
+                            }}
+                          >
+                            <Text style={{ color: rewardRulePurchaseRole === role ? WARNING : MUTED, fontWeight: "900", fontSize: 12 }}>{role === "buyer" ? "Buyer action" : "Seller action"}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        <View style={{ flex: 1, minWidth: 220 }}>
+                          <AdminTextInput value={rewardRuleStoreId} onChangeText={setRewardRuleStoreId} placeholder="Optional store UUID" autoCapitalize="none" />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 220 }}>
+                          <AdminTextInput value={rewardRuleListingId} onChangeText={setRewardRuleListingId} placeholder="Optional listing UUID" autoCapitalize="none" />
+                        </View>
+                      </View>
+                    </View>
+                  ) : null}
+                  {["stock_trade_volume", "stock_trade_count"].includes(rewardRuleCheck) ? (
+                    <View style={{ gap: 10 }}>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        {["any", "buy", "sell"].map((side) => (
+                          <Pressable
+                            key={side}
+                            onPress={() => setRewardRuleSide(side)}
+                            style={{
+                              borderRadius: 8,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              backgroundColor: rewardRuleSide === side ? "rgba(20,184,166,0.16)" : "rgba(255,255,255,0.04)",
+                              borderWidth: 1,
+                              borderColor: rewardRuleSide === side ? "rgba(20,184,166,0.42)" : BORDER,
+                            }}
+                          >
+                            <Text style={{ color: rewardRuleSide === side ? "#2DD4BF" : MUTED, fontWeight: "900", fontSize: 12 }}>{labelFromKey(side)}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <AdminTextInput value={rewardRuleStockId} onChangeText={setRewardRuleStockId} placeholder="Optional stock UUID" autoCapitalize="none" />
+                    </View>
+                  ) : null}
+                  {rewardRuleCheck === "follow_count" ? (
+                    <AdminTextInput value={rewardRuleStoreId} onChangeText={setRewardRuleStoreId} placeholder="Optional store UUID to follow" autoCapitalize="none" />
+                  ) : null}
+                  {!["seller_profile_exists", "seller_profile_complete", "admin_review"].includes(rewardRuleCheck) ? (
+                    <View style={{ gap: 10 }}>
+                      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>When progress counts</Text>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                        {REWARD_WINDOW_OPTIONS.map((option) => {
+                          const selected = rewardRuleWindowMode === option.key;
+                          return (
+                            <Pressable
+                              key={option.key}
+                              onPress={() => setRewardRuleWindowMode(option.key)}
+                              style={{
+                                flex: 1,
+                                minWidth: 180,
+                                borderRadius: 8,
+                                padding: 12,
+                                backgroundColor: selected ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.04)",
+                                borderWidth: 1,
+                                borderColor: selected ? "rgba(245,158,11,0.42)" : BORDER,
+                              }}
+                            >
+                              <Text style={{ color: selected ? WARNING : TEXT, fontWeight: "900", fontSize: 12 }}>{option.label}</Text>
+                              <Text style={{ marginTop: 4, color: MUTED, fontSize: 11, lineHeight: 16 }}>{option.description}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      {rewardRuleWindowMode === "after_first_progress" ? (
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                          <View style={{ width: 160 }}>
+                            <AdminTextInput value={rewardRuleWindowAmount} onChangeText={setRewardRuleWindowAmount} placeholder="Time limit" />
+                          </View>
+                          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            {(["minutes", "hours", "days"] as RewardTimeUnit[]).map((unit) => (
+                              <Pressable
+                                key={unit}
+                                onPress={() => setRewardRuleWindowUnit(unit)}
+                                style={{
+                                  borderRadius: 8,
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 10,
+                                  backgroundColor: rewardRuleWindowUnit === unit ? "rgba(45,212,191,0.16)" : "rgba(255,255,255,0.04)",
+                                  borderWidth: 1,
+                                  borderColor: rewardRuleWindowUnit === unit ? "rgba(45,212,191,0.42)" : BORDER,
+                                }}
+                              >
+                                <Text style={{ color: rewardRuleWindowUnit === unit ? "#2DD4BF" : MUTED, fontWeight: "900", fontSize: 12 }}>{labelFromKey(unit)}</Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Saved rule preview</Text>
+                    <AdminTextInput value={rewardTaskRules} onChangeText={setRewardTaskRules} placeholder="Generated rule" multiline autoCapitalize="none" editable={false} />
+                    <ActionButton icon="copy-outline" label="Copy saved rule" color={ACCENT} onPress={() => void copyTextValue("Reward rule", rewardTaskRules)} />
+                  </View>
+                </View>
                 {renderActionNote()}
                 <ActionButton
                   icon="save-outline"

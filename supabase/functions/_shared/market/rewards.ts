@@ -150,6 +150,113 @@ function latestRewardedCompletion(completions: any[]) {
     .sort((a, b) => Date.parse(String(b.created_at ?? "")) - Date.parse(String(a.created_at ?? "")))[0] ?? null;
 }
 
+function timestampMs(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = Date.parse(String(value ?? ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Number.NaN;
+}
+
+function positiveNumber(value: unknown, fallback = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function rowTimestampMs(row: Record<string, unknown>, keys: string[]) {
+  return timestampMs(...keys.map((key) => row[key]));
+}
+
+function windowConfig(rules: Record<string, unknown>) {
+  const raw = rules.window;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { mode: "all_time", seconds: 0 };
+  }
+  const config = raw as Record<string, unknown>;
+  return {
+    mode: cleanText(config.mode, 40) || "all_time",
+    seconds: Math.max(0, toInt(config.seconds, 0)),
+    startsAt: cleanText(config.starts_at, 60),
+    endsAt: cleanText(config.ends_at, 60),
+  };
+}
+
+function latestRewardedMs(completions?: any[]) {
+  const latest = latestRewardedCompletion(completions ?? []);
+  return timestampMs(latest?.rewarded_at, latest?.completed_at, latest?.created_at);
+}
+
+function rowsInRewardWindow(
+  rows: Record<string, unknown>[],
+  rules: Record<string, unknown>,
+  task: RewardTask,
+  completions: any[] | undefined,
+  timeKeys: string[],
+) {
+  const window = windowConfig(rules);
+  const lastRewarded = latestRewardedMs(completions);
+  const taskStart = timestampMs(window.startsAt, task.starts_at);
+  const taskEnd = timestampMs(window.endsAt, task.ends_at);
+
+  return rows
+    .map((row) => ({ row, at: rowTimestampMs(row, timeKeys) }))
+    .filter((entry) => Number.isFinite(entry.at))
+    .filter((entry) => !Number.isFinite(lastRewarded) || entry.at > lastRewarded)
+    .filter((entry) => window.mode !== "campaign" || !Number.isFinite(taskStart) || entry.at >= taskStart)
+    .filter((entry) => window.mode !== "campaign" || !Number.isFinite(taskEnd) || entry.at <= taskEnd)
+    .sort((a, b) => a.at - b.at);
+}
+
+function bestWindowValue(
+  entries: Array<{ row: Record<string, unknown>; at: number }>,
+  seconds: number,
+  valueForRow: (row: Record<string, unknown>) => number,
+) {
+  if (!entries.length) return 0;
+  if (seconds <= 0) {
+    return entries.reduce((sum, entry) => sum + valueForRow(entry.row), 0);
+  }
+
+  let best = 0;
+  let running = 0;
+  let start = 0;
+  const spanMs = seconds * 1000;
+
+  for (let end = 0; end < entries.length; end += 1) {
+    running += valueForRow(entries[end].row);
+    while (entries[end].at - entries[start].at > spanMs) {
+      running -= valueForRow(entries[start].row);
+      start += 1;
+    }
+    best = Math.max(best, running);
+  }
+
+  return best;
+}
+
+function progressFromRows(
+  rows: Record<string, unknown>[],
+  rules: Record<string, unknown>,
+  task: RewardTask,
+  completions: any[] | undefined,
+  timeKeys: string[],
+  valueForRow: (row: Record<string, unknown>) => number = () => 1,
+) {
+  const window = windowConfig(rules);
+  const entries = rowsInRewardWindow(rows, rules, task, completions, timeKeys);
+  if (window.mode === "after_first_progress") {
+    return bestWindowValue(entries, window.seconds, valueForRow);
+  }
+  return entries.reduce((sum, entry) => sum + valueForRow(entry.row), 0);
+}
+
+async function loadRows(admin: any, table: string, select: string, build: (query: any) => any) {
+  const query = build(admin.from(table).select(select)).limit(1000);
+  const { data, error } = await query;
+  if (error) return [];
+  return (data ?? []) as Record<string, unknown>[];
+}
+
 async function countRows(admin: any, table: string, build: (query: any) => any) {
   const query = build(admin.from(table).select("id", { count: "exact", head: true }));
   const { count, error } = await query;
@@ -184,7 +291,7 @@ async function getSellerProfileCompleteness(admin: any, userId: string) {
   };
 }
 
-export async function evaluateRewardRule(admin: any, userId: string, task: RewardTask) {
+export async function evaluateRewardRule(admin: any, userId: string, task: RewardTask, completions?: any[]) {
   const rules = task.rules ?? {};
   const check = cleanText(rules.check, 80);
   const min = Math.max(1, toInt(rules.min, 1));
@@ -215,9 +322,10 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
   }
 
   if (check === "active_listing_count") {
-    const current = await countRows(admin, "market_listings", (query) =>
-      query.eq("seller_id", userId).eq("is_active", true)
+    const rows = await loadRows(admin, "market_listings", "id,seller_id,is_active,created_at", (query) =>
+      query.eq("seller_id", userId).eq("is_active", true).order("created_at", { ascending: true })
     );
+    const current = progressFromRows(rows, rules, task, completions, ["created_at"]);
     return { ok: current >= min, current, target: min, reason: current >= min ? null : "Publish an active listing to unlock this reward." };
   }
 
@@ -235,17 +343,64 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
     return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete a marketplace sale to unlock this reward." };
   }
 
-  if (check === "follow_count") {
-    const current = await countRows(admin, "market_profile_follows", (query) =>
-      query.eq("follower_id", userId)
+  if (check === "purchase_count") {
+    const role = cleanText(rules.role, 20) || "buyer";
+    const storeId = cleanText(rules.store_id, 80);
+    const listingId = cleanText(rules.listing_id, 80);
+    const rows = await loadRows(admin, "market_orders", "id,buyer_id,seller_id,listing_id,status,released_at,created_at,amount,currency", (query) => {
+      let q = query.not("released_at", "is", null).order("released_at", { ascending: true });
+      q = role === "seller" ? q.eq("seller_id", userId) : q.eq("buyer_id", userId);
+      if (storeId) q = q.eq("seller_id", storeId);
+      if (listingId) q = q.eq("listing_id", listingId);
+      return q;
+    });
+    const current = progressFromRows(rows, rules, task, completions, ["released_at", "created_at"]);
+    const targetLabel = listingId ? "that listing" : storeId ? "that store" : "the marketplace";
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : `Complete ${min} purchase${min === 1 ? "" : "s"} from ${targetLabel} to unlock this reward.` };
+  }
+
+  if (check === "purchase_volume") {
+    const role = cleanText(rules.role, 20) || "buyer";
+    const storeId = cleanText(rules.store_id, 80);
+    const listingId = cleanText(rules.listing_id, 80);
+    const target = positiveNumber(rules.min_amount ?? rules.min_volume ?? rules.min, 1);
+    const rows = await loadRows(admin, "market_orders", "id,buyer_id,seller_id,listing_id,status,released_at,created_at,amount,currency", (query) => {
+      let q = query.not("released_at", "is", null).order("released_at", { ascending: true });
+      q = role === "seller" ? q.eq("seller_id", userId) : q.eq("buyer_id", userId);
+      if (storeId) q = q.eq("seller_id", storeId);
+      if (listingId) q = q.eq("listing_id", listingId);
+      return q;
+    });
+    const current = progressFromRows(rows, rules, task, completions, ["released_at", "created_at"], (row) => Number(row.amount ?? 0) || 0);
+    return { ok: current >= target, current, target, reason: current >= target ? null : `Complete ${target.toLocaleString()} in marketplace purchases to unlock this reward.` };
+  }
+
+  if (check === "referral_count") {
+    const rawStatuses = Array.isArray(rules.statuses) ? rules.statuses : ["qualified", "rewarded"];
+    const statuses = rawStatuses.map((status) => cleanText(status, 40)).filter(Boolean);
+    const rows = await loadRows(admin, "market_referrals", "id,status,referrer_id,referred_user_id,created_at,qualified_at,rewarded_at", (query) =>
+      query.eq("referrer_id", userId).in("status", statuses.length ? statuses : ["qualified", "rewarded"]).order("created_at", { ascending: true })
     );
+    const current = progressFromRows(rows, rules, task, completions, ["qualified_at", "rewarded_at", "created_at"]);
+    return { ok: current >= min, current, target: min, reason: current >= min ? null : `Invite ${min} friend${min === 1 ? "" : "s"} to unlock this reward.` };
+  }
+
+  if (check === "follow_count") {
+    const storeId = cleanText(rules.store_id, 80);
+    const rows = await loadRows(admin, "market_profile_follows", "id,follower_id,followed_id,created_at", (query) => {
+      let q = query.eq("follower_id", userId).order("created_at", { ascending: true });
+      if (storeId) q = q.eq("followed_id", storeId);
+      return q;
+    });
+    const current = progressFromRows(rows, rules, task, completions, ["created_at"]);
     return { ok: current >= min, current, target: min, reason: current >= min ? null : "Follow a store to unlock this reward." };
   }
 
   if (check === "social_post_count") {
-    const current = await countRows(admin, "market_social_posts", (query) =>
-      query.eq("author_id", userId)
+    const rows = await loadRows(admin, "market_social_posts", "id,author_id,created_at", (query) =>
+      query.eq("author_id", userId).order("created_at", { ascending: true })
     );
+    const current = progressFromRows(rows, rules, task, completions, ["created_at"]);
     return { ok: current >= min, current, target: min, reason: current >= min ? null : "Share a market post to unlock this reward." };
   }
 
@@ -258,11 +413,27 @@ export async function evaluateRewardRule(admin: any, userId: string, task: Rewar
 
   if (check === "stock_trade_count") {
     const side = cleanText(rules.side, 12);
-    const current = await countRows(admin, "market_stock_trades", (query) => {
-      const q = query.eq("user_id", userId);
+    const stockId = cleanText(rules.stock_id, 80);
+    const rows = await loadRows(admin, "market_stock_trades", "id,stock_id,user_id,side,notional_usdc,traded_at,created_at", (query) => {
+      let q = query.eq("user_id", userId).order("traded_at", { ascending: true });
+      if (stockId) q = q.eq("stock_id", stockId);
       return side ? q.eq("side", side) : q;
     });
+    const current = progressFromRows(rows, rules, task, completions, ["traded_at", "created_at"]);
     return { ok: current >= min, current, target: min, reason: current >= min ? null : "Complete this stock action to unlock the reward." };
+  }
+
+  if (check === "stock_trade_volume") {
+    const side = cleanText(rules.side, 12);
+    const stockId = cleanText(rules.stock_id, 80);
+    const target = positiveNumber(rules.min_volume_usd ?? rules.min_volume ?? rules.min, 1);
+    const rows = await loadRows(admin, "market_stock_trades", "id,stock_id,user_id,side,notional_usdc,traded_at,created_at", (query) => {
+      let q = query.eq("user_id", userId).order("traded_at", { ascending: true });
+      if (stockId) q = q.eq("stock_id", stockId);
+      return side ? q.eq("side", side) : q;
+    });
+    const current = progressFromRows(rows, rules, task, completions, ["traded_at", "created_at"], (row) => Number(row.notional_usdc ?? 0) || 0);
+    return { ok: current >= target, current, target, reason: current >= target ? null : `Reach ${target.toLocaleString()} USDC in stock trades to unlock this reward.` };
   }
 
   if (check === "admin_review") {
@@ -366,7 +537,7 @@ export async function getTaskAvailability(
     }
   }
 
-  const rule = await evaluateRewardRule(admin, userId, task);
+  const rule = await evaluateRewardRule(admin, userId, task, completions);
   if (!rule.ok && task.trigger_type !== "ad_reward" && task.trigger_type !== "admin_review") {
     return {
       available: false,
