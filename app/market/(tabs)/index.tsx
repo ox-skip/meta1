@@ -1964,7 +1964,7 @@ export default function MarketHome() {
         <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
           <SectionPill
             icon="location-outline"
-            label="My Country"
+            label="Local"
             active={feedScope === "country"}
             onPress={() => setFeedScope("country")}
           />
@@ -2022,7 +2022,7 @@ export default function MarketHome() {
 
         {categories.length ? (
           <>
-            <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 13 }}>Categories</Text>
+            <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 13 }}>Related categories</Text>
             <View style={{ marginTop: 8 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
@@ -2173,6 +2173,7 @@ export default function MarketHome() {
         ) : (
           <>
             {renderDirectoryChooser(false)}
+            {renderScopeAndFilters(false)}
             {renderStatusBlock()}
           </>
         )}
