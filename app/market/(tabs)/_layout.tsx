@@ -85,19 +85,8 @@ export default function MarketTabsLayout() {
         headerShown: false,
         tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
-        tabBarPosition: isWebDesktop ? "left" : "bottom",
+        tabBarPosition: "bottom",
         tabBarBackground: () => {
-          if (isWebDesktop) {
-            return (
-              <View
-                style={[
-                  StyleSheet.absoluteFill,
-                  { backgroundColor: "rgba(9,13,11,0.98)" },
-                ]}
-              />
-            );
-          }
-
           if (Platform.OS === "ios" && BlurViewComp) {
             return (
               <BlurViewComp
@@ -120,14 +109,9 @@ export default function MarketTabsLayout() {
         },
         tabBarStyle: isWebDesktop
           ? {
-              backgroundColor: "rgba(9,13,11,0.98)",
-              borderRightColor: "rgba(45,212,191,0.16)",
-              borderRightWidth: 1,
-              borderTopWidth: 0,
-              width: 228,
-              paddingTop: 20,
-              paddingBottom: 18,
-              paddingHorizontal: 10,
+              display: "none",
+              height: 0,
+              width: 0,
             }
           : [
               styles.mobileBar,
@@ -159,6 +143,7 @@ export default function MarketTabsLayout() {
         sceneStyle: isWebDesktop
           ? {
               width: "100%",
+              paddingBottom: 0,
             }
           : undefined,
       }}

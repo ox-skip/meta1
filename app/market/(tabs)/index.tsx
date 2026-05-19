@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
+import MarketMenuModal from "@/components/market/MarketMenuModal";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
@@ -715,6 +715,7 @@ export default function MarketHome() {
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Record<"featured" | "discovery" | "filters", boolean>>({
     featured: false,
     discovery: false,
@@ -722,12 +723,10 @@ export default function MarketHome() {
   });
 
   const main = section === "service" ? "service" : section === "product" ? "product" : null;
-  const hasDesktopTabs = Platform.OS === "web" && width >= 980;
-  const desktopRailWidth = hasDesktopTabs ? 228 : 0;
-  const usableWidth = Math.max(320, width - desktopRailWidth);
+  const usableWidth = Math.max(320, width);
   const isDesktop = usableWidth >= 900;
-  const pagePadding = isDesktop ? 28 : width >= 820 ? 24 : 16;
-  const contentMaxWidth = isDesktop ? 1220 : width >= 1240 ? 1120 : undefined;
+  const pagePadding = isDesktop ? 24 : width >= 820 ? 24 : 16;
+  const contentMaxWidth = isDesktop ? 1080 : width >= 1240 ? 1120 : undefined;
   const contentInnerWidth = Math.min(
     contentMaxWidth ?? usableWidth,
     Math.max(320, usableWidth),
@@ -1104,7 +1103,7 @@ export default function MarketHome() {
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
   const isListingDirectory = section !== "social" && directoryMode === "listings";
-  const responsiveListingColumns = contentInnerWidth >= 980 ? 3 : contentInnerWidth >= 620 ? 2 : 1;
+  const responsiveListingColumns = contentInnerWidth >= 1100 ? 3 : contentInnerWidth >= 620 ? 2 : 1;
   const sellerDirectoryColumns = isDesktop && contentInnerWidth >= 760 ? 2 : 1;
   const listingColumns = isListingDirectory ? responsiveListingColumns : sellerDirectoryColumns;
   const listingCardWidth =
@@ -1622,6 +1621,70 @@ export default function MarketHome() {
     ) : null;
   }
 
+  function renderStockMarketShortcut(prominent = false) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open Stock Market"
+        onPress={() => router.push("/market/stock" as any)}
+        style={({ pressed }) => ({
+          marginTop: prominent ? 18 : 10,
+          width: prominent ? 164 : "100%",
+          minHeight: prominent ? 58 : 46,
+          borderRadius: prominent ? 22 : 16,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderTopWidth: 1,
+          borderColor: "rgba(45,212,191,0.36)",
+          borderTopColor: "rgba(255,253,247,0.22)",
+          backgroundColor: "rgba(45,212,191,0.10)",
+          transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+        })}
+      >
+        <LinearGradient
+          colors={["rgba(45,212,191,0.24)", "rgba(56,189,248,0.12)", "rgba(9,13,11,0.72)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            flex: 1,
+            minHeight: prominent ? 58 : 46,
+            paddingHorizontal: prominent ? 13 : 12,
+            paddingVertical: prominent ? 9 : 8,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <View
+            style={{
+              width: prominent ? 36 : 30,
+              height: prominent ? 36 : 30,
+              borderRadius: prominent ? 13 : 11,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(45,212,191,0.20)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.38)",
+            }}
+          >
+            <Ionicons name="trending-up-outline" size={prominent ? 17 : 15} color={TEXT} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: prominent ? 13 : 12 }}>
+              Stock Market
+            </Text>
+            {prominent ? (
+              <Text numberOfLines={1} style={{ marginTop: 2, color: "rgba(255,253,247,0.62)", fontWeight: "800", fontSize: 10 }}>
+                Trade seller stock
+              </Text>
+            ) : null}
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={TEAL} />
+        </LinearGradient>
+      </Pressable>
+    );
+  }
+
   function renderHeroPreviewRail(compact = false) {
     if (!heroPreviewListings.length) {
       return (
@@ -1781,9 +1844,9 @@ export default function MarketHome() {
           end={{ x: 1, y: 1 }}
           style={{
             flex: 1,
-            minHeight: 356,
-            borderRadius: 30,
-            padding: 26,
+            minHeight: 276,
+            borderRadius: 22,
+            padding: 20,
             borderWidth: 1,
             borderColor: "rgba(255,253,247,0.17)",
             overflow: "hidden",
@@ -1794,7 +1857,7 @@ export default function MarketHome() {
             elevation: 8,
           }}
         >
-          <View style={{ flex: 1, flexDirection: showPreviewShelf ? "row" : "column", gap: 22 }}>
+          <View style={{ flex: 1, flexDirection: showPreviewShelf ? "row" : "column", gap: 18 }}>
             <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between" }}>
               <View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -1803,15 +1866,15 @@ export default function MarketHome() {
                     <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
                   ) : null}
                 </View>
-                <Text style={{ marginTop: 16, color: TEXT, fontWeight: "900", fontSize: showPreviewShelf ? 38 : 36, lineHeight: showPreviewShelf ? 43 : 41 }}>
+                <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: showPreviewShelf ? 34 : 30, lineHeight: showPreviewShelf ? 39 : 35 }}>
                   {heroTitle}
                 </Text>
-                <Text style={{ marginTop: 12, color: "rgba(255,253,247,0.76)", lineHeight: 22, fontSize: 14, maxWidth: 650 }}>
+                <Text style={{ marginTop: 8, color: "rgba(255,253,247,0.76)", lineHeight: 20, fontSize: 13, maxWidth: 650 }}>
                   {heroSubtitle}
                 </Text>
               </View>
 
-              <View style={{ marginTop: 18 }}>
+              <View style={{ marginTop: 14 }}>
                 {section === "social" ? (
                   <View style={{ flexDirection: "row", gap: 12, maxWidth: 600 }}>
                     <QuickAction
@@ -1830,7 +1893,10 @@ export default function MarketHome() {
                     />
                   </View>
                 ) : (
-                  renderSearchBar(true)
+                  <View style={{ flexDirection: "row", alignItems: "stretch", gap: 10 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>{renderSearchBar(true)}</View>
+                    {renderStockMarketShortcut(true)}
+                  </View>
                 )}
 
                 {renderSectionTabs("desktop")}
@@ -2078,7 +2144,7 @@ export default function MarketHome() {
       }
 
       return (
-        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
           <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
             Featured and verified directories help buyers assess a store before opening the full profile.
@@ -2235,7 +2301,7 @@ export default function MarketHome() {
     }
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
@@ -2472,6 +2538,7 @@ export default function MarketHome() {
 
         {renderSectionTabs("mobile")}
         {renderSearchBar(false)}
+        {section !== "social" ? renderStockMarketShortcut(false) : null}
         {renderHeroPanel(false)}
 
         {section === "social" ? (
@@ -2494,15 +2561,39 @@ export default function MarketHome() {
           title="Marketplace"
           subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
-          rightSlot={<NotificationBell />}
+          rightSlot={
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open marketplace menu"
+                onPress={() => setDesktopMenuOpen(true)}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(45,212,191,0.13)",
+                  borderWidth: 1,
+                  borderColor: "rgba(45,212,191,0.3)",
+                }}
+              >
+                <Ionicons name="menu-outline" size={21} color={TEAL} />
+              </Pressable>
+              <NotificationBell />
+            </View>
+          }
           bordered={false}
-          style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24) }}
+          style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24), paddingBottom: 8 }}
         />
 
-        <View style={{ marginTop: 6, flexDirection: "row", alignItems: "stretch", gap: 16 }}>
-          {renderHeroPanel(true)}
+        <View style={{ marginTop: 4, flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 14 }}>
+            {renderHeroPanel(true)}
+            {section === "social" ? null : renderDirectoryChooser(true)}
+          </View>
 
-          <View style={{ width: 340, gap: 12 }}>
+          <View style={{ width: 298, gap: 12 }}>
             <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
               <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>MARKET PULSE</Text>
               <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
@@ -2535,6 +2626,7 @@ export default function MarketHome() {
             </GlassPanel>
 
             <TrustTimeline />
+            {section === "social" ? null : renderScopeAndFilters(true)}
           </View>
         </View>
 
@@ -2542,10 +2634,6 @@ export default function MarketHome() {
           renderSocialPanel(true)
         ) : (
           <>
-            <View style={{ marginTop: 16, flexDirection: "row", alignItems: "flex-start", gap: 16 }}>
-              {renderDirectoryChooser(true)}
-              {renderScopeAndFilters(true)}
-            </View>
             {renderStatusBlock()}
           </>
         )}
@@ -2556,6 +2644,14 @@ export default function MarketHome() {
   return (
     <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
+      <MarketMenuModal
+        visible={desktopMenuOpen}
+        onClose={() => setDesktopMenuOpen(false)}
+        onNavigate={(route) => {
+          setDesktopMenuOpen(false);
+          router.push(route as any);
+        }}
+      />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
@@ -2599,7 +2695,20 @@ export default function MarketHome() {
         }
         ListEmptyComponent={
           !loading && section !== "social" ? (
-            <View style={{ marginTop: 14, marginHorizontal: 16, borderRadius: 20, padding: 14, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+            <View
+              style={{
+                marginTop: 14,
+                marginHorizontal: isDesktop ? 0 : 16,
+                alignSelf: "center",
+                width: isDesktop ? "100%" : undefined,
+                maxWidth: contentMaxWidth,
+                borderRadius: 20,
+                padding: 14,
+                backgroundColor: CARD,
+                borderWidth: 1,
+                borderColor: BORDER,
+              }}
+            >
               <Text style={{ color: TEXT, fontWeight: "900" }}>No results</Text>
               <Text style={{ marginTop: 6, color: MUTED }}>
                 Try another filter, switch listing type, or use the Global feed.

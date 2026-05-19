@@ -12,7 +12,9 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +36,13 @@ const BRAND = "#2DD4BF";
 const GOLD = "#F4B75D";
 const INK = "#FFF7ED";
 const MUTED = "rgba(255,247,237,0.68)";
+
+type LayoutBox = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
 
 type OnboardingContextValue = {
   activeFlowKey: string | null;
@@ -89,101 +98,110 @@ function pointerIcon(position: TutorialTargetPosition): keyof typeof Ionicons.gl
   return "arrow-up";
 }
 
-function getTargetStyle(position: TutorialTargetPosition, width: number, height: number): ViewStyle {
-  const inset = clamp(width * 0.05, 16, 28);
-  const centeredInset = width > 560 ? Math.max(inset, (width - 500) / 2) : inset;
-  const sideWidth = clamp(width * 0.42, 142, 190);
-  const topBase = clamp(height * 0.09, 44, 92);
-  const middleBase = clamp(height * 0.27, 136, height * 0.4);
+function getTargetBox(position: TutorialTargetPosition, width: number, height: number): LayoutBox {
+  const inset = clamp(width * 0.045, 16, width >= 900 ? 36 : 24);
+  const contentWidth = width >= 900 ? clamp(width - inset * 2, 740, 1080) : width;
+  const contentLeft = (width - contentWidth) / 2;
+  const topWidth = width >= 900 ? clamp(width * 0.34, 340, 430) : width - inset * 2;
+  const centeredWidth = width >= 900 ? clamp(width * 0.44, 420, 560) : width - inset * 2;
+  const sideWidth = clamp(width * 0.34, 154, 220);
+  const topBase = clamp(height * 0.085, 52, 88);
+  const middleBase = clamp(height * 0.28, 150, height * 0.42);
 
   if (position === "left") {
     return {
       top: middleBase,
       left: inset,
       width: sideWidth,
-      minHeight: 132,
+      height: 122,
     };
   }
 
   if (position === "right") {
     return {
       top: middleBase,
-      right: inset,
+      left: width - inset - sideWidth,
       width: sideWidth,
-      minHeight: 132,
+      height: 122,
     };
   }
 
   if (position === "bottom") {
     return {
-      bottom: clamp(height * 0.18, 138, 230),
-      left: centeredInset,
-      right: centeredInset,
-      minHeight: 96,
+      top: height - clamp(height * 0.2, 150, 230),
+      left: (width - centeredWidth) / 2,
+      width: centeredWidth,
+      height: 92,
     };
   }
 
   if (position === "middle") {
     return {
       top: middleBase,
-      left: centeredInset,
-      right: centeredInset,
-      minHeight: 104,
+      left: (width - centeredWidth) / 2,
+      width: centeredWidth,
+      height: 96,
     };
   }
 
+  const desktopLeft = width >= 900
+    ? clamp(contentLeft + clamp(contentWidth * 0.025, 16, 28), inset, width - topWidth - inset)
+    : (width - topWidth) / 2;
   return {
     top: topBase,
-    left: centeredInset,
-    right: centeredInset,
-    minHeight: 88,
+    left: desktopLeft,
+    width: topWidth,
+    height: width >= 900 ? 74 : 72,
   };
 }
 
 function getCardStyle(position: TutorialTargetPosition, width: number, height: number): ViewStyle {
   const baseInset = clamp(width * 0.045, 14, 22);
-  const inset = width > 520 ? Math.max(baseInset, (width - 470) / 2) : baseInset;
-  const maxHeight = position === "bottom" ? height * 0.48 : height * 0.52;
+  const cardWidth = clamp(width - baseInset * 2, 310, 470);
+  const left = (width - cardWidth) / 2;
+  const maxHeight = position === "bottom" ? height * 0.46 : height * 0.5;
   const placement = position === "bottom"
     ? { top: clamp(height * 0.04, 26, 44) }
     : { bottom: clamp(height * 0.035, 18, 32) };
 
   return {
     ...placement,
-    left: inset,
-    right: inset,
+    left,
+    width: cardWidth,
     maxHeight,
   };
 }
 
-function getPointerStyle(position: TutorialTargetPosition, width: number, height: number): ViewStyle {
+function getPointerStyle(position: TutorialTargetPosition, _width: number, height: number, targetBox: LayoutBox): ViewStyle {
+  const centerX = targetBox.left + targetBox.width / 2 - 48;
+
   if (position === "bottom") {
     return {
-      top: clamp(height * 0.49, 270, height * 0.58),
-      left: width * 0.5 - 48,
+      top: targetBox.top - 68,
+      left: centerX,
     };
   }
   if (position === "left") {
     return {
-      top: clamp(height * 0.43, 240, height * 0.52),
-      left: clamp(width * 0.42, 150, 210),
+      top: targetBox.top + targetBox.height / 2 - 30,
+      left: targetBox.left + targetBox.width + 12,
     };
   }
   if (position === "right") {
     return {
-      top: clamp(height * 0.43, 240, height * 0.52),
-      right: clamp(width * 0.42, 150, 210),
+      top: targetBox.top + targetBox.height / 2 - 30,
+      left: targetBox.left - 108,
     };
   }
   if (position === "middle") {
     return {
-      top: clamp(height * 0.44, 238, height * 0.54),
-      left: width * 0.5 - 48,
+      top: clamp(targetBox.top + targetBox.height + 12, 118, height - 210),
+      left: centerX,
     };
   }
   return {
-    top: clamp(height * 0.22, 128, 184),
-    left: width * 0.5 - 48,
+    top: targetBox.top + targetBox.height + 12,
+    left: centerX,
   };
 }
 
@@ -352,6 +370,45 @@ export function InAppTutorial({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"bestcity_ai" | "local" | null>(null);
   const aiRequestRef = useRef(0);
+  const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const completeDrag = useCallback(
+    (_event: unknown, gesture: { dx: number; dy: number }) => {
+      drag.flattenOffset();
+      const maxX = Math.max(30, width * 0.36);
+      const maxY = Math.max(36, height * 0.3);
+      const next = {
+        x: clamp(dragOffsetRef.current.x + gesture.dx, -maxX, maxX),
+        y: clamp(dragOffsetRef.current.y + gesture.dy, -maxY, maxY),
+      };
+
+      dragOffsetRef.current = next;
+      Animated.spring(drag, {
+        toValue: next,
+        useNativeDriver: false,
+        bounciness: 0,
+        speed: 18,
+      }).start();
+    },
+    [drag, height, width],
+  );
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 3 || Math.abs(gesture.dy) > 3,
+        onPanResponderGrant: () => {
+          drag.setOffset(dragOffsetRef.current);
+          drag.setValue({ x: 0, y: 0 });
+        },
+        onPanResponderMove: Animated.event([null, { dx: drag.x, dy: drag.y }], {
+          useNativeDriver: false,
+        }),
+        onPanResponderRelease: completeDrag,
+        onPanResponderTerminate: completeDrag,
+      }),
+    [completeDrag, drag],
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -385,6 +442,13 @@ export function InAppTutorial({
     setAiLoading(false);
     setAiSource(null);
   }, [flow.key, stepIndex]);
+
+  useEffect(() => {
+    drag.stopAnimation();
+    dragOffsetRef.current = { x: 0, y: 0 };
+    drag.setOffset({ x: 0, y: 0 });
+    drag.setValue({ x: 0, y: 0 });
+  }, [drag, flow.key, height, stepIndex, visible, width]);
 
   const totalSteps = flow.steps.length;
   const currentStep = flow.steps[stepIndex];
@@ -448,9 +512,10 @@ export function InAppTutorial({
 
   if (!visible || !currentStep) return null;
 
-  const targetStyle = getTargetStyle(targetPosition, width, height);
+  const targetBox = getTargetBox(targetPosition, width, height);
+  const targetStyle = targetBox as ViewStyle;
   const cardStyle = getCardStyle(targetPosition, width, height);
-  const pointerStyle = getPointerStyle(targetPosition, width, height);
+  const pointerStyle = getPointerStyle(targetPosition, width, height, targetBox);
 
   return (
     <Modal
@@ -482,7 +547,7 @@ export function InAppTutorial({
           <Text style={styles.pointerText}>follow the highlight</Text>
         </View>
 
-        <View style={[styles.cardShell, cardStyle]}>
+        <Animated.View style={[styles.cardShell, cardStyle, { transform: drag.getTranslateTransform() }]}>
           <LinearGradient
             colors={["#130F0B", "#111C1B", "#071220"]}
             start={{ x: 0.08, y: 0 }}
@@ -493,6 +558,10 @@ export function InAppTutorial({
               <View style={styles.kickerPill}>
                 <Ionicons name="navigate-circle" size={14} color={BRAND} />
                 <Text style={styles.kickerText}>Guided onboarding</Text>
+              </View>
+              <View {...panResponder.panHandlers} style={styles.dragHandle}>
+                <Ionicons name="move-outline" size={14} color={MUTED} />
+                <Text style={styles.dragHandleText}>Move</Text>
               </View>
               <Pressable onPress={handleSkip} hitSlop={8} style={styles.skipButton}>
                 <Text style={styles.skipText}>Skip</Text>
@@ -530,6 +599,7 @@ export function InAppTutorial({
 
             <ScrollView
               bounces={false}
+              style={styles.stepScroll}
               contentContainerStyle={styles.cardScrollContent}
               showsVerticalScrollIndicator={false}
             >
@@ -626,7 +696,7 @@ export function InAppTutorial({
               </Pressable>
             </View>
           </LinearGradient>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -703,6 +773,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   card: {
+    maxHeight: "100%",
     borderRadius: 22,
     padding: 14,
     borderWidth: 1,
@@ -717,7 +788,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
   },
   kickerPill: {
     flexDirection: "row",
@@ -734,6 +805,22 @@ const styles = StyleSheet.create({
     color: "#CCFBF1",
     fontWeight: "900",
     fontSize: 11,
+  },
+  dragHandle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.045)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+  },
+  dragHandleText: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "900",
   },
   skipButton: {
     paddingHorizontal: 10,
@@ -801,6 +888,9 @@ const styles = StyleSheet.create({
   },
   progressDotActive: {
     backgroundColor: BRAND,
+  },
+  stepScroll: {
+    flexShrink: 1,
   },
   cardScrollContent: {
     paddingTop: 14,
