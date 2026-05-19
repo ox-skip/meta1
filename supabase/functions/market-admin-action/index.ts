@@ -10,6 +10,14 @@ function requirePermission(ctx: AdminContext, permission: string) {
   return can(ctx, permission) ? null : unauth();
 }
 
+function requireAnyPermission(ctx: AdminContext, permissions: string[]) {
+  return permissions.some((permission) => can(ctx, permission)) ? null : unauth();
+}
+
+function requireMarketHomeFeatureAccess(ctx: AdminContext) {
+  return requireAnyPermission(ctx, ["users.moderate", "listings.moderate", "rewards.promotions.manage"]);
+}
+
 function requireSupportTicketAccess(ctx: AdminContext, permission: string) {
   const blocked = requirePermission(ctx, permission);
   if (blocked) return blocked;
@@ -234,7 +242,7 @@ async function setSellerActive(admin: any, ctx: AdminContext, body: any) {
 }
 
 async function setMarketStoreFeature(admin: any, ctx: AdminContext, body: any) {
-  const blocked = requirePermission(ctx, "users.moderate");
+  const blocked = requireMarketHomeFeatureAccess(ctx);
   if (blocked) return blocked;
 
   const userId = requireUuid("user_id", body.user_id);
@@ -269,6 +277,44 @@ async function setMarketStoreFeature(admin: any, ctx: AdminContext, body: any) {
   });
 
   return ok({ ok: true, seller: data });
+}
+
+async function setMarketListingFeature(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireMarketHomeFeatureAccess(ctx);
+  if (blocked) return blocked;
+
+  const listingId = requireUuid("listing_id", body.listing_id);
+  const featured = requireBoolean("featured_enabled", body.featured_enabled);
+  const featuredUntil = optionalIsoDate("featured_until", body.featured_until);
+  const featuredPriority = optionalInt(body.featured_priority, 100, 0, 100000);
+
+  const { data, error } = await admin
+    .from("market_listings")
+    .update({
+      featured_enabled: featured,
+      featured_until: featured ? featuredUntil : null,
+      featured_priority: featured ? featuredPriority : 100,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", listingId)
+    .select("id,seller_id,title,featured_enabled,featured_until,featured_priority,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: featured ? "MARKET_LISTING_FEATURE_ENABLED" : "MARKET_LISTING_FEATURE_DISABLED",
+    entity_type: "market_listings",
+    entity_id: listingId,
+    payload: {
+      seller_id: data.seller_id,
+      title: data.title,
+      featured_until: data.featured_until,
+      featured_priority: data.featured_priority,
+      note: adminNote(body.note),
+    },
+  });
+
+  return ok({ ok: true, listing: data });
 }
 
 async function banUser(admin: any, ctx: AdminContext, body: any) {
@@ -1103,7 +1149,8 @@ Deno.serve(async (req) => {
     if (action === "resolve_dispute") return await resolveDispute(admin, ctx, req, body);
     if (action === "set_listing_active") return await setListingActive(admin, ctx, body);
     if (action === "set_seller_active") return await setSellerActive(admin, ctx, body);
-    if (action === "set_market_store_feature") return await setMarketStoreFeature(admin, ctx, body);
+    if (action === "set_market_store_feature" || action === "set_market_home_store_feature") return await setMarketStoreFeature(admin, ctx, body);
+    if (action === "set_market_listing_feature" || action === "set_market_home_listing_feature") return await setMarketListingFeature(admin, ctx, body);
     if (action === "ban_user") return await banUser(admin, ctx, body);
     if (action === "review_verification") return await reviewVerification(admin, ctx, body);
     if (action === "settle_order") return await settleOrder(admin, ctx, req, body);

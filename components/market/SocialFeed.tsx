@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { OrderPreviewModal, type PreviewPayload } from "@/components/market/OrderPreviewModal";
+import MarketMenuModal from "@/components/market/MarketMenuModal";
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 
@@ -316,6 +317,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const [comments, setComments] = useState<FeedComment[]>([]);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const postingLockRef = useRef(false);
   const pendingPostIdsRef = useRef(new Set<string>());
@@ -1240,7 +1242,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderContainedHeader() {
     return (
-      <View style={{ paddingTop: Math.max(insets.top, 14), paddingBottom: 2 }}>
+      <View style={{ paddingTop: 14, paddingBottom: 2 }}>
         <LinearGradient
           colors={["rgba(45,212,191,0.16)", "rgba(244,183,93,0.08)", "rgba(13,18,15,0.96)"]}
           start={{ x: 0, y: 0 }}
@@ -1310,6 +1312,136 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       >
         {renderComposer()}
         {loading ? renderLoadingState() : posts.length ? posts.map((post) => <React.Fragment key={post.id}>{renderPost(post)}</React.Fragment>) : renderEmptyState()}
+      </View>
+    );
+  }
+
+  function renderBoardTopBar() {
+    if (!isContained) return null;
+
+    return (
+      <View
+        style={{
+          paddingTop: Math.max(insets.top, 12),
+          paddingHorizontal: isDesktop ? 18 : 12,
+          paddingBottom: 10,
+          borderBottomWidth: 1,
+          borderBottomColor: "rgba(255,253,247,0.09)",
+          backgroundColor: "rgba(6,8,7,0.96)",
+        }}
+      >
+        <View
+          style={{
+            width: "100%",
+            maxWidth: shellMaxWidth,
+            alignSelf: "center",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={() => router.back()}
+            style={({ pressed }) => ({
+              width: 42,
+              height: 42,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? "rgba(255,253,247,0.12)" : "rgba(255,253,247,0.07)",
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.12)",
+            })}
+          >
+            <Ionicons name="arrow-back" size={19} color={TEXT} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open marketplace home"
+            onPress={() => router.push("/market/(tabs)" as any)}
+            style={({ pressed }) => ({
+              flex: 1,
+              minWidth: 0,
+              borderRadius: 18,
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              backgroundColor: pressed ? "rgba(45,212,191,0.14)" : "rgba(45,212,191,0.08)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.24)",
+            })}
+          >
+            <View
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 13,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(45,212,191,0.16)",
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.34)",
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={18} color={TEAL} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: isWide ? 15 : 13 }}>
+                Market Social Board
+              </Text>
+              <Text numberOfLines={1} style={{ marginTop: 1, color: MUTED, fontSize: 11, fontWeight: "800" }}>
+                Protected seller updates and storefront activity
+              </Text>
+            </View>
+          </Pressable>
+
+          {isWide ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open marketplace"
+              onPress={() => router.push("/market/(tabs)" as any)}
+              style={({ pressed }) => ({
+                height: 42,
+                borderRadius: 15,
+                paddingHorizontal: 13,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                backgroundColor: pressed ? "rgba(244,183,93,0.18)" : "rgba(244,183,93,0.10)",
+                borderWidth: 1,
+                borderColor: "rgba(244,183,93,0.28)",
+              })}
+            >
+              <Ionicons name="storefront-outline" size={16} color={AMBER} />
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Market</Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open market menu"
+            onPress={() => setMenuOpen(true)}
+            style={({ pressed }) => ({
+              width: isWide ? 46 : 42,
+              height: 42,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? "rgba(255,253,247,0.13)" : "rgba(255,253,247,0.075)",
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.13)",
+            })}
+          >
+            <Ionicons name="menu-outline" size={20} color={TEXT} />
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -1477,6 +1609,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
     return (
       <View style={{ flex: 1, backgroundColor: BG0 }}>
+        {renderBoardTopBar()}
         {showDesktopRail ? (
           <View
             style={{
@@ -1490,9 +1623,16 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             }}
           >
             <View style={{ flex: 1, minWidth: 0, maxWidth: feedMaxWidth }}>{list}</View>
-            <View style={{ width: sideRailWidth, paddingTop: Math.max(insets.top, 14), paddingBottom: 24 }}>
+            <ScrollView
+              style={{ width: sideRailWidth }}
+              contentContainerStyle={{
+                paddingTop: 14,
+                paddingBottom: 24,
+              }}
+              showsVerticalScrollIndicator={false}
+            >
               {renderDesktopRail()}
-            </View>
+            </ScrollView>
           </View>
         ) : (
           <View style={{ flex: 1, width: "100%", maxWidth: shellMaxWidth, alignSelf: "center" }}>{list}</View>
@@ -1506,6 +1646,15 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       {isContained ? renderContainedContent() : renderInlineContent()}
 
       <OrderPreviewModal open={!!previewPayload} onClose={() => setPreviewPayload(null)} payload={previewPayload} />
+
+      <MarketMenuModal
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={(route) => {
+          setMenuOpen(false);
+          router.push(route as any);
+        }}
+      />
 
       <Modal visible={!!commentsOpenPost} transparent animationType="fade" onRequestClose={() => setCommentsOpenPost(null)}>
         <View

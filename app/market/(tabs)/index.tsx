@@ -56,9 +56,13 @@ const LISTINGS_TABLE = "market_listings";
 const LISTING_IMAGES_BUCKET = "market-listings";
 const LISTING_FETCH_LIMIT = 500;
 const LISTING_RICH_SELECT =
-  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)";
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,featured_enabled,featured_until,featured_priority,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)";
 const LISTING_BASIC_SELECT =
   "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty";
+const LISTING_FEATURE_SELECT =
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,featured_enabled,featured_until,featured_priority,cover:market_listing_images!market_listings_cover_image_fk(public_url,storage_path,meta),images:market_listing_images!market_listing_images_listing_id_fkey(public_url,storage_path,sort_order,meta)";
+const LISTING_FEATURE_BASIC_SELECT =
+  "id,seller_id,title,description,price_amount,currency,delivery_type,category,sub_category,created_at,payment_options,availability,stock_qty,featured_enabled,featured_until,featured_priority";
 
 type SortBy = "newest" | "price_low" | "price_high";
 type FeedSection = "all" | "product" | "service" | "social";
@@ -79,6 +83,9 @@ type ListingRow = {
   payment_options?: any;
   availability?: any;
   stock_qty?: number | null;
+  featured_enabled?: boolean | null;
+  featured_until?: string | null;
+  featured_priority?: number | null;
   cover?: { public_url?: string | null; storage_path?: string | null; meta?: any } | null;
   images?: { public_url?: string | null; storage_path?: string | null; sort_order?: number | null; meta?: any }[] | null;
 };
@@ -91,6 +98,7 @@ type SellerCard = {
   bio: string | null;
   is_verified: boolean | null;
   logo_path: string | null;
+  active?: boolean | null;
   featured_enabled?: boolean | null;
   featured_until?: string | null;
   featured_listing_limit?: number | null;
@@ -118,6 +126,18 @@ function listingExpiresAtMs(row: ListingRow) {
 function listingIsExpired(row: ListingRow) {
   const expMs = listingExpiresAtMs(row);
   return expMs !== null && expMs <= Date.now();
+}
+
+function listingFeatureIsVisible(row: ListingRow) {
+  if (!row.featured_enabled) return false;
+  if (!row.featured_until) return true;
+  const untilMs = new Date(String(row.featured_until)).getTime();
+  return Number.isFinite(untilMs) && untilMs >= Date.now();
+}
+
+function listingFeaturePriority(row: ListingRow) {
+  const priority = Math.trunc(Number(row.featured_priority ?? 100));
+  return Number.isFinite(priority) ? priority : 100;
 }
 
 function cleanListingSearch(value: string) {
@@ -148,6 +168,9 @@ function normalizeListingRow(row: any): ListingRow | null {
     payment_options: row?.payment_options ?? null,
     availability: row?.availability ?? row?.payment_options?.availability ?? null,
     stock_qty: typeof row?.stock_qty === "number" ? row.stock_qty : row?.stock_qty ?? null,
+    featured_enabled: row?.featured_enabled ?? false,
+    featured_until: row?.featured_until ?? null,
+    featured_priority: row?.featured_priority === null || row?.featured_priority === undefined ? null : Number(row.featured_priority),
     cover,
     images,
   };
@@ -825,12 +848,8 @@ export default function MarketHome() {
 
   async function loadFeaturedListings(sellers: SellerCard[]) {
     const sellerIds = sellers.map((seller) => String(seller.user_id || "").trim()).filter(Boolean);
-    if (!sellerIds.length) {
-      setFeaturedListings([]);
-      return;
-    }
-
-    const runQuery = async (selectClause: string, useDeletedFilter: boolean) => {
+    const fetchStoreFeaturedRows = async (selectClause: string, useDeletedFilter: boolean) => {
+      if (!sellerIds.length) return [] as ListingRow[];
       let query = supabase
         .from(LISTINGS_TABLE)
         .select(selectClause)
@@ -846,20 +865,54 @@ export default function MarketHome() {
       return normalizeListingRows((data ?? []) as any[]);
     };
 
-    const attempts: Array<[string, boolean]> = [
+    const storeAttempts: Array<[string, boolean]> = [
       [LISTING_RICH_SELECT, true],
       [LISTING_RICH_SELECT, false],
       [LISTING_BASIC_SELECT, false],
     ];
 
-    let nextRows: ListingRow[] = [];
-    for (const [selectClause, useDeletedFilter] of attempts) {
+    let storeRows: ListingRow[] = [];
+    for (const [selectClause, useDeletedFilter] of storeAttempts) {
       try {
-        const fetched = await runQuery(selectClause, useDeletedFilter);
-        nextRows = selectClause === LISTING_BASIC_SELECT ? await fetchListingImagesFor(fetched) : fetched;
+        const fetched = await fetchStoreFeaturedRows(selectClause, useDeletedFilter);
+        storeRows = selectClause === LISTING_BASIC_SELECT ? await fetchListingImagesFor(fetched) : fetched;
         break;
       } catch {
-        nextRows = [];
+        storeRows = [];
+      }
+    }
+
+    const fetchDirectFeaturedRows = async (selectClause: string, useDeletedFilter: boolean) => {
+      let query = supabase
+        .from(LISTINGS_TABLE)
+        .select(selectClause)
+        .eq("is_active", true)
+        .eq("featured_enabled", true)
+        .order("featured_priority", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(36);
+
+      if (useDeletedFilter) query = query.is("deleted_at", null);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return normalizeListingRows((data ?? []) as any[]);
+    };
+
+    const directAttempts: Array<[string, boolean]> = [
+      [LISTING_FEATURE_SELECT, true],
+      [LISTING_FEATURE_SELECT, false],
+      [LISTING_FEATURE_BASIC_SELECT, false],
+    ];
+
+    let directRows: ListingRow[] = [];
+    for (const [selectClause, useDeletedFilter] of directAttempts) {
+      try {
+        const fetched = await fetchDirectFeaturedRows(selectClause, useDeletedFilter);
+        directRows = selectClause === LISTING_FEATURE_BASIC_SELECT ? await fetchListingImagesFor(fetched) : fetched;
+        break;
+      } catch {
+        directRows = [];
       }
     }
 
@@ -871,7 +924,7 @@ export default function MarketHome() {
       ]),
     );
     const perSellerCounts = new Map<string, number>();
-    const visible = nextRows
+    const storeVisible = storeRows
       .filter((row) => !listingIsExpired(row))
       .sort((a, b) => {
         const rankA = sellerRank.get(a.seller_id) ?? 9999;
@@ -887,7 +940,20 @@ export default function MarketHome() {
         return true;
       });
 
-    setFeaturedListings(visible.slice(0, 12));
+    const directVisible = directRows
+      .filter((row) => !listingIsExpired(row) && listingFeatureIsVisible(row))
+      .sort((a, b) => {
+        const priority = listingFeaturePriority(a) - listingFeaturePriority(b);
+        if (priority !== 0) return priority;
+        return new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime();
+      });
+
+    const unique = new Map<string, ListingRow>();
+    [...directVisible, ...storeVisible].forEach((row) => {
+      if (row.id && !unique.has(row.id)) unique.set(row.id, row);
+    });
+
+    setFeaturedListings(Array.from(unique.values()).slice(0, 12));
   }
 
   async function fetchListingImagesFor(rows: ListingRow[]) {
@@ -1198,7 +1264,7 @@ export default function MarketHome() {
           LISTING_IMAGES_BUCKET,
         );
         const displayPrice = getListingPriceDisplay(item as any);
-        const seller = featuredSellers.find((s) => s.user_id === item.seller_id);
+        const seller = featuredSellers.find((s) => s.user_id === item.seller_id) ?? sellersMap[item.seller_id];
         return {
           id: item.id,
           title: item.title || "Untitled listing",
@@ -1209,7 +1275,7 @@ export default function MarketHome() {
           accent: [TEAL, AMBER, BLUE][index % 3],
         };
       }),
-    [featuredListings, featuredSellers, main, supabaseUrl],
+    [featuredListings, featuredSellers, main, sellersMap, supabaseUrl],
   );
 
   const renderListing = ({ item }: { item: ListingRow }) => {

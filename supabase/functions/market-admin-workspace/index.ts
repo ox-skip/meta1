@@ -4,6 +4,14 @@ import { supabaseAdminClient } from "../_shared/market/supabase.ts";
 
 const DEFAULT_LIMIT = 30;
 const DISPUTE_BUCKET = "market-disputes";
+const MARKET_SELLER_ADMIN_SELECT =
+  "user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at";
+const MARKET_SELLER_ADMIN_LEGACY_SELECT =
+  "user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at";
+const MARKET_LISTING_ADMIN_SELECT =
+  "id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,featured_enabled,featured_until,featured_priority,created_at,updated_at";
+const MARKET_LISTING_ADMIN_LEGACY_SELECT =
+  "id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at";
 
 function can(ctx: AdminContext, permission: string) {
   return ctx.roleKey === "super_admin" || ctx.permissions.includes("*") || ctx.permissions.includes(permission);
@@ -26,6 +34,18 @@ function byId(rows: any[] | null | undefined, key = "id") {
   return map;
 }
 
+async function runListingAdminSelect(makeQuery: (selectClause: string) => any) {
+  const next = await makeQuery(MARKET_LISTING_ADMIN_SELECT);
+  if (!next.error) return next;
+  return await makeQuery(MARKET_LISTING_ADMIN_LEGACY_SELECT);
+}
+
+async function runSellerAdminSelect(makeQuery: (selectClause: string) => any) {
+  const next = await makeQuery(MARKET_SELLER_ADMIN_SELECT);
+  if (!next.error) return next;
+  return await makeQuery(MARKET_SELLER_ADMIN_LEGACY_SELECT);
+}
+
 async function loadProfiles(admin: any, ids: string[]) {
   const list = unique(ids);
   if (!list.length) return {};
@@ -42,10 +62,12 @@ async function loadSellerProfiles(admin: any, ids: string[]) {
   const list = unique(ids);
   if (!list.length) return {};
 
-  const { data, error } = await admin
-    .from("market_seller_profiles")
-    .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
-    .in("user_id", list);
+  const { data, error } = await runSellerAdminSelect((selectClause) =>
+    admin
+      .from("market_seller_profiles")
+      .select(selectClause)
+      .in("user_id", list)
+  );
   if (error) throw error;
   return byId(data, "user_id");
 }
@@ -54,10 +76,12 @@ async function loadListingsByIds(admin: any, ids: string[]) {
   const list = unique(ids);
   if (!list.length) return {};
 
-  const { data, error } = await admin
-    .from("market_listings")
-    .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
-    .in("id", list);
+  const { data, error } = await runListingAdminSelect((selectClause) =>
+    admin
+      .from("market_listings")
+      .select(selectClause)
+      .in("id", list)
+  );
   if (error) throw error;
   return byId(data);
 }
@@ -251,16 +275,20 @@ async function loadSupport(admin: any, ctx: AdminContext) {
 
 async function loadModeration(admin: any) {
   const [sellerRes, listingRes] = await Promise.all([
-    admin
-      .from("market_seller_profiles")
-      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(DEFAULT_LIMIT),
-    admin
-      .from("market_listings")
-      .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(DEFAULT_LIMIT),
+    runSellerAdminSelect((selectClause) =>
+      admin
+        .from("market_seller_profiles")
+        .select(selectClause)
+        .order("updated_at", { ascending: false })
+        .limit(DEFAULT_LIMIT)
+    ),
+    runListingAdminSelect((selectClause) =>
+      admin
+        .from("market_listings")
+        .select(selectClause)
+        .order("updated_at", { ascending: false })
+        .limit(DEFAULT_LIMIT)
+    ),
   ]);
 
   if (sellerRes.error) throw sellerRes.error;
@@ -466,16 +494,20 @@ async function loadRewards(admin: any) {
       .select("id,user_id,task_id,provider,platform,ad_unit_id,reward_noms,status,provider_transaction_id,created_at,shown_at,client_earned_at,verified_at,rewarded_at,expires_at")
       .order("created_at", { ascending: false })
       .limit(DEFAULT_LIMIT),
-    admin
-      .from("market_seller_profiles")
-      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(250),
-    admin
-      .from("market_listings")
-      .select("id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(250),
+    runSellerAdminSelect((selectClause) =>
+      admin
+        .from("market_seller_profiles")
+        .select(selectClause)
+        .order("updated_at", { ascending: false })
+        .limit(250)
+    ),
+    runListingAdminSelect((selectClause) =>
+      admin
+        .from("market_listings")
+        .select(selectClause)
+        .order("updated_at", { ascending: false })
+        .limit(250)
+    ),
     admin
       .from("market_reward_config")
       .select("key,value,public_read,updated_at")
