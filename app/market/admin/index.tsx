@@ -612,7 +612,14 @@ function SegmentedControl<T extends string>({
   options: Array<{ key: T; label: string; count?: number }>;
 }) {
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      keyboardShouldPersistTaps="handled"
+      showsHorizontalScrollIndicator
+      style={{ width: "100%", maxWidth: "100%", flexGrow: 0 }}
+      contentContainerStyle={{ flexDirection: "row", gap: 8, paddingRight: 6 }}
+    >
       {options.map((option) => {
         const selected = option.key === value;
         return (
@@ -629,6 +636,7 @@ function SegmentedControl<T extends string>({
               flexDirection: "row",
               gap: 8,
               alignItems: "center",
+              flexShrink: 0,
             }}
           >
             <Text style={{ color: selected ? TEXT : MUTED, fontWeight: "900", fontSize: 12 }}>{option.label}</Text>
@@ -638,7 +646,7 @@ function SegmentedControl<T extends string>({
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
