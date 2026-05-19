@@ -12,6 +12,10 @@ const MARKET_LISTING_ADMIN_SELECT =
   "id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,featured_enabled,featured_until,featured_priority,created_at,updated_at";
 const MARKET_LISTING_ADMIN_LEGACY_SELECT =
   "id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at";
+const MARKET_CHAIN_ADMIN_SELECT =
+  "id,chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,identity_factory,identity_router,identity_name_registry,identity_stable_address,confirmations_required,fee_bps,active,created_at,updated_at";
+const MARKET_CHAIN_ADMIN_LEGACY_SELECT =
+  "id,chain,chain_id,rpc_url,usdc_address,escrow_address,confirmations_required,active,created_at,updated_at";
 
 function can(ctx: AdminContext, permission: string) {
   return ctx.roleKey === "super_admin" || ctx.permissions.includes("*") || ctx.permissions.includes(permission);
@@ -44,6 +48,12 @@ async function runSellerAdminSelect(makeQuery: (selectClause: string) => any) {
   const next = await makeQuery(MARKET_SELLER_ADMIN_SELECT);
   if (!next.error) return next;
   return await makeQuery(MARKET_SELLER_ADMIN_LEGACY_SELECT);
+}
+
+async function runChainAdminSelect(makeQuery: (selectClause: string) => any) {
+  const next = await makeQuery(MARKET_CHAIN_ADMIN_SELECT);
+  if (!next.error) return next;
+  return await makeQuery(MARKET_CHAIN_ADMIN_LEGACY_SELECT);
 }
 
 async function loadProfiles(admin: any, ids: string[]) {
@@ -342,10 +352,12 @@ async function loadEscrow(admin: any) {
       .in("status", ["IN_ESCROW", "DISPUTED", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED", "DELIVERED"])
       .order("created_at", { ascending: false })
       .limit(DEFAULT_LIMIT),
-    admin
-      .from("market_chain_config")
-      .select("id,chain,chain_id,escrow_address,confirmations_required,active,created_at,updated_at")
-      .order("chain", { ascending: true }),
+    runChainAdminSelect((selectClause) =>
+      admin
+        .from("market_chain_config")
+        .select(selectClause)
+        .order("chain", { ascending: true })
+    ),
     admin
       .from("market_stock_identities")
       .select("id,store_id,slug,name,symbol,chain,token_address,pool_address,active,launch_guard_until,trading_paused_until,created_at,updated_at")
@@ -415,6 +427,89 @@ async function loadEscrow(admin: any) {
       store: userBundle(stock.store_id, profiles, sellers),
     })),
     audit_events: auditsRes.data ?? [],
+  };
+}
+
+async function loadStockMarket(admin: any) {
+  const [stocksRes, ordersRes, tradesRes, reinvestmentsRes, permissionsRes, chainsRes] = await Promise.all([
+    admin
+      .from("market_stock_identities")
+      .select("id,store_id,slug,name,symbol,chain,chain_id,token_address,pool_address,total_supply,decimals,creation_fee_usdc,creation_lp_usdc,creation_reserve_usdc,reinvest_ops_bps,reinvest_liquidity_bps,reinvest_staking_bps,active,launch_guard_until,trading_paused_until,launched_at,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(80),
+    admin
+      .from("market_stock_orders")
+      .select("id,stock_id,user_id,side,quote_price_usdc,amount_usdc,quantity,slippage_bps,max_price_impact_bps,status,submitted_tx_hash,filled_trade_id,fail_reason,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(80),
+    admin
+      .from("market_stock_trades")
+      .select("id,stock_id,user_id,side,price_usdc,quantity,notional_usdc,fee_usdc,chain_tx_hash,chain_block,chain_log_index,traded_at,created_at")
+      .order("traded_at", { ascending: false })
+      .limit(80),
+    admin
+      .from("market_stock_reinvestments")
+      .select("id,stock_id,store_id,order_id,source_type,gross_usdc,platform_usdc,liquidity_usdc,staking_usdc,chain,tx_hash,status,idempotency_key,error_message,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(80),
+    admin
+      .from("store_identity_permissions")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(120),
+    runChainAdminSelect((selectClause) =>
+      admin
+        .from("market_chain_config")
+        .select(selectClause)
+        .order("chain", { ascending: true })
+    ),
+  ]);
+
+  if (stocksRes.error) throw stocksRes.error;
+  if (ordersRes.error) throw ordersRes.error;
+  if (tradesRes.error) throw tradesRes.error;
+  if (reinvestmentsRes.error) throw reinvestmentsRes.error;
+  if (permissionsRes.error) throw permissionsRes.error;
+  if (chainsRes.error) throw chainsRes.error;
+
+  const stocksById = byId(stocksRes.data);
+  const profileIds = unique([
+    ...(stocksRes.data ?? []).map((row: any) => row.store_id),
+    ...(ordersRes.data ?? []).map((row: any) => row.user_id),
+    ...(tradesRes.data ?? []).map((row: any) => row.user_id),
+    ...(reinvestmentsRes.data ?? []).map((row: any) => row.store_id),
+    ...(permissionsRes.data ?? []).map((row: any) => row.store_id),
+  ]);
+  const profiles = await loadProfiles(admin, profileIds);
+  const sellers = await loadSellerProfiles(admin, profileIds);
+
+  const withStock = (row: any) => ({
+    ...row,
+    stock: stocksById[String(row?.stock_id ?? "")] ?? null,
+  });
+
+  return {
+    identities: (stocksRes.data ?? []).map((stock: any) => ({
+      ...stock,
+      store: userBundle(stock.store_id, profiles, sellers),
+    })),
+    orders: (ordersRes.data ?? []).map((order: any) => ({
+      ...withStock(order),
+      user: userBundle(order.user_id, profiles, sellers),
+    })),
+    trades: (tradesRes.data ?? []).map((trade: any) => ({
+      ...withStock(trade),
+      user: userBundle(trade.user_id, profiles, sellers),
+    })),
+    reinvestments: (reinvestmentsRes.data ?? []).map((reinvestment: any) => ({
+      ...withStock(reinvestment),
+      store: userBundle(reinvestment.store_id, profiles, sellers),
+    })),
+    permissions: (permissionsRes.data ?? []).map((permission: any) => ({
+      ...permission,
+      store: userBundle(permission.store_id, profiles, sellers),
+    })),
+    chains: chainsRes.data ?? [],
   };
 }
 
@@ -620,6 +715,10 @@ Deno.serve(async (req) => {
 
     if (canAny(ctx, ["escrow.read", "escrow.settle", "chain.read", "chain.admin"])) {
       modules.escrow = await loadEscrow(admin);
+    }
+
+    if (canAny(ctx, ["stock.read", "stock.manage", "stock.contracts", "chain.read", "chain.admin", "analytics.read"])) {
+      modules.stocks = await loadStockMarket(admin);
     }
 
     if (canAny(ctx, ["admin.members.manage", "admin.roles.read"])) {

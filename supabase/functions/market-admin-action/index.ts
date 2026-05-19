@@ -18,6 +18,10 @@ function requireMarketHomeFeatureAccess(ctx: AdminContext) {
   return requireAnyPermission(ctx, ["users.moderate", "listings.moderate", "rewards.promotions.manage"]);
 }
 
+function isSuperAdmin(ctx: AdminContext) {
+  return ctx.roleKey === "super_admin" || ctx.permissions.includes("*");
+}
+
 function requireSupportTicketAccess(ctx: AdminContext, permission: string) {
   const blocked = requirePermission(ctx, permission);
   if (blocked) return blocked;
@@ -451,16 +455,22 @@ async function settleOrder(admin: any, ctx: AdminContext, req: Request, body: an
 }
 
 async function setStockTradingPause(admin: any, ctx: AdminContext, req: Request, body: any) {
-  const blocked = requirePermission(ctx, "chain.admin");
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
   if (blocked) return blocked;
 
   const stockId = requireUuid("stock_id", body.stock_id);
   const pauseMinutes = Math.max(0, Math.min(Number(body.pause_minutes ?? 0), 10080));
-  const data = await invokeAdminFunction(admin, req, "stock-chain-sync", {
-    action: "set_trading_pause",
-    stock_id: stockId,
-    pause_minutes: pauseMinutes,
-  });
+  const pausedUntil = pauseMinutes > 0 ? new Date(Date.now() + (pauseMinutes * 60 * 1000)).toISOString() : null;
+  const { data, error } = await admin
+    .from("market_stock_identities")
+    .update({
+      trading_paused_until: pausedUntil,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", stockId)
+    .select("id,slug,name,symbol,trading_paused_until,updated_at")
+    .single();
+  if (error) return bad(error.message);
 
   await audit(admin, ctx, {
     action: "STOCK_TRADING_PAUSE_SET",
@@ -482,6 +492,191 @@ async function stableChainAction(admin: any, ctx: AdminContext, req: Request, bo
   if (!action) return bad("chain_action required");
 
   const data = await invokeAdminFunction(admin, req, "market-stable-admin-ops", {
+    ...body,
+    action,
+    chain,
+    note: adminNote(body.note),
+  });
+
+  return ok({ ok: true, result: data });
+}
+
+async function setStockIdentityActive(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
+  if (blocked) return blocked;
+
+  const stockId = requireUuid("stock_id", body.stock_id);
+  const active = requireBoolean("active", body.active);
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await admin
+    .from("market_stock_identities")
+    .update({ active, updated_at: nowIso })
+    .eq("id", stockId)
+    .select("id,store_id,slug,name,symbol,chain,active,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: active ? "STOCK_IDENTITY_REACTIVATED" : "STOCK_IDENTITY_DEACTIVATED",
+    entity_type: "market_stock_identities",
+    entity_id: stockId,
+    payload: { store_id: data.store_id, symbol: data.symbol, chain: data.chain, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, stock: data });
+}
+
+async function setStockCreatePermission(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
+  if (blocked) return blocked;
+
+  const storeId = requireUuid("store_id", body.store_id);
+  const patch: Record<string, unknown> = {
+    store_id: storeId,
+    updated_at: new Date().toISOString(),
+  };
+
+  for (const key of ["can_create", "can_create_evm", "can_create_pi", "allow_reserved"]) {
+    if (body[key] !== undefined) patch[key] = requireBoolean(key, body[key]);
+  }
+
+  if (Object.keys(patch).length <= 2) return bad("At least one stock permission value is required");
+
+  const { data, error } = await admin
+    .from("store_identity_permissions")
+    .upsert(patch, { onConflict: "store_id" })
+    .select("*")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "STOCK_CREATE_PERMISSION_UPDATED",
+    entity_type: "store_identity_permissions",
+    entity_id: storeId,
+    payload: { ...patch, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, permission: data });
+}
+
+async function deleteStockIdentity(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
+  if (blocked) return blocked;
+  if (!isSuperAdmin(ctx)) return bad("Super admin only");
+
+  const stockId = requireUuid("stock_id", body.stock_id);
+  const dependencyChecks = await Promise.all([
+    admin.from("market_stock_orders").select("id", { count: "exact", head: true }).eq("stock_id", stockId),
+    admin.from("market_stock_trades").select("id", { count: "exact", head: true }).eq("stock_id", stockId),
+    admin.from("market_stock_positions").select("stock_id", { count: "exact", head: true }).eq("stock_id", stockId),
+    admin.from("market_stock_reinvestments").select("id", { count: "exact", head: true }).eq("stock_id", stockId),
+  ]);
+  const firstError = dependencyChecks.find((result: any) => result.error)?.error;
+  if (firstError) return bad(firstError.message);
+  const counts = {
+    orders: Number(dependencyChecks[0].count ?? 0),
+    trades: Number(dependencyChecks[1].count ?? 0),
+    positions: Number(dependencyChecks[2].count ?? 0),
+    reinvestments: Number(dependencyChecks[3].count ?? 0),
+  };
+  if (counts.orders || counts.trades || counts.positions || counts.reinvestments) {
+    return bad("Stock identity has activity. Deactivate it instead of deleting historical market data.");
+  }
+
+  const { data: stock, error: readError } = await admin
+    .from("market_stock_identities")
+    .select("id,store_id,slug,name,symbol,chain")
+    .eq("id", stockId)
+    .maybeSingle();
+  if (readError) return bad(readError.message);
+  if (!stock) return bad("Stock identity not found");
+
+  const { error } = await admin.from("market_stock_identities").delete().eq("id", stockId);
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "STOCK_IDENTITY_DELETED_EMPTY",
+    entity_type: "market_stock_identities",
+    entity_id: stockId,
+    payload: { ...stock, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, deleted: stock });
+}
+
+async function setStockOrderStatus(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
+  if (blocked) return blocked;
+
+  const orderId = requireUuid("order_id", body.order_id);
+  const status = String(body.status ?? "").trim().toLowerCase();
+  if (!["pending", "submitted", "failed", "cancelled"].includes(status)) {
+    return bad("status must be pending, submitted, failed, or cancelled");
+  }
+
+  const { data, error } = await admin
+    .from("market_stock_orders")
+    .update({
+      status,
+      fail_reason: status === "failed" ? cleanText(body.fail_reason ?? body.note, 500) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+    .select("id,stock_id,user_id,side,status,fail_reason,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "STOCK_ORDER_STATUS_UPDATED",
+    entity_type: "market_stock_orders",
+    entity_id: orderId,
+    payload: { stock_id: data.stock_id, user_id: data.user_id, side: data.side, status, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, order: data });
+}
+
+async function setStockReinvestmentStatus(admin: any, ctx: AdminContext, req: Request, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.manage"]);
+  if (blocked) return blocked;
+
+  const reinvestmentId = requireUuid("reinvestment_id", body.reinvestment_id);
+  const status = String(body.status ?? "").trim().toLowerCase();
+  if (!["queued", "submitted", "confirmed", "failed"].includes(status)) return bad("Invalid status");
+  const txHash = String(body.tx_hash ?? "").trim() || null;
+  const { data, error } = await admin
+    .from("market_stock_reinvestments")
+    .update({
+      status,
+      tx_hash: txHash,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", reinvestmentId)
+    .select("*")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "STOCK_REINVESTMENT_STATUS_UPDATED",
+    entity_type: "market_stock_reinvestments",
+    entity_id: reinvestmentId,
+    payload: { status, tx_hash: txHash, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, reinvestment: data });
+}
+
+async function stockContractAction(admin: any, ctx: AdminContext, req: Request, body: any) {
+  const blocked = requireAnyPermission(ctx, ["chain.admin", "stock.contracts"]);
+  if (blocked) return blocked;
+
+  const chain = String(body.chain ?? "").trim();
+  const action = String(body.contract_action ?? body.stock_action ?? "").trim();
+  if (!chain) return bad("chain required");
+  if (!action) return bad("contract_action required");
+
+  const data = await invokeAdminFunction(admin, req, "stock-contract-admin-ops", {
     ...body,
     action,
     chain,
@@ -1156,6 +1351,12 @@ Deno.serve(async (req) => {
     if (action === "settle_order") return await settleOrder(admin, ctx, req, body);
     if (action === "set_stock_trading_pause") return await setStockTradingPause(admin, ctx, req, body);
     if (action === "stable_chain_action") return await stableChainAction(admin, ctx, req, body);
+    if (action === "set_stock_identity_active") return await setStockIdentityActive(admin, ctx, body);
+    if (action === "set_stock_create_permission") return await setStockCreatePermission(admin, ctx, body);
+    if (action === "delete_stock_identity") return await deleteStockIdentity(admin, ctx, body);
+    if (action === "set_stock_order_status") return await setStockOrderStatus(admin, ctx, body);
+    if (action === "set_stock_reinvestment_status") return await setStockReinvestmentStatus(admin, ctx, req, body);
+    if (action === "stock_contract_action") return await stockContractAction(admin, ctx, req, body);
     if (action === "support_reply") return await replySupportTicket(admin, ctx, body);
     if (action === "support_update_status") return await updateSupportTicketStatus(admin, ctx, body);
     if (action === "upsert_admin_user") return await upsertAdminUser(admin, ctx, body);

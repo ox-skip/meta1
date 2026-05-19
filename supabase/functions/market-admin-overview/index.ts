@@ -28,6 +28,9 @@ Deno.serve(async (req) => {
       rewardTasksRes,
       pendingRewardReviewsRes,
       activeRewardPromotionsRes,
+      stockIdentitiesRes,
+      pausedStockIdentitiesRes,
+      pendingStockOrdersRes,
     ] = await Promise.all([
       admin.from("market_disputes").select("id", { count: "exact", head: true }).in("status", ["OPEN", "UNDER_REVIEW"]),
       canSeeSupportTickets
@@ -46,6 +49,9 @@ Deno.serve(async (req) => {
       admin.from("market_reward_tasks").select("id", { count: "exact", head: true }),
       admin.from("market_reward_task_completions").select("id", { count: "exact", head: true }).eq("status", "pending"),
       admin.from("market_reward_promotions").select("id", { count: "exact", head: true }).eq("active", true),
+      admin.from("market_stock_identities").select("id", { count: "exact", head: true }),
+      admin.from("market_stock_identities").select("id", { count: "exact", head: true }).gt("trading_paused_until", new Date().toISOString()),
+      admin.from("market_stock_orders").select("id", { count: "exact", head: true }).in("status", ["pending", "submitted"]),
     ]);
 
     const failures = [
@@ -64,6 +70,9 @@ Deno.serve(async (req) => {
       rewardTasksRes.error,
       pendingRewardReviewsRes.error,
       activeRewardPromotionsRes.error,
+      stockIdentitiesRes.error,
+      pausedStockIdentitiesRes.error,
+      pendingStockOrdersRes.error,
     ].filter(Boolean);
     if (failures.length) return bad(String(failures[0]?.message ?? "Could not load admin overview"));
 
@@ -91,6 +100,9 @@ Deno.serve(async (req) => {
         reward_tasks: Number(rewardTasksRes.count ?? 0),
         pending_reward_reviews: Number(pendingRewardReviewsRes.count ?? 0),
         active_reward_promotions: Number(activeRewardPromotionsRes.count ?? 0),
+        stock_identities: Number(stockIdentitiesRes.count ?? 0),
+        paused_stock_identities: Number(pausedStockIdentitiesRes.count ?? 0),
+        pending_stock_orders: Number(pendingStockOrdersRes.count ?? 0),
       },
       modules: [
         {
@@ -116,6 +128,12 @@ Deno.serve(async (req) => {
           title: "Escrow and chain operations",
           description: "Track crypto settlement state, reconcile escrow events, and control chain-level operations.",
           permission: "escrow.settle",
+        },
+        {
+          key: "stocks",
+          title: "Stock market admin",
+          description: "Manage stock identities, trading gates, permissions, orders, reinvestments, and identity contracts.",
+          permission: "stock.read",
         },
         {
           key: "rewards",

@@ -47,6 +47,14 @@ export type MarketAdminWorkspace = {
       stocks: any[];
       audit_events: any[];
     };
+    stocks?: {
+      identities: any[];
+      orders: any[];
+      trades: any[];
+      reinvestments: any[];
+      permissions: any[];
+      chains: any[];
+    };
     admins?: {
       users: any[];
       roles: any[];

@@ -52,9 +52,10 @@ const SUCCESS = "#4ADE80";
 const WARNING = "#F59E0B";
 const DANGER = "#F87171";
 
-type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "rewards" | "admins";
+type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "stocks" | "rewards" | "admins";
 type ModerationTab = "sellers" | "listings";
-type EscrowTab = "orders" | "stocks" | "chains" | "audit";
+type EscrowTab = "orders" | "stocks" | "chains" | "contracts" | "audit";
+type StockAdminTab = "identities" | "orders" | "trades" | "reinvestments" | "permissions" | "contracts";
 type AdminTab = "members" | "roles" | "invite" | "system";
 type RewardAdminTab = "tasks" | "promotions" | "referrals" | "reviews" | "accounts" | "ledger" | "build";
 type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
@@ -124,6 +125,12 @@ const MODULE_META: Record<ModuleKey, {
     eyebrow: "Money movement",
     accent: "#4ADE80",
   },
+  stocks: {
+    icon: "trending-up-outline",
+    shortTitle: "Stocks",
+    eyebrow: "Stock market",
+    accent: "#38BDF8",
+  },
   rewards: {
     icon: "gift-outline",
     shortTitle: "Rewards",
@@ -161,6 +168,9 @@ const PERMISSION_LABELS: Record<string, string> = {
   "escrow.settle": "Release or refund escrow",
   "chain.read": "View chain configuration",
   "chain.admin": "Pause or resume chain controls",
+  "stock.read": "View stock market admin",
+  "stock.manage": "Manage stock identities",
+  "stock.contracts": "Control stock contracts",
   "rewards.read": "View rewards",
   "rewards.tasks.manage": "Manage reward tasks",
   "rewards.promotions.manage": "Manage promoted placements",
@@ -196,6 +206,11 @@ const PERMISSION_GROUPS = [
     title: "Escrow",
     permissions: ["escrow.read", "escrow.settle", "chain.read", "chain.admin"],
     icon: "wallet-outline" as keyof typeof Ionicons.glyphMap,
+  },
+  {
+    title: "Stocks",
+    permissions: ["stock.read", "stock.manage", "stock.contracts", "chain.read", "chain.admin"],
+    icon: "trending-up-outline" as keyof typeof Ionicons.glyphMap,
   },
   {
     title: "Rewards",
@@ -710,11 +725,13 @@ export default function MarketAdminIndex() {
     moderation: "",
     verification: "",
     escrow: "",
+    stocks: "",
     rewards: "",
     admins: "",
   });
   const [moderationTab, setModerationTab] = useState<ModerationTab>("sellers");
   const [escrowTab, setEscrowTab] = useState<EscrowTab>("orders");
+  const [stockTab, setStockTab] = useState<StockAdminTab>("identities");
   const [adminTab, setAdminTab] = useState<AdminTab>("members");
   const [rewardTab, setRewardTab] = useState<RewardAdminTab>("tasks");
   const [rewardTaskKey, setRewardTaskKey] = useState("custom_reward_task");
@@ -776,11 +793,19 @@ export default function MarketAdminIndex() {
   const [chainRescueRecipients, setChainRescueRecipients] = useState<Record<string, string>>({});
   const [chainRescueOrderKeys, setChainRescueOrderKeys] = useState<Record<string, string>>({});
   const [chainRescueTxHashes, setChainRescueTxHashes] = useState<Record<string, string>>({});
+  const [stockBootstrapDrafts, setStockBootstrapDrafts] = useState<Record<string, { max: string; cooldown: string; duration: string; storeId: string }>>({});
+  const [stockFactoryDrafts, setStockFactoryDrafts] = useState<Record<string, { liquidity: string; reserve: string; liquidityBps: string; rewardsBps: string; registry: string; admin: string }>>({});
+  const [stockFundingDrafts, setStockFundingDrafts] = useState<Record<string, { storeId: string; amount: string }>>({});
+  const [stockGuardDrafts, setStockGuardDrafts] = useState<Record<string, { guard: string; window: string; tick: string }>>({});
+  const [stockReservedDrafts, setStockReservedDrafts] = useState<Record<string, { term: string; creator: string }>>({});
 
   function canSeeOverviewModule(module: MarketAdminOverview["modules"][number], permissions: string[], roleKey?: string | null) {
     if (roleKey === "super_admin" || permissions.includes("*") || permissions.includes(module.permission)) return true;
     if (module.key === "moderation") {
       return permissions.some((permission) => ["users.moderate", "users.delete", "listings.moderate", "listings.delete"].includes(permission));
+    }
+    if (module.key === "stocks") {
+      return permissions.some((permission) => ["stock.read", "stock.manage", "stock.contracts", "chain.read", "chain.admin", "analytics.read"].includes(permission));
     }
     return false;
   }
@@ -935,6 +960,41 @@ export default function MarketAdminIndex() {
     setChainRescueTxHashes((prev) => ({ ...prev, [chain]: value }));
   }
 
+  function setStockBootstrapDraft(chain: string, patch: Partial<{ max: string; cooldown: string; duration: string; storeId: string }>) {
+    setStockBootstrapDrafts((prev) => ({
+      ...prev,
+      [chain]: { max: "100", cooldown: "30", duration: "86400", storeId: "", ...(prev[chain] ?? {}), ...patch },
+    }));
+  }
+
+  function setStockFactoryDraft(chain: string, patch: Partial<{ liquidity: string; reserve: string; liquidityBps: string; rewardsBps: string; registry: string; admin: string }>) {
+    setStockFactoryDrafts((prev) => ({
+      ...prev,
+      [chain]: { liquidity: "", reserve: "", liquidityBps: "8500", rewardsBps: "1500", registry: "", admin: "", ...(prev[chain] ?? {}), ...patch },
+    }));
+  }
+
+  function setStockGuardDraft(chain: string, patch: Partial<{ guard: string; window: string; tick: string }>) {
+    setStockGuardDrafts((prev) => ({
+      ...prev,
+      [chain]: { guard: "500", window: "120", tick: "250", ...(prev[chain] ?? {}), ...patch },
+    }));
+  }
+
+  function setStockFundingDraft(chain: string, patch: Partial<{ storeId: string; amount: string }>) {
+    setStockFundingDrafts((prev) => ({
+      ...prev,
+      [chain]: { storeId: "", amount: "", ...(prev[chain] ?? {}), ...patch },
+    }));
+  }
+
+  function setStockReservedDraft(chain: string, patch: Partial<{ term: string; creator: string }>) {
+    setStockReservedDrafts((prev) => ({
+      ...prev,
+      [chain]: { term: "", creator: "", ...(prev[chain] ?? {}), ...patch },
+    }));
+  }
+
   function moduleItemCount(key: string) {
     const modules = workspace?.modules;
     switch (key) {
@@ -946,6 +1006,13 @@ export default function MarketAdminIndex() {
         return modules?.verification?.requests?.length ?? 0;
       case "escrow":
         return (modules?.escrow?.orders?.length ?? 0) + (modules?.escrow?.stocks?.length ?? 0) + (modules?.escrow?.chains?.length ?? 0);
+      case "stocks":
+        return (
+          (modules?.stocks?.identities?.length ?? 0) +
+          (modules?.stocks?.orders?.length ?? 0) +
+          (modules?.stocks?.trades?.length ?? 0) +
+          (modules?.stocks?.reinvestments?.length ?? 0)
+        );
       case "rewards":
         return (
           (modules?.rewards?.tasks?.length ?? 0) +
@@ -1412,12 +1479,24 @@ export default function MarketAdminIndex() {
           borderColor: BORDER,
           backgroundColor: "rgba(24,18,14,0.97)",
           padding: isDesktop ? 8 : 6,
-          flexDirection: "row",
-          justifyContent: "space-between",
-          gap: isDesktop ? 8 : 4,
+          maxHeight: isDesktop ? 72 : 66,
         }}
       >
-        {visibleModules.map((module) => renderModuleNavItem(module, true))}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              flexDirection: "row",
+              gap: isDesktop ? 8 : 4,
+              minWidth: isDesktop && visibleModules.length <= 6 ? "100%" : undefined,
+            }}
+          >
+            {visibleModules.map((module) => (
+              <View key={module.key} style={{ width: isDesktop ? 150 : 92 }}>
+                {renderModuleNavItem(module, true)}
+              </View>
+            ))}
+          </ScrollView>
         </View>
       </View>
     );
@@ -2826,6 +2905,10 @@ export default function MarketAdminIndex() {
       chain.chain,
       chain.chain_id,
       chain.escrow_address,
+      chain.identity_factory,
+      chain.identity_router,
+      chain.identity_name_registry,
+      chain.identity_stable_address,
       chain.active ? "active" : "inactive",
     ]));
     const stocks = allStocks.filter((stock: any) => matchesSearch(currentModuleSearch, [
@@ -2856,7 +2939,7 @@ export default function MarketAdminIndex() {
           icon="wallet-outline"
           title="Escrow and chain operations"
           subtitle="Settlement, contract controls, stock trading pauses, and audit review stay separated by task."
-          count={escrowTab === "orders" ? orders.length : escrowTab === "stocks" ? stocks.length : escrowTab === "chains" ? chains.length : audits.length}
+          count={escrowTab === "orders" ? orders.length : escrowTab === "stocks" ? stocks.length : escrowTab === "chains" || escrowTab === "contracts" ? chains.length : audits.length}
         >
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
             <SearchBox
@@ -2869,6 +2952,8 @@ export default function MarketAdminIndex() {
                     ? "Search stock controls by symbol, chain, store, or token"
                     : escrowTab === "chains"
                       ? "Search chain config by chain, address, status, or ID"
+                      : escrowTab === "contracts"
+                        ? "Search contracts by chain, escrow, router, factory, or registry"
                       : "Search audit events by action, entity, actor, or ID"
               }
             />
@@ -2879,6 +2964,7 @@ export default function MarketAdminIndex() {
                 { key: "orders", label: "Orders", count: orders.length },
                 { key: "stocks", label: "Stocks", count: stocks.length },
                 { key: "chains", label: "Chains", count: chains.length },
+                { key: "contracts", label: "Contracts", count: chains.length },
                 { key: "audit", label: "Audit", count: audits.length },
               ]}
             />
@@ -3216,6 +3302,34 @@ export default function MarketAdminIndex() {
           <EmptyState title={allChains.length ? "No matching chains" : "No chain config"} subtitle={allChains.length ? "Try chain name, chain ID, escrow address, active, or inactive." : "Stable escrow contract controls appear after chain config is seeded."} />
         )) : null}
 
+        {escrowTab === "contracts" ? (
+          chains.length ? chains.map((chain: any) => (
+            <RecordCard key={`contracts-${chain.chain}`}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{labelFromKey(String(chain.chain ?? "chain"))} contracts</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>
+                    Escrow, stock factory, router, and name registry addresses for admin explorer parity.
+                  </Text>
+                </View>
+                <Pill label={chain.active ? "ACTIVE" : "INACTIVE"} color={chain.active ? SUCCESS : DANGER} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <CopyableIdLine label="Escrow" value={chain.escrow_address} />
+                <CopyableIdLine label="Identity factory" value={chain.identity_factory} />
+                <CopyableIdLine label="Identity router" value={chain.identity_router} />
+                <CopyableIdLine label="Name registry" value={chain.identity_name_registry} />
+                <CopyableIdLine label="Identity stable" value={chain.identity_stable_address || chain.usdc_address} />
+              </View>
+              <Text style={{ marginTop: 12, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                Stable escrow controls live in Chains. Stock factory/router/registry controls live in the Stock Market Admin contracts tab.
+              </Text>
+            </RecordCard>
+          )) : (
+            <EmptyState title={allChains.length ? "No matching contracts" : "No contract config"} subtitle={allChains.length ? "Try a chain name or contract address." : "Contract addresses appear after chain config is seeded."} />
+          )
+        ) : null}
+
         {escrowTab === "audit" ? (
           audits.length ? audits.slice(0, 12).map((event: any) => (
           <RecordCard key={event.id}>
@@ -3228,6 +3342,421 @@ export default function MarketAdminIndex() {
         )) : (
           <EmptyState title={allAudits.length ? "No matching audit events" : "No audit events"} subtitle={allAudits.length ? "Try action name, entity type, entity ID, or actor ID." : "There are no audit events in the current feed."} />
         )) : null}
+      </View>
+    );
+  }
+
+  function renderStocks() {
+    const stocksModule = workspace?.modules.stocks;
+    if (!stocksModule) {
+      return (
+        <View style={{ marginTop: 18 }}>
+          <EmptyState title="Stock admin unavailable" subtitle="This admin session does not include stock or chain permissions." />
+        </View>
+      );
+    }
+
+    const identities = (stocksModule.identities ?? []).filter((stock: any) => matchesSearch(currentModuleSearch, [
+      stock.id,
+      stock.store_id,
+      stock.slug,
+      stock.name,
+      stock.symbol,
+      stock.chain,
+      stock.token_address,
+      stock.pool_address,
+      stock.active === false ? "disabled" : "active",
+      stock.trading_paused_until ? "paused" : "open",
+      personLabel(stock.store),
+    ]));
+    const orders = (stocksModule.orders ?? []).filter((order: any) => matchesSearch(currentModuleSearch, [
+      order.id,
+      order.status,
+      order.side,
+      order.submitted_tx_hash,
+      order.stock?.symbol,
+      order.stock?.name,
+      personLabel(order.user),
+    ]));
+    const trades = (stocksModule.trades ?? []).filter((trade: any) => matchesSearch(currentModuleSearch, [
+      trade.id,
+      trade.side,
+      trade.chain_tx_hash,
+      trade.stock?.symbol,
+      trade.stock?.name,
+      personLabel(trade.user),
+    ]));
+    const reinvestments = (stocksModule.reinvestments ?? []).filter((row: any) => matchesSearch(currentModuleSearch, [
+      row.id,
+      row.status,
+      row.source_type,
+      row.tx_hash,
+      row.stock?.symbol,
+      row.stock?.name,
+      personLabel(row.store),
+    ]));
+    const permissions = (stocksModule.permissions ?? []).filter((permission: any) => matchesSearch(currentModuleSearch, [
+      permission.store_id,
+      permission.can_create ? "can create" : "locked",
+      permission.can_create_evm ? "evm allowed" : "evm locked",
+      permission.can_create_pi ? "pi allowed" : "pi locked",
+      permission.allow_reserved ? "reserved allowed" : "reserved locked",
+      personLabel(permission.store),
+    ]));
+    const chains = (stocksModule.chains ?? []).filter((chain: any) => matchesSearch(currentModuleSearch, [
+      chain.chain,
+      chain.chain_id,
+      chain.identity_factory,
+      chain.identity_router,
+      chain.identity_name_registry,
+      chain.identity_stable_address,
+    ]));
+    const canManageStock = hasPermission("chain.admin") || hasPermission("stock.manage") || hasPermission("stock.contracts");
+    const isSuperAdmin = Boolean(overview?.admin.role_key === "super_admin" || overview?.admin.permissions?.includes("*"));
+    const tabCount =
+      stockTab === "identities" ? identities.length :
+      stockTab === "orders" ? orders.length :
+      stockTab === "trades" ? trades.length :
+      stockTab === "reinvestments" ? reinvestments.length :
+      stockTab === "permissions" ? permissions.length :
+      chains.length;
+
+    return (
+      <View style={{ marginTop: 18, gap: 14 }}>
+        <SectionHeader
+          icon="trending-up-outline"
+          title="Stock market admin"
+          subtitle="Manage stock identities, trading gates, creation permissions, orders, reinvestment state, and identity contracts."
+          count={tabCount}
+        >
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <SearchBox
+              value={currentModuleSearch}
+              onChangeText={setCurrentModuleSearch}
+              placeholder={
+                stockTab === "contracts"
+                  ? "Search stock contracts by chain, factory, router, or registry"
+                  : "Search stock admin by symbol, store, status, tx hash, or UUID"
+              }
+            />
+            <SegmentedControl
+              value={stockTab}
+              onChange={setStockTab}
+              options={[
+                { key: "identities", label: "Identities", count: identities.length },
+                { key: "orders", label: "Orders", count: orders.length },
+                { key: "trades", label: "Trades", count: trades.length },
+                { key: "reinvestments", label: "Reinvest", count: reinvestments.length },
+                { key: "permissions", label: "Permissions", count: permissions.length },
+                { key: "contracts", label: "Contracts", count: chains.length },
+              ]}
+            />
+          </View>
+        </SectionHeader>
+        {renderActionNote()}
+
+        {stockTab === "identities" ? (
+          identities.length ? identities.map((stock: any) => {
+            const pausedUntil = stock.trading_paused_until ? new Date(stock.trading_paused_until) : null;
+            const paused = Boolean(pausedUntil && pausedUntil.getTime() > Date.now());
+            return (
+              <RecordCard key={stock.id}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{stock.name} ({stock.symbol})</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{personLabel(stock.store)} - {stock.slug}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 8 }}>
+                    <Pill label={stock.active === false ? "DISABLED" : paused ? "TRADING PAUSED" : "ACTIVE"} color={stock.active === false || paused ? DANGER : SUCCESS} />
+                    <Pill label={String(stock.chain || "chain").toUpperCase()} color={ACCENT} />
+                  </View>
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <CopyableIdLine label="Stock ID" value={stock.id} />
+                  <CopyableIdLine label="Token" value={stock.token_address} />
+                  <CopyableIdLine label="Pool" value={stock.pool_address} />
+                  <InfoLine label="Paused until" value={formatDate(stock.trading_paused_until)} />
+                  <InfoLine label="Launched" value={formatDate(stock.launched_at)} />
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <ActionButton icon="storefront-outline" label="Open store" color={ACCENT} disabled={!canOpenSellerProfile(stock.store)} onPress={() => openSellerProfile(stock.store)} />
+                  <ActionButton
+                    icon="pause-circle-outline"
+                    label="Pause 1h"
+                    color={DANGER}
+                    disabled={!canManageStock}
+                    loading={workingKey === `stock-admin-pause-${stock.id}`}
+                    onPress={() => performAction(`stock-admin-pause-${stock.id}`, { action: "set_stock_trading_pause", stock_id: stock.id, pause_minutes: 60 }, true)}
+                  />
+                  <ActionButton
+                    icon="time-outline"
+                    label="Pause 24h"
+                    color={DANGER}
+                    disabled={!canManageStock}
+                    loading={workingKey === `stock-admin-pause-day-${stock.id}`}
+                    onPress={() => performAction(`stock-admin-pause-day-${stock.id}`, { action: "set_stock_trading_pause", stock_id: stock.id, pause_minutes: 1440 }, true)}
+                  />
+                  <ActionButton
+                    icon="play-circle-outline"
+                    label="Unpause"
+                    color={SUCCESS}
+                    disabled={!canManageStock}
+                    loading={workingKey === `stock-admin-unpause-${stock.id}`}
+                    onPress={() => performAction(`stock-admin-unpause-${stock.id}`, { action: "set_stock_trading_pause", stock_id: stock.id, pause_minutes: 0 }, true)}
+                  />
+                  <ActionButton
+                    icon={stock.active === false ? "checkmark-circle-outline" : "remove-circle-outline"}
+                    label={stock.active === false ? "Reactivate" : "Remove from market"}
+                    color={stock.active === false ? SUCCESS : DANGER}
+                    disabled={!canManageStock}
+                    loading={workingKey === `stock-active-${stock.id}`}
+                    onPress={() => performAction(`stock-active-${stock.id}`, { action: "set_stock_identity_active", stock_id: stock.id, active: stock.active === false }, true)}
+                  />
+                  <ActionButton
+                    icon="trash-outline"
+                    label="Delete empty"
+                    color={DANGER}
+                    disabled={!isSuperAdmin}
+                    loading={workingKey === `stock-delete-${stock.id}`}
+                    onPress={() => performAction(`stock-delete-${stock.id}`, { action: "delete_stock_identity", stock_id: stock.id }, true)}
+                  />
+                </View>
+              </RecordCard>
+            );
+          }) : (
+            <EmptyState title={stocksModule.identities?.length ? "No matching stocks" : "No stock identities"} subtitle={stocksModule.identities?.length ? "Try a symbol, store name, status, chain, or token address." : "Stock identities will appear after sellers launch stock."} />
+          )
+        ) : null}
+
+        {stockTab === "orders" ? (
+          orders.length ? orders.map((order: any) => (
+            <RecordCard key={order.id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{order.stock?.name ?? "Stock order"} ({order.stock?.symbol ?? "n/a"})</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{personLabel(order.user)} - {String(order.side || "").toUpperCase()}</Text>
+                </View>
+                <Pill label={String(order.status || "pending").toUpperCase()} color={statusTone(order.status)} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <CopyableIdLine label="Order ID" value={order.id} />
+                <InfoLine label="Quote price" value={`${Number(order.quote_price_usdc ?? 0).toLocaleString()} USDC`} />
+                <InfoLine label="Amount" value={order.amount_usdc ? `${Number(order.amount_usdc).toLocaleString()} USDC` : order.quantity ?? "n/a"} />
+                <CopyableIdLine label="Tx hash" value={order.submitted_tx_hash} />
+                <InfoLine label="Updated" value={formatDate(order.updated_at)} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton icon="close-circle-outline" label="Cancel" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-order-cancel-${order.id}`} onPress={() => performAction(`stock-order-cancel-${order.id}`, { action: "set_stock_order_status", order_id: order.id, status: "cancelled" }, true)} />
+                <ActionButton icon="warning-outline" label="Mark failed" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-order-fail-${order.id}`} onPress={() => performAction(`stock-order-fail-${order.id}`, { action: "set_stock_order_status", order_id: order.id, status: "failed" }, true)} />
+                <ActionButton icon="refresh-outline" label="Back to pending" color={ACCENT} disabled={!canManageStock} loading={workingKey === `stock-order-pending-${order.id}`} onPress={() => performAction(`stock-order-pending-${order.id}`, { action: "set_stock_order_status", order_id: order.id, status: "pending" }, true)} />
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title={stocksModule.orders?.length ? "No matching stock orders" : "No stock orders"} subtitle={stocksModule.orders?.length ? "Try status, user, symbol, side, or tx hash." : "Stock buy/sell orders will appear here."} />
+          )
+        ) : null}
+
+        {stockTab === "trades" ? (
+          trades.length ? trades.map((trade: any) => (
+            <RecordCard key={trade.id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{trade.stock?.name ?? "Stock trade"} ({trade.stock?.symbol ?? "n/a"})</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{personLabel(trade.user)} - {formatDate(trade.traded_at)}</Text>
+                </View>
+                <Pill label={String(trade.side || "trade").toUpperCase()} color={String(trade.side) === "buy" ? SUCCESS : WARNING} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="Price" value={`${Number(trade.price_usdc ?? 0).toLocaleString()} USDC`} />
+                <InfoLine label="Quantity" value={String(trade.quantity ?? "n/a")} />
+                <InfoLine label="Notional" value={`${Number(trade.notional_usdc ?? 0).toLocaleString()} USDC`} />
+                <InfoLine label="Fee" value={`${Number(trade.fee_usdc ?? 0).toLocaleString()} USDC`} />
+                <CopyableIdLine label="Tx hash" value={trade.chain_tx_hash} />
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title={stocksModule.trades?.length ? "No matching stock trades" : "No stock trades"} subtitle={stocksModule.trades?.length ? "Try symbol, side, user, or tx hash." : "Filled stock trades will appear here."} />
+          )
+        ) : null}
+
+        {stockTab === "reinvestments" ? (
+          reinvestments.length ? reinvestments.map((row: any) => (
+            <RecordCard key={row.id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{row.stock?.name ?? "Stock reinvestment"} ({row.stock?.symbol ?? "n/a"})</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{labelFromKey(row.source_type || "source")} - {personLabel(row.store)}</Text>
+                </View>
+                <Pill label={String(row.status || "queued").toUpperCase()} color={statusTone(row.status)} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="Gross" value={`${Number(row.gross_usdc ?? 0).toLocaleString()} USDC`} />
+                <InfoLine label="Liquidity" value={`${Number(row.liquidity_usdc ?? 0).toLocaleString()} USDC`} />
+                <InfoLine label="Rewards" value={`${Number(row.staking_usdc ?? 0).toLocaleString()} USDC`} />
+                <CopyableIdLine label="Tx hash" value={row.tx_hash} />
+                <InfoLine label="Updated" value={formatDate(row.updated_at)} />
+              </View>
+              {row.error_message ? <Text style={{ marginTop: 10, color: DANGER, fontSize: 12, fontWeight: "800" }}>{row.error_message}</Text> : null}
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {["queued", "submitted", "confirmed", "failed"].map((status) => (
+                  <ActionButton
+                    key={`${row.id}-${status}`}
+                    icon={status === "confirmed" ? "checkmark-circle-outline" : status === "failed" ? "warning-outline" : "refresh-outline"}
+                    label={labelFromKey(status)}
+                    color={status === "confirmed" ? SUCCESS : status === "failed" ? DANGER : ACCENT}
+                    disabled={!canManageStock}
+                    loading={workingKey === `stock-reinvest-${status}-${row.id}`}
+                    onPress={() => performAction(`stock-reinvest-${status}-${row.id}`, { action: "set_stock_reinvestment_status", reinvestment_id: row.id, status }, true)}
+                  />
+                ))}
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title={stocksModule.reinvestments?.length ? "No matching reinvestments" : "No reinvestments"} subtitle={stocksModule.reinvestments?.length ? "Try status, symbol, source, store, or tx hash." : "Stock reinvestment records will appear here."} />
+          )
+        ) : null}
+
+        {stockTab === "permissions" ? (
+          permissions.length ? permissions.map((permission: any) => (
+            <RecordCard key={permission.store_id}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <View style={{ flex: 1, minWidth: 220 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{personLabel(permission.store)}</Text>
+                  <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{shortId(permission.store_id)} - updated {formatDate(permission.updated_at)}</Text>
+                </View>
+                <Pill label={permission.can_create === false ? "CREATE LOCKED" : "CREATE OPEN"} color={permission.can_create === false ? DANGER : SUCCESS} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="EVM create" value={permission.can_create_evm === false ? "locked" : "allowed"} />
+                <InfoLine label="Pi create" value={permission.can_create_pi === false ? "locked" : "allowed"} />
+                <InfoLine label="Reserved names" value={permission.allow_reserved ? "allowed" : "blocked"} />
+              </View>
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <ActionButton icon="lock-closed-outline" label="Lock all create" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-perm-lock-${permission.store_id}`} onPress={() => performAction(`stock-perm-lock-${permission.store_id}`, { action: "set_stock_create_permission", store_id: permission.store_id, can_create: false, can_create_evm: false, can_create_pi: false }, true)} />
+                <ActionButton icon="lock-open-outline" label="Allow create" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-perm-open-${permission.store_id}`} onPress={() => performAction(`stock-perm-open-${permission.store_id}`, { action: "set_stock_create_permission", store_id: permission.store_id, can_create: true, can_create_evm: true, can_create_pi: true }, true)} />
+                <ActionButton icon="ribbon-outline" label={permission.allow_reserved ? "Block reserved" : "Allow reserved"} color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-perm-reserved-${permission.store_id}`} onPress={() => performAction(`stock-perm-reserved-${permission.store_id}`, { action: "set_stock_create_permission", store_id: permission.store_id, allow_reserved: !permission.allow_reserved }, true)} />
+              </View>
+            </RecordCard>
+          )) : (
+            <EmptyState title={stocksModule.permissions?.length ? "No matching permissions" : "No stock permissions"} subtitle={stocksModule.permissions?.length ? "Try store, create, EVM, Pi, or reserved." : "Creation permission rows appear after sellers attempt or receive stock identity access."} />
+          )
+        ) : null}
+
+        {stockTab === "contracts" ? (
+          chains.length ? chains.map((chain: any) => {
+            const chainKey = String(chain.chain ?? "");
+            const bootstrap = stockBootstrapDrafts[chainKey] ?? { max: "100", cooldown: "30", duration: "86400", storeId: "" };
+            const factory = stockFactoryDrafts[chainKey] ?? { liquidity: "", reserve: "", liquidityBps: "8500", rewardsBps: "1500", registry: String(chain.identity_name_registry || ""), admin: "" };
+            const funding = stockFundingDrafts[chainKey] ?? { storeId: "", amount: "" };
+            const guard = stockGuardDrafts[chainKey] ?? { guard: "500", window: "120", tick: "250" };
+            const reserved = stockReservedDrafts[chainKey] ?? { term: "", creator: "" };
+            return (
+              <RecordCard key={`stock-contract-${chainKey}`}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{labelFromKey(chainKey)} identity contracts</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>Factory, router, and name registry actions submit on-chain transactions.</Text>
+                  </View>
+                  <Pill label={chain.active ? "CHAIN ACTIVE" : "CHAIN INACTIVE"} color={chain.active ? SUCCESS : DANGER} />
+                </View>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                  <CopyableIdLine label="Factory" value={chain.identity_factory} />
+                  <CopyableIdLine label="Router" value={chain.identity_router} />
+                  <CopyableIdLine label="Name registry" value={chain.identity_name_registry} />
+                  <CopyableIdLine label="Stable token" value={chain.identity_stable_address || chain.usdc_address} />
+                </View>
+
+                <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <ActionButton icon="pause-circle-outline" label="Pause factory" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-factory-pause-${chainKey}`} onPress={() => performAction(`stock-factory-pause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_pause" }, true)} />
+                  <ActionButton icon="play-circle-outline" label="Unpause factory" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-factory-unpause-${chainKey}`} onPress={() => performAction(`stock-factory-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_unpause" }, true)} />
+                  <ActionButton icon="pause-circle-outline" label="Pause router" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-router-pause-${chainKey}`} onPress={() => performAction(`stock-router-pause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_pause" }, true)} />
+                  <ActionButton icon="play-circle-outline" label="Unpause router" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-router-unpause-${chainKey}`} onPress={() => performAction(`stock-router-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_unpause" }, true)} />
+                </View>
+
+                <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory bootstrap defaults</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={bootstrap.max} onChangeText={(value) => setStockBootstrapDraft(chainKey, { max: value })} placeholder="Max trade bps" />
+                    <AdminTextInput value={bootstrap.cooldown} onChangeText={(value) => setStockBootstrapDraft(chainKey, { cooldown: value })} placeholder="Cooldown seconds" />
+                    <AdminTextInput value={bootstrap.duration} onChangeText={(value) => setStockBootstrapDraft(chainKey, { duration: value })} placeholder="Duration seconds" />
+                  </View>
+                  <ActionButton icon="save-outline" label="Set defaults on-chain" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-bootstrap-defaults-${chainKey}`} onPress={() => performAction(`stock-bootstrap-defaults-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_bootstrap_defaults", max_trade_bps: bootstrap.max, cooldown_seconds: bootstrap.cooldown, duration_seconds: bootstrap.duration }, true)} />
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Per-stock bootstrap</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={bootstrap.storeId} onChangeText={(value) => setStockBootstrapDraft(chainKey, { storeId: value })} placeholder="Store UUID or 0x store key" autoCapitalize="none" />
+                    <AdminTextInput value={bootstrap.max} onChangeText={(value) => setStockBootstrapDraft(chainKey, { max: value })} placeholder="Max trade bps" />
+                    <AdminTextInput value={bootstrap.cooldown} onChangeText={(value) => setStockBootstrapDraft(chainKey, { cooldown: value })} placeholder="Cooldown seconds" />
+                    <AdminTextInput value={bootstrap.duration} onChangeText={(value) => setStockBootstrapDraft(chainKey, { duration: value })} placeholder="Duration seconds" />
+                  </View>
+                  <ActionButton icon="speedometer-outline" label="Set stock bootstrap" color={ACCENT} disabled={!canManageStock || !bootstrap.storeId.trim()} loading={workingKey === `stock-bootstrap-store-${chainKey}`} onPress={() => performAction(`stock-bootstrap-store-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_set_stock_bootstrap", store_id: bootstrap.storeId.trim(), max_trade_bps: bootstrap.max, cooldown_seconds: bootstrap.cooldown, duration_seconds: bootstrap.duration }, true)} />
+                </View>
+
+                <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory creation and ownership</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={factory.liquidity} onChangeText={(value) => setStockFactoryDraft(chainKey, { liquidity: value })} placeholder="Creation liquidity USDC" />
+                    <AdminTextInput value={factory.reserve} onChangeText={(value) => setStockFactoryDraft(chainKey, { reserve: value })} placeholder="Reserve fee USDC" />
+                    <AdminTextInput value={factory.liquidityBps} onChangeText={(value) => setStockFactoryDraft(chainKey, { liquidityBps: value })} placeholder="Liquidity bps" />
+                    <AdminTextInput value={factory.rewardsBps} onChangeText={(value) => setStockFactoryDraft(chainKey, { rewardsBps: value })} placeholder="Rewards bps" />
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <ActionButton icon="cash-outline" label="Set creation amounts" color={WARNING} disabled={!canManageStock || !factory.liquidity.trim() || !factory.reserve.trim()} loading={workingKey === `stock-creation-amounts-${chainKey}`} onPress={() => performAction(`stock-creation-amounts-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_creation_amounts", liquidity_usdc: factory.liquidity, reserve_usdc: factory.reserve }, true)} />
+                    <ActionButton icon="pie-chart-outline" label="Set split" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-split-${chainKey}`} onPress={() => performAction(`stock-split-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_split", liquidity_bps: factory.liquidityBps, rewards_bps: factory.rewardsBps }, true)} />
+                  </View>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={factory.registry} onChangeText={(value) => setStockFactoryDraft(chainKey, { registry: value })} placeholder="Name registry address" autoCapitalize="none" />
+                    <AdminTextInput value={factory.admin} onChangeText={(value) => setStockFactoryDraft(chainKey, { admin: value })} placeholder="New factory admin wallet" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <ActionButton icon="id-card-outline" label="Set registry" color={ACCENT} disabled={!canManageStock || !factory.registry.trim()} loading={workingKey === `stock-registry-address-${chainKey}`} onPress={() => performAction(`stock-registry-address-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_name_registry", registry: factory.registry.trim() }, true)} />
+                    <ActionButton icon="key-outline" label="Rotate admin" color={DANGER} disabled={!canManageStock || !factory.admin.trim()} loading={workingKey === `stock-factory-admin-${chainKey}`} onPress={() => performAction(`stock-factory-admin-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_admin", new_admin: factory.admin.trim() }, true)} />
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory funding</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={funding.storeId} onChangeText={(value) => setStockFundingDraft(chainKey, { storeId: value })} placeholder="Store UUID or 0x store key" autoCapitalize="none" />
+                    <AdminTextInput value={funding.amount} onChangeText={(value) => setStockFundingDraft(chainKey, { amount: value })} placeholder="Stable amount USDC" />
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <ActionButton icon="water-outline" label="Add reinvestment" color={SUCCESS} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-reinvestment-${chainKey}`} onPress={() => performAction(`stock-add-reinvestment-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_add_reinvestment", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
+                    <ActionButton icon="gift-outline" label="Add rewards" color={WARNING} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-rewards-${chainKey}`} onPress={() => performAction(`stock-add-rewards-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_add_rewards", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Router guard and TWAP</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={guard.guard} onChangeText={(value) => setStockGuardDraft(chainKey, { guard: value })} placeholder="Liquidity guard bps" />
+                    <AdminTextInput value={guard.window} onChangeText={(value) => setStockGuardDraft(chainKey, { window: value })} placeholder="TWAP window seconds" />
+                    <AdminTextInput value={guard.tick} onChangeText={(value) => setStockGuardDraft(chainKey, { tick: value })} placeholder="Max tick deviation" />
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <ActionButton icon="shield-checkmark-outline" label="Set liquidity guard" color={ACCENT} disabled={!canManageStock} loading={workingKey === `stock-guard-${chainKey}`} onPress={() => performAction(`stock-guard-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_set_liquidity_guard", liquidity_guard_bps: guard.guard }, true)} />
+                    <ActionButton icon="analytics-outline" label="Set TWAP" color={ACCENT} disabled={!canManageStock} loading={workingKey === `stock-twap-${chainKey}`} onPress={() => performAction(`stock-twap-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_set_twap", window_seconds: guard.window, max_tick_deviation: guard.tick }, true)} />
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Name registry</Text>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
+                    <AdminTextInput value={reserved.term} onChangeText={(value) => setStockReservedDraft(chainKey, { term: value })} placeholder="Reserved exact name/symbol or 0x hash" autoCapitalize="none" />
+                    <AdminTextInput value={reserved.creator} onChangeText={(value) => setStockReservedDraft(chainKey, { creator: value })} placeholder="Creator wallet allowed for reserved names" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    <ActionButton icon="ban-outline" label="Reserve term" color={DANGER} disabled={!canManageStock || !reserved.term.trim()} loading={workingKey === `stock-reserve-${chainKey}`} onPress={() => performAction(`stock-reserve-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "registry_set_reserved", term: reserved.term.trim(), reserved: true }, true)} />
+                    <ActionButton icon="checkmark-circle-outline" label="Unreserve term" color={SUCCESS} disabled={!canManageStock || !reserved.term.trim()} loading={workingKey === `stock-unreserve-${chainKey}`} onPress={() => performAction(`stock-unreserve-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "registry_set_reserved", term: reserved.term.trim(), reserved: false }, true)} />
+                    <ActionButton icon="person-add-outline" label="Allow creator" color={WARNING} disabled={!canManageStock || !reserved.creator.trim()} loading={workingKey === `stock-creator-${chainKey}`} onPress={() => performAction(`stock-creator-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "registry_set_creator_allowed", creator: reserved.creator.trim(), allowed: true }, true)} />
+                    <ActionButton icon="person-remove-outline" label="Block creator" color={DANGER} disabled={!canManageStock || !reserved.creator.trim()} loading={workingKey === `stock-creator-block-${chainKey}`} onPress={() => performAction(`stock-creator-block-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "registry_set_creator_allowed", creator: reserved.creator.trim(), allowed: false }, true)} />
+                  </View>
+                </View>
+              </RecordCard>
+            );
+          }) : (
+            <EmptyState title={stocksModule.chains?.length ? "No matching stock contracts" : "No stock contract chains"} subtitle={stocksModule.chains?.length ? "Try chain, factory, router, registry, or stable token." : "Identity contract controls appear after chain config is seeded."} />
+          )
+        ) : null}
       </View>
     );
   }
@@ -4848,6 +5377,7 @@ export default function MarketAdminIndex() {
         {currentModule === "moderation" ? renderModeration() : null}
         {currentModule === "verification" ? renderVerification() : null}
         {currentModule === "escrow" ? renderEscrow() : null}
+        {currentModule === "stocks" ? renderStocks() : null}
         {currentModule === "rewards" ? renderRewards() : null}
         {currentModule === "admins" ? renderAdmins() : null}
       </View>
