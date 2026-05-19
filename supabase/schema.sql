@@ -263,6 +263,30 @@ CREATE TABLE public.market_reviews (
   CONSTRAINT market_reviews_reviewer_id_fkey FOREIGN KEY (reviewer_id) REFERENCES public.profiles(id),
   CONSTRAINT market_reviews_reviewee_id_fkey FOREIGN KEY (reviewee_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.market_listing_reviews (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL,
+  order_id uuid NOT NULL,
+  seller_id uuid NOT NULL,
+  reviewer_id uuid NOT NULL,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT market_listing_reviews_pkey PRIMARY KEY (id),
+  CONSTRAINT market_listing_reviews_no_self_review CHECK (reviewer_id <> seller_id),
+  CONSTRAINT market_listing_reviews_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.market_listings(id),
+  CONSTRAINT market_listing_reviews_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.market_orders(id),
+  CONSTRAINT market_listing_reviews_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.profiles(id),
+  CONSTRAINT market_listing_reviews_reviewer_id_fkey FOREIGN KEY (reviewer_id) REFERENCES public.profiles(id)
+);
+CREATE VIEW public.market_listing_review_summary AS
+SELECT
+  listing_id,
+  COUNT(*)::integer AS review_count,
+  ROUND(AVG(rating)::numeric, 2) AS avg_rating
+FROM public.market_listing_reviews
+GROUP BY listing_id;
 CREATE TABLE public.market_seller_profiles (
   user_id uuid NOT NULL,
   market_username text UNIQUE,

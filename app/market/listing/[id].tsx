@@ -88,6 +88,16 @@ type ListingComment = {
   profiles?: { username?: string | null; full_name?: string | null } | null;
 };
 
+type ListingReview = {
+  id: string;
+  listing_id: string;
+  order_id: string;
+  reviewer_id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  profiles?: { username?: string | null; full_name?: string | null } | null;
+};
 
 type ListingPreview = {
   id: string;
@@ -127,6 +137,53 @@ function previewIcon(kind: string) {
   if (k === "audio") return "musical-notes-outline";
   if (k === "link") return "globe-outline";
   return "document-attach-outline";
+}
+
+function formatRating(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0.0";
+  return value.toFixed(value % 1 === 0 ? 0 : 1);
+}
+
+function RatingStars({
+  value,
+  size = 15,
+  muted = false,
+}: {
+  value: number;
+  size?: number;
+  muted?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Ionicons
+          key={star}
+          name={value >= star - 0.25 ? "star" : "star-outline"}
+          size={size}
+          color={muted ? FAINT : AMBER}
+        />
+      ))}
+    </View>
+  );
+}
+
+function ListingReviewCard({ review }: { review: ListingReview }) {
+  return (
+    <View style={{ borderRadius: 16, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_RAISED }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <Text style={{ color: TEXT, fontWeight: "900", flexShrink: 1 }}>
+          @{review.profiles?.username || "buyer"}
+        </Text>
+        <Text style={{ color: FAINT, fontWeight: "700", fontSize: 11 }}>
+          {new Date(review.created_at).toLocaleString()}
+        </Text>
+      </View>
+      <View style={{ marginTop: 8 }}>
+        <RatingStars value={Number(review.rating || 0)} size={14} />
+      </View>
+      {review.comment ? <Text style={{ marginTop: 8, color: MUTED, lineHeight: 19 }}>{review.comment}</Text> : null}
+    </View>
+  );
 }
 
 async function safeLoadListing(listingId: string) {
@@ -184,6 +241,14 @@ export default function ListingDetails() {
   const [commentInput, setCommentInput] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
+  const [listingReviews, setListingReviews] = useState<ListingReview[]>([]);
+  const [listingAvgRating, setListingAvgRating] = useState(0);
+  const [listingReviewCount, setListingReviewCount] = useState(0);
+  const [canReviewListing, setCanReviewListing] = useState(false);
+  const [reviewOrderId, setReviewOrderId] = useState<string | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
   const [userCountry, setUserCountry] = useState<UserCountry | undefined>(undefined);
@@ -393,10 +458,110 @@ export default function ListingDetails() {
     setCommentCount(count ?? 0);
   }
 
+  async function loadListingReviews() {
+    if (!listingId) return;
+
+    try {
+      const { data, count, error } = await supabase
+        .from("market_listing_reviews")
+        .select("id,listing_id,order_id,reviewer_id,rating,comment,created_at", { count: "exact" })
+        .eq("listing_id", listingId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+
+      const rows = ((data ?? []) as any[]).map((row) => ({
+        ...row,
+        rating: Number(row.rating ?? 0),
+      })) as ListingReview[];
+      const reviewerIds = Array.from(new Set(rows.map((row) => row.reviewer_id).filter(Boolean)));
+      let profileMap: Record<string, { username?: string | null; full_name?: string | null }> = {};
+
+      if (reviewerIds.length) {
+        const { data: profileRows, error: profileError } = await supabase
+          .from("profiles")
+          .select("id,username,full_name")
+          .in("id", reviewerIds);
+        if (profileError) throw profileError;
+        profileMap = (profileRows ?? []).reduce((acc: Record<string, { username?: string | null; full_name?: string | null }>, profile: any) => {
+          acc[String(profile.id)] = { username: profile.username ?? null, full_name: profile.full_name ?? null };
+          return acc;
+        }, {});
+      }
+
+      const hydrated = rows.map((row) => ({ ...row, profiles: profileMap[row.reviewer_id] ?? null }));
+      setListingReviews(hydrated);
+
+      const summary = await supabase
+        .from("market_listing_review_summary")
+        .select("review_count,avg_rating")
+        .eq("listing_id", listingId)
+        .maybeSingle();
+
+      if (!summary.error && summary.data) {
+        setListingReviewCount(Number((summary.data as any).review_count ?? 0));
+        setListingAvgRating(Number((summary.data as any).avg_rating ?? 0));
+      } else {
+        const avg = rows.length ? rows.reduce((total, row) => total + Number(row.rating || 0), 0) / rows.length : 0;
+        setListingReviewCount(Number(count ?? rows.length));
+        setListingAvgRating(Math.round(avg * 10) / 10);
+      }
+    } catch (e: any) {
+      console.log("[ListingDetails] listing reviews skipped:", e?.message ?? e);
+      setListingReviews([]);
+      setListingReviewCount(0);
+      setListingAvgRating(0);
+    }
+  }
+
+  async function loadReviewEligibility() {
+    if (!listingId || !listing?.seller_id || !meId || meId === listing.seller_id) {
+      setCanReviewListing(false);
+      setReviewOrderId(null);
+      return;
+    }
+
+    try {
+      const [existingReview, eligibleOrders] = await Promise.all([
+        supabase
+          .from("market_listing_reviews")
+          .select("id,order_id,rating,comment")
+          .eq("listing_id", listingId)
+          .eq("reviewer_id", meId)
+          .maybeSingle(),
+        supabase
+          .from("market_orders")
+          .select("id,status,created_at")
+          .eq("buyer_id", meId)
+          .eq("seller_id", listing.seller_id)
+          .eq("listing_id", listingId)
+          .in("status", ["DELIVERED", "RELEASED"])
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
+
+      const existing = existingReview.data as any;
+      const eligible = (eligibleOrders.data ?? [])[0] as any;
+      const orderId = String(existing?.order_id || eligible?.id || "").trim();
+
+      setCanReviewListing(Boolean(orderId));
+      setReviewOrderId(orderId || null);
+      if (existing?.id) {
+        setReviewRating(Number(existing.rating ?? 0));
+        setReviewComment(String(existing.comment ?? ""));
+      }
+    } catch (e: any) {
+      console.log("[ListingDetails] review eligibility skipped:", e?.message ?? e);
+      setCanReviewListing(false);
+      setReviewOrderId(null);
+    }
+  }
+
   useEffect(() => {
     if (!listingId) return;
     loadReactions();
     loadComments();
+    loadListingReviews();
 
     const ch = supabase
       .channel(`listing-social-${listingId}`)
@@ -406,12 +571,20 @@ export default function ListingDetails() {
       .on("postgres_changes", { event: "*", schema: "public", table: "market_listing_comments", filter: `listing_id=eq.${listingId}` }, () => {
         loadComments();
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "market_listing_reviews", filter: `listing_id=eq.${listingId}` }, () => {
+        loadListingReviews();
+        loadReviewEligibility();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [listingId, meId]);
+  }, [listingId, listing?.seller_id, meId]);
+
+  useEffect(() => {
+    loadReviewEligibility();
+  }, [listingId, listing?.seller_id, meId]);
 
   async function toggleReaction(next: "like" | "dislike") {
     if (!meId) {
@@ -450,6 +623,46 @@ export default function ListingDetails() {
       Alert.alert("Try again", friendlyMarketError(e, "We couldn't post your comment."));
     } finally {
       setCommentBusy(false);
+    }
+  }
+
+  async function submitListingReview() {
+    if (!meId) {
+      Alert.alert("Sign in required", "Please sign in to review this listing.");
+      return;
+    }
+    if (!listing || !reviewOrderId || !canReviewListing) {
+      setErr("Only buyers who completed an order for this listing can review it.");
+      return;
+    }
+    if (reviewRating < 1) {
+      setErr("Select a star rating before submitting your listing review.");
+      return;
+    }
+
+    setReviewBusy(true);
+    setErr(null);
+    try {
+      const { error } = await supabase
+        .from("market_listing_reviews")
+        .upsert(
+          {
+            listing_id: listing.id,
+            order_id: reviewOrderId,
+            seller_id: listing.seller_id,
+            reviewer_id: meId,
+            rating: reviewRating,
+            comment: reviewComment.trim() || null,
+          },
+          { onConflict: "listing_id,reviewer_id" },
+        );
+      if (error) throw error;
+      await loadListingReviews();
+      await loadReviewEligibility();
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't submit your listing review."));
+    } finally {
+      setReviewBusy(false);
     }
   }
 
@@ -948,6 +1161,95 @@ export default function ListingDetails() {
           <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             <Ionicons name="chatbubble-ellipses-outline" size={16} color={MUTED} />
             <Text style={{ color: MUTED, fontWeight: "900" }}>{commentCount}</Text>
+          </View>
+        </View>
+
+        <View
+          style={{
+            marginTop: 12,
+            borderRadius: 24,
+            padding: 16,
+            backgroundColor: CARD,
+            borderWidth: 1,
+            borderColor: BORDER,
+            borderTopColor: BORDER_TOP,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Listing reviews</Text>
+              <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                Buyer feedback from people who completed an order for this exact listing.
+              </Text>
+            </View>
+            <View style={{ alignItems: "flex-end", gap: 5 }}>
+              <RatingStars value={listingAvgRating} muted={!listingReviewCount} />
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                {listingReviewCount ? `${formatRating(listingAvgRating)} (${listingReviewCount})` : "No reviews"}
+              </Text>
+            </View>
+          </View>
+
+          {canReviewListing ? (
+            <View style={{ marginTop: 14, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: "rgba(244,183,93,0.26)", backgroundColor: "rgba(244,183,93,0.08)" }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Your listing review</Text>
+              <View style={{ marginTop: 8, flexDirection: "row", gap: 5 }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Pressable key={star} onPress={() => setReviewRating(star)} hitSlop={8} style={{ padding: 4 }}>
+                    <Ionicons name={reviewRating >= star ? "star" : "star-outline"} size={24} color={AMBER} />
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={reviewComment}
+                onChangeText={setReviewComment}
+                placeholder="Share a short note about this product or service (optional)"
+                placeholderTextColor="rgba(255,253,247,0.38)"
+                multiline
+                style={{
+                  marginTop: 10,
+                  minHeight: 76,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: TEXT,
+                  backgroundColor: CARD_RAISED,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  textAlignVertical: "top",
+                }}
+              />
+              <Pressable
+                onPress={submitListingReview}
+                disabled={reviewBusy}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  paddingVertical: 12,
+                  alignItems: "center",
+                  backgroundColor: "rgba(244,183,93,0.24)",
+                  borderWidth: 1,
+                  borderColor: "rgba(244,183,93,0.40)",
+                  opacity: reviewBusy ? 0.72 : 1,
+                }}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>{reviewBusy ? "Submitting..." : "Submit listing review"}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={{ marginTop: 14, color: MUTED, lineHeight: 19 }}>
+              Only buyers with a delivered or released order for this listing can leave a star review.
+            </Text>
+          )}
+
+          <View style={{ marginTop: 14, gap: 10 }}>
+            {listingReviews.length ? (
+              listingReviews.slice(0, 6).map((review) => <ListingReviewCard key={review.id} review={review} />)
+            ) : (
+              <View style={{ borderRadius: 16, padding: 12, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_RAISED }}>
+                <Text style={{ color: MUTED }}>No listing reviews yet.</Text>
+              </View>
+            )}
           </View>
         </View>
 

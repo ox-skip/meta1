@@ -792,6 +792,10 @@ export default function OrderDetails() {
 
   // Buyer releases only after OTP verified + delivered
   const canRelease = !!order && isBuyer && otpVerified && order.status === "DELIVERED";
+  const canReviewListingFromOrder =
+    !!order &&
+    isBuyer &&
+    ["DELIVERED", "RELEASED"].includes(String(order.status || "").toUpperCase());
   const canSellerUpload =
     !!order &&
     isSeller &&
@@ -2404,6 +2408,28 @@ async function pickAndUpload(access: "preview" | "final") {
                   )}
                   </View>
                 )}
+
+                {canReviewListingFromOrder ? (
+                  <Pressable
+                    disabled={busy}
+                    onPress={() => router.push(`/market/listing/${order.listing_id}` as any)}
+                    style={{
+                      marginTop: 10,
+                      borderRadius: 18,
+                      paddingVertical: 14,
+                      alignItems: "center",
+                      backgroundColor: "rgba(244,183,93,0.18)",
+                      borderWidth: 1,
+                      borderColor: "rgba(244,183,93,0.35)",
+                      flexDirection: "row",
+                      gap: 8,
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Ionicons name="star-outline" size={18} color={AMBER} />
+                    <Text style={{ color: "#fff", fontWeight: "900" }}>Review this listing</Text>
+                  </Pressable>
+                ) : null}
 
                 <Pressable
                   disabled={busy}

@@ -90,6 +90,11 @@ type ListingRow = {
   images?: { public_url?: string | null; storage_path?: string | null; sort_order?: number | null; meta?: any }[] | null;
 };
 
+type ListingReviewStats = {
+  avgRating: number;
+  reviewCount: number;
+};
+
 type SellerCard = {
   user_id: string;
   market_username: string | null;
@@ -144,6 +149,11 @@ function cleanListingSearch(value: string) {
   return value.trim().replace(/[%,]/g, " ").replace(/\s+/g, " ").slice(0, 90);
 }
 
+function formatRating(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0.0";
+  return value.toFixed(value % 1 === 0 ? 0 : 1);
+}
+
 function normalizeListingRow(row: any): ListingRow | null {
   const id = String(row?.id || "").trim();
   if (!id) return null;
@@ -178,6 +188,35 @@ function normalizeListingRow(row: any): ListingRow | null {
 
 function normalizeListingRows(rows: any[]) {
   return rows.map(normalizeListingRow).filter(Boolean) as ListingRow[];
+}
+
+async function fetchListingReviewStats(listingIds: string[]) {
+  const ids = Array.from(new Set(listingIds.map((id) => String(id || "").trim()).filter(Boolean)));
+  const empty = ids.reduce((acc: Record<string, ListingReviewStats>, id) => {
+    acc[id] = { avgRating: 0, reviewCount: 0 };
+    return acc;
+  }, {});
+  if (!ids.length) return empty;
+
+  try {
+    const { data, error } = await supabase
+      .from("market_listing_review_summary")
+      .select("listing_id,review_count,avg_rating")
+      .in("listing_id", ids);
+    if (error) throw error;
+
+    return (data ?? []).reduce((acc: Record<string, ListingReviewStats>, row: any) => {
+      const listingId = String(row?.listing_id || "");
+      if (!listingId) return acc;
+      acc[listingId] = {
+        avgRating: Number(row?.avg_rating ?? 0),
+        reviewCount: Number(row?.review_count ?? 0),
+      };
+      return acc;
+    }, empty);
+  } catch {
+    return empty;
+  }
 }
 
 function publicSellerLogo(path?: string | null) {
@@ -734,6 +773,7 @@ export default function MarketHome() {
   const [rows, setRows] = useState<ListingRow[]>([]);
   const [sellersMap, setSellersMap] = useState<Record<string, SellerCard>>({});
   const [statsMap, setStatsMap] = useState<Record<string, { completed: number; cancelled: number; failed: number }>>({});
+  const [reviewStatsMap, setReviewStatsMap] = useState<Record<string, ListingReviewStats>>({});
   const [featuredSellers, setFeaturedSellers] = useState<SellerCard[]>([]);
   const [featuredListings, setFeaturedListings] = useState<ListingRow[]>([]);
   const [verifiedSellers, setVerifiedSellers] = useState<SellerCard[]>([]);
@@ -1101,7 +1141,7 @@ export default function MarketHome() {
       const sellerIds = Array.from(new Set(scoped.map((r) => r.seller_id)));
       const listingIds = scoped.map((r) => r.id);
 
-      const [sellerRes, ordersRes] = await Promise.all([
+      const [sellerRes, ordersRes, listingReviewStats] = await Promise.all([
         sellerIds.length
           ? supabase
               .from("market_seller_public_profiles")
@@ -1115,6 +1155,7 @@ export default function MarketHome() {
               .in("listing_id", listingIds)
               .in("status", ["DELIVERED", "RELEASED", "CANCELLED", "REFUNDED"])
           : Promise.resolve({ data: [] } as any),
+        fetchListingReviewStats(listingIds),
       ]);
 
       const sellerMap: Record<string, SellerCard> = {};
@@ -1133,9 +1174,11 @@ export default function MarketHome() {
         else if (o.status === "REFUNDED") stats[id].failed += 1;
       });
       setStatsMap(stats);
+      setReviewStatsMap(listingReviewStats);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't load marketplace listings."));
       setRows([]);
+      setReviewStatsMap({});
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1240,6 +1283,45 @@ export default function MarketHome() {
       : directoryMode === "featured"
       ? `${resultCount} featured stores`
       : `${resultCount} verified stores`;
+  const visibleListingIdsKey = useMemo(
+    () => rows.map((row) => row.id).filter(Boolean).sort().join(","),
+    [rows],
+  );
+
+  useEffect(() => {
+    const listingIds = visibleListingIdsKey
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (!listingIds.length) return;
+
+    let alive = true;
+    const listingIdSet = new Set(listingIds);
+    const refresh = async () => {
+      const next = await fetchListingReviewStats(listingIds);
+      if (alive) setReviewStatsMap((current) => ({ ...current, ...next }));
+    };
+
+    void refresh();
+
+    const channel = supabase
+      .channel("market-home-listing-reviews")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "market_listing_reviews" },
+        (payload: any) => {
+          const changedListingId = String(payload?.new?.listing_id ?? payload?.old?.listing_id ?? "");
+          if (listingIdSet.has(changedListingId)) void refresh();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, [visibleListingIdsKey]);
+
   const resultSubtitle =
     directoryMode === "listings"
       ? feedScope === "country"
@@ -1288,6 +1370,7 @@ export default function MarketHome() {
     const coverKind = mediaSource?.kind ?? "image";
     const seller = sellersMap[item.seller_id];
     const stats = statsMap[item.id] ?? { completed: 0, cancelled: 0, failed: 0 };
+    const reviewStats = reviewStatsMap[item.id] ?? { avgRating: 0, reviewCount: 0 };
     const displayPrice = getListingPriceDisplay(item as any);
     const showDiscount = displayPrice.hasDiscount;
 
@@ -1455,6 +1538,24 @@ export default function MarketHome() {
           >
             {item.title ?? "Untitled"}
           </Text>
+
+          <View style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Ionicons
+                  key={star}
+                  name={reviewStats.avgRating >= star - 0.25 ? "star" : "star-outline"}
+                  size={13}
+                  color={reviewStats.reviewCount ? AMBER : FAINT}
+                />
+              ))}
+            </View>
+            <Text numberOfLines={1} style={{ color: MUTED, fontWeight: "900", fontSize: 11, flexShrink: 1 }}>
+              {reviewStats.reviewCount
+                ? `${formatRating(reviewStats.avgRating)} (${reviewStats.reviewCount})`
+                : "No listing reviews yet"}
+            </Text>
+          </View>
 
           <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
             <CardBadge
