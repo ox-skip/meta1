@@ -512,6 +512,89 @@ function GlassPanel({
   );
 }
 
+function CompactDisclosure({
+  eyebrow,
+  title,
+  summary,
+  icon,
+  accent,
+  expanded,
+  onToggle,
+  children,
+  style,
+}: {
+  eyebrow: string;
+  title: string;
+  summary: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  style?: any;
+}) {
+  return (
+    <GlassPanel style={[{ marginTop: 10, overflow: "hidden", backgroundColor: "rgba(255,253,247,0.055)" }, style]}>
+      <Pressable
+        onPress={onToggle}
+        style={({ pressed }) => ({
+          paddingHorizontal: 13,
+          paddingVertical: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 11,
+          opacity: pressed ? 0.86 : 1,
+        })}
+      >
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 13,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${accent}18`,
+            borderWidth: 1,
+            borderColor: `${accent}3A`,
+          }}
+        >
+          <Ionicons name={icon} size={16} color={accent} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: MUTED, fontSize: 10, fontWeight: "900", textTransform: "uppercase" }} numberOfLines={1}>
+            {eyebrow}
+          </Text>
+          <Text style={{ marginTop: 2, color: TEXT, fontSize: 14, fontWeight: "900" }} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, fontWeight: "800" }} numberOfLines={1}>
+            {summary}
+          </Text>
+        </View>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 13,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(255,253,247,0.07)",
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.12)",
+          }}
+        >
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={17} color={TEXT} />
+        </View>
+      </Pressable>
+      {expanded ? (
+        <View style={{ borderTopWidth: 1, borderTopColor: "rgba(255,253,247,0.10)", padding: 13 }}>
+          {children}
+        </View>
+      ) : null}
+    </GlassPanel>
+  );
+}
+
 function TrustTimeline({ compact = false }: { compact?: boolean }) {
   const steps = [
     { label: "Paid", icon: "card-outline" },
@@ -632,6 +715,11 @@ export default function MarketHome() {
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Record<"featured" | "discovery" | "filters", boolean>>({
+    featured: false,
+    discovery: false,
+    filters: false,
+  });
 
   const main = section === "service" ? "service" : section === "product" ? "product" : null;
   const hasDesktopTabs = Platform.OS === "web" && width >= 980;
@@ -654,6 +742,10 @@ export default function MarketHome() {
     if (!userCountry) return "Location unavailable";
     return formatCountryLabel(userCountry.name, userCountry.code) || "Unknown location";
   }, [userCountry]);
+
+  function toggleExpandedCard(key: "featured" | "discovery" | "filters") {
+    setExpandedCards((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   async function refreshCountry() {
     setLocatingCountry(true);
@@ -1756,62 +1848,71 @@ export default function MarketHome() {
     }
 
     return (
-      <LinearGradient
-        colors={[`${heroAccent}20`, "rgba(244,183,93,0.08)", "rgba(255,253,247,0.06)"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{
-          marginTop: 12,
-          padding: 16,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: "rgba(255,253,247,0.15)",
-          overflow: "hidden",
-        }}
+      <CompactDisclosure
+        eyebrow={kicker}
+        title={heroTitle}
+        summary={section === "social" ? "Seller activity and marketplace media" : `${resultCount} in view - ${feedScope === "country" ? "Local" : "Global"}`}
+        icon={section === "social" ? "people-outline" : "sparkles-outline"}
+        accent={heroAccent}
+        expanded={expandedCards.featured}
+        onToggle={() => toggleExpandedCard("featured")}
+        style={{ marginTop: 12 }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
-          {section !== "social" ? (
-            <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
-          ) : null}
-        </View>
-        <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 25, lineHeight: 31 }}>{heroTitle}</Text>
-        <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }} numberOfLines={3}>
-          {heroSubtitle}
-        </Text>
-
-        {section !== "social" ? renderHeroPreviewRail(true) : null}
-
-        {section !== "social" ? (
-          <View
-            style={{
-              marginTop: 14,
-              flexDirection: mobileActionStack ? "column" : "row",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <MarketMetric
-              label="In view"
-              value={String(resultCount)}
-              icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
-              tone={heroAccent}
-            />
-            <MarketMetric
-              label="Scope"
-              value={directoryMode === "listings" ? (feedScope === "country" ? "Local" : "Global") : "Stores"}
-              icon={feedScope === "country" ? "location-outline" : "earth-outline"}
-              tone={AMBER}
-            />
-            <MarketMetric
-              label="Verified"
-              value={String(verifiedSellers.length)}
-              icon="checkmark-circle-outline"
-              tone={BLUE}
-            />
+        <LinearGradient
+          colors={[`${heroAccent}18`, "rgba(244,183,93,0.07)", "rgba(255,253,247,0.035)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            borderRadius: 18,
+            padding: 13,
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.12)",
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
+            {section !== "social" ? (
+              <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
+            ) : null}
           </View>
-        ) : null}
-      </LinearGradient>
+          <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 21, lineHeight: 26 }}>{heroTitle}</Text>
+          <Text style={{ marginTop: 6, color: MUTED, lineHeight: 18, fontSize: 12 }} numberOfLines={2}>
+            {heroSubtitle}
+          </Text>
+
+          {section !== "social" ? renderHeroPreviewRail(true) : null}
+
+          {section !== "social" ? (
+            <View
+              style={{
+                marginTop: 12,
+                flexDirection: mobileActionStack ? "column" : "row",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <MarketMetric
+                label="In view"
+                value={String(resultCount)}
+                icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
+                tone={heroAccent}
+              />
+              <MarketMetric
+                label="Scope"
+                value={directoryMode === "listings" ? (feedScope === "country" ? "Local" : "Global") : "Stores"}
+                icon={feedScope === "country" ? "location-outline" : "earth-outline"}
+                tone={AMBER}
+              />
+              <MarketMetric
+                label="Verified"
+                value={String(verifiedSellers.length)}
+                icon="checkmark-circle-outline"
+                tone={BLUE}
+              />
+            </View>
+          ) : null}
+        </LinearGradient>
+      </CompactDisclosure>
     );
   }
 
@@ -1862,6 +1963,46 @@ export default function MarketHome() {
   }
 
   function renderDirectoryChooser(desktop = false) {
+    if (!desktop) {
+      return (
+        <CompactDisclosure
+          eyebrow={directoryMode === "listings" ? "Discovery" : "Seller directory"}
+          title={resultTitle}
+          summary={directoryMode === "listings" ? `${feedLabel} - ${feedScope === "country" ? "Local" : "Global"}` : "Featured and verified stores"}
+          icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
+          accent={heroAccent}
+          expanded={expandedCards.discovery}
+          onToggle={() => toggleExpandedCard("discovery")}
+        >
+          <View style={{ gap: 12 }}>
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{resultSubtitle}</Text>
+            <View style={{ flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+              <Chip
+                label="Listings"
+                icon="grid-outline"
+                active={directoryMode === "listings"}
+                onPress={() => setDirectoryMode("listings")}
+              />
+              <Chip
+                label="Featured Stores"
+                icon="flame"
+                iconColor="#FDBA74"
+                active={directoryMode === "featured"}
+                onPress={() => setDirectoryMode("featured")}
+              />
+              <Chip
+                label="Verified Stores"
+                icon="checkmark-circle"
+                iconColor={BLUE}
+                active={directoryMode === "verified"}
+                onPress={() => setDirectoryMode("verified")}
+              />
+            </View>
+          </View>
+        </CompactDisclosure>
+      );
+    }
+
     return (
       <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, flex: desktop ? 1 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>
@@ -1918,6 +2059,24 @@ export default function MarketHome() {
 
   function renderScopeAndFilters(desktop = false) {
     if (!isListingDirectory) {
+      if (!desktop) {
+        return (
+          <CompactDisclosure
+            eyebrow="Store mode"
+            title="Store discovery"
+            summary={directoryMode === "featured" ? "Featured stores" : "Verified stores"}
+            icon="storefront-outline"
+            accent={TEAL}
+            expanded={expandedCards.filters}
+            onToggle={() => toggleExpandedCard("filters")}
+          >
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Featured and verified directories help buyers assess a store before opening the full profile.
+            </Text>
+          </CompactDisclosure>
+        );
+      }
+
       return (
         <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, width: desktop ? 372 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
@@ -1925,6 +2084,153 @@ export default function MarketHome() {
             Featured and verified directories help buyers assess a store before opening the full profile.
           </Text>
         </GlassPanel>
+      );
+    }
+
+    if (!desktop) {
+      const categoryLabel = selectedSlug
+        ? categories.find((item) => item.slug === selectedSlug)?.title || "Filtered"
+        : main
+        ? "All related"
+        : "All listings";
+      return (
+        <CompactDisclosure
+          eyebrow="Feed scope"
+          title={`${feedScope === "country" ? "Local" : "Global"} feed`}
+          summary={`${locationLabel} - ${categoryLabel} - ${sortBy.replace(/_/g, " ")}`}
+          icon={feedScope === "country" ? "location-outline" : "earth-outline"}
+          accent={feedScope === "country" ? TEAL : BLUE}
+          expanded={expandedCards.filters}
+          onToggle={() => toggleExpandedCard("filters")}
+        >
+          <View style={{ gap: 12 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Feed scope</Text>
+                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  {feedScope === "country"
+                    ? "Showing listings specifically available in your current country."
+                    : "Showing every listing currently available in the marketplace."}
+                </Text>
+              </View>
+              <Pressable
+                disabled={locatingCountry}
+                onPress={async () => {
+                  const c = await refreshCountry();
+                  if (feedScope === "country") await loadListings(c);
+                }}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,253,247,0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,253,247,0.12)",
+                  opacity: locatingCountry ? 0.6 : 1,
+                }}
+              >
+                {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={15} color={TEXT} />}
+              </Pressable>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 9 }}>
+              <SectionPill
+                icon="location-outline"
+                label="Local"
+                active={feedScope === "country"}
+                onPress={() => setFeedScope("country")}
+              />
+              <SectionPill
+                icon="earth-outline"
+                label="Global"
+                active={feedScope === "global"}
+                onPress={() => setFeedScope("global")}
+              />
+            </View>
+
+            <View
+              style={{
+                borderRadius: 15,
+                padding: 11,
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.12)",
+                backgroundColor: "rgba(9,13,11,0.42)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 9,
+              }}
+            >
+              <Ionicons name="location-outline" size={17} color={TEAL} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
+                <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>
+                  {feedScope === "country"
+                    ? userCountry
+                      ? "Only listings matched to your country are shown here."
+                      : "Showing Global while your country is being detected."
+                    : "Global feed shows listings from every country."}
+                </Text>
+              </View>
+            </View>
+
+            {feedScope === "country" && !userCountry ? (
+              <View
+                style={{
+                  borderRadius: 14,
+                  padding: 11,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  backgroundColor: "rgba(255,253,247,0.055)",
+                }}
+              >
+                <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>Enable location to filter to your country. Until then, the feed stays visible with Global listings.</Text>
+                {countryErr ? (
+                  <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.55)", fontSize: 12 }}>{countryErr}</Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {categories.length ? (
+              <View>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Related categories</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
+                  {categories.map((c) => (
+                    <View key={c.slug} style={{ marginLeft: 10 }}>
+                      <Chip label={c.title} active={selectedSlug === c.slug} onPress={() => setSelectedSlug(c.slug)} />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : (
+              <View
+                style={{
+                  borderRadius: 15,
+                  padding: 11,
+                  borderWidth: 1,
+                  borderColor: "rgba(255,253,247,0.12)",
+                  backgroundColor: "rgba(255,253,247,0.055)",
+                }}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>All listing types</Text>
+                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  This view mixes products and services together.
+                </Text>
+              </View>
+            )}
+
+            <View>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Sort</Text>
+              <View style={{ marginTop: 8, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+                <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
+                <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
+                <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
+              </View>
+            </View>
+          </View>
+        </CompactDisclosure>
       );
     }
 

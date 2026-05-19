@@ -47,6 +47,9 @@ const MUTED = "rgba(255,247,237,0.68)";
 const SUCCESS = "#4ADE80";
 const WARNING = "#F59E0B";
 const DANGER = "#F87171";
+const TEAL = "#2DD4BF";
+const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
 
 function publicUrl(bucket: string, path?: string | null) {
   if (!path) return null;
@@ -201,6 +204,143 @@ function ReadinessRow({
   );
 }
 
+function AccountTile({
+  title,
+  subtitle,
+  icon,
+  accent,
+  onPress,
+  badge,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  onPress: () => void;
+  badge?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 154,
+        borderRadius: 22,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: `${accent}35`,
+        backgroundColor: "rgba(255,255,255,0.045)",
+        transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+      })}
+    >
+      <LinearGradient
+        colors={[`${accent}1F`, "rgba(255,255,255,0.035)", "rgba(11,9,7,0.34)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ minHeight: 124, padding: 14, justifyContent: "space-between" }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <View
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: `${accent}22`,
+              borderWidth: 1,
+              borderColor: `${accent}45`,
+            }}
+          >
+            <Ionicons name={icon} size={18} color={accent} />
+          </View>
+          {badge ? (
+            <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: `${accent}18`, borderWidth: 1, borderColor: `${accent}38` }}>
+              <Text style={{ color: accent, fontWeight: "900", fontSize: 10 }}>{badge}</Text>
+            </View>
+          ) : (
+            <Ionicons name="arrow-forward" size={16} color={accent} />
+          )}
+        </View>
+        <View>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }} numberOfLines={1}>{title}</Text>
+          <Text style={{ marginTop: 5, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>{subtitle}</Text>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+function PulseCard({
+  label,
+  value,
+  detail,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+}) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        minWidth: 168,
+        borderRadius: 22,
+        padding: 14,
+        backgroundColor: "rgba(255,255,255,0.045)",
+        borderWidth: 1,
+        borderColor: `${accent}30`,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+        <View style={{ width: 34, height: 34, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: `${accent}18` }}>
+          <Ionicons name={icon} size={16} color={accent} />
+        </View>
+        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11, textTransform: "uppercase", flex: 1 }} numberOfLines={1}>{label}</Text>
+      </View>
+      <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>{value}</Text>
+      <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{detail}</Text>
+    </View>
+  );
+}
+
+function InlineNavButton({
+  label,
+  icon,
+  accent,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 42,
+        borderRadius: 15,
+        paddingHorizontal: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        backgroundColor: pressed ? `${accent}24` : `${accent}16`,
+        borderWidth: 1,
+        borderColor: `${accent}35`,
+      })}
+    >
+      <Ionicons name={icon} size={15} color={accent} />
+      <Text style={{ color: accent, fontWeight: "900", fontSize: 12 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export default function MarketAccountTab() {
   const wallet = useUnifiedWallet();
   const insets = useSafeAreaInsets();
@@ -228,6 +368,67 @@ export default function MarketAccountTab() {
       verification: verified,
     };
   }, [profile, stats.allListings, verified, wallet.connectedAddress, wallet.savedAddress]);
+  const accountHealthScore = [launchReady.profile, launchReady.wallet, launchReady.listings, launchReady.verification].filter(Boolean).length;
+  const walletLabel = wallet.savedAddress || wallet.connectedAddress ? "Connected" : "Not connected";
+  const navTiles = [
+    {
+      title: "Sell",
+      subtitle: "Create a product or service listing.",
+      icon: "add-circle-outline" as const,
+      accent: TEAL,
+      route: "/market/(tabs)/sell",
+      badge: "Core",
+    },
+    {
+      title: "My Listings",
+      subtitle: "Manage inventory, pricing, and visibility.",
+      icon: "albums-outline" as const,
+      accent: WARNING,
+      route: "/market/listings?mine=1",
+    },
+    {
+      title: "Orders",
+      subtitle: "Buying and selling history in one place.",
+      icon: "receipt-outline" as const,
+      accent: BLUE,
+      route: "/market/(tabs)/orders",
+    },
+    {
+      title: "Messages",
+      subtitle: "Open buyer and seller conversations.",
+      icon: "chatbubble-ellipses-outline" as const,
+      accent: ROSE,
+      route: "/market/(tabs)/messages",
+    },
+    {
+      title: "Wallet",
+      subtitle: "Balances, payout readiness, and addresses.",
+      icon: "wallet-outline" as const,
+      accent: SUCCESS,
+      route: "/market/wallet",
+    },
+    {
+      title: "Rewards",
+      subtitle: "Noms tasks, perks, and referral invites.",
+      icon: "gift-outline" as const,
+      accent: WARNING,
+      route: "/market/(tabs)/rewards",
+    },
+    {
+      title: "Stock",
+      subtitle: "Digital stock identity and portfolio.",
+      icon: "trending-up-outline" as const,
+      accent: TEAL,
+      route: "/market/stock",
+    },
+    {
+      title: "Support",
+      subtitle: "Cases, proof, marketplace help.",
+      icon: "help-buoy-outline" as const,
+      accent: ROSE,
+      route: "/market/support",
+    },
+  ];
 
   async function load() {
     setError(null);
@@ -303,9 +504,9 @@ export default function MarketAccountTab() {
         <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.26)" }}>
           <Text style={{ color: WARNING, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Account</Text>
         </View>
-        <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Store account</Text>
+        <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Market command center</Text>
         <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
-          Profile, listings, orders, and seller activity.
+          Store identity, selling tools, rewards, wallet, support, and growth shortcuts.
         </Text>
       </View>
 
@@ -430,10 +631,10 @@ export default function MarketAccountTab() {
                 </View>
 
                 <Text style={{ marginTop: 18, color: TEXT, fontWeight: "900", fontSize: 26 }}>
-                  Create your store profile
+                  Build your market account
                 </Text>
                 <Text style={{ marginTop: 8, color: MUTED, fontSize: 14, lineHeight: 22 }}>
-                  Add your business details so buyers can find and trust your store.
+                  Start with a public seller profile, then connect wallet, list inventory, and unlock buyer trust.
                 </Text>
 
                 <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
@@ -614,6 +815,68 @@ export default function MarketAccountTab() {
           )}
 
           <View style={{ marginTop: 18, gap: 16 }}>
+            <SectionShell
+              title="Command center"
+              subtitle="Fast paths for the things sellers and buyers use most."
+            >
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {navTiles.map((tile) => (
+                  <AccountTile
+                    key={tile.route}
+                    title={tile.title}
+                    subtitle={tile.subtitle}
+                    icon={tile.icon}
+                    accent={tile.accent}
+                    badge={tile.badge}
+                    onPress={() => router.push(tile.route as any)}
+                  />
+                ))}
+              </View>
+            </SectionShell>
+
+            <SectionShell
+              title="Account pulse"
+              subtitle="A compact read on what your marketplace account can do right now."
+            >
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <PulseCard
+                  label="Health"
+                  value={`${accountHealthScore}/4 ready`}
+                  detail="Profile, wallet, listings, and verification."
+                  icon="pulse-outline"
+                  accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
+                />
+                <PulseCard
+                  label="Wallet"
+                  value={walletLabel}
+                  detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
+                  icon="wallet-outline"
+                  accent={launchReady.wallet ? SUCCESS : WARNING}
+                />
+                <PulseCard
+                  label="Inventory"
+                  value={`${stats.activeListings}/${stats.allListings}`}
+                  detail="Active listings compared with total listings."
+                  icon="albums-outline"
+                  accent={stats.activeListings > 0 ? TEAL : WARNING}
+                />
+                <PulseCard
+                  label="Sales"
+                  value={String(stats.completedOrders)}
+                  detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
+                  icon="receipt-outline"
+                  accent={stats.completedOrders > 0 ? BLUE : ROSE}
+                />
+              </View>
+
+              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                <InlineNavButton label="Open full menu" icon="grid-outline" accent={SUCCESS} onPress={() => setMenuOpen(true)} />
+                <InlineNavButton label="Create listing" icon="add-circle-outline" accent={TEAL} onPress={() => router.push("/market/(tabs)/sell" as any)} />
+                <InlineNavButton label="View rewards" icon="gift-outline" accent={WARNING} onPress={() => router.push("/market/(tabs)/rewards" as any)} />
+                <InlineNavButton label="Get support" icon="help-buoy-outline" accent={ROSE} onPress={() => router.push("/market/support" as any)} />
+              </View>
+            </SectionShell>
+
             <SectionShell
               title="Store summary"
               subtitle="Public visibility, payouts, and seller status."

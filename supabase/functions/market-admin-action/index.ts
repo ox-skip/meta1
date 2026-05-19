@@ -856,7 +856,7 @@ async function updateRewardReferralConfig(admin: any, ctx: AdminContext, body: a
   const referrerReward = optionalInt(body.referrer_reward_noms, 5, 0, 1000000);
   const maxIp = optionalInt(body.max_referrals_per_ip_hash, 5, 0, 1000000);
   const maxUserAgent = optionalInt(body.max_referrals_per_user_agent_hash, 10, 0, 1000000);
-  const shareBaseUrl = cleanText(body.share_base_url, 500) || "https://bestcity.app/register";
+  const shareBaseUrl = cleanText(body.share_base_url, 500) || "https://bestcity-amber.vercel.app/register";
 
   const value = {
     enabled,

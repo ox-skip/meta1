@@ -789,7 +789,7 @@ function ReferralPanel({
   const config = referrals?.config ?? {};
   const joinerReward = Number(config.joiner_reward_noms ?? 25);
   const referrerReward = Number(config.referrer_reward_noms ?? 5);
-  const shareBase = String(config.share_base_url || "https://bestcity.app/register");
+  const shareBase = String(config.share_base_url || "https://bestcity-amber.vercel.app/register");
   const shareUrl = code ? `${shareBase}${shareBase.includes("?") ? "&" : "?"}ref=${encodeURIComponent(code)}` : "";
 
   async function copyInvite() {

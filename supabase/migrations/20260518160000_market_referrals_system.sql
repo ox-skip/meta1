@@ -464,7 +464,7 @@ VALUES (
     "joiner_reward_noms": 25,
     "referrer_reward_noms": 5,
     "qualification": "signup",
-    "share_base_url": "https://bestcity.app/register",
+    "share_base_url": "https://bestcity-amber.vercel.app/register",
     "bot_filter": {
       "enabled": true,
       "max_referrals_per_ip_hash": 5,

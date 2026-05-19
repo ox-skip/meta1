@@ -750,7 +750,7 @@ export default function MarketAdminIndex() {
   const [rewardReferralReferrerNoms, setRewardReferralReferrerNoms] = useState("5");
   const [rewardReferralMaxIp, setRewardReferralMaxIp] = useState("5");
   const [rewardReferralMaxUserAgent, setRewardReferralMaxUserAgent] = useState("10");
-  const [rewardReferralShareBaseUrl, setRewardReferralShareBaseUrl] = useState("https://bestcity.app/register");
+  const [rewardReferralShareBaseUrl, setRewardReferralShareBaseUrl] = useState("https://bestcity-amber.vercel.app/register");
   const [supportStatusTab, setSupportStatusTab] = useState<SupportStatusTab>("fresh");
   const [supportFiles, setSupportFiles] = useState<Record<string, SupportPickedFile[]>>({});
   const [supportPickingId, setSupportPickingId] = useState<string | null>(null);
@@ -875,7 +875,7 @@ export default function MarketAdminIndex() {
     setRewardReferralReferrerNoms(String(config.referrer_reward_noms ?? 5));
     setRewardReferralMaxIp(String(botFilter.max_referrals_per_ip_hash ?? 5));
     setRewardReferralMaxUserAgent(String(botFilter.max_referrals_per_user_agent_hash ?? 10));
-    setRewardReferralShareBaseUrl(String(config.share_base_url || "https://bestcity.app/register"));
+    setRewardReferralShareBaseUrl(String(config.share_base_url || "https://bestcity-amber.vercel.app/register"));
   }, [workspace?.generated_at]);
 
   function setCurrentModuleSearch(value: string) {
@@ -3343,7 +3343,7 @@ export default function MarketAdminIndex() {
                   </View>
                   <View style={{ flex: 2, minWidth: 240 }}>
                     <Text style={{ marginBottom: 6, color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Share base URL</Text>
-                    <AdminTextInput value={rewardReferralShareBaseUrl} onChangeText={setRewardReferralShareBaseUrl} placeholder="https://bestcity.app/register" autoCapitalize="none" />
+                    <AdminTextInput value={rewardReferralShareBaseUrl} onChangeText={setRewardReferralShareBaseUrl} placeholder="https://bestcity-amber.vercel.app/register" autoCapitalize="none" />
                   </View>
                 </View>
 
