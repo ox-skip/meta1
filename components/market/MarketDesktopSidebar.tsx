@@ -7,7 +7,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MARKET_MENU_SECTIONS, type MarketMenuItem } from "@/components/market/MarketMenuModal";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 
-const RAIL_WIDTH = 52;
+export const MARKET_DESKTOP_RAIL_WIDTH = 52;
+export const MARKET_DESKTOP_BREAKPOINT = 980;
+
+const RAIL_WIDTH = MARKET_DESKTOP_RAIL_WIDTH;
 const PANEL_WIDTH = 224;
 const SURFACE = "rgba(7,10,8,0.97)";
 const SURFACE_HOVER = "rgba(255,253,247,0.08)";
@@ -136,7 +139,7 @@ export default function MarketDesktopSidebar() {
     [isNigeria],
   );
 
-  if (Platform.OS !== "web" || width < 980) return null;
+  if (Platform.OS !== "web" || width < MARKET_DESKTOP_BREAKPOINT) return null;
 
   const hoverProps =
     Platform.OS === "web"

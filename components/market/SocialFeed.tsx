@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -280,8 +281,16 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isContained = mode === "contained";
+  const isDesktop = width >= 1024;
   const isWide = width >= 760;
-  const mediaHeight = isWide ? 360 : 280;
+  const showDesktopRail = isContained && isDesktop && !profileUserId;
+  const feedMaxWidth = profileUserId ? 720 : 700;
+  const shellMaxWidth = showDesktopRail ? 1080 : feedMaxWidth;
+  const sideRailWidth = 320;
+  const cardRadius = isWide ? 24 : 20;
+  const contentGutter = isContained ? (isDesktop ? 18 : 12) : 0;
+  const postGap = isContained ? 14 : 12;
+  const mediaHeight = isDesktop ? 390 : isWide ? 340 : 260;
   const assetSize = isWide ? 92 : 78;
 
   const [meId, setMeId] = useState<string | null>(null);
@@ -310,6 +319,16 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   const postingLockRef = useRef(false);
   const pendingPostIdsRef = useRef(new Set<string>());
+  const feedColumnStyle = { width: "100%" as const, maxWidth: feedMaxWidth, alignSelf: "center" as const };
+  const cardShadow = isWide
+    ? {
+        shadowColor: "#000",
+        shadowOpacity: 0.18,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: 12 },
+        elevation: 4,
+      }
+    : {};
 
   useEffect(() => {
     let alive = true;
@@ -792,14 +811,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const isImage = media.kind === "image";
 
     return (
-      <Pressable key={media.id} disabled={!uri} onPress={() => openMediaPreview(media)} style={{ flex: 1 }}>
+      <Pressable key={media.id} disabled={!uri} onPress={() => openMediaPreview(media)} style={{ flex: 1, minWidth: 0 }}>
         <View
           style={{
             height,
-            borderRadius: 18,
+            borderRadius: Math.max(16, cardRadius - 5),
             borderWidth: 1,
-            borderColor: BORDER,
-            backgroundColor: "rgba(255,253,247,0.06)",
+            borderColor: "rgba(255,253,247,0.14)",
+            backgroundColor: "rgba(6,8,7,0.72)",
             overflow: "hidden",
             alignItems: "center",
             justifyContent: "center",
@@ -860,17 +879,23 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     if (visible.length === 2) {
       return (
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {visible.map((item, index) => renderMediaTile(item, isWide ? 260 : 190, index === 1 && remainder ? `+${remainder}` : undefined))}
+          {visible.map((item, index) =>
+            renderMediaTile(item, isDesktop ? 280 : isWide ? 240 : 176, index === 1 && remainder ? `+${remainder}` : undefined),
+          )}
         </View>
       );
     }
 
     return (
       <View style={{ gap: 8 }}>
-        {renderMediaTile(visible[0], isWide ? 250 : 190)}
+        {renderMediaTile(visible[0], isDesktop ? 270 : isWide ? 236 : 176)}
         <View style={{ flexDirection: "row", gap: 8 }}>
           {visible.slice(1).map((item, index) =>
-            renderMediaTile(item, isWide ? 150 : 116, index === visible.slice(1).length - 1 && remainder ? `+${remainder}` : undefined),
+            renderMediaTile(
+              item,
+              isDesktop ? 142 : isWide ? 136 : 106,
+              index === visible.slice(1).length - 1 && remainder ? `+${remainder}` : undefined,
+            ),
           )}
         </View>
       </View>
@@ -881,33 +906,79 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     if (hideComposer) return null;
 
     const canPost = !!body.trim() || assets.length > 0;
+    const composerShellStyle = {
+      ...feedColumnStyle,
+      marginTop: isContained ? 14 : 0,
+      marginBottom: postGap,
+      padding: isWide ? 16 : 14,
+      borderRadius: cardRadius,
+      borderWidth: 1,
+      borderColor: "rgba(255,253,247,0.16)",
+      overflow: "hidden" as const,
+      ...cardShadow,
+    };
 
     if (!meId) {
       return (
-        <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: SURFACE }}>
-          <Text style={{ color: TEXT, fontWeight: "900" }}>Sign in to post</Text>
-          <Text style={{ marginTop: 5, color: MUTED, lineHeight: 18 }}>
-            You can browse updates now. Sign in when you want to publish or comment.
-          </Text>
-        </View>
+        <LinearGradient
+          colors={["rgba(45,212,191,0.10)", "rgba(255,253,247,0.055)", "rgba(9,13,11,0.96)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={composerShellStyle}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 16,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(45,212,191,0.16)",
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.36)",
+              }}
+            >
+              <Ionicons name="person-circle-outline" size={22} color={TEAL} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Sign in to post</Text>
+              <Text style={{ marginTop: 4, color: MUTED, lineHeight: 18, fontSize: 12 }}>
+                Browse seller updates now. Sign in to publish or comment.
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
       );
     }
 
     return (
-      <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: SURFACE }}>
+      <LinearGradient
+        colors={["rgba(45,212,191,0.11)", "rgba(244,183,93,0.055)", "rgba(9,13,11,0.96)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={composerShellStyle}
+      >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-          <Avatar profile={selfProfile} size={44} />
+          <Avatar profile={selfProfile} size={isWide ? 46 : 42} />
 
           <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                Market update
+              </Text>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{assets.length}/4 media</Text>
+            </View>
+
             <TextInput
               value={body}
               onChangeText={setBody}
               multiline
-              placeholder="Share an update..."
+              placeholder="What's new in your store?"
               placeholderTextColor={FAINT}
               textAlignVertical="top"
               style={{
-                minHeight: 62,
+                minHeight: isWide ? 74 : 62,
                 color: TEXT,
                 fontSize: 16,
                 lineHeight: 23,
@@ -985,7 +1056,6 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                   disabled={posting || recordingBusy}
                   tone={recording ? ROSE : AMBER}
                 />
-                <Text style={{ color: FAINT, fontSize: 12 }}>{assets.length}/4</Text>
               </View>
 
               <Pressable
@@ -1014,7 +1084,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             {error ? <Text style={{ marginTop: 8, color: ROSE, fontSize: 12, lineHeight: 17 }}>{error}</Text> : null}
           </View>
         </View>
-      </View>
+      </LinearGradient>
     );
   }
 
@@ -1028,17 +1098,22 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     return (
       <View
         style={{
-          padding: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: BORDER,
-          backgroundColor: SURFACE,
+          ...feedColumnStyle,
+          marginBottom: postGap,
+          padding: isWide ? 16 : 14,
+          borderRadius: cardRadius,
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.14)",
+          backgroundColor: "rgba(13,18,15,0.96)",
+          overflow: "hidden",
+          ...cardShadow,
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-          <Avatar profile={author} size={44} />
+          <Avatar profile={author} size={isWide ? 46 : 42} />
 
           <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
               <Pressable
                 disabled={!author?.market_username}
                 onPress={() => author?.market_username && router.push(`/market/profile/${author.market_username}` as any)}
@@ -1049,19 +1124,47 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 </Text>
                 <VerifiedMark verified={author?.is_verified} />
               </Pressable>
-              <Text style={{ color: FAINT, fontSize: 12 }}>{formatRelativeTime(post.created_at)}</Text>
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  backgroundColor: "rgba(255,253,247,0.07)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,253,247,0.10)",
+                }}
+              >
+                <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900" }}>{formatRelativeTime(post.created_at)}</Text>
+              </View>
             </View>
-            <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontSize: 12 }}>
-              @{authorHandle}
-            </Text>
+            <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              <Text numberOfLines={1} style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>
+                @{authorHandle}
+              </Text>
+              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: "rgba(255,253,247,0.24)" }} />
+              <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Store update</Text>
+            </View>
 
             {post.body ? (
-              <Text style={{ marginTop: 9, color: TEXT, fontSize: 15, lineHeight: 22 }}>{post.body}</Text>
+              <Text style={{ marginTop: 11, color: TEXT, fontSize: isWide ? 16 : 15, lineHeight: isWide ? 24 : 22 }}>
+                {post.body}
+              </Text>
             ) : null}
 
-            {media.length ? <View style={{ marginTop: 12 }}>{renderMediaGrid(media)}</View> : null}
+            {media.length ? <View style={{ marginTop: 14 }}>{renderMediaGrid(media)}</View> : null}
 
-            <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <View
+              style={{
+                marginTop: 14,
+                paddingTop: 12,
+                borderTopWidth: 1,
+                borderTopColor: "rgba(255,253,247,0.10)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <IconButton
                 icon={liked ? "heart" : "heart-outline"}
                 label={reactionCounts[post.id] ? formatCount(reactionCounts[post.id]) : "Like"}
@@ -1092,7 +1195,18 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderLoadingState() {
     return (
-      <View style={{ paddingVertical: 28, alignItems: "center", backgroundColor: SURFACE }}>
+      <View
+        style={{
+          ...feedColumnStyle,
+          marginBottom: postGap,
+          paddingVertical: 28,
+          alignItems: "center",
+          borderRadius: cardRadius,
+          borderWidth: 1,
+          borderColor: BORDER,
+          backgroundColor: SURFACE,
+        }}
+      >
         <ActivityIndicator color={TEAL} />
         <Text style={{ marginTop: 10, color: MUTED }}>Loading feed...</Text>
       </View>
@@ -1101,14 +1215,15 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderEmptyState() {
     return (
-      <View style={{ padding: 14, backgroundColor: SURFACE }}>
+      <View style={{ ...feedColumnStyle, marginBottom: postGap }}>
         <View
           style={{
-            borderRadius: 22,
+            borderRadius: cardRadius,
             borderWidth: 1,
             borderColor: BORDER,
             backgroundColor: PANEL,
-            padding: 16,
+            padding: isWide ? 20 : 16,
+            ...cardShadow,
           }}
         >
           <Ionicons name="chatbubbles-outline" size={22} color={TEAL} />
@@ -1125,28 +1240,60 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   function renderContainedHeader() {
     return (
-      <View style={{ backgroundColor: SURFACE }}>
-        <View
+      <View style={{ paddingTop: Math.max(insets.top, 14), paddingBottom: 2 }}>
+        <LinearGradient
+          colors={["rgba(45,212,191,0.16)", "rgba(244,183,93,0.08)", "rgba(13,18,15,0.96)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{
-            paddingTop: Math.max(insets.top, 14),
-            paddingHorizontal: 16,
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: BORDER,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
+            ...feedColumnStyle,
+            borderRadius: cardRadius,
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.16)",
+            padding: isWide ? 18 : 15,
+            marginBottom: 0,
+            overflow: "hidden",
+            ...cardShadow,
           }}
         >
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 20 }}>Social Feed</Text>
-            <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-              {profileUserId ? "Seller updates" : "Marketplace updates"}
-            </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 11,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(45,212,191,0.16)",
+                    borderWidth: 1,
+                    borderColor: "rgba(94,234,212,0.34)",
+                  }}
+                >
+                  <Ionicons name="newspaper-outline" size={15} color={TEAL} />
+                </View>
+                <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                  {profileUserId ? "Seller channel" : "Market social"}
+                </Text>
+              </View>
+              <Text style={{ marginTop: 9, color: TEXT, fontWeight: "900", fontSize: isWide ? 26 : 22, letterSpacing: 0 }}>
+                Social Feed
+              </Text>
+              <Text style={{ marginTop: 5, color: MUTED, fontSize: 13, lineHeight: 19 }}>
+                {profileUserId ? "Seller updates, launches, and media." : "Storefront updates, launches, and buyer-safe market activity."}
+              </Text>
+            </View>
+            <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
           </View>
-          <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
-        </View>
+        </LinearGradient>
         {renderComposer()}
       </View>
     );
@@ -1157,11 +1304,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       <View
         style={{
           marginTop: 12,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: BORDER,
-          backgroundColor: SURFACE,
-          overflow: "hidden",
+          width: "100%",
+          alignSelf: "center",
         }}
       >
         {renderComposer()}
@@ -1170,23 +1314,189 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     );
   }
 
+  function renderDesktopRail() {
+    if (!showDesktopRail) return null;
+
+    const authorCount = new Set(posts.map((post) => post.author_id)).size;
+    const mediaPostCount = posts.filter((post) => (mediaMap[post.id] ?? []).length > 0).length;
+    const featuredPosts = posts.slice(0, 4);
+
+    const metric = (label: string, value: string, icon: IconName, tone: string) => (
+      <View
+        style={{
+          flex: 1,
+          minWidth: 0,
+          borderRadius: 18,
+          padding: 12,
+          backgroundColor: "rgba(255,253,247,0.065)",
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.12)",
+        }}
+      >
+        <Ionicons name={icon} size={16} color={tone} />
+        <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 18 }}>{value}</Text>
+        <Text style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 11 }}>{label}</Text>
+      </View>
+    );
+
+    return (
+      <View style={{ gap: 14 }}>
+        <LinearGradient
+          colors={["rgba(244,183,93,0.13)", "rgba(45,212,191,0.08)", "rgba(13,18,15,0.96)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.15)",
+            padding: 16,
+          }}
+        >
+          <Text style={{ color: AMBER, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Market pulse</Text>
+          <Text style={{ marginTop: 8, color: TEXT, fontWeight: "900", fontSize: 20 }}>Seller activity</Text>
+          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+            Fresh launches, store notes, product drops, and proof-of-work updates from the marketplace.
+          </Text>
+
+          <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
+            {metric("Posts", formatCount(posts.length), "newspaper-outline", TEAL)}
+            {metric("Stores", formatCount(authorCount), "storefront-outline", BLUE)}
+          </View>
+          <View style={{ marginTop: 10, flexDirection: "row", gap: 10 }}>
+            {metric("Media", formatCount(mediaPostCount), "images-outline", AMBER)}
+            {metric("Live", loading ? "..." : "Now", "radio-outline", ROSE)}
+          </View>
+        </LinearGradient>
+
+        <View
+          style={{
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.13)",
+            backgroundColor: "rgba(13,18,15,0.94)",
+            padding: 14,
+          }}
+        >
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Recent sellers</Text>
+          <View style={{ marginTop: 12, gap: 10 }}>
+            {featuredPosts.length ? (
+              featuredPosts.map((post) => {
+                const author = profileMap[post.author_id];
+                const authorName = getDisplayName(author);
+                return (
+                  <Pressable
+                    key={`rail-${post.id}`}
+                    disabled={!author?.market_username}
+                    onPress={() => author?.market_username && router.push(`/market/profile/${author.market_username}` as any)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      borderRadius: 16,
+                      padding: 9,
+                      backgroundColor: pressed ? "rgba(255,253,247,0.10)" : "rgba(255,253,247,0.055)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,253,247,0.10)",
+                    })}
+                  >
+                    <Avatar profile={author} size={36} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                        {authorName}
+                      </Text>
+                      <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontSize: 11, fontWeight: "800" }}>
+                        @{getHandle(author)} - {formatRelativeTime(post.created_at)}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={15} color={FAINT} />
+                  </Pressable>
+                );
+              })
+            ) : (
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>Recent seller activity will appear here.</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          <Pressable
+            onPress={() => router.push("/market/(tabs)/sell" as any)}
+            style={({ pressed }) => ({
+              flex: 1,
+              borderRadius: 18,
+              padding: 12,
+              alignItems: "center",
+              backgroundColor: pressed ? "rgba(45,212,191,0.22)" : "rgba(45,212,191,0.14)",
+              borderWidth: 1,
+              borderColor: "rgba(94,234,212,0.34)",
+            })}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={TEAL} />
+            <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: 12 }}>Sell</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/market/(tabs)" as any)}
+            style={({ pressed }) => ({
+              flex: 1,
+              borderRadius: 18,
+              padding: 12,
+              alignItems: "center",
+              backgroundColor: pressed ? "rgba(244,183,93,0.22)" : "rgba(244,183,93,0.14)",
+              borderWidth: 1,
+              borderColor: "rgba(244,183,93,0.34)",
+            })}
+          >
+            <Ionicons name="storefront-outline" size={18} color={AMBER} />
+            <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: 12 }}>Shop</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   function renderContainedContent() {
+    const list = (
+      <FlatList
+        data={posts}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => renderPost(item)}
+        ListHeaderComponent={renderContainedHeader()}
+        ListEmptyComponent={!loading ? renderEmptyState() : null}
+        ListFooterComponent={
+          loading && posts.length ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 12) }} />
+        }
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={TEAL} />}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: contentGutter,
+          paddingBottom: Math.max(24, insets.bottom + 16),
+        }}
+      />
+    );
+
     return (
       <View style={{ flex: 1, backgroundColor: BG0 }}>
-        <FlatList
-          data={posts}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => renderPost(item)}
-          ListHeaderComponent={renderContainedHeader()}
-          ListEmptyComponent={!loading ? renderEmptyState() : null}
-          ListFooterComponent={
-            loading && posts.length ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 12) }} />
-          }
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={TEAL} />}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ backgroundColor: BG0 }}
-        />
+        {showDesktopRail ? (
+          <View
+            style={{
+              flex: 1,
+              width: "100%",
+              maxWidth: shellMaxWidth,
+              alignSelf: "center",
+              flexDirection: "row",
+              gap: 18,
+              paddingHorizontal: 18,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0, maxWidth: feedMaxWidth }}>{list}</View>
+            <View style={{ width: sideRailWidth, paddingTop: Math.max(insets.top, 14), paddingBottom: 24 }}>
+              {renderDesktopRail()}
+            </View>
+          </View>
+        ) : (
+          <View style={{ flex: 1, width: "100%", maxWidth: shellMaxWidth, alignSelf: "center" }}>{list}</View>
+        )}
       </View>
     );
   }

@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  Platform,
   RefreshControl,
   ScrollView,
   Text,
@@ -19,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
+import { MARKET_DESKTOP_BREAKPOINT, MARKET_DESKTOP_RAIL_WIDTH } from "@/components/market/MarketDesktopSidebar";
 import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
@@ -724,11 +726,19 @@ export default function MarketHome() {
   const usableWidth = Math.max(320, width);
   const isDesktop = usableWidth >= 900;
   const pagePadding = isDesktop ? 24 : width >= 820 ? 24 : 16;
+  const hasDesktopRail = Platform.OS === "web" && usableWidth >= MARKET_DESKTOP_BREAKPOINT;
+  const reservedDesktopRailWidth = hasDesktopRail ? MARKET_DESKTOP_RAIL_WIDTH : 0;
+  const layoutWidth = Math.max(320, usableWidth - reservedDesktopRailWidth);
   const contentMaxWidth = isDesktop ? 1080 : width >= 1240 ? 1120 : undefined;
-  const contentInnerWidth = Math.min(
-    contentMaxWidth ?? usableWidth,
-    Math.max(320, usableWidth),
-  ) - pagePadding * 2;
+  const contentOuterWidth = Math.min(contentMaxWidth ?? layoutWidth, layoutWidth);
+  const contentInnerWidth = contentOuterWidth - pagePadding * 2;
+  const desktopListInset = isDesktop ? Math.max(0, (layoutWidth - contentOuterWidth) / 2) + pagePadding : 0;
+  const desktopSidePanelWidth = 298;
+  const desktopContentGap = 14;
+  const resultsInnerWidth = isDesktop
+    ? Math.max(320, contentInnerWidth - desktopSidePanelWidth - desktopContentGap)
+    : contentInnerWidth;
+  const gridGap = isDesktop ? 14 : 12;
   const mobileActionStack = width < 390;
   const categories = useMemo<CategoryItem[]>(
     () => (main ? getCategoriesByMain(main as MarketMainCategory) : []),
@@ -1101,13 +1111,18 @@ export default function MarketHome() {
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
   const isListingDirectory = section !== "social" && directoryMode === "listings";
-  const responsiveListingColumns = contentInnerWidth >= 1100 ? 3 : contentInnerWidth >= 620 ? 2 : 1;
-  const sellerDirectoryColumns = isDesktop && contentInnerWidth >= 760 ? 2 : 1;
+  const responsiveListingColumns = resultsInnerWidth >= 1100 ? 3 : resultsInnerWidth >= 620 ? 2 : 1;
+  const sellerDirectoryColumns = isDesktop && resultsInnerWidth >= 760 ? 2 : 1;
   const listingColumns = isListingDirectory ? responsiveListingColumns : sellerDirectoryColumns;
+  const desktopCardWidth =
+    listingColumns === 1
+      ? resultsInnerWidth
+      : (resultsInnerWidth - gridGap * (listingColumns - 1)) / listingColumns;
   const listingCardWidth =
-    listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
+    isDesktop ? desktopCardWidth : listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
   const listingMediaAspectRatio = listingColumns === 1 ? 4 / 3 : isDesktop ? 1.12 : 1;
-  const sellerCardWidth = listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
+  const sellerCardWidth =
+    isDesktop ? desktopCardWidth : listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
   const contentBottomPadding = isDesktop ? 38 : Math.max(122, insets.bottom + 102);
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
   const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
@@ -1199,7 +1214,8 @@ export default function MarketHome() {
         style={({ pressed }) => ({
           width: listingCardWidth as any,
           marginHorizontal: listingColumns === 1 && !isDesktop ? pagePadding : 0,
-          marginTop: isDesktop ? 18 : 16,
+          marginLeft: listingColumns === 1 && isDesktop ? desktopListInset : undefined,
+          marginTop: isDesktop ? 10 : 16,
           borderRadius: 22,
           overflow: "hidden",
           borderWidth: 1,
@@ -1411,6 +1427,7 @@ export default function MarketHome() {
         style={({ pressed }) => ({
           width: sellerCardWidth as any,
           marginHorizontal: !isDesktop ? pagePadding : 0,
+          marginLeft: listingColumns === 1 && isDesktop ? desktopListInset : undefined,
           borderRadius: 22,
           overflow: "hidden",
           backgroundColor: INK,
@@ -2068,7 +2085,7 @@ export default function MarketHome() {
     }
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, flex: desktop ? 1 : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>
           {directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY"}
         </Text>
@@ -2475,48 +2492,57 @@ export default function MarketHome() {
           style={{
             marginTop: 12,
             marginHorizontal: desktop ? 0 : -pagePadding,
-            backgroundColor: "rgba(9,13,11,0.96)",
-            borderTopWidth: 1,
-            borderBottomWidth: 1,
-            borderColor: "rgba(255,253,247,0.10)",
-            borderRadius: desktop ? 24 : 0,
-            overflow: "hidden",
+            alignItems: "center",
           }}
         >
           <View
             style={{
-              paddingHorizontal: desktop ? 18 : 16,
-              paddingVertical: 14,
-              borderBottomWidth: 1,
-              borderBottomColor: "rgba(255,253,247,0.10)",
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
+              width: "100%",
+              maxWidth: desktop ? 760 : undefined,
+              backgroundColor: "rgba(9,13,11,0.96)",
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.10)",
+              borderRadius: desktop ? 24 : 0,
+              overflow: "hidden",
             }}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Social feed</Text>
-              <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                Storefront updates, launches, and media from marketplace sellers.
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => router.push("/market/social" as any)}
+            <View
               style={{
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: "rgba(244,183,93,0.35)",
-                backgroundColor: "rgba(244,183,93,0.16)",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
+                paddingHorizontal: desktop ? 18 : 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: "rgba(255,253,247,0.10)",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open feed</Text>
-            </Pressable>
-          </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Social feed</Text>
+                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
+                  Storefront updates, launches, and media from marketplace sellers.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => router.push("/market/social" as any)}
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: "rgba(244,183,93,0.35)",
+                  backgroundColor: "rgba(244,183,93,0.16)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                }}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open feed</Text>
+              </Pressable>
+            </View>
 
-          <SocialFeed />
+            <View style={{ padding: desktop ? 14 : 0 }}>
+              <SocialFeed />
+            </View>
+          </View>
         </View>
       </>
     );
@@ -2564,13 +2590,38 @@ export default function MarketHome() {
           style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24), paddingBottom: 8 }}
         />
 
-        <View style={{ marginTop: 4, flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
-          <View style={{ flex: 1, minWidth: 0, gap: 14 }}>
+        <View
+          style={
+            section === "social"
+              ? { marginTop: 4, flexDirection: "row", alignItems: "flex-start", gap: desktopContentGap }
+              : { marginTop: 4, position: "relative", zIndex: 2 }
+          }
+        >
+          <View
+            style={
+              section === "social"
+                ? { flex: 1, minWidth: 0, gap: 14 }
+                : { width: resultsInnerWidth, maxWidth: "100%", gap: 14 }
+            }
+          >
             {renderHeroPanel(true)}
             {section === "social" ? null : renderDirectoryChooser(true)}
           </View>
 
-          <View style={{ width: 298, gap: 12 }}>
+          <View
+            style={
+              section === "social"
+                ? { width: desktopSidePanelWidth, gap: 12 }
+                : {
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    width: desktopSidePanelWidth,
+                    gap: 12,
+                    zIndex: 3,
+                  }
+            }
+          >
             <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
               <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>MARKET PULSE</Text>
               <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
@@ -2630,10 +2681,11 @@ export default function MarketHome() {
           listingColumns > 1
             ? {
                 paddingHorizontal: pagePadding,
-                justifyContent: "space-between",
+                justifyContent: isDesktop ? "flex-start" : "space-between",
                 alignSelf: "center",
                 width: "100%",
                 maxWidth: contentMaxWidth,
+                gap: isDesktop ? gridGap : undefined,
               }
             : undefined
         }

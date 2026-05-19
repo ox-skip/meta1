@@ -4,8 +4,6 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import MarketDesktopSidebar from "@/components/market/MarketDesktopSidebar";
-
 const SURFACE = "#090D0B";
 const ACCENT = "#2DD4BF";
 const GOLD = "#F4B75D";
@@ -225,7 +223,6 @@ export default function MarketTabsLayout() {
         }}
       />
       </Tabs>
-      <MarketDesktopSidebar />
     </View>
   );
 }
