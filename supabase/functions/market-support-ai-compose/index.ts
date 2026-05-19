@@ -28,6 +28,7 @@ const SUPPORT_CATEGORIES = [
   "order",
   "payment",
   "listing",
+  "stock",
   "account",
   "safety",
   "general",

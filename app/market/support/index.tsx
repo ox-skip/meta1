@@ -57,6 +57,7 @@ const CATEGORIES = [
   { key: "order", label: "Order" },
   { key: "payment", label: "Payment" },
   { key: "listing", label: "Listing" },
+  { key: "stock", label: "Stock" },
   { key: "account", label: "Account" },
   { key: "safety", label: "Safety" },
   { key: "general", label: "Other" },
