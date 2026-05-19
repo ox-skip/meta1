@@ -44,7 +44,7 @@ async function loadSellerProfiles(admin: any, ids: string[]) {
 
   const { data, error } = await admin
     .from("market_seller_profiles")
-    .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+    .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
     .in("user_id", list);
   if (error) throw error;
   return byId(data, "user_id");
@@ -253,7 +253,7 @@ async function loadModeration(admin: any) {
   const [sellerRes, listingRes] = await Promise.all([
     admin
       .from("market_seller_profiles")
-      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
       .order("updated_at", { ascending: false })
       .limit(DEFAULT_LIMIT),
     admin
@@ -468,7 +468,7 @@ async function loadRewards(admin: any) {
       .limit(DEFAULT_LIMIT),
     admin
       .from("market_seller_profiles")
-      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,created_at,updated_at")
+      .select("user_id,market_username,display_name,business_name,is_verified,risk_score,active,payout_tier,featured_enabled,featured_until,featured_listing_limit,created_at,updated_at")
       .order("updated_at", { ascending: false })
       .limit(250),
     admin

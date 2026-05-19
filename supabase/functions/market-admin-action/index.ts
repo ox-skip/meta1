@@ -64,6 +64,14 @@ function optionalInt(input: unknown, fallback: number | null, min = 0, max = 100
   return value;
 }
 
+function optionalIsoDate(name: string, input: unknown) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) throw new Error(`${name} must be a valid date`);
+  return date.toISOString();
+}
+
 function jsonObject(name: string, input: unknown) {
   if (input === undefined || input === null || input === "") return {};
   if (typeof input === "object" && !Array.isArray(input)) return input as Record<string, unknown>;
@@ -220,6 +228,44 @@ async function setSellerActive(admin: any, ctx: AdminContext, body: any) {
     entity_type: "market_seller_profiles",
     entity_id: userId,
     payload: { disable_listings: disableListings, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, seller: data });
+}
+
+async function setMarketStoreFeature(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requirePermission(ctx, "users.moderate");
+  if (blocked) return blocked;
+
+  const userId = requireUuid("user_id", body.user_id);
+  const featured = requireBoolean("featured_enabled", body.featured_enabled);
+  const featuredUntil = optionalIsoDate("featured_until", body.featured_until);
+  const featuredListingLimit = optionalInt(body.featured_listing_limit, 12, 1, 100);
+
+  const { data, error } = await admin
+    .from("market_seller_profiles")
+    .update({
+      featured_enabled: featured,
+      featured_until: featured ? featuredUntil : null,
+      featured_listing_limit: featured ? featuredListingLimit : 12,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select("user_id,market_username,business_name,featured_enabled,featured_until,featured_listing_limit,updated_at")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: featured ? "MARKET_STORE_FEATURE_ENABLED" : "MARKET_STORE_FEATURE_DISABLED",
+    entity_type: "market_seller_profiles",
+    entity_id: userId,
+    payload: {
+      market_username: data.market_username,
+      business_name: data.business_name,
+      featured_until: data.featured_until,
+      featured_listing_limit: data.featured_listing_limit,
+      note: adminNote(body.note),
+    },
   });
 
   return ok({ ok: true, seller: data });
@@ -1057,6 +1103,7 @@ Deno.serve(async (req) => {
     if (action === "resolve_dispute") return await resolveDispute(admin, ctx, req, body);
     if (action === "set_listing_active") return await setListingActive(admin, ctx, body);
     if (action === "set_seller_active") return await setSellerActive(admin, ctx, body);
+    if (action === "set_market_store_feature") return await setMarketStoreFeature(admin, ctx, body);
     if (action === "ban_user") return await banUser(admin, ctx, body);
     if (action === "review_verification") return await reviewVerification(admin, ctx, body);
     if (action === "settle_order") return await settleOrder(admin, ctx, req, body);

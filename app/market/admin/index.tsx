@@ -749,6 +749,7 @@ export default function MarketAdminIndex() {
   const [rewardPromotionStartsAt, setRewardPromotionStartsAt] = useState("");
   const [rewardPromotionEndsAt, setRewardPromotionEndsAt] = useState("");
   const [rewardPromotionMetadata, setRewardPromotionMetadata] = useState("{\"source\":\"admin_dashboard\"}");
+  const [marketStoreFeatureDrafts, setMarketStoreFeatureDrafts] = useState<Record<string, { until: string; limit: string }>>({});
   const [rewardAdjustUserId, setRewardAdjustUserId] = useState("");
   const [rewardAdjustAmount, setRewardAdjustAmount] = useState("");
   const [rewardReferralEnabled, setRewardReferralEnabled] = useState(true);
@@ -1035,6 +1036,57 @@ export default function MarketAdminIndex() {
     setActiveModule("rewards");
     setRewardTab("build");
     setNotice("Campaign feature builder is ready.");
+  }
+
+  function featureDateInput(value?: string | null) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return String(value);
+    return date.toISOString();
+  }
+
+  function marketStoreFeatureDraft(seller: any) {
+    const storeId = String(seller?.user_id ?? seller?.id ?? "").trim();
+    const draft = marketStoreFeatureDrafts[storeId];
+    return {
+      until: draft?.until ?? featureDateInput(seller?.featured_until),
+      limit: draft?.limit ?? String(Math.max(1, Number(seller?.featured_listing_limit ?? 12) || 12)),
+    };
+  }
+
+  function updateMarketStoreFeatureDraft(storeId: string, patch: Partial<{ until: string; limit: string }>) {
+    setMarketStoreFeatureDrafts((current) => ({
+      ...current,
+      [storeId]: {
+        until: current[storeId]?.until ?? "",
+        limit: current[storeId]?.limit ?? "12",
+        ...patch,
+      },
+    }));
+  }
+
+  function setMarketFeatureExpiry(storeId: string, days: number | null, limit = "12") {
+    updateMarketStoreFeatureDraft(storeId, {
+      until: days === null ? "" : new Date(Date.now() + days * 86_400_000).toISOString(),
+      limit,
+    });
+  }
+
+  async function saveMarketStoreFeature(seller: any, featured: boolean) {
+    const storeId = String(seller?.user_id ?? "").trim();
+    if (!storeId) return;
+    const draft = marketStoreFeatureDraft(seller);
+    await performAction(
+      `market-store-feature-${storeId}-${featured ? "on" : "off"}`,
+      {
+        action: "set_market_store_feature",
+        user_id: storeId,
+        featured_enabled: featured,
+        featured_until: featured ? draft.until.trim() : "",
+        featured_listing_limit: featured ? draft.limit.trim() || "12" : "12",
+      },
+      false,
+    );
   }
 
   async function createStoreFeatureNow(seller: any) {
@@ -2216,6 +2268,7 @@ export default function MarketAdminIndex() {
       seller.payout_tier,
       seller.is_verified ? "verified" : "unverified",
       seller.active === false ? "paused" : "active",
+      seller.featured_enabled ? "featured market home" : "not featured",
     ]));
     const listings = allListings.filter((listing: any) => matchesSearch(currentModuleSearch, [
       listing.id,
@@ -2231,6 +2284,7 @@ export default function MarketAdminIndex() {
     const canModerateListings = hasPermission("listings.moderate");
     const canBanUsers = hasPermission("users.delete");
     const canFeaturePromotions = hasPermission("rewards.promotions.manage");
+    const canFeatureMarketStores = canModerateUsers;
 
     return (
       <View style={{ marginTop: 18, gap: 14 }}>
@@ -2261,6 +2315,10 @@ export default function MarketAdminIndex() {
         {moderationTab === "sellers" ? (
           sellers.length ? sellers.map((seller: any) => {
           const active = seller.active !== false;
+          const featuredUntilMs = seller.featured_until ? new Date(String(seller.featured_until)).getTime() : null;
+          const marketFeatured = seller.featured_enabled === true && (!featuredUntilMs || featuredUntilMs >= Date.now());
+          const marketFeatureExpired = seller.featured_enabled === true && !!featuredUntilMs && featuredUntilMs < Date.now();
+          const featureDraft = marketStoreFeatureDraft(seller);
           return (
             <RecordCard key={seller.user_id}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -2271,7 +2329,11 @@ export default function MarketAdminIndex() {
                   </Pressable>
                   <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>{seller.profile?.email ?? shortId(seller.user_id)}</Text>
                 </View>
-                <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <Pill label={active ? "ACTIVE" : "PAUSED"} color={active ? SUCCESS : DANGER} />
+                  {marketFeatured ? <Pill label="MARKET FEATURED" color={WARNING} /> : null}
+                  {marketFeatureExpired ? <Pill label="FEATURE EXPIRED" color={DANGER} /> : null}
+                </View>
               </View>
 
               <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
@@ -2280,6 +2342,86 @@ export default function MarketAdminIndex() {
                 <InfoLine label="Risk" value={String(seller.risk_score ?? 0)} />
                 <InfoLine label="Verified" value={seller.is_verified ? "Yes" : "No"} />
                 <InfoLine label="Payout" value={seller.payout_tier ?? "standard"} />
+                <InfoLine
+                  label="Home feature"
+                  value={
+                    seller.featured_enabled
+                      ? `${marketFeatureExpired ? "Expired" : "On"} - ${seller.featured_until ? formatDate(seller.featured_until) : "No expiry"}`
+                      : "Off"
+                  }
+                />
+                <InfoLine label="Listing limit" value={String(seller.featured_listing_limit ?? 12)} />
+              </View>
+
+              <View
+                style={{
+                  marginTop: 14,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: "rgba(245,158,11,0.22)",
+                  backgroundColor: "rgba(245,158,11,0.07)",
+                  padding: 12,
+                  gap: 10,
+                }}
+              >
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <View style={{ flex: 1, minWidth: 220 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Market home feature</Text>
+                    <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                      Featured stores feed listings into Market Home. The Featured Stores filter still opens store profiles.
+                    </Text>
+                  </View>
+                  <Pill label={marketFeatured ? "VISIBLE ON HOME" : marketFeatureExpired ? "EXPIRED" : "NOT FEATURED"} color={marketFeatured ? SUCCESS : marketFeatureExpired ? DANGER : MUTED} />
+                </View>
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 180 }}>
+                    <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase", marginBottom: 6 }}>
+                      Listing limit
+                    </Text>
+                    <AdminTextInput
+                      value={featureDraft.limit}
+                      onChangeText={(value) => updateMarketStoreFeatureDraft(seller.user_id, { limit: value.replace(/[^\d]/g, "").slice(0, 3), until: featureDraft.until })}
+                      placeholder="12"
+                      autoCapitalize="none"
+                      editable={canFeatureMarketStores}
+                    />
+                  </View>
+                  <View style={{ flex: 2, minWidth: 260 }}>
+                    <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase", marginBottom: 6 }}>
+                      Expiry date
+                    </Text>
+                    <AdminTextInput
+                      value={featureDraft.until}
+                      onChangeText={(value) => updateMarketStoreFeatureDraft(seller.user_id, { until: value, limit: featureDraft.limit })}
+                      placeholder="Optional ISO date, for example 2026-06-01T12:00:00Z"
+                      autoCapitalize="none"
+                      editable={canFeatureMarketStores}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <ActionButton icon="time-outline" label="7 days" color={ACCENT} disabled={!canFeatureMarketStores} onPress={() => setMarketFeatureExpiry(seller.user_id, 7, featureDraft.limit)} />
+                  <ActionButton icon="calendar-outline" label="30 days" color={ACCENT} disabled={!canFeatureMarketStores} onPress={() => setMarketFeatureExpiry(seller.user_id, 30, featureDraft.limit)} />
+                  <ActionButton icon="infinite-outline" label="No expiry" color={ACCENT} disabled={!canFeatureMarketStores} onPress={() => setMarketFeatureExpiry(seller.user_id, null, featureDraft.limit)} />
+                  <ActionButton
+                    icon="sparkles-outline"
+                    label="Save home feature"
+                    color={SUCCESS}
+                    disabled={!canFeatureMarketStores}
+                    loading={workingKey === `market-store-feature-${seller.user_id}-on`}
+                    onPress={() => void saveMarketStoreFeature(seller, true)}
+                  />
+                  <ActionButton
+                    icon="remove-circle-outline"
+                    label="Remove from home"
+                    color={DANGER}
+                    disabled={!canFeatureMarketStores || !seller.featured_enabled}
+                    loading={workingKey === `market-store-feature-${seller.user_id}-off`}
+                    onPress={() => void saveMarketStoreFeature(seller, false)}
+                  />
+                </View>
               </View>
 
               <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
@@ -2298,14 +2440,14 @@ export default function MarketAdminIndex() {
                 />
                 <ActionButton
                   icon="megaphone-outline"
-                  label="Feature store"
+                  label="Use in rewards"
                   color={SUCCESS}
                   disabled={!canFeaturePromotions}
                   onPress={() => useStoreForRewardFeature(seller)}
                 />
                 <ActionButton
                   icon="flash-outline"
-                  label="Feature now"
+                  label="Reward feature now"
                   color={SUCCESS}
                   disabled={!canFeaturePromotions}
                   loading={workingKey === `reward-feature-store-${seller.user_id}`}

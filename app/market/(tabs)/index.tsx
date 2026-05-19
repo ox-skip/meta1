@@ -93,6 +93,7 @@ type SellerCard = {
   logo_path: string | null;
   featured_enabled?: boolean | null;
   featured_until?: string | null;
+  featured_listing_limit?: number | null;
 };
 
 function listingAvailability(row: ListingRow) {
@@ -791,11 +792,17 @@ export default function MarketHome() {
 
   async function loadDirectory() {
     const nowIso = new Date().toISOString();
-    const selectCols = "user_id,market_username,display_name,business_name,bio,is_verified,logo_path,featured_enabled,featured_until,active";
+    const selectCols =
+      "user_id,market_username,display_name,business_name,bio,is_verified,logo_path,featured_enabled,featured_until,featured_listing_limit,active";
+    const legacySelectCols =
+      "user_id,market_username,display_name,business_name,bio,is_verified,logo_path,featured_enabled,featured_until,active";
 
     const fetchRows = async (table: string) => {
       const res = await supabase.from(table).select(selectCols).order("updated_at", { ascending: false }).limit(400);
-      return (res.data ?? []) as SellerCard[];
+      if (!res.error) return (res.data ?? []) as SellerCard[];
+
+      const fallback = await supabase.from(table).select(legacySelectCols).order("updated_at", { ascending: false }).limit(400);
+      return (fallback.data ?? []) as SellerCard[];
     };
 
     let rows = await fetchRows("market_seller_public_profiles");
@@ -805,8 +812,9 @@ export default function MarketHome() {
       if (r?.active === false) return false;
       if (!r?.featured_enabled) return false;
       if (!r?.featured_until) return true;
-      const until = new Date(String(r.featured_until)).toISOString();
-      return until >= nowIso;
+      const untilMs = new Date(String(r.featured_until)).getTime();
+      if (!Number.isFinite(untilMs)) return false;
+      return new Date(untilMs).toISOString() >= nowIso;
     });
     const verified = rows.filter((r: any) => r?.active !== false && !!r?.is_verified);
 
@@ -856,6 +864,13 @@ export default function MarketHome() {
     }
 
     const sellerRank = new Map(sellerIds.map((id, index) => [id, index]));
+    const sellerLimits = new Map(
+      sellers.map((seller) => [
+        seller.user_id,
+        Math.min(100, Math.max(1, Math.trunc(Number(seller.featured_listing_limit ?? 12) || 12))),
+      ]),
+    );
+    const perSellerCounts = new Map<string, number>();
     const visible = nextRows
       .filter((row) => !listingIsExpired(row))
       .sort((a, b) => {
@@ -863,6 +878,13 @@ export default function MarketHome() {
         const rankB = sellerRank.get(b.seller_id) ?? 9999;
         if (rankA !== rankB) return rankA - rankB;
         return new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime();
+      })
+      .filter((row) => {
+        const current = perSellerCounts.get(row.seller_id) ?? 0;
+        const limit = sellerLimits.get(row.seller_id) ?? 12;
+        if (current >= limit) return false;
+        perSellerCounts.set(row.seller_id, current + 1);
+        return true;
       });
 
     setFeaturedListings(visible.slice(0, 12));
