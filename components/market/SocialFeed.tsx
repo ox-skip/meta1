@@ -285,9 +285,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const isDesktop = width >= 1024;
   const isWide = width >= 760;
   const showDesktopRail = isContained && isDesktop && !profileUserId;
-  const feedMaxWidth = profileUserId ? 720 : 700;
-  const shellMaxWidth = showDesktopRail ? 1080 : feedMaxWidth;
-  const sideRailWidth = 320;
+  const feedMaxWidth = profileUserId ? 720 : showDesktopRail ? 820 : 700;
+  const shellMaxWidth = showDesktopRail ? 1200 : feedMaxWidth;
+  const sideRailWidth = 300;
   const cardRadius = isWide ? 24 : 20;
   const contentGutter = isContained ? (isDesktop ? 18 : 12) : 0;
   const postGap = isContained ? 14 : 12;
@@ -1241,6 +1241,57 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   function renderContainedHeader() {
+    if (showDesktopRail) {
+      return (
+        <View style={{ paddingTop: 14, paddingBottom: 2 }}>
+          <LinearGradient
+            colors={["rgba(45,212,191,0.13)", "rgba(244,183,93,0.055)", "rgba(13,18,15,0.96)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              ...feedColumnStyle,
+              borderRadius: cardRadius,
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.15)",
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              overflow: "hidden",
+              ...cardShadow,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(45,212,191,0.16)",
+                    borderWidth: 1,
+                    borderColor: "rgba(94,234,212,0.34)",
+                  }}
+                >
+                  <Ionicons name="newspaper-outline" size={17} color={TEAL} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                    {profileUserId ? "Seller channel" : "Market social"}
+                  </Text>
+                  <Text numberOfLines={1} style={{ marginTop: 3, color: TEXT, fontWeight: "900", fontSize: 20, letterSpacing: 0 }}>
+                    Social Feed
+                  </Text>
+                </View>
+              </View>
+              <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
+            </View>
+          </LinearGradient>
+          {renderComposer()}
+        </View>
+      );
+    }
+
     return (
       <View style={{ paddingTop: 14, paddingBottom: 2 }}>
         <LinearGradient
@@ -1622,14 +1673,21 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               paddingHorizontal: 18,
             }}
           >
-            <View style={{ flex: 1, minWidth: 0, maxWidth: feedMaxWidth }}>{list}</View>
+            <View style={{ flex: 1.8, flexBasis: 0, minWidth: 0, maxWidth: feedMaxWidth }}>{list}</View>
             <ScrollView
-              style={{ width: sideRailWidth }}
+              style={{
+                width: sideRailWidth,
+                maxWidth: sideRailWidth,
+                flexBasis: sideRailWidth,
+                flexGrow: 0,
+                flexShrink: 0,
+                alignSelf: "stretch",
+              }}
               contentContainerStyle={{
                 paddingTop: 14,
-                paddingBottom: 24,
+                paddingBottom: Math.max(32, insets.bottom + 24),
               }}
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator
             >
               {renderDesktopRail()}
             </ScrollView>
