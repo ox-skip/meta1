@@ -505,7 +505,7 @@ export default function UnifiedWalletPanel({
       </View>
 
       <View style={styles.footerActions}>
-        {onOpenNgnWallet ? (
+        {wallet.isNigeria && onOpenNgnWallet ? (
           <Pressable onPress={onOpenNgnWallet} style={styles.footerButton}>
             <Ionicons name="cash-outline" size={15} color={TEXT} />
             <Text style={styles.footerButtonText}>NGN</Text>

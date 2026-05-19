@@ -30,7 +30,7 @@ export default function MarketWallet() {
           <AppHeader title="Wallet" subtitle="Dapp wallet, stable balances, and market portfolio" />
           <UnifiedWalletPanel
             wallet={wallet}
-            onOpenNgnWallet={() => router.push("/fintech/(tabs)/wallet?action=fund" as any)}
+            onOpenNgnWallet={wallet.isNigeria ? () => router.push("/fintech/(tabs)/wallet?action=fund" as any) : undefined}
             onOpenHistory={() => router.push("/market/history" as any)}
           />
         </View>

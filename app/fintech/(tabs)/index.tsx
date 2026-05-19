@@ -36,13 +36,13 @@ const ROUTES = {
 type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
 
 const THEME = {
-  PURPLE: "#7C3AED",
-  BG0: "#05040B",
-  BG1: "#0A0620",
-  WHITE: "#FFFFFF",
-  MUTED: "rgba(255,255,255,0.65)",
-  CARD: "rgba(255,255,255,0.05)",
-  CARD_BORDER: "rgba(255,255,255,0.08)",
+  PRIMARY: "#2DD4BF",
+  BG0: "#090D0B",
+  BG1: "#07141A",
+  WHITE: "#FFFDF7",
+  MUTED: "rgba(255,253,247,0.68)",
+  CARD: "rgba(255,253,247,0.055)",
+  CARD_BORDER: "rgba(255,253,247,0.1)",
 };
 
 function go(to: RoutePath) {
@@ -132,7 +132,7 @@ const PressableCard = memo(function PressableCard({
 
 const TxBadge = memo(function TxBadge({ type }: { type: string }) {
   const map: Record<string, { label: string; bg: string; fg: string }> = {
-    deposit: { label: "Deposit", bg: "rgba(124,58,237,0.18)", fg: THEME.PURPLE },
+    deposit: { label: "Deposit", bg: "rgba(45,212,191,0.18)", fg: THEME.PRIMARY },
     withdrawal: { label: "Withdraw", bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB" },
     transfer_in: { label: "Received", bg: "rgba(16,185,129,0.12)", fg: "#10B981" },
     transfer_out: { label: "Sent", bg: "rgba(239,68,68,0.12)", fg: "#EF4444" },
@@ -566,8 +566,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.40)",
-    backgroundColor: "rgba(124,58,237,0.12)",
+    borderColor: "rgba(45,212,191,0.40)",
+    backgroundColor: "rgba(45,212,191,0.12)",
   },
   walletLabel: { color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 },
   walletBalance: { color: "#fff", fontWeight: "900", fontSize: 30, marginTop: 8 },
@@ -588,9 +588,9 @@ const styles = StyleSheet.create({
     height: 46,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: THEME.PURPLE,
+    backgroundColor: THEME.PRIMARY,
     borderWidth: 1,
-    borderColor: THEME.PURPLE,
+    borderColor: THEME.PRIMARY,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryBtn: { backgroundColor: THEME.PURPLE, borderColor: THEME.PURPLE },
+  primaryBtn: { backgroundColor: THEME.PRIMARY, borderColor: THEME.PRIMARY },
   actionText: { color: "#fff", fontWeight: "900", marginLeft: 8 },
 
   securityCard: {
@@ -627,9 +627,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "rgba(124,58,237,0.25)",
+    backgroundColor: "rgba(45,212,191,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.35)",
+    borderColor: "rgba(45,212,191,0.32)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -649,7 +649,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: "#fff", fontWeight: "900", fontSize: 16 },
   sectionHint: { color: "rgba(255,255,255,0.55)", marginTop: 4, fontSize: 12 },
   linkBtn: { paddingVertical: 6, paddingHorizontal: 6, borderRadius: 10 },
-  link: { color: "#C4B5FD", fontWeight: "900" },
+  link: { color: "#67E8F9", fontWeight: "900" },
 
   bigRow: { flexDirection: "row" },
   bigCard: {
@@ -665,9 +665,9 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 18,
-    backgroundColor: "rgba(124,58,237,0.25)",
+    backgroundColor: "rgba(45,212,191,0.18)",
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.35)",
+    borderColor: "rgba(45,212,191,0.32)",
     alignItems: "center",
     justifyContent: "center",
   },

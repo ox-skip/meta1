@@ -29,10 +29,10 @@ export default function WalletHeader({ balance, onRefresh, onOpenProfile, refres
 
         <View style={styles.topActions}>
           <Pressable style={styles.smallBtn} onPress={onRefresh}>
-            {refreshing ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="refresh" size={18} color="#fff" />}
+            {refreshing ? <ActivityIndicator color={T.primary} size="small" /> : <Ionicons name="refresh" size={18} color={T.text} />}
           </Pressable>
           <Pressable style={styles.smallBtn} onPress={onOpenProfile}>
-            <Ionicons name="menu" size={18} color="#fff" />
+            <Ionicons name="person-circle-outline" size={18} color={T.text} />
           </Pressable>
         </View>
       </View>
@@ -40,7 +40,8 @@ export default function WalletHeader({ balance, onRefresh, onOpenProfile, refres
       <View style={styles.card}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>NGN WALLET</Text>
+            <Ionicons name="cash-outline" size={12} color={T.primary} />
+            <Text style={styles.badgeText}>Nigeria rail</Text>
           </View>
           <BalanceVisibilityToggle
             hidden={balancesHidden}
@@ -66,7 +67,7 @@ const styles = StyleSheet.create({
   smallBtn: {
     width: 42,
     height: 42,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: T.card,
     borderWidth: 1,
     borderColor: T.border,
@@ -75,7 +76,7 @@ const styles = StyleSheet.create({
   },
   card: {
     marginTop: 12,
-    borderRadius: 22,
+    borderRadius: 8,
     padding: 16,
     backgroundColor: T.card,
     borderWidth: 1,
@@ -83,14 +84,17 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: T.primarySoft,
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.45)",
+    borderColor: "rgba(45,212,191,0.35)",
   },
-  badgeText: { color: "#DDD6FE", fontSize: 10, fontWeight: "900" },
+  badgeText: { color: T.primary, fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
   label: { color: T.textMuted, marginTop: 10, fontWeight: "700" },
   balance: { color: T.text, marginTop: 8, fontSize: 30, fontWeight: "900" },
   foot: { color: T.textDim, marginTop: 6, fontSize: 12 },

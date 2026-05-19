@@ -11,9 +11,9 @@ import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 
-const PURPLE = "#7C3AED";
-const BG0 = "#05040B";
-const BG1 = "#0A0620";
+const PRIMARY = "#2DD4BF";
+const BG0 = "#090D0B";
+const BG1 = "#07141A";
 
 type VA = { account_number: string; bank_name: string; account_name: string } | null;
 
@@ -28,7 +28,7 @@ export default function ProfileRoute() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [publicName, setPublicName] = useState("");
-  const [userCountry, setUserCountry] = useState<UserCountry | undefined>(undefined);
+  const [userCountry, setUserCountry] = useState<UserCountry | null | undefined>(undefined);
   const isNigeria = isNigeriaCountry(userCountry?.code || userCountry?.name);
 
   useEffect(() => {
@@ -319,10 +319,10 @@ const styles = StyleSheet.create({
 
   card: {
     marginTop: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,253,247,0.055)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: 22,
+    borderColor: "rgba(255,253,247,0.1)",
+    borderRadius: 8,
     padding: 16,
   },
   name: { color: "#fff", fontWeight: "900", fontSize: 18 },
@@ -331,13 +331,13 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginVertical: 12 },
   label: { color: "rgba(255,255,255,0.7)", fontWeight: "800", marginTop: 12, marginBottom: 6, fontSize: 12 },
   input: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 14,
+    backgroundColor: "rgba(255,253,247,0.055)",
+    borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 14,
     color: "#fff",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,253,247,0.12)",
   },
   avatarRow: {
     marginTop: 10,
@@ -349,34 +349,34 @@ const styles = StyleSheet.create({
   avatarWrap: {
     width: 64,
     height: 64,
-    borderRadius: 20,
+    borderRadius: 8,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(45,212,191,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(45,212,191,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
   saveBtn: {
     marginTop: 12,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 8,
     alignItems: "center",
-    backgroundColor: "rgba(124,58,237,0.85)",
+    backgroundColor: PRIMARY,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
   },
-  saveText: { color: "#fff", fontWeight: "900" },
+  saveText: { color: "#061311", fontWeight: "900" },
   hint: { marginTop: 8, color: "rgba(255,255,255,0.55)", fontSize: 12 },
 
   row: {
     height: 52,
-    borderRadius: 18,
+    borderRadius: 8,
     paddingHorizontal: 14,
     marginTop: 10,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,253,247,0.055)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,253,247,0.1)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -386,10 +386,10 @@ const styles = StyleSheet.create({
   dangerBtn: {
     marginTop: 16,
     height: 52,
-    borderRadius: 18,
-    backgroundColor: "rgba(124,58,237,0.18)",
+    borderRadius: 8,
+    backgroundColor: "rgba(45,212,191,0.13)",
     borderWidth: 1,
-    borderColor: "rgba(124,58,237,0.35)",
+    borderColor: "rgba(45,212,191,0.34)",
     alignItems: "center",
     justifyContent: "center",
   },

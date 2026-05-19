@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +23,7 @@ export default function TabLayout() {
   const tint = Colors[scheme ?? "dark"].tint;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [userCountry, setUserCountry] = useState<UserCountry | undefined>(undefined);
+  const [userCountry, setUserCountry] = useState<UserCountry | null | undefined>(undefined);
   const isNigeria = isNigeriaCountry(userCountry?.code || userCountry?.name);
   const isWebDesktop = Platform.OS === "web" && width >= 980;
 
@@ -51,6 +51,7 @@ export default function TabLayout() {
   }, []);
 
   if (userCountry === undefined) return null;
+  if (!isNigeria) return <Redirect href="/market/wallet" />;
 
   return (
     <Tabs
@@ -69,7 +70,7 @@ export default function TabLayout() {
               <View
                 style={[
                   StyleSheet.absoluteFill,
-                  { backgroundColor: "rgba(5,8,20,0.98)" },
+                { backgroundColor: "rgba(7,16,13,0.98)" },
                 ]}
               />
             );
@@ -98,7 +99,7 @@ export default function TabLayout() {
               height: TABBAR_HEIGHT,
               paddingBottom: 8,
               paddingTop: 8,
-              backgroundColor: "rgba(5,8,20,0.98)",
+              backgroundColor: "rgba(7,16,13,0.98)",
               borderTopWidth: 0,
               borderBottomWidth: 1,
               borderBottomColor: "rgba(255,255,255,0.1)",
@@ -112,7 +113,7 @@ export default function TabLayout() {
                 height: TABBAR_HEIGHT + bottomPad,
                 paddingBottom: bottomPad,
                 backgroundColor:
-                  Platform.OS === "android" ? "#050814" : "transparent",
+                  Platform.OS === "android" ? "#07100D" : "transparent",
               },
             ],
         tabBarLabelStyle: styles.label,
