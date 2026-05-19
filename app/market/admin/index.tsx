@@ -55,7 +55,7 @@ const DANGER = "#F87171";
 type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "rewards" | "admins";
 type ModerationTab = "sellers" | "listings";
 type EscrowTab = "orders" | "stocks" | "chains" | "audit";
-type AdminTab = "members" | "roles" | "invite";
+type AdminTab = "members" | "roles" | "invite" | "system";
 type RewardAdminTab = "tasks" | "promotions" | "referrals" | "reviews" | "accounts" | "ledger" | "build";
 type SupportStatusTab = "fresh" | "in_progress" | "resolved" | "closed" | "all";
 type SupportPickedFile = SupportLocalFile & { id: string };
@@ -690,6 +690,13 @@ export default function MarketAdminIndex() {
   const [adminDisplayName, setAdminDisplayName] = useState("");
   const [adminRoleKey, setAdminRoleKey] = useState("support_admin");
   const [adminPassword, setAdminPassword] = useState("");
+  const [systemMaintenanceEnabled, setSystemMaintenanceEnabled] = useState(false);
+  const [systemMaintenanceMessage, setSystemMaintenanceMessage] = useState("BestCity Market is receiving a scheduled upgrade. Please check back soon.");
+  const [systemMaintenanceEta, setSystemMaintenanceEta] = useState("");
+  const [systemForceUpdate, setSystemForceUpdate] = useState(false);
+  const [systemMinVersion, setSystemMinVersion] = useState("0.0.0");
+  const [systemUpdateMessage, setSystemUpdateMessage] = useState("A newer BestCity app version is required to continue.");
+  const [systemApkUrl, setSystemApkUrl] = useState("");
   const [moduleSearch, setModuleSearch] = useState<Record<ModuleKey, string>>({
     support: "",
     moderation: "",
@@ -878,6 +885,18 @@ export default function MarketAdminIndex() {
     setRewardReferralShareBaseUrl(String(config.share_base_url || "https://bestcity-amber.vercel.app/register"));
   }, [workspace?.generated_at]);
 
+  useEffect(() => {
+    const control = workspace?.modules.admins?.system_control;
+    if (!control) return;
+    setSystemMaintenanceEnabled(control.maintenance_enabled === true);
+    setSystemMaintenanceMessage(String(control.maintenance_message || "BestCity Market is receiving a scheduled upgrade. Please check back soon."));
+    setSystemMaintenanceEta(String(control.maintenance_eta || ""));
+    setSystemForceUpdate(control.force_update === true);
+    setSystemMinVersion(String(control.min_version || "0.0.0"));
+    setSystemUpdateMessage(String(control.update_message || "A newer BestCity app version is required to continue."));
+    setSystemApkUrl(String(control.apk_url || ""));
+  }, [workspace?.generated_at]);
+
   function setCurrentModuleSearch(value: string) {
     setModuleSearch((prev) => ({ ...prev, [currentModule]: value }));
   }
@@ -919,7 +938,7 @@ export default function MarketAdminIndex() {
           (modules?.rewards?.accounts?.length ?? 0)
         );
       case "admins":
-        return (modules?.admins?.users?.length ?? 0) + (modules?.admins?.roles?.length ?? 0);
+        return (modules?.admins?.users?.length ?? 0) + (modules?.admins?.roles?.length ?? 0) + (modules?.admins?.system_control ? 1 : 0);
       default:
         return 0;
     }
@@ -4076,6 +4095,8 @@ export default function MarketAdminIndex() {
     const adminData = workspace?.modules.admins;
     const allAdminUsers = adminData?.users ?? [];
     const allRoles = adminData?.roles ?? [];
+    const systemControl = adminData?.system_control;
+    const isSuperAdmin = overview?.admin.role_key === "super_admin";
     const adminUsers = allAdminUsers.filter((adminUser: any) => matchesSearch(currentModuleSearch, [
       adminUser.user_id,
       adminUser.role_key,
@@ -4127,6 +4148,23 @@ export default function MarketAdminIndex() {
       setAdminTab("invite");
     }
 
+    async function submitSystemControl(nextMaintenanceEnabled = systemMaintenanceEnabled) {
+      await performAction(
+        `system-control-${nextMaintenanceEnabled ? "pause" : "resume"}`,
+        {
+          action: "set_app_system_control",
+          maintenance_enabled: nextMaintenanceEnabled,
+          maintenance_message: systemMaintenanceMessage,
+          maintenance_eta: systemMaintenanceEta,
+          force_update: systemForceUpdate,
+          min_version: systemMinVersion,
+          update_message: systemUpdateMessage,
+          apk_url: systemApkUrl,
+        },
+        true,
+      );
+    }
+
     return (
       <View style={{ marginTop: 18, gap: 14 }}>
         <SectionHeader
@@ -4148,10 +4186,125 @@ export default function MarketAdminIndex() {
                 { key: "members", label: "Members", count: adminUsers.length },
                 { key: "roles", label: "Roles", count: roles.length },
                 { key: "invite", label: "Add or edit" },
+                ...(isSuperAdmin ? [{ key: "system" as const, label: "System" }] : []),
               ]}
             />
           </View>
         </SectionHeader>
+
+        {adminTab === "system" && isSuperAdmin ? (
+          <View style={{ borderRadius: 8, padding: 16, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: systemMaintenanceEnabled ? "rgba(248,113,113,0.42)" : BORDER, gap: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <View style={{ flex: 1, minWidth: 240 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Project pause control</Text>
+                <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
+                  Super admin only. When paused, normal user routes show the maintenance screen while auth and admin access remain available.
+                </Text>
+              </View>
+              <Pill label={systemMaintenanceEnabled ? "MAINTENANCE ACTIVE" : "LIVE"} color={systemMaintenanceEnabled ? DANGER : SUCCESS} />
+            </View>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <Pressable
+                onPress={() => setSystemMaintenanceEnabled((value) => !value)}
+                style={{
+                  flex: 1,
+                  minWidth: 220,
+                  borderRadius: 8,
+                  padding: 13,
+                  backgroundColor: systemMaintenanceEnabled ? "rgba(248,113,113,0.13)" : "rgba(74,222,128,0.10)",
+                  borderWidth: 1,
+                  borderColor: systemMaintenanceEnabled ? "rgba(248,113,113,0.34)" : "rgba(74,222,128,0.28)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Ionicons name={systemMaintenanceEnabled ? "pause-circle" : "play-circle"} size={20} color={systemMaintenanceEnabled ? DANGER : SUCCESS} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>{systemMaintenanceEnabled ? "Project is paused" : "Project is live"}</Text>
+                  <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>{systemMaintenanceEnabled ? "Users see maintenance messaging." : "Users can access the app normally."}</Text>
+                </View>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setSystemForceUpdate((value) => !value)}
+                style={{
+                  flex: 1,
+                  minWidth: 220,
+                  borderRadius: 8,
+                  padding: 13,
+                  backgroundColor: systemForceUpdate ? "rgba(245,158,11,0.14)" : "rgba(255,255,255,0.045)",
+                  borderWidth: 1,
+                  borderColor: systemForceUpdate ? "rgba(245,158,11,0.36)" : BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Ionicons name={systemForceUpdate ? "cloud-download" : "cloud-download-outline"} size={20} color={systemForceUpdate ? WARNING : FAINT} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>{systemForceUpdate ? "Force update enabled" : "Force update off"}</Text>
+                  <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>Optional version gate for production releases.</Text>
+                </View>
+              </Pressable>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Maintenance message</Text>
+              <AdminTextInput value={systemMaintenanceMessage} onChangeText={setSystemMaintenanceMessage} placeholder="Message shown to users during maintenance" multiline />
+            </View>
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <View style={{ flex: 1, minWidth: 220, gap: 8 }}>
+                <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Estimated return</Text>
+                <AdminTextInput value={systemMaintenanceEta} onChangeText={setSystemMaintenanceEta} placeholder="Optional, for example Today 8 PM WAT" />
+              </View>
+              <View style={{ flex: 1, minWidth: 220, gap: 8 }}>
+                <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Minimum app version</Text>
+                <AdminTextInput value={systemMinVersion} onChangeText={setSystemMinVersion} placeholder="0.0.0" autoCapitalize="none" />
+              </View>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Update message</Text>
+              <AdminTextInput value={systemUpdateMessage} onChangeText={setSystemUpdateMessage} placeholder="Message shown when an update is required" multiline />
+            </View>
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Update URL</Text>
+              <AdminTextInput value={systemApkUrl} onChangeText={setSystemApkUrl} placeholder="https://bestcity.app/download" autoCapitalize="none" />
+            </View>
+
+            {systemControl ? (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                <InfoLine label="Last updated" value={formatDate(systemControl.updated_at)} />
+                <InfoLine label="Created" value={formatDate(systemControl.created_at)} />
+              </View>
+            ) : null}
+
+            {renderActionNote()}
+
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <ActionButton
+                icon={systemMaintenanceEnabled ? "play-outline" : "pause-outline"}
+                label={systemMaintenanceEnabled ? "Resume project" : "Pause project"}
+                color={systemMaintenanceEnabled ? SUCCESS : DANGER}
+                loading={String(workingKey ?? "").startsWith("system-control-")}
+                onPress={() => {
+                  const nextEnabled = !systemMaintenanceEnabled;
+                  void submitSystemControl(nextEnabled);
+                }}
+              />
+              <ActionButton
+                icon="save-outline"
+                label="Save system settings"
+                color={ACCENT}
+                loading={String(workingKey ?? "").startsWith("system-control-")}
+                onPress={() => void submitSystemControl(systemMaintenanceEnabled)}
+              />
+            </View>
+          </View>
+        ) : null}
 
         {adminTab === "invite" ? (
           <View style={{ borderRadius: 8, padding: 16, backgroundColor: PANEL_ALT, borderWidth: 1, borderColor: BORDER, gap: 12 }}>

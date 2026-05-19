@@ -4,6 +4,8 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import MarketDesktopSidebar from "@/components/market/MarketDesktopSidebar";
+
 const SURFACE = "#090D0B";
 const ACCENT = "#2DD4BF";
 const GOLD = "#F4B75D";
@@ -80,74 +82,75 @@ export default function MarketTabsLayout() {
   const bottomPad = isWebDesktop ? 0 : Math.max(insets.bottom, 10);
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: true,
-        tabBarHideOnKeyboard: true,
-        tabBarPosition: "bottom",
-        tabBarBackground: () => {
-          if (Platform.OS === "ios" && BlurViewComp) {
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: true,
+          tabBarHideOnKeyboard: true,
+          tabBarPosition: "bottom",
+          tabBarBackground: () => {
+            if (Platform.OS === "ios" && BlurViewComp) {
+              return (
+                <BlurViewComp
+                  intensity={72}
+                  tint="dark"
+                  style={[StyleSheet.absoluteFill, styles.mobileBarBackground]}
+                />
+              );
+            }
+
             return (
-              <BlurViewComp
-                intensity={72}
-                tint="dark"
-                style={[StyleSheet.absoluteFill, styles.mobileBarBackground]}
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.mobileBarBackground,
+                  { backgroundColor: SURFACE },
+                ]}
               />
             );
-          }
-
-          return (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                styles.mobileBarBackground,
-                { backgroundColor: SURFACE },
-              ]}
-            />
-          );
-        },
-        tabBarStyle: isWebDesktop
-          ? {
-              display: "none",
-              height: 0,
-              width: 0,
-            }
-          : [
-              styles.mobileBar,
-              {
-                height: 78 + bottomPad,
+          },
+          tabBarStyle: isWebDesktop
+            ? {
+                display: "none",
+                height: 0,
+                width: 0,
+              }
+            : [
+                styles.mobileBar,
+                {
+                  height: 78 + bottomPad,
+                  paddingTop: 6,
+                  paddingBottom: bottomPad + 4,
+                  backgroundColor: Platform.OS === "android" ? SURFACE : "transparent",
+                },
+              ],
+          tabBarActiveTintColor: ACCENT,
+          tabBarInactiveTintColor: MUTED,
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: "800" as any,
+            marginTop: isWebDesktop ? 4 : 2,
+          },
+          tabBarItemStyle: isWebDesktop
+            ? {
+                borderRadius: 18,
+                marginVertical: 4,
+                marginHorizontal: 2,
+              }
+            : {
+                borderRadius: 18,
+                marginHorizontal: 2,
                 paddingTop: 6,
-                paddingBottom: bottomPad + 4,
-                backgroundColor: Platform.OS === "android" ? SURFACE : "transparent",
               },
-            ],
-        tabBarActiveTintColor: ACCENT,
-        tabBarInactiveTintColor: MUTED,
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "800" as any,
-          marginTop: isWebDesktop ? 4 : 2,
-        },
-        tabBarItemStyle: isWebDesktop
-          ? {
-              borderRadius: 18,
-              marginVertical: 4,
-              marginHorizontal: 2,
-            }
-          : {
-              borderRadius: 18,
-              marginHorizontal: 2,
-              paddingTop: 6,
-            },
-        sceneStyle: isWebDesktop
-          ? {
-              width: "100%",
-              paddingBottom: 0,
-            }
-          : undefined,
-      }}
-    >
+          sceneStyle: isWebDesktop
+            ? {
+                width: "100%",
+                paddingBottom: 0,
+              }
+            : undefined,
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -221,7 +224,9 @@ export default function MarketTabsLayout() {
           ),
         }}
       />
-    </Tabs>
+      </Tabs>
+      <MarketDesktopSidebar />
+    </View>
   );
 }
 

@@ -1851,10 +1851,10 @@ export default function SellTab() {
 
           {category === "service" && deliveryType === "digital" ? (
             <>
-              <Label>Portfolio / demo URL (optional)</Label>
+              <Label>Portfolio URL (optional)</Label>
               <Input value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="https://example.com" autoCapitalize="none" />
               <Text style={{ marginTop: 8, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                Optional public website, product demo, portfolio, or prototype link buyers can preview before purchase.
+                Optional public website, portfolio, or project link buyers can preview before purchase.
               </Text>
             </>
           ) : null}

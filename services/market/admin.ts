@@ -50,6 +50,7 @@ export type MarketAdminWorkspace = {
     admins?: {
       users: any[];
       roles: any[];
+      system_control?: any | null;
     };
     rewards?: {
       accounts: any[];

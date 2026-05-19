@@ -173,7 +173,7 @@ export default function Register() {
                 <Text style={styles.subtitle}>
                   {pendingEmail
                     ? "Confirm your signup before using your market account."
-                    : "Join the green market experience for buying, selling, and escrow."}
+                    : "Join Best City Market to buy, sell, and complete escrow-protected deals."}
                 </Text>
               </View>
             </View>

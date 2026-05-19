@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
-import MarketMenuModal from "@/components/market/MarketMenuModal";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
@@ -715,7 +714,6 @@ export default function MarketHome() {
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
-  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Record<"featured" | "discovery" | "filters", boolean>>({
     featured: false,
     discovery: false,
@@ -2561,28 +2559,7 @@ export default function MarketHome() {
           title="Marketplace"
           subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
-          rightSlot={
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open marketplace menu"
-                onPress={() => setDesktopMenuOpen(true)}
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(45,212,191,0.13)",
-                  borderWidth: 1,
-                  borderColor: "rgba(45,212,191,0.3)",
-                }}
-              >
-                <Ionicons name="menu-outline" size={21} color={TEAL} />
-              </Pressable>
-              <NotificationBell />
-            </View>
-          }
+          rightSlot={<NotificationBell />}
           bordered={false}
           style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24), paddingBottom: 8 }}
         />
@@ -2644,14 +2621,6 @@ export default function MarketHome() {
   return (
     <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
-      <MarketMenuModal
-        visible={desktopMenuOpen}
-        onClose={() => setDesktopMenuOpen(false)}
-        onNavigate={(route) => {
-          setDesktopMenuOpen(false);
-          router.push(route as any);
-        }}
-      />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}

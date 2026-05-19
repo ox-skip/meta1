@@ -895,6 +895,53 @@ async function updateRewardReferralConfig(admin: any, ctx: AdminContext, body: a
   return ok({ ok: true, config: data });
 }
 
+async function setAppSystemControl(admin: any, ctx: AdminContext, body: any) {
+  if (ctx.roleKey !== "super_admin") return unauth();
+
+  const maintenanceEnabled = requireBoolean("maintenance_enabled", body.maintenance_enabled);
+  const forceUpdate = body.force_update === undefined ? false : requireBoolean("force_update", body.force_update);
+  const maintenanceMessage =
+    cleanText(body.maintenance_message, 600) ||
+    "BestCity Market is receiving a scheduled upgrade. Please check back soon.";
+  const updateMessage =
+    cleanText(body.update_message, 600) ||
+    "A newer BestCity app version is required to continue.";
+
+  const patch = {
+    id: true,
+    maintenance_enabled: maintenanceEnabled,
+    maintenance_message: maintenanceMessage,
+    maintenance_eta: cleanText(body.maintenance_eta, 140),
+    force_update: forceUpdate,
+    min_version: cleanText(body.min_version, 40) || "0.0.0",
+    update_message: updateMessage,
+    apk_url: cleanText(body.apk_url, 1000),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await admin
+    .from("app_system_control")
+    .upsert(patch, { onConflict: "id" })
+    .select("*")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: maintenanceEnabled ? "APP_MAINTENANCE_ENABLED" : "APP_MAINTENANCE_DISABLED",
+    entity_type: "app_system_control",
+    entity_id: "global",
+    payload: {
+      maintenance_enabled: maintenanceEnabled,
+      force_update: forceUpdate,
+      min_version: patch.min_version,
+      note: adminNote(body.note),
+    },
+  });
+
+  return ok({ ok: true, system_control: data });
+}
+
 async function reviewRewardCompletion(admin: any, ctx: AdminContext, body: any) {
   const blocked = requirePermission(ctx, "rewards.review");
   if (blocked) return blocked;
@@ -1019,6 +1066,7 @@ Deno.serve(async (req) => {
     if (action === "support_update_status") return await updateSupportTicketStatus(admin, ctx, body);
     if (action === "upsert_admin_user") return await upsertAdminUser(admin, ctx, body);
     if (action === "set_admin_active") return await setAdminUserActive(admin, ctx, body);
+    if (action === "set_app_system_control") return await setAppSystemControl(admin, ctx, body);
     if (action === "upsert_reward_task") return await upsertRewardTask(admin, ctx, body);
     if (action === "set_reward_task_active") return await setRewardTaskActive(admin, ctx, body);
     if (action === "upsert_reward_promotion") return await upsertRewardPromotion(admin, ctx, body);

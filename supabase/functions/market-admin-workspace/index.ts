@@ -390,8 +390,9 @@ async function loadEscrow(admin: any) {
   };
 }
 
-async function loadAdminMembers(admin: any) {
-  const [adminsRes, rolesRes] = await Promise.all([
+async function loadAdminMembers(admin: any, ctx: AdminContext) {
+  const includeSystemControl = ctx.roleKey === "super_admin";
+  const [adminsRes, rolesRes, systemControlRes] = await Promise.all([
     admin
       .from("market_admin_users")
       .select("user_id,role_key,is_active,display_name,notes,created_by,created_at,updated_at,last_login_at,last_password_change_at")
@@ -401,10 +402,18 @@ async function loadAdminMembers(admin: any) {
       .from("market_admin_roles")
       .select("key,name,description,permissions,rank,created_at,updated_at")
       .order("rank", { ascending: true }),
+    includeSystemControl
+      ? admin
+          .from("app_system_control")
+          .select("*")
+          .eq("id", true)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   if (adminsRes.error) throw adminsRes.error;
   if (rolesRes.error) throw rolesRes.error;
+  if (systemControlRes.error) throw systemControlRes.error;
 
   const profileIds = unique([
     ...(adminsRes.data ?? []).flatMap((row: any) => [row.user_id, row.created_by]),
@@ -418,6 +427,7 @@ async function loadAdminMembers(admin: any) {
       created_by_profile: profiles[String(adminUser.created_by)] ?? null,
     })),
     roles: rolesRes.data ?? [],
+    system_control: systemControlRes.data ?? null,
   };
 }
 
@@ -581,7 +591,7 @@ Deno.serve(async (req) => {
     }
 
     if (canAny(ctx, ["admin.members.manage", "admin.roles.read"])) {
-      modules.admins = await loadAdminMembers(admin);
+      modules.admins = await loadAdminMembers(admin, ctx);
     }
 
     if (canAny(ctx, ["rewards.read", "rewards.tasks.manage", "rewards.promotions.manage", "rewards.adjust", "rewards.review", "rewards.analytics"])) {

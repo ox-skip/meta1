@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 
-type MenuItem = {
+export type MarketMenuItem = {
   title: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -15,11 +15,11 @@ type MenuItem = {
   hideOutsideNigeria?: boolean;
 };
 
-type MenuSection = {
+export type MarketMenuSection = {
   key: string;
   title: string;
   accent: string;
-  items: MenuItem[];
+  items: MarketMenuItem[];
 };
 
 export type MarketMenuProfile = {
@@ -51,7 +51,7 @@ const AMBER = "#F4B75D";
 const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
 
-const MENU_SECTIONS: MenuSection[] = [
+export const MARKET_MENU_SECTIONS: MarketMenuSection[] = [
   {
     key: "markets",
     title: "Markets",
@@ -193,7 +193,7 @@ const QUICK_LINKS = [
   { label: "Support", icon: "help-buoy-outline" as const, route: "/market/support", color: ROSE },
 ];
 
-function MenuRow({ item, accent, onPress }: { item: MenuItem; accent: string; onPress: () => void }) {
+function MenuRow({ item, accent, onPress }: { item: MarketMenuItem; accent: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -277,7 +277,7 @@ function MenuSurface({ onClose, onNavigate, profile, presentation = "modal" }: O
   }, []);
 
   const sections = useMemo(() => {
-    return MENU_SECTIONS.map((section) => ({
+    return MARKET_MENU_SECTIONS.map((section) => ({
       ...section,
       items: section.items.filter((item) => !item.hideOutsideNigeria || isNigeria),
     })).filter((section) => section.items.length > 0);

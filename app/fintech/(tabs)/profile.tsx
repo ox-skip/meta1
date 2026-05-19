@@ -277,12 +277,12 @@ export default function ProfileRoute() {
         </Pressable>
 
         <Pressable style={styles.row} onPress={() => {}}>
-          <Text style={styles.rowText}>KYC verification (coming soon)</Text>
+          <Text style={styles.rowText}>Identity verification</Text>
           <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
         </Pressable>
 
         <Pressable style={styles.row} onPress={() => {}}>
-          <Text style={styles.rowText}>Support (coming soon)</Text>
+          <Text style={styles.rowText}>Help and support</Text>
           <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
         </Pressable>
       </View>

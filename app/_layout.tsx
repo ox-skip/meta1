@@ -181,11 +181,6 @@ export default function RootLayout() {
   const [hasInitialUrl, setHasInitialUrl] = useState(false);
   const [initialUrlChecked, setInitialUrlChecked] = useState(false);
 
-  const supabaseUrl = useMemo(
-    () => (supabase as any)?.supabaseUrl as string | undefined,
-    []
-  );
-
   const retryNonceRef = useRef(0);
   const authEventsReadyRef = useRef(false);
   const lastAuthAccessTokenRef = useRef<string | null>(null);
@@ -288,12 +283,6 @@ export default function RootLayout() {
   useEffect(() => {
     let mounted = true;
 
-    // Only block in production builds
-    if (__DEV__) {
-      setBooting(false);
-      return;
-    }
-
     (async () => {
       try {
         setBootError(null);
@@ -309,9 +298,12 @@ export default function RootLayout() {
 
         // If this fails, do NOT block the whole app
         if (error || !data) {
+          setSystemState(null);
           setBooting(false);
           return;
         }
+
+        setSystemState(null);
 
         if (data.maintenance_enabled) {
           setSystemState({
@@ -397,7 +389,7 @@ export default function RootLayout() {
     if (!(booting || loading)) return;
 
     const id = setTimeout(() => {
-      setBootError("Having trouble connecting. Please check your network and Supabase URL.");
+      setBootError("Having trouble connecting to BestCity services.");
       setBooting(false);
     }, 20000);
 
@@ -411,6 +403,10 @@ export default function RootLayout() {
   };
 
   /* ---------------- GLOBAL BLOCK ---------------- */
+  const isAdminRoute = routeSegments[0] === "market" && routeSegments[1] === "admin";
+  const isAuthRoute = routeSegments[0] === "(auth)";
+  const canBypassMaintenance = isAdminRoute || isAuthRoute;
+
   if ((booting || loading) && !bootError) {
     return <BrandBootLoader />;
   }
@@ -429,10 +425,7 @@ export default function RootLayout() {
       <View style={styles.blockContainer}>
         <Text style={styles.title}>Connection issue</Text>
         <Text style={styles.message}>{bootError}</Text>
-
-        {supabaseUrl ? (
-          <Text style={styles.subText}>Supabase URL: {supabaseUrl}</Text>
-        ) : null}
+        <Text style={styles.subText}>BestCity services could not be reached. Please try again.</Text>
 
         <Pressable style={styles.button} onPress={retryBoot}>
           <Text style={styles.buttonText}>Retry</Text>
@@ -441,10 +434,10 @@ export default function RootLayout() {
     );
   }
 
-  if (systemState?.type === "maintenance") {
+  if (systemState?.type === "maintenance" && !canBypassMaintenance) {
     return (
       <View style={styles.blockContainer}>
-        <Text style={styles.title}>Maintenance</Text>
+        <Text style={styles.title}>BestCity is upgrading</Text>
         <Text style={styles.message}>{systemState.message}</Text>
         {systemState.eta && (
           <Text style={styles.subText}>
