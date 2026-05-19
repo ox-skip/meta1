@@ -453,15 +453,49 @@ async function copyTextValue(label: string, value?: string | null) {
 function CopyableIdLine({ label, value }: { label: string; value?: string | null }) {
   const text = String(value ?? "").trim();
   return (
-    <View style={{ flex: 1, minWidth: 260 }}>
-      <Text style={{ color: FAINT, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>{label}</Text>
-      <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text selectable numberOfLines={2} style={{ flex: 1, color: TEXT, fontSize: 12, fontWeight: "800" }}>{text || "n/a"}</Text>
-        {text ? (
-          <Pressable onPress={() => void copyTextValue(label, text)} hitSlop={10} style={{ padding: 4 }}>
-            <Ionicons name="copy-outline" size={16} color={ACCENT} />
-          </Pressable>
-        ) : null}
+    <View style={{ flexGrow: 1, flexBasis: 260, minWidth: 230, maxWidth: "100%" }}>
+      <View
+        style={{
+          minHeight: 66,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: "rgba(245,158,11,0.18)",
+          backgroundColor: "rgba(255,255,255,0.045)",
+          paddingHorizontal: 10,
+          paddingVertical: 9,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <Text numberOfLines={1} style={{ flex: 1, color: FAINT, fontSize: 10, fontWeight: "900", textTransform: "uppercase" }}>{label}</Text>
+          {text ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Copy ${label}`}
+              onPress={() => void copyTextValue(label, text)}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: pressed ? "rgba(245,158,11,0.24)" : "rgba(245,158,11,0.13)",
+                borderWidth: 1,
+                borderColor: "rgba(245,158,11,0.30)",
+              })}
+            >
+              <Ionicons name="copy-outline" size={15} color={ACCENT} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Text
+          selectable
+          numberOfLines={1}
+          ellipsizeMode="middle"
+          style={{ marginTop: 6, color: TEXT, fontSize: 12, lineHeight: 16, fontWeight: "800", fontFamily: "monospace" }}
+        >
+          {text || "n/a"}
+        </Text>
       </View>
     </View>
   );
@@ -5421,7 +5455,7 @@ export default function MarketAdminIndex() {
           contentContainerStyle={{
             paddingTop: insets.top + (isDesktop ? 24 : 16),
             paddingHorizontal: isDesktop ? 24 : 14,
-            paddingBottom: insets.bottom + (isDesktop ? 44 : 112),
+            paddingBottom: insets.bottom + (isDesktop ? 132 : 112),
           }}
         >
           <View

@@ -793,7 +793,7 @@ export default function MarketHome() {
   const hasDesktopRail = Platform.OS === "web" && usableWidth >= MARKET_DESKTOP_BREAKPOINT;
   const reservedDesktopRailWidth = hasDesktopRail ? MARKET_DESKTOP_RAIL_WIDTH : 0;
   const layoutWidth = Math.max(320, usableWidth - reservedDesktopRailWidth);
-  const contentMaxWidth = isDesktop ? 1080 : width >= 1240 ? 1120 : undefined;
+  const contentMaxWidth = isDesktop ? 1240 : width >= 1240 ? 1120 : undefined;
   const contentOuterWidth = Math.min(contentMaxWidth ?? layoutWidth, layoutWidth);
   const contentInnerWidth = contentOuterWidth - pagePadding * 2;
   const desktopListInset = isDesktop ? Math.max(0, (layoutWidth - contentOuterWidth) / 2) + pagePadding : 0;
@@ -1386,7 +1386,7 @@ export default function MarketHome() {
           width: listingCardWidth as any,
           marginHorizontal: listingColumns === 1 && !isDesktop ? pagePadding : 0,
           marginLeft: listingColumns === 1 && isDesktop ? desktopListInset : undefined,
-          marginTop: isDesktop ? 10 : 16,
+          marginTop: isDesktop ? 7 : 16,
           borderRadius: 22,
           overflow: "hidden",
           borderWidth: 1,
@@ -1624,7 +1624,7 @@ export default function MarketHome() {
           borderTopWidth: 1,
           borderColor: "rgba(255,253,247,0.13)",
           borderTopColor: BORDER_TOP,
-          marginTop: 12,
+          marginTop: isDesktop ? 8 : 12,
           shadowColor: "#000",
           shadowOpacity: 0.18,
           shadowRadius: 18,
@@ -2036,8 +2036,94 @@ export default function MarketHome() {
     );
   }
 
+  function renderDesktopFeaturedStoresPanel() {
+    if (!isDesktop || section === "social") return null;
+
+    const stores = featuredSellers.slice(0, 4);
+    return (
+      <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED STORES</Text>
+            <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: 14 }}>
+              Storefront picks
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setDirectoryMode("featured")}
+            style={({ pressed }) => ({
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              backgroundColor: pressed ? "rgba(244,183,93,0.22)" : "rgba(244,183,93,0.13)",
+              borderWidth: 1,
+              borderColor: "rgba(244,183,93,0.28)",
+            })}
+          >
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>View all</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ marginTop: 12, gap: 9 }}>
+          {stores.length ? stores.map((store) => {
+            const logo = publicSellerLogo(store.logo_path);
+            const name = store.business_name || store.display_name || "Featured store";
+            return (
+              <Pressable
+                key={`featured-store-${store.user_id}`}
+                disabled={!store.market_username}
+                onPress={() => store.market_username && router.push(`/market/profile/${store.market_username}` as any)}
+                style={({ pressed }) => ({
+                  minHeight: 54,
+                  borderRadius: 16,
+                  padding: 9,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  backgroundColor: pressed ? "rgba(255,253,247,0.11)" : "rgba(255,253,247,0.055)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,253,247,0.11)",
+                })}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,253,247,0.10)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,253,247,0.14)",
+                  }}
+                >
+                  {logo ? <Image source={{ uri: logo }} style={{ width: 36, height: 36 }} /> : <Ionicons name="storefront-outline" size={17} color={TEXT} />}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <Text numberOfLines={1} style={{ flex: 1, color: TEXT, fontWeight: "900", fontSize: 12 }}>{name}</Text>
+                    <VerifiedTick verified={store.is_verified} />
+                  </View>
+                  <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                    @{store.market_username || "store"}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color={FAINT} />
+              </Pressable>
+            );
+          }) : (
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Featured stores will appear here after admin promotion is active.
+            </Text>
+          )}
+        </View>
+      </GlassPanel>
+    );
+  }
+
   function renderHeroPanel(desktop = false) {
-    const showPreviewShelf = desktop && contentInnerWidth >= 1120 && section !== "social";
+    const showPreviewShelf = desktop && resultsInnerWidth >= 760 && section !== "social";
     const kicker = section === "social" ? "SELLER BOARD" : section === "service" ? "SERVICES" : section === "product" ? "PRODUCTS" : "MARKETPLACE";
 
     if (desktop) {
@@ -2274,7 +2360,7 @@ export default function MarketHome() {
     }
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 18 : 14, backgroundColor: "rgba(255,253,247,0.06)" }}>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>
           {directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY"}
         </Text>
@@ -2301,7 +2387,7 @@ export default function MarketHome() {
           </View>
         </View>
 
-        <View style={{ marginTop: 14, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        <View style={{ marginTop: 11, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
           <Chip
             label="Listings"
             icon="grid-outline"
@@ -2789,8 +2875,8 @@ export default function MarketHome() {
           <View
             style={
               section === "social"
-                ? { flex: 1, minWidth: 0, gap: 14 }
-                : { width: resultsInnerWidth, maxWidth: "100%", gap: 14 }
+                ? { flex: 1, minWidth: 0, gap: 10 }
+                : { width: resultsInnerWidth, maxWidth: "100%", gap: 10 }
             }
           >
             {renderHeroPanel(true)}
@@ -2842,6 +2928,7 @@ export default function MarketHome() {
               </View>
             </GlassPanel>
 
+            {renderDesktopFeaturedStoresPanel()}
             <TrustTimeline />
             {section === "social" ? null : renderScopeAndFilters(true)}
           </View>
