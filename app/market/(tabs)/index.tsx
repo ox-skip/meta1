@@ -109,6 +109,19 @@ type SellerCard = {
   featured_listing_limit?: number | null;
 };
 
+type FeaturedPreviewItem = {
+  key: string;
+  featureType: "listing" | "store";
+  title: string;
+  subtitle: string;
+  meta: string;
+  uri: string | null;
+  mediaKind: "image" | "video";
+  accent: string;
+  route: any;
+  disabled?: boolean;
+};
+
 function listingAvailability(row: ListingRow) {
   return row.availability ?? row.payment_options?.availability ?? null;
 }
@@ -814,6 +827,12 @@ export default function MarketHome() {
     return formatCountryLabel(userCountry.name, userCountry.code) || "Unknown location";
   }, [userCountry]);
 
+  useEffect(() => {
+    if (isDesktop && directoryMode === "featured") {
+      setDirectoryMode("listings");
+    }
+  }, [directoryMode, isDesktop]);
+
   function toggleExpandedCard(key: "featured" | "discovery" | "filters") {
     setExpandedCards((prev) => ({ ...prev, [key]: !prev[key] }));
   }
@@ -1268,7 +1287,7 @@ export default function MarketHome() {
       ? "Featured services"
       : section === "product"
       ? "Featured products"
-      : "Featured projects";
+      : "Featured";
   const heroSubtitle =
     section === "social"
       ? "Browse fresh seller updates, launches, and media from the marketplace."
@@ -1276,7 +1295,7 @@ export default function MarketHome() {
       ? "Service picks from featured accounts, kept tight so buyers can move fast."
       : section === "product"
       ? "Product picks from featured accounts, with price and media visible at a glance."
-      : "Products and services surfaced from featured BestCity accounts.";
+      : "Promoted listings and storefronts surfaced for buyers right now.";
   const resultTitle =
     directoryMode === "listings"
       ? `${resultCount} ${feedLabel} in view`
@@ -1334,12 +1353,12 @@ export default function MarketHome() {
       : "Browse stores with verified seller profiles.";
   const heroAccent =
     section === "service" ? TEAL : section === "product" ? BLUE : section === "social" ? AMBER : PURPLE;
-  const heroPreviewListings = useMemo(
-    () =>
-      featuredListings
-        .filter((item) => !main || item.category === main)
-        .slice(0, 3)
-        .map((item, index) => {
+  const heroFeaturedItems = useMemo<FeaturedPreviewItem[]>(() => {
+    const maxItems = isDesktop ? 5 : 4;
+    const listingItems = featuredListings
+      .filter((item) => !main || item.category === main)
+      .slice(0, maxItems)
+      .map((item, index) => {
         const mediaSource = resolveMarketMediaSource(
           [item.cover ?? null, ...sortMarketMedia(item.images ?? [])],
           supabaseUrl,
@@ -1348,17 +1367,44 @@ export default function MarketHome() {
         const displayPrice = getListingPriceDisplay(item as any);
         const seller = featuredSellers.find((s) => s.user_id === item.seller_id) ?? sellersMap[item.seller_id];
         return {
-          id: item.id,
+          key: `listing-${item.id}`,
+          featureType: "listing" as const,
           title: item.title || "Untitled listing",
-          price: formatCurrency(displayPrice.localCurrency, displayPrice.localNow),
-          seller: seller?.business_name || seller?.display_name || (seller?.market_username ? `@${seller.market_username}` : "Featured store"),
+          subtitle: seller?.business_name || seller?.display_name || (seller?.market_username ? `@${seller.market_username}` : "Featured store"),
+          meta: formatCurrency(displayPrice.localCurrency, displayPrice.localNow),
           uri: mediaSource?.url ?? null,
-          kind: mediaSource?.kind ?? "image",
+          mediaKind: (mediaSource?.kind ?? "image") as "image" | "video",
           accent: [TEAL, AMBER, BLUE][index % 3],
+          route: { pathname: "/market/listing/[id]" as any, params: { id: item.id } },
         };
-      }),
-    [featuredListings, featuredSellers, main, sellersMap, supabaseUrl],
-  );
+      });
+
+    const storeItems = featuredSellers
+      .slice(0, maxItems)
+      .map((store, index) => {
+        const logo = publicSellerLogo(store.logo_path);
+        const name = store.business_name || store.display_name || "Featured store";
+        return {
+          key: `store-${store.user_id}`,
+          featureType: "store" as const,
+          title: name,
+          subtitle: store.market_username ? `@${store.market_username}` : "Store profile",
+          meta: "Storefront",
+          uri: logo,
+          mediaKind: "image" as const,
+          accent: [AMBER, TEAL, BLUE][index % 3],
+          route: store.market_username ? (`/market/profile/${store.market_username}` as any) : null,
+          disabled: !store.market_username,
+        };
+      });
+
+    const items: FeaturedPreviewItem[] = [];
+    for (let index = 0; items.length < maxItems && (index < listingItems.length || index < storeItems.length); index += 1) {
+      if (listingItems[index]) items.push(listingItems[index]);
+      if (items.length < maxItems && storeItems[index]) items.push(storeItems[index]);
+    }
+    return items;
+  }, [featuredListings, featuredSellers, isDesktop, main, sellersMap, supabaseUrl]);
 
   const renderListing = ({ item }: { item: ListingRow }) => {
     const mediaSource = resolveMarketMediaSource(
@@ -1890,7 +1936,7 @@ export default function MarketHome() {
   }
 
   function renderHeroPreviewRail(compact = false) {
-    if (!heroPreviewListings.length) {
+    if (!heroFeaturedItems.length) {
       return (
         <View
           style={{
@@ -1920,10 +1966,10 @@ export default function MarketHome() {
             <Ionicons name="sparkles-outline" size={18} color={TEAL} />
           </View>
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: compact ? 13 : 15 }}>
-            Featured projects
+            Featured
           </Text>
           <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>
-            Featured account listings will appear here when available.
+            Promoted listings and storefronts will appear here when available.
           </Text>
         </View>
       );
@@ -1937,10 +1983,11 @@ export default function MarketHome() {
           style={{ marginTop: 14, marginHorizontal: -16 }}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
         >
-          {heroPreviewListings.map((item) => (
+          {heroFeaturedItems.map((item) => (
             <Pressable
-              key={item.id}
-              onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
+              key={item.key}
+              disabled={item.disabled}
+              onPress={() => item.route && router.push(item.route)}
               style={({ pressed }) => ({
                 width: 176,
                 borderRadius: 18,
@@ -1953,17 +2000,21 @@ export default function MarketHome() {
             >
               <View style={{ height: 86, backgroundColor: "rgba(255,253,247,0.07)" }}>
                 {item.uri ? (
-                  <MarketMediaView
-                    uri={item.uri}
-                    kind={item.kind}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode={item.kind === "video" ? "contain" : "cover"}
-                    muted
-                    disablePointerEvents
-                  />
+                  item.featureType === "store" ? (
+                    <Image source={{ uri: item.uri }} style={{ width: "100%", height: "100%" }} />
+                  ) : (
+                    <MarketMediaView
+                      uri={item.uri}
+                      kind={item.mediaKind}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode={item.mediaKind === "video" ? "contain" : "cover"}
+                      muted
+                      disablePointerEvents
+                    />
+                  )
                 ) : (
                   <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="image-outline" size={20} color={MUTED} />
+                    <Ionicons name={item.featureType === "store" ? "storefront-outline" : "image-outline"} size={20} color={MUTED} />
                   </View>
                 )}
               </View>
@@ -1972,10 +2023,10 @@ export default function MarketHome() {
                   {item.title}
                 </Text>
                 <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 10 }}>
-                  {item.seller}
+                  {item.subtitle}
                 </Text>
                 <Text numberOfLines={1} style={{ marginTop: 3, color: item.accent, fontWeight: "900", fontSize: 12 }}>
-                  {item.price}
+                  {item.meta}
                 </Text>
               </View>
             </Pressable>
@@ -1985,140 +2036,89 @@ export default function MarketHome() {
     }
 
     return (
-      <View style={{ gap: 10 }}>
-        <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED PROJECTS</Text>
-        {heroPreviewListings.map((item) => (
-          <Pressable
-            key={item.id}
-            onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
-            style={({ pressed }) => ({
-              borderRadius: 18,
-              overflow: "hidden",
-              borderWidth: 1,
-              borderColor: "rgba(255,253,247,0.13)",
-              backgroundColor: "rgba(9,13,11,0.62)",
-              flexDirection: "row",
-              alignItems: "center",
-              transform: [{ translateY: pressed ? 1 : 0 }],
-            })}
-          >
-            <View style={{ width: 76, height: 76, backgroundColor: "rgba(255,253,247,0.07)" }}>
-              {item.uri ? (
-                <MarketMediaView
-                  uri={item.uri}
-                  kind={item.kind}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode={item.kind === "video" ? "contain" : "cover"}
-                  muted
-                  disablePointerEvents
-                />
-              ) : (
-                <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="image-outline" size={20} color={MUTED} />
-                </View>
-              )}
-            </View>
-            <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 10 }}>
-              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
-                {item.title}
-              </Text>
-              <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontWeight: "800", fontSize: 11 }}>
-                {item.seller}
-              </Text>
-              <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
-                {item.price}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={MUTED} style={{ marginRight: 12 }} />
-          </Pressable>
-        ))}
-      </View>
-    );
-  }
-
-  function renderDesktopFeaturedStoresPanel() {
-    if (!isDesktop || section === "social") return null;
-
-    const stores = featuredSellers.slice(0, 4);
-    return (
-      <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
+      <View style={{ gap: 11 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED STORES</Text>
-            <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: 14 }}>
-              Storefront picks
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => setDirectoryMode("featured")}
-            style={({ pressed }) => ({
+          <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED</Text>
+          <View
+            style={{
               borderRadius: 999,
-              paddingHorizontal: 10,
-              paddingVertical: 7,
-              backgroundColor: pressed ? "rgba(244,183,93,0.22)" : "rgba(244,183,93,0.13)",
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              backgroundColor: "rgba(45,212,191,0.14)",
               borderWidth: 1,
-              borderColor: "rgba(244,183,93,0.28)",
-            })}
+              borderColor: "rgba(94,234,212,0.28)",
+            }}
           >
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>View all</Text>
-          </Pressable>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 10 }}>{heroFeaturedItems.length} active</Text>
+          </View>
         </View>
 
-        <View style={{ marginTop: 12, gap: 9 }}>
-          {stores.length ? stores.map((store) => {
-            const logo = publicSellerLogo(store.logo_path);
-            const name = store.business_name || store.display_name || "Featured store";
-            return (
-              <Pressable
-                key={`featured-store-${store.user_id}`}
-                disabled={!store.market_username}
-                onPress={() => store.market_username && router.push(`/market/profile/${store.market_username}` as any)}
-                style={({ pressed }) => ({
-                  minHeight: 54,
-                  borderRadius: 16,
-                  padding: 9,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  backgroundColor: pressed ? "rgba(255,253,247,0.11)" : "rgba(255,253,247,0.055)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,253,247,0.11)",
-                })}
-              >
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(255,253,247,0.10)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,253,247,0.14)",
-                  }}
-                >
-                  {logo ? <Image source={{ uri: logo }} style={{ width: 36, height: 36 }} /> : <Ionicons name="storefront-outline" size={17} color={TEXT} />}
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <Text numberOfLines={1} style={{ flex: 1, color: TEXT, fontWeight: "900", fontSize: 12 }}>{name}</Text>
-                    <VerifiedTick verified={store.is_verified} />
+        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 254 }} contentContainerStyle={{ gap: 10 }}>
+          {heroFeaturedItems.map((item) => (
+            <Pressable
+              key={item.key}
+              disabled={item.disabled}
+              onPress={() => item.route && router.push(item.route)}
+              style={({ pressed }) => ({
+                borderRadius: 18,
+                overflow: "hidden",
+                borderWidth: 1,
+                borderColor: pressed ? "rgba(244,183,93,0.34)" : "rgba(255,253,247,0.13)",
+                backgroundColor: pressed ? "rgba(255,253,247,0.10)" : "rgba(9,13,11,0.62)",
+                flexDirection: "row",
+                alignItems: "center",
+                opacity: item.disabled ? 0.64 : 1,
+                transform: [{ translateY: pressed ? 1 : 0 }],
+              })}
+            >
+              <View style={{ width: 74, height: 74, backgroundColor: "rgba(255,253,247,0.07)" }}>
+                {item.uri ? (
+                  item.featureType === "store" ? (
+                    <Image source={{ uri: item.uri }} style={{ width: "100%", height: "100%" }} />
+                  ) : (
+                    <MarketMediaView
+                      uri={item.uri}
+                      kind={item.mediaKind}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode={item.mediaKind === "video" ? "contain" : "cover"}
+                      muted
+                      disablePointerEvents
+                    />
+                  )
+                ) : (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name={item.featureType === "store" ? "storefront-outline" : "image-outline"} size={21} color={MUTED} />
                   </View>
-                  <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 10 }}>
-                    @{store.market_username || "store"}
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: item.accent,
+                      fontWeight: "900",
+                      fontSize: 9,
+                    }}
+                  >
+                    {item.featureType === "store" ? "STORE" : "LISTING"}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={15} color={FAINT} />
-              </Pressable>
-            );
-          }) : (
-            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
-              Featured stores will appear here after admin promotion is active.
-            </Text>
-          )}
-        </View>
-      </GlassPanel>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                  {item.title}
+                </Text>
+                <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontWeight: "800", fontSize: 11 }}>
+                  {item.subtitle}
+                </Text>
+                <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                  {item.meta}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={MUTED} style={{ marginRight: 12 }} />
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
     );
   }
 
@@ -2393,13 +2393,6 @@ export default function MarketHome() {
             icon="grid-outline"
             active={directoryMode === "listings"}
             onPress={() => setDirectoryMode("listings")}
-          />
-          <Chip
-            label="Featured Stores"
-            icon="flame"
-            iconColor="#FDBA74"
-            active={directoryMode === "featured"}
-            onPress={() => setDirectoryMode("featured")}
           />
           <Chip
             label="Verified Stores"
@@ -2928,7 +2921,6 @@ export default function MarketHome() {
               </View>
             </GlassPanel>
 
-            {renderDesktopFeaturedStoresPanel()}
             <TrustTimeline />
             {section === "social" ? null : renderScopeAndFilters(true)}
           </View>
