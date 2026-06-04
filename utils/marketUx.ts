@@ -1,5 +1,39 @@
+function asText(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function pickErrorMessage(error: unknown) {
+  const e = error as any;
+  const candidates = [
+    e?.details?.json?.message,
+    e?.details?.json?.error,
+    e?.data?.message,
+    e?.data?.error,
+    e?.shortMessage,
+    e?.details,
+    e?.cause?.shortMessage,
+    e?.cause?.details,
+    e?.cause?.message,
+    e?.message,
+    error,
+  ];
+
+  for (const candidate of candidates) {
+    const text = asText(candidate);
+    if (text && text !== "[object Object]") return text;
+  }
+  return "";
+}
+
+function compact(text: string, limit = 280) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  return cleaned.length > limit ? `${cleaned.slice(0, limit - 3)}...` : cleaned;
+}
+
 export function friendlyMarketError(error: unknown, fallback = "Something went wrong. Please try again."): string {
-  const raw = String((error as any)?.message ?? error ?? "").trim();
+  const raw = pickErrorMessage(error);
   if (!raw) return fallback;
 
   const msg = raw.toLowerCase();
@@ -22,6 +56,12 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   }
   if (msg.includes("network request failed") || msg.includes("failed to fetch")) {
     return "Network connection issue. Please try again.";
+  }
+  if (msg.includes("rpc_url missing")) {
+    return raw;
+  }
+  if (msg.includes("chain config missing")) {
+    return raw;
   }
   if (msg.includes("insufficient")) {
     return "Insufficient wallet balance for this action.";
@@ -60,5 +100,5 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
     return raw;
   }
 
-  return raw.length > 180 ? fallback : raw;
+  return compact(raw);
 }

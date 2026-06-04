@@ -186,6 +186,10 @@ export default function CreateStockIdentityScreen() {
         }, 700);
       }
     } catch (e: any) {
+      console.warn("[CreateStockIdentity] failed", {
+        message: String(e?.message || e || ""),
+        details: e?.details ?? null,
+      });
       if (isWalletMismatchError(e)) {
         Alert.alert(
           "Wallet mismatch detected",
@@ -517,4 +521,3 @@ export default function CreateStockIdentityScreen() {
     </StockScreen>
   );
 }
-
