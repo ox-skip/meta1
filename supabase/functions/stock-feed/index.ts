@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import {
   aggregateCandles,
   isLaunchGuardActive,
@@ -124,20 +125,21 @@ Deno.serve(async (req) => {
       if (!isAddress(String(row?.token_address || "")) || !isAddress(String(row?.pool_address || ""))) return;
 
       const cfg = chainMap.get(String(row.chain || ""));
+      const rpcUrl = resolveRpcUrlForChain(String(row.chain || ""), cfg?.rpc_url);
       const stableAddress = String(cfg?.identity_stable_address || cfg?.usdc_address || "").trim();
       const routerAddress = String(cfg?.identity_router || "").trim();
-      if (!cfg?.rpc_url || !isAddress(stableAddress) || !isAddress(routerAddress)) return;
+      if (!rpcUrl || !isAddress(stableAddress) || !isAddress(routerAddress)) return;
 
       try {
         const [poolSnapshot, routerState] = await Promise.all([
           readPoolSnapshot({
-            rpcUrl: String(cfg.rpc_url),
+            rpcUrl,
             poolAddress: String(row.pool_address),
             stableToken: stableAddress,
             identityToken: String(row.token_address),
           }),
           readRouterTradeState({
-            rpcUrl: String(cfg.rpc_url),
+            rpcUrl,
             routerAddress,
             storeKey: storeKeyForStoreId(String(row.store_id || "")),
           }),
@@ -433,9 +435,10 @@ Deno.serve(async (req) => {
   let onchainPricePointAt = pointRes.data?.updated_at ?? null;
 
   if (identity.chain !== "pi_testnet") {
+    const rpcUrl = resolveRpcUrlForChain(identity.chain, chainRes.data?.rpc_url);
     const stableAddress = String(chainRes.data?.identity_stable_address || chainRes.data?.usdc_address || "").trim();
     const routerAddress = String(chainRes.data?.identity_router || "").trim();
-    if (!chainRes.data?.rpc_url || !isAddress(stableAddress) || !isAddress(routerAddress)) {
+    if (!rpcUrl || !isAddress(stableAddress) || !isAddress(routerAddress)) {
       return bad(`Chain config missing rpc/router/stable token for ${identity.chain}`);
     }
     if (!isAddress(String(identity.token_address || "")) || !isAddress(String(identity.pool_address || ""))) {
@@ -444,13 +447,13 @@ Deno.serve(async (req) => {
 
     try {
       const poolSnapshot = await readPoolSnapshot({
-        rpcUrl: String(chainRes.data.rpc_url),
+        rpcUrl,
         poolAddress: String(identity.pool_address),
         stableToken: stableAddress,
         identityToken: String(identity.token_address),
       });
       const routerState = await readRouterTradeState({
-        rpcUrl: String(chainRes.data.rpc_url),
+        rpcUrl,
         routerAddress,
         storeKey: storeKeyForStoreId(identity.store_id),
       });
@@ -470,7 +473,7 @@ Deno.serve(async (req) => {
         if (isAddress(String(wallet?.address || ""))) {
           const walletAddress = String(wallet?.address || "");
           const onchainBalance = await readErc20Balance({
-            rpcUrl: String(chainRes.data.rpc_url),
+            rpcUrl,
             tokenAddress: String(identity.token_address),
             owner: walletAddress,
             decimals: 18,

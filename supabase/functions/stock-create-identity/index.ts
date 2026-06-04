@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
 import {
   isSupportedEvmStockChain,
@@ -257,7 +258,8 @@ Deno.serve(async (req) => {
   if (!isSupportedEvmStockChain(String(chainConfig.chain))) {
     return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
   }
-  if (!chainConfig.rpc_url) return bad(`rpc_url missing for ${chainConfig.chain}`);
+  const rpcUrl = resolveRpcUrlForChain(String(chainConfig.chain), chainConfig.rpc_url);
+  if (!rpcUrl) return bad(`rpc_url missing for ${chainConfig.chain}`);
   if (!isAddress(String(chainConfig.identity_factory || ""))) {
     return bad(`identity_factory missing for ${chainConfig.chain}`);
   }
@@ -269,7 +271,7 @@ Deno.serve(async (req) => {
   };
   try {
     creationSettings = await readFactoryCreationSettings({
-      rpcUrl: String(chainConfig.rpc_url),
+      rpcUrl,
       factoryAddress: String(chainConfig.identity_factory),
     });
   } catch (e: any) {
@@ -285,7 +287,7 @@ Deno.serve(async (req) => {
   }
 
   const onchainIdentity = await readIdentityFromFactory(
-    String(chainConfig.rpc_url),
+    rpcUrl,
     String(chainConfig.identity_factory),
     expectedStoreKey,
   );
@@ -331,12 +333,12 @@ Deno.serve(async (req) => {
   let acceptedTxHash = hasTxHash ? txHash : "";
 
   if (hasTxHash) {
-    const receipt: any = await rpcCall(String(chainConfig.rpc_url), "eth_getTransactionReceipt", [txHash]).catch((e) =>
+    const receipt: any = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHash]).catch((e) =>
       ({ __err: String(e?.message ?? e) })
     );
 
     if (!receipt?.__err && receipt && String(receipt.status || "").toLowerCase() === "0x1") {
-      const latestBlockHex = await rpcCall(String(chainConfig.rpc_url), "eth_blockNumber", []).catch((e) =>
+      const latestBlockHex = await rpcCall(rpcUrl, "eth_blockNumber", []).catch((e) =>
         ({ __err: String(e?.message ?? e) })
       );
       if (latestBlockHex?.__err) return bad(latestBlockHex.__err);
@@ -400,12 +402,12 @@ Deno.serve(async (req) => {
   try {
     const [supply, poolSnapshot] = await Promise.all([
       readErc20TotalSupply({
-        rpcUrl: String(chainConfig.rpc_url),
+        rpcUrl,
         tokenAddress: decoded.token,
         decimals: 18,
       }),
       readPoolSnapshot({
-        rpcUrl: String(chainConfig.rpc_url),
+        rpcUrl,
         poolAddress: decoded.pool,
         stableToken: stableAddress,
         identityToken: decoded.token,

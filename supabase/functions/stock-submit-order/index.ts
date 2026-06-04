@@ -8,6 +8,7 @@ import {
   resolveStockIdentity,
   toNum,
 } from "../_shared/market/stock.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { deriveActualTradeFromSwap, isSupportedEvmStockChain, parseInt256Word, readPoolSnapshot } from "../_shared/market/stockEvm.ts";
 
 const SWAP_EVENT_TOPIC0 = `0x${
@@ -189,15 +190,17 @@ Deno.serve(async (req) => {
     .eq("active", true)
     .maybeSingle();
   if (cfgErr) return bad(cfgErr.message);
-  if (!cfg?.rpc_url) return bad(`rpc_url missing for ${identity.chain}`);
+  if (!cfg) return bad(`Chain config missing for ${identity.chain}`);
+  const rpcUrl = resolveRpcUrlForChain(identity.chain, cfg?.rpc_url);
+  if (!rpcUrl) return bad(`rpc_url missing for ${identity.chain}`);
   const stableAddress = String(cfg.identity_stable_address || cfg.usdc_address || "").trim();
   if (!isAddress(stableAddress)) return bad(`identity_stable_address missing for ${identity.chain}`);
 
-  const receipt: any = await rpcCall(String(cfg.rpc_url), "eth_getTransactionReceipt", [txHash]);
+  const receipt: any = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHash]);
   if (!receipt) return bad("Transaction receipt not found on chain yet");
   if (String(receipt.status || "").toLowerCase() !== "0x1") return bad("On-chain trade transaction failed");
 
-  const latestBlockHex = await rpcCall(String(cfg.rpc_url), "eth_blockNumber", []);
+  const latestBlockHex = await rpcCall(rpcUrl, "eth_blockNumber", []);
   const latestBlock = Number.parseInt(String(latestBlockHex || "0x0"), 16);
   const txBlock = Number.parseInt(String(receipt.blockNumber || "0x0"), 16);
   const confirmations = Number.isFinite(latestBlock) && Number.isFinite(txBlock) ? (latestBlock - txBlock + 1) : 1;
@@ -232,13 +235,13 @@ Deno.serve(async (req) => {
   });
   const hasWalletTransferLog = hasWalletTransferOnKnownAssets || hasWalletTransferAnyAsset;
 
-  const tx: any = await rpcCall(String(cfg.rpc_url), "eth_getTransactionByHash", [txHash]).catch(() => null);
+  const tx: any = await rpcCall(rpcUrl, "eth_getTransactionByHash", [txHash]).catch(() => null);
   const txFrom = isAddress(String(tx?.from || "")) ? String(tx.from) : null;
   const txFromMatchesUser = txFrom ? walletAddressSet.has(norm(txFrom)) : false;
 
   let opSenderMatchesUser = false;
   if (!txFromMatchesUser && isHexTxHash(userOpHash)) {
-    const opSender = await resolveUserOpSender(String(cfg.rpc_url), userOpHash);
+    const opSender = await resolveUserOpSender(rpcUrl, userOpHash);
     if (!opSender) return bad("Could not verify smart account sender from user_op_hash");
     opSenderMatchesUser = walletAddressSet.has(norm(opSender));
     if (!opSenderMatchesUser) {
@@ -256,7 +259,7 @@ Deno.serve(async (req) => {
   let latestPoolSnapshot: Awaited<ReturnType<typeof readPoolSnapshot>> | null = null;
   try {
     latestPoolSnapshot = await readPoolSnapshot({
-      rpcUrl: String(cfg.rpc_url),
+      rpcUrl,
       poolAddress: String(identity.pool_address),
       stableToken: stableAddress,
       identityToken: String(identity.token_address),
@@ -308,7 +311,7 @@ Deno.serve(async (req) => {
   if (orderErr || !order) return bad(orderErr?.message ?? "Failed to create order");
 
   try {
-    const nowIso = await resolveBlockTimeIso(String(cfg.rpc_url), String(receipt.blockNumber || ""));
+    const nowIso = await resolveBlockTimeIso(rpcUrl, String(receipt.blockNumber || ""));
     const chainBlock = Number.parseInt(String(receipt.blockNumber || "0x0"), 16);
     const chainLogIndex = Number.parseInt(String((poolSwapLog as any)?.logIndex || (poolSwapLog as any)?.index || "0x0"), 16);
     const { data: trade, error: tradeErr } = await admin

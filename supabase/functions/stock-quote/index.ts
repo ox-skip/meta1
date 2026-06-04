@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { isLaunchGuardActive, isTradingPaused, parseSide, resolveStockIdentity, toNum } from "../_shared/market/stock.ts";
 import {
   buildOnchainEvmQuote,
@@ -50,7 +51,8 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (chainErr) return bad(chainErr.message);
   if (!chainConfig) return bad(`Chain config missing for ${identity.chain}`);
-  if (!chainConfig.rpc_url) return bad(`rpc_url missing for ${identity.chain}`);
+  const rpcUrl = resolveRpcUrlForChain(identity.chain, chainConfig.rpc_url);
+  if (!rpcUrl) return bad(`rpc_url missing for ${identity.chain}`);
 
   const stableAddress = String(chainConfig.identity_stable_address || chainConfig.usdc_address || "").trim();
   const routerAddress = String(chainConfig.identity_router || "").trim();
@@ -84,19 +86,19 @@ Deno.serve(async (req) => {
   try {
     const [poolSnapshot, routerState, tokenBalance] = await Promise.all([
       readPoolSnapshot({
-        rpcUrl: String(chainConfig.rpc_url),
+        rpcUrl,
         poolAddress,
         stableToken: stableAddress,
         identityToken: tokenAddress,
       }),
       readRouterTradeState({
-        rpcUrl: String(chainConfig.rpc_url),
+        rpcUrl,
         routerAddress,
         storeKey: storeKeyForStoreId(identity.store_id),
       }),
       side === "sell"
         ? readErc20Balance({
-          rpcUrl: String(chainConfig.rpc_url),
+          rpcUrl,
           tokenAddress,
           owner: String(wallet.address),
           decimals: 18,
