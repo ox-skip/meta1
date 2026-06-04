@@ -208,6 +208,15 @@ function isAddress(v: string | null | undefined) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(v || ""));
 }
 
+function isHexHash(v?: string | null) {
+  return /^0x[a-fA-F0-9]{64}$/.test(String(v || "").trim());
+}
+
+function normalizeHexHash(v?: string | null) {
+  const value = String(v || "").trim();
+  return isHexHash(value) ? value : "";
+}
+
 function formatUsdc6(raw: bigint) {
   const whole = raw / 1_000_000n;
   const frac = raw % 1_000_000n;
@@ -346,6 +355,24 @@ function shortRevertReason(err: unknown) {
     if (lowered.includes("revert")) {
       return raw;
     }
+  }
+  return "";
+}
+
+function bestErrorText(err: unknown) {
+  const candidates = [
+    (err as any)?.shortMessage,
+    (err as any)?.details,
+    (err as any)?.cause?.shortMessage,
+    (err as any)?.cause?.details,
+    (err as any)?.cause?.message,
+    (err as any)?.message,
+    err,
+  ];
+
+  for (const value of candidates) {
+    const text = String(value || "").trim();
+    if (text && text !== "[object Object]") return text;
   }
   return "";
 }
@@ -590,35 +617,104 @@ export function explorerTxUrl(chain: string, txHash: string) {
   return prefix ? `${prefix}${h}` : null;
 }
 
-async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
-  const txHash = String(sendResult?.hash ?? sendResult?.transactionHash ?? "");
-  const userOpHash = String(sendResult?.userOpHash ?? sendResult?.userOperationHash ?? "");
-  if (txHash.startsWith("0x")) return { txHash, userOpHash };
-  if (!userOpHash.startsWith("0x")) return { txHash: "", userOpHash };
+async function hashLooksLikeOnchainTx(chain: MarketChainConfig, hash: string) {
+  const h = normalizeHexHash(hash);
+  if (!h) return false;
+  const rpcUrl = String(chain.rpc_url || "").trim();
+  if (!rpcUrl) return false;
 
   try {
-    const publicClient = createPublicClient({ transport: http(String(chain.rpc_url || "")) });
-    const reqAny = publicClient.request as any;
-    for (let i = 0; i < 25; i++) {
-      const receipt: any =
-        (await reqAny({
-          method: "eth_getUserOperationReceipt" as any,
-          params: [userOpHash as `0x${string}`],
-        })) ??
-        (await reqAny({
-          method: "alchemy_getUserOperationReceipt" as any,
-          params: [userOpHash as `0x${string}`],
-        }));
-      const opTx = String(receipt?.receipt?.transactionHash || receipt?.transactionHash || "");
-      if (opTx.startsWith("0x")) {
-        return { txHash: opTx, userOpHash };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+    const publicClient = createPublicClient({ transport: http(rpcUrl) });
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash: h as `0x${string}` });
+      if (receipt) return true;
+    } catch {
+      // The tx can still be pending; fall through to the mempool lookup.
     }
-    return { txHash: "", userOpHash };
+    try {
+      const requestAny = publicClient.request as any;
+      const tx = await requestAny({
+        method: "eth_getTransactionByHash" as any,
+        params: [h as `0x${string}`],
+      });
+      if (String(tx?.hash || "").toLowerCase() === h.toLowerCase()) return true;
+    } catch {
+      // ignore lookup failure
+    }
   } catch {
-    return { txHash: "", userOpHash };
+    // ignore client construction / RPC failures
   }
+
+  return false;
+}
+
+async function resolveUserOpToTxHash(
+  chain: MarketChainConfig,
+  userOpHash: string,
+  attempts = 45,
+  intervalMs = 2500,
+) {
+  const op = normalizeHexHash(userOpHash);
+  if (!op) return "";
+  const rpcUrl = String(chain.rpc_url || "").trim();
+  if (!rpcUrl) return "";
+
+  try {
+    const publicClient = createPublicClient({ transport: http(rpcUrl) });
+    const requestAny = publicClient.request as any;
+    for (let i = 0; i < attempts; i++) {
+      let receipt: any = null;
+      try {
+        receipt = await requestAny({
+          method: "eth_getUserOperationReceipt" as any,
+          params: [op as `0x${string}`],
+        });
+      } catch {
+        // Some providers expose only the Alchemy AA method.
+      }
+      if (!receipt) {
+        try {
+          receipt = await requestAny({
+            method: "alchemy_getUserOperationReceipt" as any,
+            params: [op as `0x${string}`],
+          });
+        } catch {
+          // keep retrying until attempts exhausted
+        }
+      }
+
+      const txHash = normalizeHexHash(String(receipt?.receipt?.transactionHash || receipt?.transactionHash || ""));
+      if (txHash) return txHash;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  } catch {
+    // ignore client construction / RPC failures
+  }
+
+  return "";
+}
+
+async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
+  const hashCandidate = normalizeHexHash(String(sendResult?.hash ?? ""));
+  const txFromResult = normalizeHexHash(String(sendResult?.transactionHash ?? ""));
+  const userOpFromResult = normalizeHexHash(String(sendResult?.userOpHash ?? sendResult?.userOperationHash ?? ""));
+
+  let txHash = txFromResult;
+  let userOpHash = userOpFromResult;
+
+  if (!txHash && hashCandidate) {
+    if (await hashLooksLikeOnchainTx(chain, hashCandidate)) {
+      txHash = hashCandidate;
+    } else if (!userOpHash) {
+      userOpHash = hashCandidate;
+    }
+  }
+
+  if (!txHash && userOpHash) {
+    txHash = await resolveUserOpToTxHash(chain, userOpHash);
+  }
+
+  return { txHash, userOpHash };
 }
 
 async function resolveStockChain(chainName: string) {
@@ -841,7 +937,8 @@ async function preflightCreateIdentityCall(
     });
     return { ok: true as const, reason: "" };
   } catch (e: any) {
-    return { ok: false as const, reason: shortRevertReason(e) };
+    const reason = shortRevertReason(e);
+    return { ok: false as const, reason: reason || bestErrorText(e), rpcError: !reason };
   }
 }
 
@@ -1093,7 +1190,11 @@ export async function createStockIdentityOnchain(input: {
         throw new Error(`Cannot create stock yet: ${notes.join("; ")}`);
       }
       if (preflight.reason) {
-        throw new Error(`Cannot create stock yet: ${preflight.reason}`);
+        throw new Error(
+          preflight.rpcError
+            ? `Base RPC simulation failed before stock creation: ${preflight.reason}`
+            : `Cannot create stock yet: ${preflight.reason}`,
+        );
       }
       throw new Error("Cannot create stock yet: on-chain simulation reverted.");
     }
@@ -1167,12 +1268,19 @@ export async function createStockIdentityOnchain(input: {
       if (reason) {
         throw new Error(`Create transaction reverted: ${reason}`);
       }
-      throw submitErr;
+      throw new Error(
+        `Wallet/RPC failed while submitting stock creation on ${chain.chain}: ${bestErrorText(submitErr) || "unknown provider error"}`,
+      );
     }
     let { txHash, userOpHash } = await resolveTxHash(chain, createResult);
     logCreate("create_sent", { tx_hash: txHash || null, user_op_hash: userOpHash || null });
 
     if (!txHash.startsWith("0x")) {
+      if (userOpHash.startsWith("0x")) {
+        throw new Error(
+          `Create transaction was submitted through the smart wallet, but the Base transaction hash is not available yet. UserOp ${userOpHash.slice(0, 10)}...${userOpHash.slice(-8)} is still pending; retry in a moment and the app will sync the existing on-chain identity.`,
+        );
+      }
       throw new Error("Create transaction submitted, but hash is not available yet. Wait a moment and retry.");
     }
 
