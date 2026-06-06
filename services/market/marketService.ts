@@ -49,9 +49,19 @@ function errorWithPartialRows(message: string, rows: any[]) {
   return error;
 }
 
+function normalizePositiveAmount(value: unknown) {
+  const amount = Number(value);
+  const rounded = Number.isFinite(amount) ? Number(amount.toFixed(8)) : NaN;
+  if (!Number.isFinite(rounded) || rounded <= 0) {
+    throw new Error("Enter a listing price above zero.");
+  }
+  return rounded;
+}
+
 function buildListingPayload(input: CreateListingInput) {
   const stockQty =
     input.stock_qty === undefined || input.stock_qty === null ? null : Number(input.stock_qty);
+  const priceAmount = normalizePositiveAmount(input.price_amount);
   const outOfStock = input.category === "product" && stockQty !== null && Number(stockQty) <= 0;
   const requestedActive = typeof input.is_active === "boolean" ? input.is_active : true;
   const paymentOptions = { ...(input.payment_options ?? {}) } as any;
@@ -69,7 +79,7 @@ function buildListingPayload(input: CreateListingInput) {
     sub_category: input.sub_category,
     title: input.title,
     description: input.description ?? null,
-    price_amount: input.price_amount,
+    price_amount: priceAmount,
     currency: input.currency,
     delivery_type: input.delivery_type,
     stock_qty: stockQty,
@@ -230,7 +240,7 @@ export async function createListing(input: CreateListingInput) {
     return listing;
   } catch (error: any) {
     console.log("[marketService.createListing] function fallback failed", String(error?.message || error));
-    return await createListingDirect(payload);
+    throw error;
   }
 }
 

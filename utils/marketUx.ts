@@ -57,6 +57,9 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   if (msg.includes("network request failed") || msg.includes("failed to fetch")) {
     return "Network connection issue. Please try again.";
   }
+  if (msg.includes("market_listings_price_amount_check") || msg.includes("price_amount must be > 0")) {
+    return "Enter a listing price above zero.";
+  }
   if (msg.includes("wallet/rpc failed") || msg.includes("provider error")) {
     return "Wallet or network provider could not complete the request. Reconnect wallet and try again.";
   }

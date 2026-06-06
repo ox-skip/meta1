@@ -1314,7 +1314,7 @@ export default function SellTab() {
       if (!Number.isFinite(enteredPriceLocal) || enteredPriceLocal <= 0) {
         throw new Error("Enter a valid price.");
       }
-      if (!fxUsdToLocal || fxUsdToLocal <= 0) {
+      if (!Number.isFinite(fxUsdToLocal) || !fxUsdToLocal || fxUsdToLocal <= 0) {
         throw new Error("FX is not ready. Please wait and try again.");
       }
       const qty =
@@ -1349,13 +1349,16 @@ export default function SellTab() {
       const safeFinalPriceNgn = Number.isFinite(Number(finalPriceNgn))
         ? Number(Number(finalPriceNgn).toFixed(2))
         : null;
-      const safeFinalPriceUsd = Number.isFinite(finalPriceUsd) ? Number(finalPriceUsd.toFixed(6)) : null;
+      const safeFinalPriceUsd = Number.isFinite(finalPriceUsd) ? Number(finalPriceUsd.toFixed(8)) : NaN;
       const safeOriginalPriceLocal = Number.isFinite(originalLocalPrice) ? Number(originalLocalPrice.toFixed(2)) : safeFinalPriceLocal;
-      const safeOriginalPriceUsd = Number.isFinite(originalPriceUsd) ? Number(originalPriceUsd.toFixed(6)) : safeFinalPriceUsd;
+      const safeOriginalPriceUsd = Number.isFinite(originalPriceUsd) ? Number(originalPriceUsd.toFixed(8)) : safeFinalPriceUsd;
       const safeOriginalPriceNgn = Number.isFinite(Number(originalPriceNgn))
         ? Number(Number(originalPriceNgn).toFixed(2))
         : safeFinalPriceNgn;
-      let unitPrice = finalPriceUsd;
+      if (!Number.isFinite(safeFinalPriceUsd) || safeFinalPriceUsd <= 0) {
+        throw new Error("Enter a listing price above zero.");
+      }
+      const unitPrice = safeFinalPriceUsd;
 
       const paymentOptions = {
         allow_crypto: true,
