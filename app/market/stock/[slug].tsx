@@ -57,6 +57,7 @@ const MINT = STOCK.mint;
 const RED = STOCK.red;
 const MUTED = STOCK.muted;
 const DEFAULT_TRADE_SLIPPAGE_BPS = 2200;
+const QUICK_BUY_AMOUNTS = [0.001, 0.01, 0.1, 10, 20, 50, 100];
 
 type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
@@ -87,6 +88,13 @@ function friendlyStockTradeError(error: unknown, fallback: string) {
     }
   }
   return friendlyMarketError(error, fallback);
+}
+
+function formatTradeUsdcAmount(value: unknown) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n < 0.01) return n.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+  return n.toFixed(2);
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
@@ -1399,13 +1407,14 @@ export default function StockDetailScreen() {
             </Text>
           </View>
 
-          <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
-            {[10, 20, 50, 100].map((v) => (
+          <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {QUICK_BUY_AMOUNTS.map((v) => (
               <Pressable
-                key={v}
+                key={String(v)}
                 onPress={() => setQuickAmount(v)}
                 style={{
-                  flex: 1,
+                  flexGrow: 1,
+                  flexBasis: 66,
                   borderRadius: 10,
                   paddingVertical: 8,
                   alignItems: "center",
@@ -1414,7 +1423,7 @@ export default function StockDetailScreen() {
                   borderColor: quickAmount === v ? "rgba(45,212,191,0.52)" : BORDER,
                 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>${v}</Text>
+                <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>${formatTradeUsdcAmount(v)}</Text>
               </Pressable>
             ))}
           </View>
@@ -1449,7 +1458,7 @@ export default function StockDetailScreen() {
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                {submitting ? "Submitting" : !canQuickBuy ? "Quote required" : `Buy $${quickAmount}`}
+                {submitting ? "Submitting" : !canQuickBuy ? "Quote required" : `Buy $${formatTradeUsdcAmount(quickAmount)}`}
               </Text>
             </Pressable>
           </View>
@@ -1471,7 +1480,7 @@ export default function StockDetailScreen() {
             </Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
               {pendingTrade?.side === "buy"
-                ? `Amount: $${Number(pendingTrade?.amount_usdc || 0).toFixed(2)} USDC`
+                ? `Amount: $${formatTradeUsdcAmount(pendingTrade?.amount_usdc)} USDC`
                 : `Quantity: ${Number(pendingTrade?.quantity || 0).toFixed(6)} ${symbol}`}
             </Text>
             {confirmQuote ? (
