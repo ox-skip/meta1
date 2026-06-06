@@ -300,7 +300,7 @@ export function buildOnchainEvmQuote(input: {
   const launchGuardActive = input.launchGuardActive === true;
 
   if (stableReserveUsdc <= 0 || tokenReserveQty <= 0) {
-    throw new Error("Pool has no active liquidity yet.");
+    throw new Error("Pool has no active liquidity yet. Seed initial liquidity before trading.");
   }
 
   if (input.side === "buy") {

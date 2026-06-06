@@ -14,6 +14,7 @@ type StockContractAction =
   | "factory_set_split"
   | "factory_set_name_registry"
   | "factory_set_admin"
+  | "factory_seed_initial_liquidity"
   | "factory_add_reinvestment"
   | "factory_add_rewards"
   | "router_pause"
@@ -64,6 +65,9 @@ function normalizeAction(input: unknown): StockContractAction | "" {
     set_name_registry: "factory_set_name_registry",
     set_admin: "factory_set_admin",
     rotate_admin: "factory_set_admin",
+    seed_initial_liquidity: "factory_seed_initial_liquidity",
+    seed_stock_liquidity: "factory_seed_initial_liquidity",
+    factory_seed_liquidity: "factory_seed_initial_liquidity",
     add_reinvestment: "factory_add_reinvestment",
     add_rewards: "factory_add_rewards",
     set_stock_bootstrap: "router_set_stock_bootstrap",
@@ -84,6 +88,7 @@ function normalizeAction(input: unknown): StockContractAction | "" {
     "factory_set_split",
     "factory_set_name_registry",
     "factory_set_admin",
+    "factory_seed_initial_liquidity",
     "factory_add_reinvestment",
     "factory_add_rewards",
     "router_pause",
@@ -123,6 +128,17 @@ function requireAmountUnits(name: string, value: unknown) {
   return ethers.parseUnits(raw, 6);
 }
 
+function requireAmountText(name: string, value: unknown) {
+  const raw = String(value ?? "").trim().replace(/,/g, "");
+  if (!/^\d+(\.\d+)?$/.test(raw)) throw new Error(`${name} must be a positive number`);
+  if (Number(raw) <= 0) throw new Error(`${name} must be greater than zero`);
+  return raw;
+}
+
+function formatStable(value: bigint, decimals: number) {
+  return ethers.formatUnits(value, decimals);
+}
+
 function storeKeyForStoreId(storeId: string) {
   return ethers.keccak256(ethers.toUtf8Bytes(String(storeId || "").trim()));
 }
@@ -153,8 +169,24 @@ const factoryAbi = [
   "function setSplit(uint16 liquidityBps, uint16 rewardsBps) external",
   "function setNameRegistry(address registry) external",
   "function setAdmin(address newAdmin) external",
+  "function identities(bytes32 storeId) view returns (address token,address vault,address staking,address pool,address stable,uint24 fee)",
   "function addReinvestment(bytes32 storeId, uint256 stableAmount) external",
   "function addRewards(bytes32 storeId, uint256 stableAmount) external",
+] as const;
+
+const vaultAbi = [
+  "function MANAGER_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role,address account) view returns (bool)",
+  "function tokenId() view returns (uint256)",
+  "function pool() view returns (address)",
+  "function mintInitialPosition(uint256 stableAmount) external returns (uint256)",
+] as const;
+
+const erc20Abi = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transfer(address to,uint256 amount) external returns (bool)",
 ] as const;
 
 const routerAbi = [
@@ -248,6 +280,65 @@ serve(async (req) => {
         const newAdmin = requireAddress("new_admin", body?.new_admin ?? body?.newAdmin ?? body?.admin);
         tx = await contract.setAdmin(newAdmin);
         response.new_admin = newAdmin;
+      } else if (action === "factory_seed_initial_liquidity") {
+        const storeKey = requireBytes32OrStoreKey(body);
+        const amountText = requireAmountText("stable_usdc", body?.stable_usdc ?? body?.amount_usdc ?? body?.amount);
+        const info = await contract.identities(storeKey);
+        const token = String(info.token ?? info[0] ?? "");
+        const vaultAddress = String(info.vault ?? info[1] ?? "");
+        const poolAddress = String(info.pool ?? info[3] ?? "");
+        const stableAddress = String(info.stable ?? info[4] ?? "");
+        if (!ethers.isAddress(token) || token === ethers.ZeroAddress) return bad("Stock identity not found for store");
+        if (!ethers.isAddress(vaultAddress) || vaultAddress === ethers.ZeroAddress) return bad("Stock vault missing for store");
+        if (!ethers.isAddress(poolAddress) || poolAddress === ethers.ZeroAddress) return bad("Stock pool missing for store");
+        if (!ethers.isAddress(stableAddress) || stableAddress === ethers.ZeroAddress) return bad("Stable token missing for stock");
+
+        const vault = new ethers.Contract(vaultAddress, vaultAbi, signer);
+        const currentTokenId = await vault.tokenId();
+        if (BigInt(currentTokenId) !== 0n) {
+          return bad("Stock already has an initial liquidity position. Use add reinvestment instead.");
+        }
+        const signerAddress = await signer.getAddress();
+        const managerRole = await vault.MANAGER_ROLE();
+        const canMint = await vault.hasRole(managerRole, signerAddress);
+        if (!canMint) {
+          return bad("Admin wallet is not a manager on this stock vault");
+        }
+
+        const stable = new ethers.Contract(stableAddress, erc20Abi, signer);
+        const decimals = Number(await stable.decimals());
+        const symbol = String(await stable.symbol().catch(() => "USDC"));
+        const stableAmount = ethers.parseUnits(amountText, decimals);
+        const vaultBalance = BigInt(await stable.balanceOf(vaultAddress));
+        const transferAmount = vaultBalance >= stableAmount ? 0n : stableAmount - vaultBalance;
+        const signerBalance = BigInt(await stable.balanceOf(signerAddress));
+        if (signerBalance < transferAmount) {
+          return bad(`Admin wallet has ${formatStable(signerBalance, decimals)} ${symbol}, needs ${formatStable(transferAmount, decimals)} ${symbol}`);
+        }
+
+        const transferTx = transferAmount > 0n ? await stable.transfer(vaultAddress, transferAmount) : null;
+        if (transferTx) await transferTx.wait();
+        await vault.mintInitialPosition.staticCall(stableAmount);
+        const mintTx = await vault.mintInitialPosition(stableAmount);
+        await mintTx.wait();
+
+        const nextTokenId = await vault.tokenId();
+        targetAddress = vaultAddress;
+        tx = {
+          hash: mintTx.hash,
+          wait: async () => null,
+        };
+        response.store_key = storeKey;
+        response.stable_usdc = amountText;
+        response.stable_token = stableAddress;
+        response.stable_symbol = symbol;
+        response.identity_token = token;
+        response.vault = vaultAddress;
+        response.pool = poolAddress;
+        response.position_token_id = nextTokenId.toString();
+        response.vault_existing_stable = formatStable(vaultBalance, decimals);
+        response.transferred_stable = formatStable(transferAmount, decimals);
+        response.transfer_tx_hash = transferTx?.hash ?? null;
       } else if (action === "factory_add_reinvestment" || action === "factory_add_rewards") {
         const storeKey = requireBytes32OrStoreKey(body);
         const stableAmount = requireAmountUnits("stable_usdc", body?.stable_usdc ?? body?.amount_usdc ?? body?.amount);
