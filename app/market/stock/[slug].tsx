@@ -46,7 +46,7 @@ import {
   submitPiStockSell,
 } from "@/services/market/piStock";
 import { tutorialFlows } from "@/services/onboarding/definitions";
-import { repairLastStockTradeIndex, submitStockTradeOnchain } from "@/services/market/stockOnchain";
+import { addCreatorStockLiquidityOnchain, repairLastStockTradeIndex, submitStockTradeOnchain } from "@/services/market/stockOnchain";
 import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -84,8 +84,14 @@ function friendlyStockTradeError(error: unknown, fallback: string) {
   if (maxMatch) {
     const maxVal = Number(maxMatch[1] || 0);
     if (Number.isFinite(maxVal) && maxVal > 0) {
-      return `Trade amount is above current on-chain max (${maxVal.toFixed(6)} USDC). Reduce amount and retry.`;
+      return `Trade amount is above the current market limit (${maxVal.toFixed(6)} USDC). Reduce amount and retry.`;
     }
+  }
+  if (/rpc|on-chain|onchain/i.test(raw)) {
+    return raw
+      .replace(/on-chain/gi, "network")
+      .replace(/onchain/gi, "network")
+      .replace(/RPC/gi, "network");
   }
   return friendlyMarketError(error, fallback);
 }
@@ -142,7 +148,7 @@ function isDesktopWebEnvironment() {
 
 function CandleChart({ candles }: { candles: Candle[] }) {
   const [width, setWidth] = useState(0);
-  const height = 330;
+  const height = 320;
   const left = 16;
   const right = 66;
   const top = 18;
@@ -224,18 +230,18 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       onLayout={onLayout}
       style={{
         marginTop: 10,
-        borderRadius: 20,
+        borderRadius: 8,
         overflow: "hidden",
         borderWidth: 1,
-        borderColor: "rgba(52,211,153,0.24)",
-        backgroundColor: "rgba(3,10,8,0.7)",
+        borderColor: "rgba(98,168,255,0.26)",
+        backgroundColor: "rgba(6,10,16,0.86)",
       }}
     >
       <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: STOCK.faint, fontSize: 11, fontWeight: "800" }}>Last price</Text>
-            <Text style={{ marginTop: 3, color: STOCK.ink, fontSize: 22, fontWeight: "900" }}>
+            <Text style={{ color: STOCK.cyan, fontSize: 11, fontWeight: "900" }}>Market Pulse</Text>
+            <Text style={{ marginTop: 4, color: STOCK.ink, fontSize: 25, fontWeight: "900" }}>
               {formatStockPrice(marketStats.lastClose, 6)}
             </Text>
           </View>
@@ -244,12 +250,12 @@ function CandleChart({ candles }: { candles: Candle[] }) {
               borderRadius: 999,
               paddingHorizontal: 10,
               paddingVertical: 6,
-              backgroundColor: marketStats.changePct >= 0 ? "rgba(52,211,153,0.15)" : "rgba(251,113,133,0.14)",
+              backgroundColor: marketStats.changePct >= 0 ? "rgba(47,214,163,0.15)" : "rgba(255,92,122,0.14)",
               borderWidth: 1,
-              borderColor: marketStats.changePct >= 0 ? "rgba(52,211,153,0.42)" : "rgba(251,113,133,0.4)",
+              borderColor: marketStats.changePct >= 0 ? "rgba(47,214,163,0.42)" : "rgba(255,92,122,0.4)",
             }}
           >
-            <Text style={{ color: marketStats.changePct >= 0 ? "#D1FAE5" : "#FFE4E6", fontSize: 11, fontWeight: "900" }}>
+            <Text style={{ color: marketStats.changePct >= 0 ? "#D7FFF3" : "#FFE3EA", fontSize: 11, fontWeight: "900" }}>
               {marketStats.changePct >= 0 ? "+" : ""}
               {marketStats.changePct.toFixed(2)}%
             </Text>
@@ -271,9 +277,9 @@ function CandleChart({ candles }: { candles: Candle[] }) {
         <Svg width={width} height={height}>
           <Defs>
             <SvgGradient id="stockAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="rgba(52,211,153,0.38)" />
-              <Stop offset="55%" stopColor="rgba(34,211,238,0.10)" />
-              <Stop offset="100%" stopColor="rgba(52,211,153,0.00)" />
+              <Stop offset="0%" stopColor="rgba(98,168,255,0.36)" />
+              <Stop offset="58%" stopColor="rgba(47,214,163,0.10)" />
+              <Stop offset="100%" stopColor="rgba(98,168,255,0.00)" />
             </SvgGradient>
           </Defs>
 
@@ -298,7 +304,7 @@ function CandleChart({ candles }: { candles: Candle[] }) {
           })}
 
           <Path d={closeLine.areaPath} fill="url(#stockAreaGradient)" />
-          <Path d={closeLine.linePath} stroke="rgba(52,211,153,0.92)" strokeWidth={2} strokeLinecap="round" fill="none" />
+          <Path d={closeLine.linePath} stroke="rgba(98,168,255,0.94)" strokeWidth={2.4} strokeLinecap="round" fill="none" />
 
           {marketStats.lastClose > 0 ? (
             <>
@@ -307,7 +313,7 @@ function CandleChart({ candles }: { candles: Candle[] }) {
                 y1={yPrice(marketStats.lastClose)}
                 x2={left + plotW}
                 y2={yPrice(marketStats.lastClose)}
-                stroke={marketStats.changePct >= 0 ? "rgba(52,211,153,0.52)" : "rgba(251,113,133,0.48)"}
+                stroke={marketStats.changePct >= 0 ? "rgba(47,214,163,0.52)" : "rgba(255,92,122,0.48)"}
                 strokeWidth={1}
                 strokeDasharray="5 5"
               />
@@ -317,14 +323,14 @@ function CandleChart({ candles }: { candles: Candle[] }) {
                 width={right - 8}
                 height={22}
                 rx={8}
-                fill={marketStats.changePct >= 0 ? "rgba(52,211,153,0.20)" : "rgba(251,113,133,0.18)"}
+                fill={marketStats.changePct >= 0 ? "rgba(47,214,163,0.20)" : "rgba(255,92,122,0.18)"}
               />
               <SvgText
                 x={width - 6}
                 y={Math.max(top + 14, yPrice(marketStats.lastClose) + 4)}
                 fontSize={10}
                 fontWeight="700"
-                fill={marketStats.changePct >= 0 ? "#D1FAE5" : "#FFE4E6"}
+                fill={marketStats.changePct >= 0 ? "#D7FFF3" : "#FFE3EA"}
                 textAnchor="end"
               >
                 {marketStats.lastClose >= 1 ? marketStats.lastClose.toFixed(4) : marketStats.lastClose.toFixed(6)}
@@ -345,7 +351,7 @@ function CandleChart({ candles }: { candles: Candle[] }) {
                 width={barW}
                 height={Math.max(1, height - bottom - vy)}
                 rx={1}
-                fill={up ? "rgba(52,211,153,0.22)" : "rgba(251,113,133,0.20)"}
+                fill={up ? "rgba(47,214,163,0.22)" : "rgba(255,92,122,0.20)"}
               />
             );
           })}
@@ -381,7 +387,7 @@ function CandleChart({ candles }: { candles: Candle[] }) {
       ) : (
         <View style={{ height, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="analytics-outline" size={26} color={STOCK.faint} />
-          <Text style={{ marginTop: 9, color: MUTED, fontWeight: "800" }}>Market chart is waiting for trades.</Text>
+          <Text style={{ marginTop: 9, color: MUTED, fontWeight: "800" }}>Chart appears after the first trades.</Text>
         </View>
       )}
     </View>
@@ -397,6 +403,7 @@ export default function StockDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [tradeRail, setTradeRail] = useState<"evm" | "pi">("evm");
   const [side, setSide] = useState<"buy" | "sell">("buy");
@@ -418,11 +425,13 @@ export default function StockDetailScreen() {
   const [successTxHash, setSuccessTxHash] = useState<string | null>(null);
   const [successExplorer, setSuccessExplorer] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState(
-    "Your order executed on-chain and was recorded in market history.",
+    "Your trade was completed and recorded in market history.",
   );
   const [quickAmount, setQuickAmount] = useState(20);
   const [quickQuote, setQuickQuote] = useState<any | null>(null);
   const [quickQuoteErr, setQuickQuoteErr] = useState<string | null>(null);
+  const [liquidityAmount, setLiquidityAmount] = useState("");
+  const [addingLiquidity, setAddingLiquidity] = useState(false);
 
   const [chatLoading, setChatLoading] = useState(false);
   const [chatErr, setChatErr] = useState<string | null>(null);
@@ -474,6 +483,20 @@ export default function StockDetailScreen() {
   useEffect(() => {
     loadDetail();
   }, [slug, timeframe]);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser()
+      .then(({ data }) => {
+        if (mounted) setCurrentUserId(data?.user?.id ?? null);
+      })
+      .catch(() => {
+        if (mounted) setCurrentUserId(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadChat();
@@ -537,7 +560,7 @@ export default function StockDetailScreen() {
       } catch (e: any) {
         if (!cancelled) {
           setQuote(null);
-          setQuoteErr(friendlyStockTradeError(e, "Quote unavailable"));
+          setQuoteErr(friendlyStockTradeError(e, "Price unavailable"));
         }
       } finally {
         if (!cancelled) setQuoting(false);
@@ -571,7 +594,7 @@ export default function StockDetailScreen() {
       } catch (e: any) {
         if (!cancelled) {
           setQuickQuote(null);
-          setQuickQuoteErr(friendlyStockTradeError(e, "Quick quote unavailable"));
+          setQuickQuoteErr(friendlyStockTradeError(e, "Fast buy price unavailable"));
         }
       }
     }, 220);
@@ -633,7 +656,7 @@ export default function StockDetailScreen() {
       } else if (pendingTrade.rail === "pi" && pendingTrade.side === "sell") {
         const lockedQuote = pendingTrade.lockedQuote;
         if (!lockedQuote?.quote_ref || !lockedQuote?.quote_signature) {
-          throw new Error("Locked sell quote missing. Request a fresh sell quote.");
+          throw new Error("Locked sell price missing. Request a fresh sell price.");
         }
         const res = await submitPiStockSell({
           stock_id: detail?.identity?.id,
@@ -642,7 +665,7 @@ export default function StockDetailScreen() {
         });
         setSuccessTxHash(null);
         setSuccessExplorer(null);
-        setSuccessMessage(`Sell accepted. Payout is locked at this quote and queued at position #${Number(res.queue_position || 0)}.`);
+        setSuccessMessage(`Sell accepted. Payout is locked at this price and queued at position #${Number(res.queue_position || 0)}.`);
       } else {
         const res = await withTimeout(
           submitStockTradeOnchain({
@@ -653,7 +676,7 @@ export default function StockDetailScreen() {
             max_slippage_bps: DEFAULT_TRADE_SLIPPAGE_BPS,
           }),
           170_000,
-          "Trade is taking too long. Check your wallet for a submitted transaction, then retry or use Repair Last Trade.",
+          "Trade is taking too long. Check your wallet activity, then retry or use Sync Last Trade.",
         );
 
         setSuccessTxHash(String(res?.tx_hash || "") || null);
@@ -661,8 +684,8 @@ export default function StockDetailScreen() {
         const pendingIndex = String(res?.execution?.status || "").toUpperCase() === "PENDING_INDEX";
         setSuccessMessage(
           pendingIndex
-            ? "Transaction is confirmed on-chain. Market history indexing is still syncing. Use Repair Last Trade if it does not appear shortly."
-            : "Your order executed on-chain and was recorded in market history.",
+            ? "Trade is confirmed. Market history is still syncing. Use Sync Last Trade if it does not appear shortly."
+            : "Your trade was completed and recorded in market history.",
         );
       }
       setSuccessVisible(true);
@@ -720,14 +743,14 @@ export default function StockDetailScreen() {
       return;
     }
     if (quoting) {
-      setQuoteErr("Quote is still updating. Please wait a moment.");
+      setQuoteErr("Price is still updating. Please wait a moment.");
       return;
     }
     if (quoteErr) {
       return;
     }
     if (!quote) {
-      setQuoteErr("Quote unavailable. Please retry.");
+      setQuoteErr("Price unavailable. Please retry.");
       return;
     }
     setQuoteErr(null);
@@ -747,7 +770,7 @@ export default function StockDetailScreen() {
         });
         setConfirmVisible(true);
       } catch (e: any) {
-        setQuoteErr(friendlyMarketError(e, "Unable to lock the sell quote."));
+        setQuoteErr(friendlyMarketError(e, "Unable to lock the sell price."));
       } finally {
         setSubmitting(false);
       }
@@ -787,7 +810,7 @@ export default function StockDetailScreen() {
     if (!slug || tradingPaused || tradeRail !== "evm") return;
     if (quickQuoteErr) return;
     if (!quickQuote) {
-      setQuickQuoteErr("Quick quote unavailable. Please wait and try again.");
+      setQuickQuoteErr("Fast buy price unavailable. Please wait and try again.");
       return;
     }
     setQuickQuoteErr(null);
@@ -797,6 +820,29 @@ export default function StockDetailScreen() {
       amount_usdc: quickAmount,
     });
     setConfirmVisible(true);
+  }
+
+  async function onAddLiquidity() {
+    const amount = Number(String(liquidityAmount || "").replace(/,/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErr("Enter a valid USDC amount.");
+      return;
+    }
+    setErr(null);
+    setAddingLiquidity(true);
+    try {
+      const res = await addCreatorStockLiquidityOnchain({ slug, amount_usdc: amount });
+      setSuccessTxHash(String(res?.tx_hash || "") || null);
+      setSuccessExplorer(String(res?.explorer_url || "") || null);
+      setSuccessMessage(`Added ${formatTradeUsdcAmount(amount)} USDC to market depth.`);
+      setSuccessVisible(true);
+      setLiquidityAmount("");
+      await loadDetail(true);
+    } catch (e: any) {
+      setErr(friendlyStockTradeError(e, "Could not add liquidity."));
+    } finally {
+      setAddingLiquidity(false);
+    }
   }
 
   const title = detail?.identity?.name || "Stock";
@@ -840,6 +886,8 @@ export default function StockDetailScreen() {
     && !quoteErr
     && !!quote;
   const canQuickBuy = tradeRail === "evm" && !submitting && !tradingPaused && !!quickQuote && !quickQuoteErr;
+  const isStoreOwner = !!currentUserId && String(detail?.identity?.store_id || "") === String(currentUserId);
+  const canAddLiquidity = isStoreOwner && !isPiNativeStock && !addingLiquidity && Number(liquidityAmount || 0) > 0;
 
   useEffect(() => {
     if (isPiNativeStock) {
@@ -852,7 +900,7 @@ export default function StockDetailScreen() {
   return (
     <StockScreen>
       <InAppTutorial enabled={!loading && !!detail} flow={tutorialFlows.stockDetail} />
-      <AppHeader title="Stock Detail" subtitle="Live chart, execution, trades, and market chat." />
+      <AppHeader title="Stock Market" subtitle="Price, chart, trades, and community." />
       <ScrollView contentContainerStyle={{ paddingBottom: 148 }}>
         {loading ? <StockLoadingState label="Loading stock" /> : null}
 
@@ -870,7 +918,7 @@ export default function StockDetailScreen() {
                   style={{
                     width: 64,
                     height: 64,
-                    borderRadius: 24,
+                borderRadius: 8,
                     overflow: "hidden",
                     borderWidth: 1,
                     borderColor: STOCK.borderStrong,
@@ -899,7 +947,7 @@ export default function StockDetailScreen() {
                   <View style={{ marginTop: 8, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
                     <StockPill label={chainText} tone={isPiNativeStock ? "amber" : "cyan"} compact />
                     <StockPill
-                      label={tradingPaused ? "Trading Paused" : launchGuard ? "Launch Guard" : "Trading Active"}
+                      label={tradingPaused ? "Paused" : launchGuard ? "Guarded" : "Open"}
                       tone={tradingPaused ? "red" : "mint"}
                       compact
                     />
@@ -916,7 +964,7 @@ export default function StockDetailScreen() {
                   style={{
                     width: 43,
                     height: 43,
-                    borderRadius: 16,
+                    borderRadius: 8,
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: STOCK.panelSoft,
@@ -973,6 +1021,59 @@ export default function StockDetailScreen() {
                     Locked for redemption: {formatStockQuantity(lockedRedemptionQty, 4)} {symbol}
                   </Text>
                 ) : null}
+              </StockPanel>
+            ) : null}
+
+            {isStoreOwner && !isPiNativeStock ? (
+              <StockPanel style={{ marginTop: 10, backgroundColor: "rgba(98,168,255,0.08)", borderColor: "rgba(98,168,255,0.22)" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>Market Depth</Text>
+                    <Text style={{ marginTop: 4, color: STOCK.muted, fontSize: 12, lineHeight: 17 }}>
+                      Add USDC so larger buys can clear with less price movement.
+                    </Text>
+                  </View>
+                  <StockPill label="Store Owner" tone="cyan" compact />
+                </View>
+                <View style={{ marginTop: 12, flexDirection: "row", gap: 8, alignItems: "center" }}>
+                  <TextInput
+                    value={liquidityAmount}
+                    onChangeText={setLiquidityAmount}
+                    keyboardType="decimal-pad"
+                    placeholder="0.0001"
+                    placeholderTextColor="rgba(255,255,255,0.42)"
+                    style={{
+                      flex: 1,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 10,
+                      color: "#fff",
+                      backgroundColor: "rgba(255,255,255,0.05)",
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      fontWeight: "800",
+                    }}
+                    editable={!addingLiquidity}
+                  />
+                  <Pressable
+                    onPress={onAddLiquidity}
+                    disabled={!canAddLiquidity}
+                    style={{
+                      borderRadius: 8,
+                      minHeight: 42,
+                      paddingHorizontal: 13,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: canAddLiquidity ? "rgba(98,168,255,0.28)" : "rgba(255,255,255,0.10)",
+                      borderWidth: 1,
+                      borderColor: canAddLiquidity ? "rgba(98,168,255,0.52)" : BORDER,
+                    }}
+                  >
+                    <Text style={{ color: canAddLiquidity ? "#DCEBFF" : STOCK.faint, fontWeight: "900", fontSize: 12 }}>
+                      {addingLiquidity ? "Adding" : "Add"}
+                    </Text>
+                  </Pressable>
+                </View>
               </StockPanel>
             ) : null}
 
@@ -1048,9 +1149,9 @@ export default function StockDetailScreen() {
               <View style={{ marginTop: 10, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
                 {!isPiNativeStock ? (
                   <View style={{ marginBottom: 10, borderRadius: 10, padding: 10, backgroundColor: "rgba(45,212,191,0.10)", borderWidth: 1, borderColor: "rgba(45,212,191,0.28)" }}>
-                    <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>EVM Settlement</Text>
+                    <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>Network Market</Text>
                     <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>
-                      This market settles on EVM.
+                      Trading is live on {chainText}.
                     </Text>
                   </View>
                 ) : null}
@@ -1117,21 +1218,21 @@ export default function StockDetailScreen() {
                 )}
 
                 {quoting ? (
-                  <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Updating quote</Text>
+                  <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>Updating price</Text>
                 ) : null}
 
                 {!!quote ? (
                   <View style={{ marginTop: 8 }}>
                     <Text style={{ color: MUTED, fontSize: 12 }}>
-                      Exec ${Number(quote.price_execution_usdc || 0).toFixed(6)} - Impact {Number(quote.price_impact_bps || 0).toFixed(2)} bps
+                      Expected price ${Number(quote.price_execution_usdc || 0).toFixed(6)} - Move {(Number(quote.price_impact_bps || 0) / 100).toFixed(2)}%
                     </Text>
                     <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-                      Qty {Number(quote.quantity || 0).toFixed(6)} - Gross ${Number((quote.gross_usdc ?? quote.notional_usdc) || 0).toFixed(6)} - Fee ${Number(quote.fee_usdc || 0).toFixed(6)}
+                      Shares {Number(quote.quantity || 0).toFixed(6)} - Value ${Number((quote.gross_usdc ?? quote.notional_usdc) || 0).toFixed(6)} - Fee ${Number(quote.fee_usdc || 0).toFixed(6)}
                     </Text>
                     <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
                       {tradeRail === "pi"
-                        ? `${side === "buy" ? "Pay" : "Locked payout"} ${Number((side === "buy" ? quote.gross_pi : quote.net_pi) || 0).toFixed(8)} settlement units`
-                        : `Max trade (quote): $${Number(quote.max_trade_usdc || 0).toFixed(6)} USDC`}
+                        ? `${side === "buy" ? "Pay" : "Locked payout"} ${Number((side === "buy" ? quote.gross_pi : quote.net_pi) || 0).toFixed(8)} payment units`
+                        : `Current limit: $${Number(quote.max_trade_usdc || 0).toFixed(6)} USDC`}
                     </Text>
                     {tradeRail === "pi" ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
@@ -1167,7 +1268,7 @@ export default function StockDetailScreen() {
                     ) : null}
                     {tradeRail === "pi" && side === "sell" ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-                        Stress sell spread {Number(quote.stress_spread_bps || 0).toFixed(0)} bps - Early exit fee {Number(quote.early_exit_fee_bps || 0).toFixed(0)} bps
+                        Stress spread {(Number(quote.stress_spread_bps || 0) / 100).toFixed(2)}% - Early exit fee {(Number(quote.early_exit_fee_bps || 0) / 100).toFixed(2)}%
                       </Text>
                     ) : null}
                     {tradeRail === "pi" ? (
@@ -1177,12 +1278,12 @@ export default function StockDetailScreen() {
                     ) : null}
                     {tradeRail === "pi" && quote.quote_expires_at ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-                        Quote expires {String(quote.quote_expires_at)}
+                        Price expires {String(quote.quote_expires_at)}
                       </Text>
                     ) : null}
                     {tradeRail === "evm" ? (
                       <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>
-                        Max trade (quote): ${Number(quote.max_trade_usdc || 0).toFixed(6)} USDC
+                        Current limit: $${Number(quote.max_trade_usdc || 0).toFixed(6)} USDC
                       </Text>
                     ) : null}
                     {tradeRail === "pi" && side === "buy" ? (
@@ -1253,7 +1354,7 @@ export default function StockDetailScreen() {
                     disabled={repairing}
                     style={{
                       marginTop: 8,
-                      borderRadius: 11,
+                      borderRadius: 8,
                       paddingVertical: 10,
                       alignItems: "center",
                       backgroundColor: "rgba(255,255,255,0.06)",
@@ -1263,7 +1364,7 @@ export default function StockDetailScreen() {
                     }}
                   >
                     <Text style={{ color: "#fff", fontWeight: "800", fontSize: 12 }}>
-                      {repairing ? "Repairing" : "Repair Last Trade"}
+                      {repairing ? "Checking" : "Sync Last Trade"}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -1393,17 +1494,17 @@ export default function StockDetailScreen() {
             left: 14,
             right: 14,
             bottom: 14,
-            borderRadius: 14,
+            borderRadius: 8,
             padding: 10,
-            backgroundColor: "rgba(3,7,18,0.92)",
+            backgroundColor: "rgba(6,10,16,0.94)",
             borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.16)",
+            borderColor: "rgba(98,168,255,0.24)",
           }}
         >
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={{ color: "#fff", fontWeight: "900" }}>Quick Buy</Text>
             <Text style={{ color: MUTED, fontSize: 11 }}>
-              {quickQuote ? `~${Number(quickQuote.quantity || 0).toFixed(4)} ${symbol}` : "Live quote"}
+              {quickQuote ? `~${Number(quickQuote.quantity || 0).toFixed(4)} ${symbol}` : "Live price"}
             </Text>
           </View>
 
@@ -1415,12 +1516,12 @@ export default function StockDetailScreen() {
                 style={{
                   flexGrow: 1,
                   flexBasis: 66,
-                  borderRadius: 10,
+                  borderRadius: 8,
                   paddingVertical: 8,
                   alignItems: "center",
-                  backgroundColor: quickAmount === v ? "rgba(45,212,191,0.20)" : "rgba(255,255,255,0.05)",
+                  backgroundColor: quickAmount === v ? "rgba(47,214,163,0.20)" : "rgba(255,255,255,0.05)",
                   borderWidth: 1,
-                  borderColor: quickAmount === v ? "rgba(45,212,191,0.52)" : BORDER,
+                  borderColor: quickAmount === v ? "rgba(47,214,163,0.52)" : BORDER,
                 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>${formatTradeUsdcAmount(v)}</Text>
@@ -1433,32 +1534,32 @@ export default function StockDetailScreen() {
               {quickQuote ? (
                 <View>
                   <Text style={{ color: MUTED, fontSize: 11 }}>
-                    Exec ${Number(quickQuote.price_execution_usdc || 0).toFixed(6)} - Impact {Number(quickQuote.price_impact_bps || 0).toFixed(2)} bps
+                    Price ${Number(quickQuote.price_execution_usdc || 0).toFixed(6)} - Move {(Number(quickQuote.price_impact_bps || 0) / 100).toFixed(2)}%
                   </Text>
                   <Text style={{ marginTop: 2, color: MUTED, fontSize: 11 }}>
-                    Max trade (quote): ${Number(quickQuote.max_trade_usdc || 0).toFixed(6)} USDC
+                    Current limit: ${Number(quickQuote.max_trade_usdc || 0).toFixed(6)} USDC
                   </Text>
                 </View>
               ) : quickQuoteErr ? (
                 <Text style={{ color: "#FCA5A5", fontSize: 11, fontWeight: "700" }}>{quickQuoteErr}</Text>
               ) : (
-                <Text style={{ color: MUTED, fontSize: 11 }}>Preparing quote</Text>
+                <Text style={{ color: MUTED, fontSize: 11 }}>Preparing price</Text>
               )}
             </View>
             <Pressable
               onPress={onQuickBuy}
               disabled={!canQuickBuy}
               style={{
-                borderRadius: 10,
+                borderRadius: 8,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
-                backgroundColor: !canQuickBuy ? "rgba(255,255,255,0.14)" : "rgba(45,212,191,0.34)",
+                backgroundColor: !canQuickBuy ? "rgba(255,255,255,0.14)" : "rgba(47,214,163,0.34)",
                 borderWidth: 1,
-                borderColor: !canQuickBuy ? "rgba(255,255,255,0.26)" : "rgba(45,212,191,0.58)",
+                borderColor: !canQuickBuy ? "rgba(255,255,255,0.26)" : "rgba(47,214,163,0.58)",
               }}
             >
               <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                {submitting ? "Submitting" : !canQuickBuy ? "Quote required" : `Buy $${formatTradeUsdcAmount(quickAmount)}`}
+                {submitting ? "Submitting" : !canQuickBuy ? "Price needed" : `Buy $${formatTradeUsdcAmount(quickAmount)}`}
               </Text>
             </Pressable>
           </View>
@@ -1473,7 +1574,7 @@ export default function StockDetailScreen() {
                 ? pendingTrade?.side === "buy"
                   ? "Confirm Payment"
                   : "Confirm Locked Sell"
-                : "Confirm On-Chain Trade"}
+                : "Confirm Trade"}
             </Text>
             <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
               Side: {(pendingTrade?.side || side).toUpperCase()}
@@ -1485,15 +1586,15 @@ export default function StockDetailScreen() {
             </Text>
             {confirmQuote ? (
               <Text style={{ marginTop: 6, color: "#E2E8F0", fontSize: 12 }}>
-                Est. exec ${Number(confirmQuote.price_execution_usdc || 0).toFixed(6)} | Fee ${Number(confirmQuote.fee_usdc || 0).toFixed(6)}
+                Est. price ${Number(confirmQuote.price_execution_usdc || 0).toFixed(6)} | Fee ${Number(confirmQuote.fee_usdc || 0).toFixed(6)}
               </Text>
             ) : null}
             {pendingTrade?.rail === "pi" ? (
               <>
                 <Text style={{ marginTop: 6, color: "#BFDBFE", fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
-                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} settlement units will be authorized after payment confirmation.`
-                    : `${Number(confirmQuote?.net_pi || 0).toFixed(8)} settlement units are locked at this sell quote and will pay out from the queue budget.`}
+                    ? `${Number(confirmQuote?.gross_pi || 0).toFixed(8)} payment units will be authorized after payment confirmation.`
+                    : `${Number(confirmQuote?.net_pi || 0).toFixed(8)} payment units are locked at this sell price and will pay out from the queue budget.`}
                 </Text>
                 <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
                   {pendingTrade?.side === "buy"
@@ -1505,7 +1606,7 @@ export default function StockDetailScreen() {
               </>
             ) : (
               <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
-                This sends a real on-chain transaction from your wallet.
+                Your wallet will ask you to approve this trade.
               </Text>
             )}
 
@@ -1554,7 +1655,7 @@ export default function StockDetailScreen() {
                 disabled={!successExplorer}
                 style={{ flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: "center", backgroundColor: successExplorer ? "rgba(45,212,191,0.28)" : "rgba(255,255,255,0.08)", borderWidth: 1, borderColor: successExplorer ? "rgba(45,212,191,0.58)" : "rgba(255,255,255,0.16)" }}
               >
-                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>View On Explorer</Text>
+                <Text style={{ color: "#ECFEFF", fontWeight: "900" }}>View Receipt</Text>
               </Pressable>
             </View>
           </View>

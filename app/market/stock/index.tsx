@@ -152,7 +152,7 @@ export default function StockHomeScreen() {
   return (
     <StockScreen>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.stockHome} />
-      <AppHeader title="Digital Stock" subtitle="Store-backed equities with live pricing and on-chain execution." />
+      <AppHeader title="Digital Stock" subtitle="Store-backed markets with live pricing and community trading." />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
@@ -170,7 +170,7 @@ export default function StockHomeScreen() {
               style={{
                 width: 56,
                 height: 56,
-                borderRadius: 22,
+                borderRadius: 8,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: "rgba(34,211,238,0.12)",

@@ -2,6 +2,7 @@ import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
+import { ethers } from "https://esm.sh/ethers@6.16.0";
 import {
   isSupportedEvmStockChain,
   readErc20TotalSupply,
@@ -10,7 +11,7 @@ import {
 } from "../_shared/market/stockEvm.ts";
 
 const IDENTITY_CREATED_SIG =
-  "IdentityCreated(bytes32,address,address,address,address,address,uint24,string,string)";
+  "IdentityCreated(bytes32,address,address,address,address,address,uint24)";
 
 const IDENTITY_CREATED_TOPIC0 = `0x${
   Array.from(keccak_256(new TextEncoder().encode(IDENTITY_CREATED_SIG)))
@@ -70,6 +71,94 @@ function selector4(signature: string) {
 }
 
 const FACTORY_IDENTITIES_SELECTOR = selector4("identities(bytes32)");
+
+const ZERO_BYTES32 = `0x${"0".repeat(64)}`;
+
+const controllerAbi = [
+  "function walletIdentity(address wallet) view returns (bytes32)",
+  "function launchCreatorIdentity(bytes32 storeId) view returns (bytes32)",
+  "function setWalletIdentity(address wallet, bytes32 identityId) external",
+  "function setLaunchCreatorIdentity(bytes32 storeId, bytes32 creatorIdentity) external",
+] as const;
+
+function envAny(...names: string[]) {
+  for (const n of names) {
+    const v = Deno.env.get(n);
+    if (v && v.trim().length > 0) return v.trim();
+  }
+  return "";
+}
+
+function stockAdminKeyForChain(chain: string) {
+  const upper = chain.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return envAny(
+    `STOCK_ADMIN_PRIVATE_KEY_${upper}`,
+    `IDENTITY_ADMIN_PRIVATE_KEY_${upper}`,
+    `ADMIN_PRIVATE_KEY_${upper}`,
+    "STOCK_ADMIN_PRIVATE_KEY",
+    "IDENTITY_ADMIN_PRIVATE_KEY",
+    "ADMIN_PRIVATE_KEY",
+  );
+}
+
+function profileIdentityForUserId(userId: string) {
+  const hash = keccak_256(new TextEncoder().encode(`bestcity-profile:${String(userId || "").trim()}`));
+  return `0x${Array.from(hash).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function prepareControllerLaunch(input: {
+  rpcUrl: string;
+  chain: string;
+  controllerAddress: string;
+  walletAddress: string;
+  storeKey: string;
+  creatorIdentity: string;
+}) {
+  const { rpcUrl, chain, controllerAddress, walletAddress, storeKey, creatorIdentity } = input;
+  const adminKey = stockAdminKeyForChain(chain);
+  if (!adminKey) return { ok: false as const, error: "Missing stock admin signing key for this chain." };
+
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const signer = new ethers.Wallet(adminKey, provider);
+  const controller = new ethers.Contract(controllerAddress, controllerAbi, signer);
+  const signerAddress = await signer.getAddress();
+
+  const [walletIdentityRaw, launchIdentityRaw] = await Promise.all([
+    controller.walletIdentity(walletAddress),
+    controller.launchCreatorIdentity(storeKey),
+  ]);
+  const walletIdentity = String(walletIdentityRaw || ZERO_BYTES32).toLowerCase();
+  const launchIdentity = String(launchIdentityRaw || ZERO_BYTES32).toLowerCase();
+  const creator = creatorIdentity.toLowerCase();
+  const zero = ZERO_BYTES32.toLowerCase();
+
+  if (walletIdentity !== zero && walletIdentity !== creator) {
+    return { ok: false as const, error: "This wallet is already linked to another BestCity profile." };
+  }
+  if (launchIdentity !== zero && launchIdentity !== creator) {
+    return { ok: false as const, error: "This store launch is already prepared for another profile." };
+  }
+
+  let walletTxHash: string | null = null;
+  let launchTxHash: string | null = null;
+  if (walletIdentity !== creator) {
+    const tx = await controller.setWalletIdentity(walletAddress, creatorIdentity);
+    walletTxHash = tx.hash;
+    await tx.wait();
+  }
+  if (launchIdentity !== creator) {
+    const tx = await controller.setLaunchCreatorIdentity(storeKey, creatorIdentity);
+    launchTxHash = tx.hash;
+    await tx.wait();
+  }
+
+  return {
+    ok: true as const,
+    signer: signerAddress,
+    wallet_identity_tx_hash: walletTxHash,
+    launch_authorization_tx_hash: launchTxHash,
+  };
+}
 
 async function readIdentityFromFactory(
   rpcUrl: string,
@@ -160,6 +249,8 @@ Deno.serve(async (req) => {
   const slugInput = String(body?.slug ?? `${name}-${symbol}`);
   const txHash = String(body?.tx_hash ?? "").trim();
   const userOpHash = String(body?.user_op_hash ?? "").trim();
+  const prepareOnchain = body?.prepare_onchain === true || String(body?.prepare_onchain ?? "").toLowerCase() === "true";
+  const walletAddress = String(body?.wallet_address ?? body?.wallet ?? "").trim();
   const forceSyncExisting = body?.force_sync_existing === true || String(body?.force_sync_existing ?? "").toLowerCase() === "true";
   const tokenAddress = String(body?.token_address ?? "").trim();
   const poolAddress = String(body?.pool_address ?? "").trim();
@@ -172,6 +263,7 @@ Deno.serve(async (req) => {
   if (!name || name.length < 3) return bad("name must be at least 3 characters");
   if (!symbol || symbol.length < 2) return bad("symbol must be at least 2 characters");
   if (txHash && !hasTxHash) return bad("tx_hash must be a valid on-chain transaction hash");
+  if (prepareOnchain && !isAddress(walletAddress)) return bad("wallet_address must be a valid address");
   if (tokenAddress && !isAddress(tokenAddress)) return bad("token_address must be a valid address");
   if (poolAddress && !isAddress(poolAddress)) return bad("pool_address must be a valid address");
   if (vaultAddress && !isAddress(vaultAddress)) return bad("vault_address must be a valid address");
@@ -217,7 +309,7 @@ Deno.serve(async (req) => {
 
   if (preferredChain === "pi_testnet") return bad("Use the Pi stock creation flow for pi_testnet identities");
   if (preferredChain && !isSupportedEvmStockChain(preferredChain)) {
-    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
   }
 
   let chainConfig: any = null;
@@ -225,7 +317,7 @@ Deno.serve(async (req) => {
     const { data, error } = await admin
       .from("market_chain_config")
       .select(
-        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address,usdc_address",
+        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,usdc_address",
       )
       .eq("chain", preferredChain)
       .eq("active", true)
@@ -236,13 +328,13 @@ Deno.serve(async (req) => {
     const { data, error } = await admin
       .from("market_chain_config")
       .select(
-        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_stable_address,usdc_address,created_at",
+        "chain,chain_id,active,rpc_url,confirmations_required,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,usdc_address,created_at",
       )
       .eq("active", true)
       .order("created_at", { ascending: false });
     if (error) return bad(error.message);
     const rows = data ?? [];
-    const preferredOrder = ["base", "ethereum", "arbitrum", "optimism", "polygon"];
+    const preferredOrder = ["base", "polygon", "bnb", "ethereum", "arbitrum", "optimism"];
     chainConfig = preferredOrder
       .map((chain) => rows.find((row: any) =>
         String(row?.chain || "").toLowerCase() === chain &&
@@ -256,12 +348,15 @@ Deno.serve(async (req) => {
 
   if (!chainConfig?.chain) return bad("No active chain config available");
   if (!isSupportedEvmStockChain(String(chainConfig.chain))) {
-    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
   }
   const rpcUrl = resolveRpcUrlForChain(String(chainConfig.chain), chainConfig.rpc_url);
   if (!rpcUrl) return bad(`rpc_url missing for ${chainConfig.chain}`);
   if (!isAddress(String(chainConfig.identity_factory || ""))) {
     return bad(`identity_factory missing for ${chainConfig.chain}`);
+  }
+  if (prepareOnchain && !isAddress(String(chainConfig.identity_ownership_controller || ""))) {
+    return bad(`identity_ownership_controller missing for ${chainConfig.chain}`);
   }
 
   let creationSettings: {
@@ -293,7 +388,9 @@ Deno.serve(async (req) => {
   );
   const syncExistingFlow = !!onchainIdentity && (forceSyncExisting || !hasTxHash);
 
-  if (allowCreate === false && !syncExistingFlow) return bad("Store cannot create stock identity right now");
+  if (allowCreate === false && !syncExistingFlow && !hadExistingIdentity) {
+    return bad("Store cannot create stock identity right now");
+  }
 
   if (!hadExistingIdentity && !syncExistingFlow) {
     const reservedFn = await admin.rpc("market_stock_has_reserved_text", {
@@ -324,9 +421,33 @@ Deno.serve(async (req) => {
         }
       }
     }
-    if (isReserved && !allowReserved) {
+  if (isReserved && !allowReserved) {
       return bad("Reserved identity name/symbol. Contact BestCity support");
     }
+  }
+
+  const creatorIdentity = profileIdentityForUserId(user.id);
+  if (prepareOnchain) {
+    const prepared = await prepareControllerLaunch({
+      rpcUrl,
+      chain: String(chainConfig.chain),
+      controllerAddress: String(chainConfig.identity_ownership_controller),
+      walletAddress,
+      storeKey: expectedStoreKey,
+      creatorIdentity,
+    });
+    if (!prepared.ok) return bad(prepared.error);
+    return ok({
+      ok: true,
+      prepared: true,
+      store_key: expectedStoreKey,
+      creator_identity: creatorIdentity,
+      wallet_address: walletAddress,
+      chain_config: chainConfig,
+      wallet_identity_tx_hash: prepared.wallet_identity_tx_hash,
+      launch_authorization_tx_hash: prepared.launch_authorization_tx_hash,
+      signer: prepared.signer,
+    });
   }
 
   let decoded: { token: string; vault: string | null; staking: string | null; pool: string; stable: string | null } | null = null;
@@ -559,6 +680,7 @@ Deno.serve(async (req) => {
       vault_address: decoded.vault,
       staking_address: decoded.staking,
       store_key: expectedStoreKey,
+      creator_identity: creatorIdentity,
     },
   });
 });

@@ -2942,6 +2942,8 @@ export default function MarketAdminIndex() {
       chain.identity_factory,
       chain.identity_router,
       chain.identity_name_registry,
+      chain.identity_ownership_controller,
+      chain.identity_liquidity_manager,
       chain.identity_stable_address,
       chain.active ? "active" : "inactive",
     ]));
@@ -3353,6 +3355,8 @@ export default function MarketAdminIndex() {
                 <CopyableIdLine label="Identity factory" value={chain.identity_factory} />
                 <CopyableIdLine label="Identity router" value={chain.identity_router} />
                 <CopyableIdLine label="Name registry" value={chain.identity_name_registry} />
+                <CopyableIdLine label="Ownership controller" value={chain.identity_ownership_controller} />
+                <CopyableIdLine label="Liquidity manager" value={chain.identity_liquidity_manager} />
                 <CopyableIdLine label="Identity stable" value={chain.identity_stable_address || chain.usdc_address} />
               </View>
               <Text style={{ marginTop: 12, color: MUTED, fontSize: 12, lineHeight: 18 }}>
@@ -3443,6 +3447,8 @@ export default function MarketAdminIndex() {
       chain.identity_factory,
       chain.identity_router,
       chain.identity_name_registry,
+      chain.identity_ownership_controller,
+      chain.identity_liquidity_manager,
       chain.identity_stable_address,
     ]));
     const canManageStock = hasPermission("chain.admin") || hasPermission("stock.manage") || hasPermission("stock.contracts");
@@ -3689,7 +3695,7 @@ export default function MarketAdminIndex() {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <View style={{ flex: 1, minWidth: 220 }}>
                     <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>{labelFromKey(chainKey)} identity contracts</Text>
-                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>Factory, router, and name registry actions submit on-chain transactions.</Text>
+                    <Text style={{ marginTop: 5, color: MUTED, fontSize: 13 }}>Stock launch, trading, and liquidity controls submit on-chain transactions.</Text>
                   </View>
                   <Pill label={chain.active ? "CHAIN ACTIVE" : "CHAIN INACTIVE"} color={chain.active ? SUCCESS : DANGER} />
                 </View>
@@ -3697,6 +3703,8 @@ export default function MarketAdminIndex() {
                   <CopyableIdLine label="Factory" value={chain.identity_factory} />
                   <CopyableIdLine label="Router" value={chain.identity_router} />
                   <CopyableIdLine label="Name registry" value={chain.identity_name_registry} />
+                  <CopyableIdLine label="Ownership controller" value={chain.identity_ownership_controller} />
+                  <CopyableIdLine label="Liquidity manager" value={chain.identity_liquidity_manager} />
                   <CopyableIdLine label="Stable token" value={chain.identity_stable_address || chain.usdc_address} />
                 </View>
 
@@ -3705,17 +3713,14 @@ export default function MarketAdminIndex() {
                   <ActionButton icon="play-circle-outline" label="Unpause factory" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-factory-unpause-${chainKey}`} onPress={() => performAction(`stock-factory-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_unpause" }, true)} />
                   <ActionButton icon="pause-circle-outline" label="Pause router" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-router-pause-${chainKey}`} onPress={() => performAction(`stock-router-pause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_pause" }, true)} />
                   <ActionButton icon="play-circle-outline" label="Unpause router" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-router-unpause-${chainKey}`} onPress={() => performAction(`stock-router-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "router_unpause" }, true)} />
+                  <ActionButton icon="pause-circle-outline" label="Pause liquidity" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-liquidity-pause-${chainKey}`} onPress={() => performAction(`stock-liquidity-pause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "liquidity_pause" }, true)} />
+                  <ActionButton icon="play-circle-outline" label="Unpause liquidity" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-liquidity-unpause-${chainKey}`} onPress={() => performAction(`stock-liquidity-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "liquidity_unpause" }, true)} />
+                  <ActionButton icon="pause-circle-outline" label="Pause ownership" color={DANGER} disabled={!canManageStock} loading={workingKey === `stock-controller-pause-${chainKey}`} onPress={() => performAction(`stock-controller-pause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "controller_pause" }, true)} />
+                  <ActionButton icon="play-circle-outline" label="Unpause ownership" color={SUCCESS} disabled={!canManageStock} loading={workingKey === `stock-controller-unpause-${chainKey}`} onPress={() => performAction(`stock-controller-unpause-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "controller_unpause" }, true)} />
                 </View>
 
                 <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory bootstrap defaults</Text>
-                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
-                    <AdminTextInput value={bootstrap.max} onChangeText={(value) => setStockBootstrapDraft(chainKey, { max: value })} placeholder="Max trade bps" />
-                    <AdminTextInput value={bootstrap.cooldown} onChangeText={(value) => setStockBootstrapDraft(chainKey, { cooldown: value })} placeholder="Cooldown seconds" />
-                    <AdminTextInput value={bootstrap.duration} onChangeText={(value) => setStockBootstrapDraft(chainKey, { duration: value })} placeholder="Duration seconds" />
-                  </View>
-                  <ActionButton icon="save-outline" label="Set defaults on-chain" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-bootstrap-defaults-${chainKey}`} onPress={() => performAction(`stock-bootstrap-defaults-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_bootstrap_defaults", max_trade_bps: bootstrap.max, cooldown_seconds: bootstrap.cooldown, duration_seconds: bootstrap.duration }, true)} />
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Per-stock bootstrap</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Per-stock launch guard</Text>
                   <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
                     <AdminTextInput value={bootstrap.storeId} onChangeText={(value) => setStockBootstrapDraft(chainKey, { storeId: value })} placeholder="Store UUID or 0x store key" autoCapitalize="none" />
                     <AdminTextInput value={bootstrap.max} onChangeText={(value) => setStockBootstrapDraft(chainKey, { max: value })} placeholder="Max trade bps" />
@@ -3726,7 +3731,7 @@ export default function MarketAdminIndex() {
                 </View>
 
                 <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory creation and ownership</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Creation fees and market split</Text>
                   <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
                     <AdminTextInput value={factory.liquidity} onChangeText={(value) => setStockFactoryDraft(chainKey, { liquidity: value })} placeholder="Creation liquidity USDC" />
                     <AdminTextInput value={factory.reserve} onChangeText={(value) => setStockFactoryDraft(chainKey, { reserve: value })} placeholder="Reserve fee USDC" />
@@ -3735,28 +3740,20 @@ export default function MarketAdminIndex() {
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                     <ActionButton icon="cash-outline" label="Set creation amounts" color={WARNING} disabled={!canManageStock || !factory.liquidity.trim() || !factory.reserve.trim()} loading={workingKey === `stock-creation-amounts-${chainKey}`} onPress={() => performAction(`stock-creation-amounts-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_creation_amounts", liquidity_usdc: factory.liquidity, reserve_usdc: factory.reserve }, true)} />
-                    <ActionButton icon="pie-chart-outline" label="Set split" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-split-${chainKey}`} onPress={() => performAction(`stock-split-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_split", liquidity_bps: factory.liquidityBps, rewards_bps: factory.rewardsBps }, true)} />
-                  </View>
-                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
-                    <AdminTextInput value={factory.registry} onChangeText={(value) => setStockFactoryDraft(chainKey, { registry: value })} placeholder="Name registry address" autoCapitalize="none" />
-                    <AdminTextInput value={factory.admin} onChangeText={(value) => setStockFactoryDraft(chainKey, { admin: value })} placeholder="New factory admin wallet" autoCapitalize="none" />
-                  </View>
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                    <ActionButton icon="id-card-outline" label="Set registry" color={ACCENT} disabled={!canManageStock || !factory.registry.trim()} loading={workingKey === `stock-registry-address-${chainKey}`} onPress={() => performAction(`stock-registry-address-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_name_registry", registry: factory.registry.trim() }, true)} />
-                    <ActionButton icon="key-outline" label="Rotate admin" color={DANGER} disabled={!canManageStock || !factory.admin.trim()} loading={workingKey === `stock-factory-admin-${chainKey}`} onPress={() => performAction(`stock-factory-admin-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_set_admin", new_admin: factory.admin.trim() }, true)} />
+                    <ActionButton icon="pie-chart-outline" label="Set split" color={WARNING} disabled={!canManageStock} loading={workingKey === `stock-split-${chainKey}`} onPress={() => performAction(`stock-split-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "liquidity_set_split", liquidity_bps: factory.liquidityBps, rewards_bps: factory.rewardsBps }, true)} />
                   </View>
                 </View>
 
                 <View style={{ marginTop: 16, borderRadius: 8, padding: 12, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: BORDER, gap: 10 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Factory funding</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Market funding</Text>
                   <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 10 }}>
                     <AdminTextInput value={funding.storeId} onChangeText={(value) => setStockFundingDraft(chainKey, { storeId: value })} placeholder="Store UUID or 0x store key" autoCapitalize="none" />
                     <AdminTextInput value={funding.amount} onChangeText={(value) => setStockFundingDraft(chainKey, { amount: value })} placeholder="Stable amount USDC" />
                   </View>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                     <ActionButton icon="leaf-outline" label="Seed initial liquidity" color={ACCENT} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-seed-liquidity-${chainKey}`} onPress={() => performAction(`stock-seed-liquidity-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_seed_initial_liquidity", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
-                    <ActionButton icon="water-outline" label="Add reinvestment" color={SUCCESS} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-reinvestment-${chainKey}`} onPress={() => performAction(`stock-add-reinvestment-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_add_reinvestment", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
-                    <ActionButton icon="gift-outline" label="Add rewards" color={WARNING} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-rewards-${chainKey}`} onPress={() => performAction(`stock-add-rewards-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "factory_add_rewards", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
+                    <ActionButton icon="water-outline" label="Add reinvestment" color={SUCCESS} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-reinvestment-${chainKey}`} onPress={() => performAction(`stock-add-reinvestment-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "liquidity_add_reinvestment", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
+                    <ActionButton icon="gift-outline" label="Add rewards" color={WARNING} disabled={!canManageStock || !funding.storeId.trim() || !funding.amount.trim()} loading={workingKey === `stock-add-rewards-${chainKey}`} onPress={() => performAction(`stock-add-rewards-${chainKey}`, { action: "stock_contract_action", chain: chainKey, contract_action: "liquidity_add_rewards", store_id: funding.storeId.trim(), stable_usdc: funding.amount }, true)} />
                   </View>
                 </View>
 

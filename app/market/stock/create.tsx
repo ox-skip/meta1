@@ -34,10 +34,11 @@ import { friendlyMarketError } from "@/utils/marketUx";
 
 const CHAIN_ORDER: Record<string, number> = {
   base: 0,
-  ethereum: 1,
-  arbitrum: 2,
-  optimism: 3,
-  polygon: 4,
+  polygon: 1,
+  bnb: 2,
+  ethereum: 3,
+  arbitrum: 4,
+  optimism: 5,
 };
 
 function formatMoney(value: number) {
@@ -54,9 +55,9 @@ function formatCreationMessage(economics?: {
   const liquidity = Number(economics?.liquidity_usdc ?? 0);
   const reserve = Number(economics?.reserve_usdc ?? economics?.platform_usdc ?? 0);
   if (fee <= 0) {
-    return "Stock identity created on-chain. No factory fee was charged.";
+    return "Stock market created. No setup fee was charged.";
   }
-  return `Stock identity created on-chain. Factory fee $${formatMoney(fee)}; $${formatMoney(liquidity)} liquidity and $${formatMoney(reserve)} reserve.`;
+  return `Stock market created. Setup $${formatMoney(fee)}; $${formatMoney(liquidity)} opening liquidity and $${formatMoney(reserve)} platform reserve.`;
 }
 
 export default function CreateStockIdentityScreen() {
@@ -87,6 +88,7 @@ export default function CreateStockIdentityScreen() {
           isSupportedEvmStockChain(String(c?.chain || "")) &&
           c?.identity_factory &&
           c?.identity_router &&
+          c?.identity_ownership_controller &&
           (c?.identity_stable_address || c?.usdc_address)
         )
         .sort((a: any, b: any) => {
@@ -125,6 +127,7 @@ export default function CreateStockIdentityScreen() {
           isSupportedEvmStockChain(String(c.chain || "")) &&
           c.identity_factory &&
           c.identity_router &&
+          c.identity_ownership_controller &&
           (c.identity_stable_address || c.usdc_address)
         );
         const defaultChain =
@@ -140,7 +143,7 @@ export default function CreateStockIdentityScreen() {
         });
       } catch (e: any) {
         if (!mounted) return;
-        setErr(friendlyMarketError(e, "Unable to prepare stock creation."));
+        setErr(friendlyMarketError(e, "Unable to prepare stock launch."));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -156,7 +159,7 @@ export default function CreateStockIdentityScreen() {
     try {
       if (!name.trim() || name.trim().length < 3) throw new Error("Name must be at least 3 characters");
       if (!symbol.trim() || symbol.trim().length < 2) throw new Error("Symbol must be at least 2 characters");
-      if (!chain.trim()) throw new Error("Select a chain");
+      if (!chain.trim()) throw new Error("Select a network");
 
       setConfirmVisible(false);
       setSubmitting(true);
@@ -167,15 +170,15 @@ export default function CreateStockIdentityScreen() {
         slug: slug.trim() || null,
       });
 
-      if (!res?.ok) throw new Error("Identity creation failed");
+      if (!res?.ok) throw new Error("Stock launch failed");
       const createdSlug = String(res.identity?.slug || "");
       const createdTxHash = String(res?.tx_hash || "").trim();
       setTxHash(createdTxHash || null);
       setTxExplorer(String(res?.explorer_url || "").trim() || null);
       if (res?.repaired) {
-        setOkMsg("Stock identity repaired and trading enabled.");
+        setOkMsg("Stock market recovered and trading enabled.");
       } else if (res?.created === false) {
-        setOkMsg("Stock identity already exists and is ready for trading.");
+        setOkMsg("Stock market already exists and is ready for trading.");
       } else {
         setOkMsg(formatCreationMessage(res?.economics ?? null));
       }
@@ -200,7 +203,7 @@ export default function CreateStockIdentityScreen() {
           ],
         );
       }
-      setErr(friendlyMarketError(e, "Could not create stock identity."));
+      setErr(friendlyMarketError(e, "Could not create stock market."));
     } finally {
       setSubmitting(false);
     }
@@ -217,7 +220,7 @@ export default function CreateStockIdentityScreen() {
       return;
     }
     if (!chain.trim()) {
-      setErr("Select a chain");
+      setErr("Select a network");
       return;
     }
     setConfirmVisible(true);
@@ -228,49 +231,49 @@ export default function CreateStockIdentityScreen() {
     : !sellerState.active
     ? "Your seller profile is inactive."
     : !sellerState.verified
-    ? "Only verified stores can create a stock identity."
+    ? "Only verified stores can create a stock market."
     : null;
 
   const disabled = submitting || loading || !!blockReason;
 
   return (
     <StockScreen>
-      <AppHeader title="Create Digital Stock" subtitle="Launch a fixed-supply market identity for your verified store." />
+      <AppHeader title="Launch Stock" subtitle="Open a tradable market for your verified store." />
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
-        <StockPanel style={{ marginTop: 10 }}>
+        <StockPanel style={{ marginTop: 10, padding: 16, backgroundColor: "rgba(255,255,255,0.08)" }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <View style={{ flex: 1 }}>
-              <StockPill label="EVM Launch" tone="mint" icon="flash-outline" compact />
-              <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 28, fontWeight: "900" }}>
-                100,000,000 shares
+              <StockPill label="Market Launch" tone="cyan" icon="sparkles-outline" compact />
+              <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 30, fontWeight: "900" }}>
+                Shape the opening market
               </Text>
-              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>
-                Fixed supply, factory pricing, wallet-signed creation.
+              <Text style={{ marginTop: 6, color: STOCK.muted, fontWeight: "800", lineHeight: 19 }}>
+                Fixed supply, verified seller launch, and guarded early trading from the first listing.
               </Text>
             </View>
             <View
               style={{
-                width: 56,
-                height: 56,
-                borderRadius: 22,
+                width: 54,
+                height: 54,
+                borderRadius: 8,
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: "rgba(52,211,153,0.14)",
+                backgroundColor: "rgba(98,168,255,0.14)",
                 borderWidth: 1,
-                borderColor: "rgba(52,211,153,0.38)",
+                borderColor: "rgba(98,168,255,0.38)",
               }}
             >
-              <Ionicons name="business-outline" size={24} color={STOCK.mint} />
+              <Ionicons name="business-outline" size={24} color={STOCK.cyan} />
             </View>
           </View>
           <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            <StockMetric label="Launch Cap" value="< $5K" tone="cyan" />
+            <StockMetric label="Opening Value" value="< $5K" tone="cyan" />
             <StockMetric label="Supply" value="100M" tone="mint" />
-            <StockMetric label="Factory Fee" value={formatStockMoney(0)} tone="amber" />
+            <StockMetric label="Setup Fee" value={formatStockMoney(0)} tone="amber" />
           </View>
         </StockPanel>
 
-        {loading ? <StockLoadingState label="Preparing creation" /> : null}
+        {loading ? <StockLoadingState label="Preparing launch" /> : null}
 
         {!!blockReason ? (
           <StockPanel tone="red" style={{ marginTop: 12 }}>
@@ -279,7 +282,7 @@ export default function CreateStockIdentityScreen() {
               onPress={() => router.push("/market/profile/create" as any)}
               style={{
                 marginTop: 12,
-                borderRadius: 14,
+                borderRadius: 8,
                 paddingVertical: 11,
                 alignItems: "center",
                 backgroundColor: "rgba(52,211,153,0.18)",
@@ -287,7 +290,7 @@ export default function CreateStockIdentityScreen() {
                 borderColor: "rgba(52,211,153,0.46)",
               }}
             >
-              <Text style={{ color: "#D1FAE5", fontWeight: "900" }}>Open Seller Profile</Text>
+              <Text style={{ color: "#D7FFF3", fontWeight: "900" }}>Open Seller Profile</Text>
             </Pressable>
           </StockPanel>
         ) : null}
@@ -302,7 +305,7 @@ export default function CreateStockIdentityScreen() {
             />
           </StockField>
 
-          <StockField label="Ticker Symbol" caption="Two to eight letters works best for trading screens.">
+          <StockField label="Ticker" caption="Two to eight letters works best in trading views.">
             <StockInput
               value={symbol}
               onChangeText={(value) => setSymbol(value.toUpperCase())}
@@ -312,7 +315,7 @@ export default function CreateStockIdentityScreen() {
             />
           </StockField>
 
-          <StockField label="Market Slug" caption="Optional. Leave blank to generate one from the stock name.">
+          <StockField label="Market Link" caption="Optional. Leave blank to generate one from the stock name.">
             <StockInput
               value={slug}
               onChangeText={setSlug}
@@ -324,9 +327,9 @@ export default function CreateStockIdentityScreen() {
         </View>
 
         <StockPanel style={{ marginTop: 12 }}>
-          <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 14 }}>Settlement Chain</Text>
+          <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 14 }}>Network</Text>
           <Text style={{ marginTop: 5, color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
-            Choose where the identity factory and router will create the tradable market.
+            Choose where this stock will trade.
           </Text>
           <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {chainRows.map((row: any) => {
@@ -341,13 +344,13 @@ export default function CreateStockIdentityScreen() {
                     borderRadius: 999,
                     paddingHorizontal: 12,
                     paddingVertical: 8,
-                    backgroundColor: active ? "rgba(52,211,153,0.17)" : STOCK.panelSoft,
+                    backgroundColor: active ? "rgba(98,168,255,0.17)" : STOCK.panelSoft,
                     borderWidth: 1,
-                    borderColor: active ? "rgba(52,211,153,0.46)" : STOCK.border,
+                    borderColor: active ? "rgba(98,168,255,0.46)" : STOCK.border,
                     opacity: disabled ? 0.65 : 1,
                   }}
                 >
-                  <Text style={{ color: active ? "#D1FAE5" : STOCK.muted, fontSize: 12, fontWeight: "900" }}>
+                  <Text style={{ color: active ? "#DCEBFF" : STOCK.muted, fontSize: 12, fontWeight: "900" }}>
                     {stockChainLabel(key)}
                   </Text>
                 </Pressable>
@@ -362,7 +365,7 @@ export default function CreateStockIdentityScreen() {
               style={{
                 width: 38,
                 height: 38,
-                borderRadius: 15,
+                borderRadius: 8,
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: "rgba(34,211,238,0.13)",
@@ -373,15 +376,15 @@ export default function CreateStockIdentityScreen() {
               <Ionicons name="shield-checkmark-outline" size={19} color={STOCK.cyan} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>Launch Rules</Text>
+              <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15 }}>Launch Review</Text>
               <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }}>
-                Reserved symbols stay protected and factory limits are enforced before signature.
+                Availability, seller status, and early trading limits are checked before approval.
               </Text>
             </View>
           </View>
           <View style={{ marginTop: 14, gap: 9 }}>
-            <StockMetric label="Creation Fee" value="Factory Quote" caption="Read before signing" tone="cyan" />
-            <StockMetric label="Initial Market" value="Guarded" caption="Launch valuation capped by contract" tone="mint" />
+            <StockMetric label="Setup Cost" value="Reviewed" caption="Shown before approval" tone="cyan" />
+            <StockMetric label="Opening Market" value="Guarded" caption="Early trading is capped" tone="mint" />
             <StockMetric label="Availability" value="Verified Sellers" caption="Profile status is checked" tone="amber" />
           </View>
         </StockPanel>
@@ -394,17 +397,17 @@ export default function CreateStockIdentityScreen() {
           disabled={disabled}
           style={{
             marginTop: 14,
-            borderRadius: 18,
+            borderRadius: 8,
             minHeight: 52,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: disabled ? "rgba(255,255,255,0.12)" : "rgba(52,211,153,0.24)",
+            backgroundColor: disabled ? "rgba(255,255,255,0.12)" : "rgba(47,214,163,0.24)",
             borderWidth: 1,
-            borderColor: disabled ? STOCK.border : "rgba(52,211,153,0.52)",
+            borderColor: disabled ? STOCK.border : "rgba(47,214,163,0.52)",
           }}
         >
-          <Text style={{ color: disabled ? STOCK.faint : "#D1FAE5", fontWeight: "900", fontSize: 15 }}>
-            {submitting ? "Creating" : "Create Stock Identity"}
+          <Text style={{ color: disabled ? STOCK.faint : "#D7FFF3", fontWeight: "900", fontSize: 15 }}>
+            {submitting ? "Creating" : "Create Stock"}
           </Text>
         </Pressable>
       </ScrollView>
@@ -413,9 +416,9 @@ export default function CreateStockIdentityScreen() {
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <StockPanel style={{ width: "100%", maxWidth: 430, backgroundColor: STOCK.modal }}>
             <StockPill label="Confirm" tone="mint" icon="lock-closed-outline" compact />
-            <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 20 }}>Create stock identity</Text>
+            <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 20 }}>Create stock</Text>
             <Text style={{ marginTop: 8, color: STOCK.muted, lineHeight: 19 }}>
-              Your wallet will sign the factory transaction for this stock.
+              Your wallet will ask you to approve this launch.
             </Text>
 
             <View style={{ marginTop: 14, gap: 8 }}>
@@ -425,7 +428,7 @@ export default function CreateStockIdentityScreen() {
             </View>
 
             <Text style={{ marginTop: 12, color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
-              The supply is fixed at 100,000,000 shares and the launch valuation is enforced by the stock contracts.
+              The supply is fixed at 100,000,000 shares and early trading starts under launch limits.
             </Text>
 
             <View style={{ marginTop: 14, flexDirection: "row", gap: 9 }}>
@@ -459,7 +462,7 @@ export default function CreateStockIdentityScreen() {
                   opacity: submitting ? 0.7 : 1,
                 }}
               >
-                <Text style={{ color: "#D1FAE5", fontWeight: "900" }}>{submitting ? "Submitting" : "Confirm"}</Text>
+              <Text style={{ color: "#D7FFF3", fontWeight: "900" }}>{submitting ? "Submitting" : "Confirm"}</Text>
               </Pressable>
             </View>
           </StockPanel>
@@ -470,9 +473,9 @@ export default function CreateStockIdentityScreen() {
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.68)", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <StockPanel tone="mint" style={{ width: "100%", maxWidth: 430 }}>
             <StockPill label="Created" tone="mint" icon="checkmark-circle-outline" compact />
-            <Text style={{ marginTop: 12, color: "#D1FAE5", fontWeight: "900", fontSize: 20 }}>Stock is ready</Text>
+            <Text style={{ marginTop: 12, color: "#D7FFF3", fontWeight: "900", fontSize: 20 }}>Stock is live</Text>
             <Text style={{ marginTop: 8, color: "#ECFDF5", lineHeight: 19 }}>
-              Stock identity was created on-chain and synced to BestCity.
+              The market was created and synced to BestCity.
             </Text>
             {!!txHash ? (
               <Text style={{ marginTop: 10, color: "#D1FAE5", fontSize: 11, fontWeight: "800" }} numberOfLines={2}>

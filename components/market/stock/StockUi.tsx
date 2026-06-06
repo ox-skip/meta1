@@ -16,29 +16,29 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 type Tone = "mint" | "cyan" | "amber" | "red" | "plain";
 
 export const STOCK = {
-  bgTop: "#171A13",
-  bgMid: "#10130E",
-  bgBottom: "#060807",
-  panel: "rgba(255,255,255,0.075)",
-  panelStrong: "rgba(255,255,255,0.115)",
+  bgTop: "#081018",
+  bgMid: "#0B0F14",
+  bgBottom: "#040608",
+  panel: "rgba(255,255,255,0.07)",
+  panelStrong: "rgba(255,255,255,0.12)",
   panelSoft: "rgba(255,255,255,0.045)",
-  border: "rgba(255,255,255,0.13)",
-  borderStrong: "rgba(255,255,255,0.22)",
-  ink: "#F8FAFC",
-  muted: "rgba(248,250,252,0.68)",
-  faint: "rgba(248,250,252,0.46)",
-  mint: "#2DD4BF",
-  cyan: "#38BDF8",
-  amber: "#F4B75D",
-  red: "#FB7185",
-  modal: "#07110F",
+  border: "rgba(255,255,255,0.14)",
+  borderStrong: "rgba(255,255,255,0.24)",
+  ink: "#F7FAFC",
+  muted: "rgba(247,250,252,0.68)",
+  faint: "rgba(247,250,252,0.44)",
+  mint: "#2FD6A3",
+  cyan: "#62A8FF",
+  amber: "#F5B84B",
+  red: "#FF5C7A",
+  modal: "#080C12",
 };
 
 const toneMap: Record<Tone, { ink: string; bg: string; border: string }> = {
-  mint: { ink: "#CCFBF1", bg: "rgba(45,212,191,0.16)", border: "rgba(94,234,212,0.42)" },
-  cyan: { ink: "#CFFAFE", bg: "rgba(34,211,238,0.14)", border: "rgba(34,211,238,0.38)" },
-  amber: { ink: "#FEF3C7", bg: "rgba(244,183,93,0.16)", border: "rgba(244,183,93,0.42)" },
-  red: { ink: "#FFE4E6", bg: "rgba(251,113,133,0.14)", border: "rgba(251,113,133,0.4)" },
+  mint: { ink: "#D7FFF3", bg: "rgba(47,214,163,0.16)", border: "rgba(47,214,163,0.42)" },
+  cyan: { ink: "#DCEBFF", bg: "rgba(98,168,255,0.15)", border: "rgba(98,168,255,0.38)" },
+  amber: { ink: "#FFF3CF", bg: "rgba(245,184,75,0.16)", border: "rgba(245,184,75,0.42)" },
+  red: { ink: "#FFE3EA", bg: "rgba(255,92,122,0.14)", border: "rgba(255,92,122,0.40)" },
   plain: { ink: STOCK.ink, bg: "rgba(255,255,255,0.06)", border: STOCK.border },
 };
 
@@ -105,7 +105,7 @@ export function StockPanel({
     <View
       style={[
         {
-          borderRadius: 18,
+          borderRadius: 8,
           padding: 14,
           backgroundColor: tone === "plain" ? STOCK.panel : colors.bg,
           borderWidth: 1,
@@ -172,7 +172,7 @@ export function StockMetric({
         {
           flex: 1,
           minWidth: 96,
-          borderRadius: 15,
+          borderRadius: 8,
           padding: 12,
           backgroundColor: tone === "plain" ? STOCK.panelSoft : colors.bg,
           borderWidth: 1,
@@ -214,7 +214,7 @@ export function StockActionTile({
         {
           flex: 1,
           minHeight: 82,
-          borderRadius: 18,
+          borderRadius: 8,
           padding: 12,
           backgroundColor: tone === "plain" ? STOCK.panelSoft : colors.bg,
           borderWidth: 1,
@@ -229,7 +229,7 @@ export function StockActionTile({
         style={{
           width: 34,
           height: 34,
-          borderRadius: 13,
+          borderRadius: 8,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: "rgba(0,0,0,0.18)",
@@ -295,7 +295,7 @@ export function StockSearchField(props: TextInputProps & { icon?: IconName }) {
   return (
     <View
       style={{
-        borderRadius: 17,
+        borderRadius: 8,
         paddingHorizontal: 12,
         minHeight: 48,
         backgroundColor: STOCK.panel,
@@ -342,7 +342,7 @@ export function StockInput(props: TextInputProps) {
       {...rest}
       style={[
         {
-          borderRadius: 14,
+          borderRadius: 8,
           paddingHorizontal: 12,
           paddingVertical: 11,
           color: STOCK.ink,
@@ -376,7 +376,7 @@ export function StockEmptyState({
         style={{
           width: 46,
           height: 46,
-          borderRadius: 18,
+          borderRadius: 8,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: toneMap.cyan.bg,
@@ -395,7 +395,7 @@ export function StockEmptyState({
           onPress={onAction}
           style={{
             marginTop: 14,
-            borderRadius: 14,
+            borderRadius: 8,
             paddingHorizontal: 16,
             paddingVertical: 11,
             backgroundColor: toneMap.mint.bg,
@@ -425,7 +425,7 @@ export function StockAlert({ children, tone = "red" }: { children: React.ReactNo
     <View
       style={{
         marginTop: 12,
-        borderRadius: 15,
+        borderRadius: 8,
         padding: 12,
         backgroundColor: colors.bg,
         borderWidth: 1,

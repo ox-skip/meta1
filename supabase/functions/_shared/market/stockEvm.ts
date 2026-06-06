@@ -1,6 +1,6 @@
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
 
-export const SUPPORTED_EVM_STOCK_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon"] as const;
+export const SUPPORTED_EVM_STOCK_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb"] as const;
 
 const SUPPORTED_EVM_STOCK_CHAIN_SET = new Set<string>(SUPPORTED_EVM_STOCK_CHAINS);
 const Q192 = 1n << 192n;

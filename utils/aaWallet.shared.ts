@@ -518,8 +518,7 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
       }
 
       const useWalletSendCalls =
-        session.mode === "base_smart" ||
-        session.providerType === "base_smart";
+        session.mode === "base_smart";
       const smartCallArgs = {
         provider,
         chainId,

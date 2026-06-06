@@ -1,8 +1,9 @@
 import { createPublicClient, encodeFunctionData, http, keccak256, stringToHex } from "viem";
 import { Platform } from "react-native";
 
-import { createStockIdentity, getStockQuote, submitStockOrder } from "@/services/market/stocks";
+import { createStockIdentity, fetchStockDetail, getStockQuote, submitStockOrder } from "@/services/market/stocks";
 import { fetchMarketChains, MarketChainConfig } from "@/services/market/chainConfig";
+import { callFn } from "@/services/functions";
 import { isSupportedEvmStockChain } from "@/services/market/stockChains";
 import { supabase } from "@/services/supabase";
 import { requireLocalAuth } from "@/utils/secureAuth";
@@ -50,6 +51,7 @@ const IDENTITY_FACTORY_ABI = [
       { name: "storeId", type: "bytes32" },
       { name: "name", type: "string" },
       { name: "symbol", type: "string" },
+      { name: "creatorIdentity", type: "bytes32" },
     ],
     outputs: [],
   },
@@ -69,13 +71,6 @@ const IDENTITY_FACTORY_ABI = [
   },
   {
     type: "function",
-    name: "nameRegistry",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
     name: "creationLiquidityAmount",
     stateMutability: "view",
     inputs: [],
@@ -87,20 +82,6 @@ const IDENTITY_FACTORY_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
-  },
-] as const;
-
-const NAME_REGISTRY_ABI = [
-  {
-    type: "function",
-    name: "isAllowed",
-    stateMutability: "view",
-    inputs: [
-      { name: "creator", type: "address" },
-      { name: "nameHash", type: "bytes32" },
-      { name: "symbolHash", type: "bytes32" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -162,8 +143,21 @@ const IDENTITY_ROUTER_ABI = [
   },
 ] as const;
 
+const IDENTITY_LIQUIDITY_MANAGER_ABI = [
+  {
+    type: "function",
+    name: "creatorAddLiquidity",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "storeId", type: "bytes32" },
+      { name: "stableAmount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
 const IDENTITY_CREATED_EVENT_SIG =
-  "IdentityCreated(bytes32,address,address,address,address,address,uint24,string,string)";
+  "IdentityCreated(bytes32,address,address,address,address,address,uint24)";
 const IDENTITY_CREATED_TOPIC0 = keccak256(stringToHex(IDENTITY_CREATED_EVENT_SIG));
 
 function logCreate(step: string, meta?: Record<string, unknown>) {
@@ -314,6 +308,51 @@ async function resolveSmartAccountForTrade(chain: MarketChainConfig, userId: str
       throw new Error(`Base Smart connection failed. Switched to WalletConnect but could not connect: ${fallbackMsg}`);
     }
   }
+}
+
+async function prepareStockIdentityLaunch(input: {
+  chain: string;
+  name: string;
+  symbol: string;
+  slug?: string | null;
+  walletAddress: string;
+}) {
+  return await callFn<{
+    ok: boolean;
+    prepared: boolean;
+    store_key: string;
+    creator_identity: string;
+    wallet_identity_tx_hash?: string | null;
+    launch_authorization_tx_hash?: string | null;
+  }>(
+    "stock-create-identity",
+    {
+      prepare_onchain: true,
+      chain: input.chain,
+      name: input.name,
+      symbol: input.symbol,
+      slug: input.slug ?? null,
+      wallet_address: input.walletAddress,
+    },
+    120_000,
+  );
+}
+
+async function ensureStockWalletIdentity(chain: string, walletAddress: string) {
+  return await callFn<{
+    ok: boolean;
+    chain: string;
+    wallet_address: string;
+    profile_identity: string;
+    tx_hash?: string | null;
+  }>(
+    "stock-wallet-register",
+    {
+      chain,
+      wallet_address: walletAddress,
+    },
+    120_000,
+  );
 }
 
 const UINT256_MAX = (2n ** 256n) - 1n;
@@ -719,13 +758,14 @@ async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
 
 async function resolveStockChain(chainName: string) {
   if (!isSupportedEvmStockChain(chainName)) {
-    throw new Error("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    throw new Error("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
   }
   const chains = await fetchMarketChains();
   const chain = (chains ?? []).find((c) => c.chain === chainName && c.active);
   if (!chain) throw new Error(`Active chain config not found for ${chainName}`);
   if (!isAddress(chain.identity_factory)) throw new Error(`identity_factory missing for ${chainName}`);
   if (!isAddress(chain.identity_router)) throw new Error(`identity_router missing for ${chainName}`);
+  if (!isAddress(chain.identity_ownership_controller)) throw new Error(`identity_ownership_controller missing for ${chainName}`);
   if (!isAddress(chain.identity_stable_address || chain.usdc_address)) throw new Error(`identity_stable_address missing for ${chainName}`);
   if (!chain.rpc_url) throw new Error(`rpc_url missing for ${chainName}`);
   return chain;
@@ -890,30 +930,6 @@ async function diagnoseCreateRevert(
     // ignore diagnostic read failure
   }
 
-  try {
-    const registry = await publicClient.readContract({
-      abi: IDENTITY_FACTORY_ABI,
-      address: args.factoryAddress,
-      functionName: "nameRegistry",
-      args: [],
-    }) as `0x${string}`;
-    if (isAddress(registry) && String(registry).toLowerCase() !== "0x0000000000000000000000000000000000000000") {
-      const nameHash = keccak256(stringToHex(args.name));
-      const symbolHash = keccak256(stringToHex(args.symbol));
-      const allowed = await publicClient.readContract({
-        abi: NAME_REGISTRY_ABI,
-        address: registry,
-        functionName: "isAllowed",
-        args: [args.wallet, nameHash, symbolHash],
-      }) as boolean;
-      if (!allowed) {
-        notes.push("name/symbol blocked by on-chain NameRegistry");
-      }
-    }
-  } catch {
-    // ignore diagnostic read failure
-  }
-
   return notes;
 }
 
@@ -925,6 +941,7 @@ async function preflightCreateIdentityCall(
     storeKey: `0x${string}`;
     name: string;
     symbol: string;
+    creatorIdentity: `0x${string}`;
   },
 ) {
   try {
@@ -932,7 +949,7 @@ async function preflightCreateIdentityCall(
       abi: IDENTITY_FACTORY_ABI,
       address: args.factoryAddress,
       functionName: "createIdentity",
-      args: [args.storeKey, args.name, args.symbol],
+      args: [args.storeKey, args.name, args.symbol, args.creatorIdentity],
       account: args.wallet,
     });
     return { ok: true as const, reason: "" };
@@ -1027,6 +1044,25 @@ export async function createStockIdentityOnchain(input: {
       logCreate("wallet_mapping_updated", { old_wallet: savedWallet.address, new_wallet: address });
     }
     const storeKey = storeKeyFromStoreId(user.id);
+    const prepared = await prepareStockIdentityLaunch({
+      chain: chain.chain,
+      name: input.name.trim(),
+      symbol: input.symbol.trim().toUpperCase(),
+      slug: input.slug ?? null,
+      walletAddress: address,
+    });
+    const preparedStoreKey = normalizeHexHash(String(prepared?.store_key || ""));
+    const creatorIdentity = normalizeHexHash(String(prepared?.creator_identity || ""));
+    if (!creatorIdentity) throw new Error("Could not prepare stock launch profile. Retry in a moment.");
+    if (preparedStoreKey && preparedStoreKey.toLowerCase() !== storeKey.toLowerCase()) {
+      throw new Error("Prepared stock launch does not match this store.");
+    }
+    logCreate("controller_launch_prepared", {
+      store_key: storeKey,
+      creator_identity: creatorIdentity,
+      wallet_identity_tx_hash: prepared?.wallet_identity_tx_hash || null,
+      launch_authorization_tx_hash: prepared?.launch_authorization_tx_hash || null,
+    });
     const stableAddress = (chain.identity_stable_address || chain.usdc_address) as `0x${string}`;
     const factoryAddress = chain.identity_factory as `0x${string}`;
 
@@ -1175,6 +1211,7 @@ export async function createStockIdentityOnchain(input: {
       storeKey: storeKey as `0x${string}`,
       name: input.name.trim(),
       symbol: input.symbol.trim().toUpperCase(),
+      creatorIdentity: creatorIdentity as `0x${string}`,
     });
     if (!preflight.ok) {
       const notes = await diagnoseCreateRevert(publicClient, {
@@ -1202,7 +1239,7 @@ export async function createStockIdentityOnchain(input: {
     const createData = encodeFunctionData({
       abi: IDENTITY_FACTORY_ABI,
       functionName: "createIdentity",
-      args: [storeKey as `0x${string}`, input.name.trim(), input.symbol.trim().toUpperCase()],
+      args: [storeKey as `0x${string}`, input.name.trim(), input.symbol.trim().toUpperCase(), creatorIdentity as `0x${string}`],
     });
 
     logCreate("create_submit", { factory: factoryAddress, store_key: storeKey });
@@ -1409,6 +1446,138 @@ export async function createStockIdentityOnchain(input: {
   }
 }
 
+export async function addCreatorStockLiquidityOnchain(input: {
+  slug: string;
+  amount_usdc: number;
+}) {
+  const amount = toNumber(input.amount_usdc, 0);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid USDC amount.");
+
+  const { data: auth, error: authErr } = await supabase.auth.getUser();
+  if (authErr) throw authErr;
+  const user = auth?.user;
+  if (!user) throw new Error("Not authenticated");
+
+  const authCheck = await withTimeout(
+    requireLocalAuth("Add stock liquidity"),
+    60_000,
+    "Authentication timed out. Retry and complete biometric/passcode confirmation promptly.",
+  );
+  if (!authCheck.ok) throw new Error(authCheck.message || "Authentication required");
+
+  const detail = await fetchStockDetail({ slug: input.slug, timeframe: "1m", candle_limit: 1, trade_limit: 1 });
+  const identity = detail?.identity;
+  if (!identity?.id) throw new Error("Stock not found.");
+  if (String(identity.store_id || "") !== String(user.id)) {
+    throw new Error("Only the store owner can add liquidity to this stock.");
+  }
+
+  const chain = await resolveStockChain(String(identity.chain || ""));
+  if (!isAddress(chain.identity_liquidity_manager)) {
+    throw new Error(`identity_liquidity_manager missing for ${chain.chain}`);
+  }
+
+  const { client, account, address } = await resolveSmartAccountForTrade(chain, user.id);
+  await registerWallet(chain.chain, address);
+  await ensureStockWalletIdentity(chain.chain, address);
+
+  const publicClient = createPublicClient({ transport: http(String(chain.rpc_url || "")) });
+  const stableAddress = (chain.identity_stable_address || chain.usdc_address) as `0x${string}`;
+  const managerAddress = chain.identity_liquidity_manager as `0x${string}`;
+  const amountRaw = toRaw(amount, 6, 6);
+  if (amountRaw <= 0n) throw new Error("USDC amount is too small.");
+
+  const stableBalance = await publicClient.readContract({
+    abi: ERC20_ABI,
+    address: stableAddress,
+    functionName: "balanceOf",
+    args: [address as `0x${string}`],
+  }) as bigint;
+  if (stableBalance < amountRaw) {
+    throw new Error(`Insufficient USDC balance. Need ${formatUsdc6(amountRaw)} USDC.`);
+  }
+
+  const allowance = await publicClient.readContract({
+    abi: ERC20_ABI,
+    address: stableAddress,
+    functionName: "allowance",
+    args: [address as `0x${string}`, managerAddress],
+  }) as bigint;
+  if (allowance < amountRaw) {
+    const approveData = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [managerAddress, amountRaw],
+    });
+    const approveResult = await withTimeout(
+      (client as any).sendTransaction({
+        account,
+        to: stableAddress,
+        data: approveData,
+      }),
+      90_000,
+      "Approval timed out in wallet. Retry and approve the request in your wallet app.",
+    );
+    const approveHash = await resolveTxHash(chain, approveResult);
+    if (approveHash.txHash) {
+      const approveReceipt = await publicClient.waitForTransactionReceipt({
+        hash: approveHash.txHash as `0x${string}`,
+        confirmations: 1,
+        timeout: 120_000,
+      });
+      if ((approveReceipt as any)?.status && String((approveReceipt as any).status).toLowerCase() !== "success") {
+        throw new Error("Approval failed. Check wallet activity and retry.");
+      }
+    } else {
+      const readyAllowance = await waitForAllowance(publicClient, stableAddress, address as `0x${string}`, managerAddress, amountRaw, 120_000);
+      if (readyAllowance < amountRaw) {
+        throw new Error("Approval did not finish in time. Check wallet activity and retry.");
+      }
+    }
+  }
+
+  const storeKey = storeKeyFromStoreId(String(identity.store_id || ""));
+  const data = encodeFunctionData({
+    abi: IDENTITY_LIQUIDITY_MANAGER_ABI,
+    functionName: "creatorAddLiquidity",
+    args: [storeKey as `0x${string}`, amountRaw],
+  });
+  const result = await withTimeout(
+    (client as any).sendTransaction({
+      account,
+      to: managerAddress,
+      data,
+    }),
+    120_000,
+    "Liquidity request timed out in wallet. Retry and approve the request in your wallet app.",
+  );
+  const { txHash, userOpHash } = await withTimeout(
+    resolveTxHash(chain, result),
+    80_000,
+    "Transaction hash resolution timed out. Check wallet activity and retry.",
+  );
+  if (!txHash.startsWith("0x")) {
+    throw new Error("Liquidity was submitted but the transaction hash is not available yet. Retry in a few seconds.");
+  }
+
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash as `0x${string}`,
+    confirmations: 1,
+    timeout: 140_000,
+  });
+  if ((receipt as any)?.status && String((receipt as any).status).toLowerCase() !== "success") {
+    throw new Error("Liquidity transaction failed. Check wallet activity and retry.");
+  }
+
+  return {
+    ok: true,
+    tx_hash: txHash,
+    user_op_hash: userOpHash || null,
+    explorer_url: explorerTxUrl(chain.chain, txHash),
+    amount_usdc: amount,
+  };
+}
+
 export async function submitStockTradeOnchain(input: {
   slug: string;
   side: "buy" | "sell";
@@ -1452,6 +1621,7 @@ export async function submitStockTradeOnchain(input: {
   const chain = await resolveStockChain(chainName);
   const { client, account, address } = await resolveSmartAccountForTrade(chain, user.id);
   await registerWallet(chain.chain, address);
+  await ensureStockWalletIdentity(chain.chain, address);
   const routerAddress = chain.identity_router as `0x${string}`;
   const stableAddress = (chain.identity_stable_address || chain.usdc_address) as `0x${string}`;
   const tokenAddress = normalizeHex(String(quoteRes?.identity?.token_address || ""));

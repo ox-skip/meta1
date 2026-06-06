@@ -13,7 +13,7 @@ const MARKET_LISTING_ADMIN_SELECT =
 const MARKET_LISTING_ADMIN_LEGACY_SELECT =
   "id,seller_id,category,sub_category,title,price_amount,currency,delivery_type,stock_qty,is_active,created_at,updated_at";
 const MARKET_CHAIN_ADMIN_SELECT =
-  "id,chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,identity_factory,identity_router,identity_name_registry,identity_stable_address,confirmations_required,fee_bps,active,created_at,updated_at";
+  "id,chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,fee_bps,active,created_at,updated_at";
 const MARKET_CHAIN_ADMIN_LEGACY_SELECT =
   "id,chain,chain_id,rpc_url,usdc_address,escrow_address,confirmations_required,active,created_at,updated_at";
 

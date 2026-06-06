@@ -17,6 +17,8 @@ export type MarketChainConfig = {
   identity_factory?: string | null;
   identity_router?: string | null;
   identity_name_registry?: string | null;
+  identity_ownership_controller?: string | null;
+  identity_liquidity_manager?: string | null;
   identity_stable_address?: string | null;
   confirmations_required: number;
   active: boolean;
@@ -103,6 +105,8 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
       identity_factory: input?.identity_factory ? String(input.identity_factory) : null,
       identity_router: input?.identity_router ? String(input.identity_router) : null,
       identity_name_registry: input?.identity_name_registry ? String(input.identity_name_registry) : null,
+      identity_ownership_controller: input?.identity_ownership_controller ? String(input.identity_ownership_controller) : null,
+      identity_liquidity_manager: input?.identity_liquidity_manager ? String(input.identity_liquidity_manager) : null,
       identity_stable_address: input?.identity_stable_address ? String(input.identity_stable_address) : null,
       confirmations_required: parseNumber(input?.confirmations_required, 3),
       active: Boolean(input?.active),
@@ -114,7 +118,7 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
     const { data: direct, error: directErr } = await supabase
       .from("market_chain_config")
       .select(
-        "chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,identity_factory,identity_router,identity_name_registry,identity_stable_address,confirmations_required,active"
+        "chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,active"
       )
       .order("active", { ascending: false });
     if (!directErr && direct && direct.length) {

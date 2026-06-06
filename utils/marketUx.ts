@@ -57,26 +57,35 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   if (msg.includes("network request failed") || msg.includes("failed to fetch")) {
     return "Network connection issue. Please try again.";
   }
-  if (msg.includes("rpc_url missing")) {
-    return raw;
+  if (msg.includes("wallet/rpc failed") || msg.includes("provider error")) {
+    return "Wallet or network provider could not complete the request. Reconnect wallet and try again.";
+  }
+  if (msg.includes("rpc") || msg.includes("rpc_url")) {
+    return "Network provider is not ready for this market. Please try again after the chain settings are updated.";
   }
   if (msg.includes("chain config missing")) {
-    return raw;
+    return "Chain settings are not ready for this market yet.";
+  }
+  if (msg.includes("identity_liquidity_manager") || msg.includes("identity_ownership_controller")) {
+    return "Stock market settings are not ready on this network yet.";
+  }
+  if (msg.includes("admin signing key") || msg.includes("stock_admin_private_key") || msg.includes("identity_admin_private_key")) {
+    return "Stock market settings are not ready on this network yet.";
   }
   if (msg.includes("insufficient")) {
     return "Insufficient wallet balance for this action.";
   }
   if (msg.includes("max trade") || msg.includes("max size")) {
-    return "Trade amount is above the current on-chain max size. Reduce amount and try again.";
+    return "Trade amount is above the current market limit. Reduce amount and try again.";
   }
   if (msg.includes("cooldown")) {
     return "Trade cooldown is active for this stock. Wait a few seconds and retry.";
   }
   if (msg.includes("twap deviation")) {
-    return "Price moved too far from TWAP. Wait briefly and retry with a smaller amount.";
+    return "Price moved too quickly. Wait briefly and retry with a smaller amount.";
   }
   if (msg.includes("too little received") || msg.includes("insufficient output amount")) {
-    return "Price moved during quote. Reduce amount and retry.";
+    return "Price moved during review. Reduce amount and retry.";
   }
   if (msg.includes("row-level security") || msg.includes("permission") || msg.includes("policy")) {
     return "This action is currently blocked by permissions. Please contact support if it keeps happening.";
@@ -88,17 +97,17 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
     return "You can only perform this action on your own order.";
   }
   if (msg.includes("cannot create stock yet")) {
-    return raw;
+    return compact(raw.replace(/on-chain/gi, "network").replace(/contract/gi, "market").replace(/factory/gi, "launch"));
   }
   if (msg.includes("create transaction reverted")) {
-    return raw;
+    return "The launch was not accepted by the market rules. Review the details and try again.";
   }
   if (msg.includes("identity factory contract not found")) {
-    return raw;
+    return "Stock launch settings are not ready on this network.";
   }
   if (msg.includes("stable token contract not found")) {
-    return raw;
+    return "Payment token settings are not ready on this network.";
   }
 
-  return compact(raw);
+  return compact(raw.replace(/on-chain/gi, "network").replace(/RPC/gi, "network"));
 }

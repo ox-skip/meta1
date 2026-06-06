@@ -9,14 +9,20 @@ import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 type StockContractAction =
   | "factory_pause"
   | "factory_unpause"
-  | "factory_set_bootstrap_defaults"
   | "factory_set_creation_amounts"
-  | "factory_set_split"
-  | "factory_set_name_registry"
-  | "factory_set_admin"
   | "factory_seed_initial_liquidity"
-  | "factory_add_reinvestment"
-  | "factory_add_rewards"
+  | "liquidity_pause"
+  | "liquidity_unpause"
+  | "liquidity_set_split"
+  | "liquidity_set_creator_config"
+  | "liquidity_set_creator_disabled"
+  | "liquidity_add_reinvestment"
+  | "liquidity_add_rewards"
+  | "controller_pause"
+  | "controller_unpause"
+  | "controller_set_wallet_identity"
+  | "controller_set_launch_identity"
+  | "controller_set_identity_max_bps"
   | "router_pause"
   | "router_unpause"
   | "router_set_stock_bootstrap"
@@ -57,19 +63,27 @@ function normalizeAction(input: unknown): StockContractAction | "" {
   const aliases: Record<string, StockContractAction> = {
     pause_factory: "factory_pause",
     unpause_factory: "factory_unpause",
+    pause_liquidity: "liquidity_pause",
+    unpause_liquidity: "liquidity_unpause",
+    pause_controller: "controller_pause",
+    unpause_controller: "controller_unpause",
     pause_router: "router_pause",
     unpause_router: "router_unpause",
-    set_bootstrap_defaults: "factory_set_bootstrap_defaults",
     set_creation_amounts: "factory_set_creation_amounts",
-    set_split: "factory_set_split",
-    set_name_registry: "factory_set_name_registry",
-    set_admin: "factory_set_admin",
-    rotate_admin: "factory_set_admin",
+    set_split: "liquidity_set_split",
+    factory_set_split: "liquidity_set_split",
     seed_initial_liquidity: "factory_seed_initial_liquidity",
     seed_stock_liquidity: "factory_seed_initial_liquidity",
     factory_seed_liquidity: "factory_seed_initial_liquidity",
-    add_reinvestment: "factory_add_reinvestment",
-    add_rewards: "factory_add_rewards",
+    add_reinvestment: "liquidity_add_reinvestment",
+    add_rewards: "liquidity_add_rewards",
+    factory_add_reinvestment: "liquidity_add_reinvestment",
+    factory_add_rewards: "liquidity_add_rewards",
+    set_creator_liquidity_config: "liquidity_set_creator_config",
+    set_creator_liquidity_disabled: "liquidity_set_creator_disabled",
+    set_wallet_identity: "controller_set_wallet_identity",
+    set_launch_creator_identity: "controller_set_launch_identity",
+    set_identity_max_bps: "controller_set_identity_max_bps",
     set_stock_bootstrap: "router_set_stock_bootstrap",
     set_liquidity_guard: "router_set_liquidity_guard",
     set_liquidity_guard_bps: "router_set_liquidity_guard",
@@ -83,14 +97,20 @@ function normalizeAction(input: unknown): StockContractAction | "" {
   const supported = new Set<StockContractAction>([
     "factory_pause",
     "factory_unpause",
-    "factory_set_bootstrap_defaults",
     "factory_set_creation_amounts",
-    "factory_set_split",
-    "factory_set_name_registry",
-    "factory_set_admin",
     "factory_seed_initial_liquidity",
-    "factory_add_reinvestment",
-    "factory_add_rewards",
+    "liquidity_pause",
+    "liquidity_unpause",
+    "liquidity_set_split",
+    "liquidity_set_creator_config",
+    "liquidity_set_creator_disabled",
+    "liquidity_add_reinvestment",
+    "liquidity_add_rewards",
+    "controller_pause",
+    "controller_unpause",
+    "controller_set_wallet_identity",
+    "controller_set_launch_identity",
+    "controller_set_identity_max_bps",
     "router_pause",
     "router_unpause",
     "router_set_stock_bootstrap",
@@ -158,6 +178,12 @@ function requireBytes32OrStoreKey(body: any) {
   return storeKeyForStoreId(storeId);
 }
 
+function requireBytes32(name: string, value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!/^0x[a-fA-F0-9]{64}$/.test(raw)) throw new Error(`${name} must be a 32-byte value`);
+  return raw;
+}
+
 function termHash(value: unknown) {
   const raw = String(value ?? "").trim();
   if (/^0x[a-fA-F0-9]{64}$/.test(raw)) return raw;
@@ -165,17 +191,24 @@ function termHash(value: unknown) {
   return ethers.keccak256(ethers.toUtf8Bytes(raw));
 }
 
+async function ensureAllowance(input: {
+  token: ethers.Contract;
+  owner: string;
+  spender: string;
+  amount: bigint;
+}) {
+  const current = BigInt(await input.token.allowance(input.owner, input.spender));
+  if (current >= input.amount) return null;
+  const tx = await input.token.approve(input.spender, input.amount);
+  await tx.wait();
+  return tx.hash as string;
+}
+
 const factoryAbi = [
   "function pause() external",
   "function unpause() external",
-  "function setBootstrapDefaults(uint256 maxTradeBps, uint256 cooldownSecs, uint256 duration) external",
   "function setCreationAmounts(uint256 liquidityAmount, uint256 reserveAmount) external",
-  "function setSplit(uint16 liquidityBps, uint16 rewardsBps) external",
-  "function setNameRegistry(address registry) external",
-  "function setAdmin(address newAdmin) external",
   "function identities(bytes32 storeId) view returns (address token,address vault,address staking,address pool,address stable,uint24 fee)",
-  "function addReinvestment(bytes32 storeId, uint256 stableAmount) external",
-  "function addRewards(bytes32 storeId, uint256 stableAmount) external",
 ] as const;
 
 const vaultAbi = [
@@ -190,7 +223,27 @@ const erc20Abi = [
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function approve(address spender,uint256 amount) external returns (bool)",
   "function transfer(address to,uint256 amount) external returns (bool)",
+] as const;
+
+const liquidityManagerAbi = [
+  "function pause() external",
+  "function unpause() external",
+  "function setSplit(uint16 liquidityBps, uint16 rewardsBps) external",
+  "function setCreatorLiquidityConfig(bool enabled, uint256 minAmount, uint256 maxAmount) external",
+  "function setCreatorLiquidityDisabled(bytes32 storeId, bool disabled) external",
+  "function addReinvestment(bytes32 storeId, uint256 stableAmount) external",
+  "function addRewards(bytes32 storeId, uint256 stableAmount) external",
+] as const;
+
+const controllerAbi = [
+  "function pause() external",
+  "function unpause() external",
+  "function setWalletIdentity(address wallet, bytes32 identityId) external",
+  "function setLaunchCreatorIdentity(bytes32 storeId, bytes32 creatorIdentity) external",
+  "function setIdentityMaxBpsOverride(bytes32 storeId, bytes32 identityId, uint16 maxBps) external",
 ] as const;
 
 const routerAbi = [
@@ -234,7 +287,7 @@ serve(async (req) => {
 
     const { data: cfg, error: cfgErr } = await admin
       .from("market_chain_config")
-      .select("chain,rpc_url,identity_factory,identity_router,identity_name_registry")
+      .select("chain,rpc_url,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager")
       .eq("chain", chain)
       .maybeSingle();
     if (cfgErr) return bad(cfgErr.message);
@@ -259,31 +312,12 @@ serve(async (req) => {
         tx = await contract.pause();
       } else if (action === "factory_unpause") {
         tx = await contract.unpause();
-      } else if (action === "factory_set_bootstrap_defaults") {
-        const maxTradeBps = requireInt("max_trade_bps", body?.max_trade_bps ?? body?.maxTradeBps, 1, 2000);
-        const cooldownSecs = requireInt("cooldown_seconds", body?.cooldown_seconds ?? body?.cooldownSecs, 0, 31_536_000);
-        const durationSecs = requireInt("duration_seconds", body?.duration_seconds ?? body?.durationSecs, 0, 31_536_000);
-        tx = await contract.setBootstrapDefaults(maxTradeBps, cooldownSecs, durationSecs);
-        response.max_trade_bps = maxTradeBps;
-        response.cooldown_seconds = cooldownSecs;
-        response.duration_seconds = durationSecs;
       } else if (action === "factory_set_creation_amounts") {
         const liquidityAmount = requireAmountUnits("liquidity_usdc", body?.liquidity_usdc ?? body?.liquidityAmount);
         const reserveAmount = requireAmountUnits("reserve_usdc", body?.reserve_usdc ?? body?.reserveAmount);
         tx = await contract.setCreationAmounts(liquidityAmount, reserveAmount);
         response.liquidity_usdc = String(body?.liquidity_usdc ?? body?.liquidityAmount);
         response.reserve_usdc = String(body?.reserve_usdc ?? body?.reserveAmount);
-      } else if (action === "factory_set_split") {
-        const liquidityBps = requireInt("liquidity_bps", body?.liquidity_bps ?? body?.liquidityBps, 0, 10000);
-        const rewardsBps = requireInt("rewards_bps", body?.rewards_bps ?? body?.rewardsBps, 500, 10000);
-        if (liquidityBps + rewardsBps !== 10000) return bad("liquidity_bps + rewards_bps must equal 10000");
-        tx = await contract.setSplit(liquidityBps, rewardsBps);
-        response.liquidity_bps = liquidityBps;
-        response.rewards_bps = rewardsBps;
-      } else if (action === "factory_set_admin") {
-        const newAdmin = requireAddress("new_admin", body?.new_admin ?? body?.newAdmin ?? body?.admin);
-        tx = await contract.setAdmin(newAdmin);
-        response.new_admin = newAdmin;
       } else if (action === "factory_seed_initial_liquidity") {
         const storeKey = requireBytes32OrStoreKey(body);
         const amountText = requireAmountText("stable_usdc", body?.stable_usdc ?? body?.amount_usdc ?? body?.amount);
@@ -346,18 +380,91 @@ serve(async (req) => {
         response.minted_stable = formatStable(mintAmount, decimals);
         response.seed_buffer_bps = 200;
         response.transfer_tx_hash = transferTx?.hash ?? null;
-      } else if (action === "factory_add_reinvestment" || action === "factory_add_rewards") {
+      } else {
+        return bad("Unsupported factory action for the current stock contracts");
+      }
+    } else if (action.startsWith("liquidity_")) {
+      targetAddress = requireAddress("identity_liquidity_manager", cfg.identity_liquidity_manager);
+      const contract = new ethers.Contract(targetAddress, liquidityManagerAbi, signer);
+      if (action === "liquidity_pause") {
+        tx = await contract.pause();
+      } else if (action === "liquidity_unpause") {
+        tx = await contract.unpause();
+      } else if (action === "liquidity_set_split") {
+        const liquidityBps = requireInt("liquidity_bps", body?.liquidity_bps ?? body?.liquidityBps, 0, 10000);
+        const rewardsBps = requireInt("rewards_bps", body?.rewards_bps ?? body?.rewardsBps, 500, 10000);
+        if (liquidityBps + rewardsBps !== 10000) return bad("liquidity_bps + rewards_bps must equal 10000");
+        tx = await contract.setSplit(liquidityBps, rewardsBps);
+        response.liquidity_bps = liquidityBps;
+        response.rewards_bps = rewardsBps;
+      } else if (action === "liquidity_set_creator_config") {
+        const enabled = requireBoolean("enabled", body?.enabled ?? true);
+        const minAmount = requireAmountUnits("min_usdc", body?.min_usdc ?? body?.min_amount_usdc ?? "0");
+        const maxAmount = requireAmountUnits("max_usdc", body?.max_usdc ?? body?.max_amount_usdc ?? "0");
+        tx = await contract.setCreatorLiquidityConfig(enabled, minAmount, maxAmount);
+        response.enabled = enabled;
+        response.min_usdc = String(body?.min_usdc ?? body?.min_amount_usdc ?? "0");
+        response.max_usdc = String(body?.max_usdc ?? body?.max_amount_usdc ?? "0");
+      } else if (action === "liquidity_set_creator_disabled") {
+        const storeKey = requireBytes32OrStoreKey(body);
+        const disabled = requireBoolean("disabled", body?.disabled);
+        tx = await contract.setCreatorLiquidityDisabled(storeKey, disabled);
+        response.store_key = storeKey;
+        response.disabled = disabled;
+      } else if (action === "liquidity_add_reinvestment" || action === "liquidity_add_rewards") {
+        const factoryAddress = requireAddress("identity_factory", cfg.identity_factory);
+        const factory = new ethers.Contract(factoryAddress, factoryAbi, signer);
         const storeKey = requireBytes32OrStoreKey(body);
         const stableAmount = requireAmountUnits("stable_usdc", body?.stable_usdc ?? body?.amount_usdc ?? body?.amount);
-        tx = action === "factory_add_reinvestment"
+        const info = await factory.identities(storeKey);
+        const stableAddress = String(info.stable ?? info[4] ?? "");
+        if (!ethers.isAddress(stableAddress) || stableAddress === ethers.ZeroAddress) return bad("Stable token missing for stock");
+        const stable = new ethers.Contract(stableAddress, erc20Abi, signer);
+        const approvalTxHash = await ensureAllowance({
+          token: stable,
+          owner: await signer.getAddress(),
+          spender: targetAddress,
+          amount: stableAmount,
+        });
+        tx = action === "liquidity_add_reinvestment"
           ? await contract.addReinvestment(storeKey, stableAmount)
           : await contract.addRewards(storeKey, stableAmount);
         response.store_key = storeKey;
         response.stable_usdc = String(body?.stable_usdc ?? body?.amount_usdc ?? body?.amount);
+        response.stable_token = stableAddress;
+        response.approval_tx_hash = approvalTxHash;
       } else {
-        const registry = requireAddress("registry", body?.registry ?? body?.name_registry);
-        tx = await contract.setNameRegistry(registry);
-        response.registry = registry;
+        return bad("Unsupported liquidity action");
+      }
+    } else if (action.startsWith("controller_")) {
+      targetAddress = requireAddress("identity_ownership_controller", cfg.identity_ownership_controller);
+      const contract = new ethers.Contract(targetAddress, controllerAbi, signer);
+      if (action === "controller_pause") {
+        tx = await contract.pause();
+      } else if (action === "controller_unpause") {
+        tx = await contract.unpause();
+      } else if (action === "controller_set_wallet_identity") {
+        const wallet = requireAddress("wallet", body?.wallet ?? body?.wallet_address);
+        const identityId = requireBytes32("identity_id", body?.identity_id ?? body?.profile_identity);
+        tx = await contract.setWalletIdentity(wallet, identityId);
+        response.wallet = wallet;
+        response.identity_id = identityId;
+      } else if (action === "controller_set_launch_identity") {
+        const storeKey = requireBytes32OrStoreKey(body);
+        const identityId = requireBytes32("identity_id", body?.identity_id ?? body?.creator_identity ?? body?.profile_identity);
+        tx = await contract.setLaunchCreatorIdentity(storeKey, identityId);
+        response.store_key = storeKey;
+        response.identity_id = identityId;
+      } else if (action === "controller_set_identity_max_bps") {
+        const storeKey = requireBytes32OrStoreKey(body);
+        const identityId = requireBytes32("identity_id", body?.identity_id ?? body?.profile_identity);
+        const maxBps = requireInt("max_bps", body?.max_bps ?? body?.maxBps, 0, 10000);
+        tx = await contract.setIdentityMaxBpsOverride(storeKey, identityId, maxBps);
+        response.store_key = storeKey;
+        response.identity_id = identityId;
+        response.max_bps = maxBps;
+      } else {
+        return bad("Unsupported controller action");
       }
     } else if (action.startsWith("router_")) {
       targetAddress = requireAddress("identity_router", cfg.identity_router);
