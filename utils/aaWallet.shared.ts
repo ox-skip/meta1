@@ -197,6 +197,8 @@ function isUnsupportedWalletSendCallsError(err: unknown) {
     msg.includes("method not found") ||
     msg.includes("method not supported") ||
     msg.includes("unsupported wc_ method") ||
+    msg.includes("doesn't has corresponding handler") ||
+    msg.includes("does not have corresponding handler") ||
     (
       msg.includes("wallet_sendcalls") &&
       (
@@ -284,60 +286,6 @@ async function sendSmartWalletCall(args: {
   } catch (err: any) {
     throw new Error(`Embedded smart wallet failed to send transaction: ${bestWalletError(err)}`);
   }
-}
-
-function normalizeCapabilityChainId(chainId: number) {
-  return [toHexChainId(chainId), toHexChainId(chainId).toLowerCase(), String(chainId)];
-}
-
-function capabilityEntrySupportsSendCalls(entry: any) {
-  const atomic = entry?.atomic;
-  if (atomic === true) return true;
-  if (atomic && typeof atomic === "object" && ["supported", "ready"].includes(String(atomic.status || "").toLowerCase())) return true;
-
-  const sendCalls = entry?.sendCalls ?? entry?.wallet_sendCalls;
-  if (sendCalls === true) return true;
-  if (!sendCalls || typeof sendCalls !== "object") return false;
-  if (sendCalls.supported === true) return true;
-  if (sendCalls.status === "supported") return true;
-  if (sendCalls.available === true) return true;
-  return false;
-}
-
-function capabilitiesSupportSendCalls(raw: unknown, chainId: number) {
-  const caps = raw as any;
-  if (!caps || typeof caps !== "object") return false;
-  if (capabilityEntrySupportsSendCalls(caps)) return true;
-
-  for (const key of normalizeCapabilityChainId(chainId)) {
-    if (capabilityEntrySupportsSendCalls(caps[key])) return true;
-  }
-
-  return Object.values(caps).some((entry) => capabilityEntrySupportsSendCalls(entry));
-}
-
-async function providerSupportsWalletSendCalls(provider: any, chainId: number, from: `0x${string}`) {
-  if (!provider || typeof provider.request !== "function") return false;
-  const chainHex = toHexChainId(chainId);
-  const attempts = [
-    [from, [chainHex]],
-    [from],
-    [],
-  ];
-
-  for (const params of attempts) {
-    try {
-      const caps = await provider.request({
-        method: "wallet_getCapabilities",
-        params,
-      });
-      if (capabilitiesSupportSendCalls(caps, chainId)) return true;
-    } catch {
-      // Try the next shape; wallets differ on the optional params they accept.
-    }
-  }
-
-  return false;
 }
 
 async function ensureWalletHasDirectGas(args: {
@@ -571,9 +519,7 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
 
       const useWalletSendCalls =
         session.mode === "base_smart" ||
-        session.providerType === "base_smart" ||
-        Boolean(session.smartAccounts?.length) ||
-        await providerSupportsWalletSendCalls(provider, chainId, txFrom);
+        session.providerType === "base_smart";
       const smartCallArgs = {
         provider,
         chainId,
@@ -582,18 +528,18 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
         data: (args?.data as `0x${string}` | undefined) ?? undefined,
         value: args?.value,
       };
-      if (useWalletSendCalls || session.mode === "walletconnect") {
+      if (useWalletSendCalls) {
         try {
           return await sendSmartWalletCall(smartCallArgs);
         } catch (smartErr) {
-          if (useWalletSendCalls || !isUnsupportedWalletSendCallsError(smartErr)) {
+          if (!isUnsupportedWalletSendCallsError(smartErr)) {
             throw smartErr;
           }
         }
       }
 
       const hash = await walletClient.sendTransaction({
-        account: from as `0x${string}`,
+        account: txFrom,
         to: to as `0x${string}`,
         data: (args?.data as `0x${string}` | undefined) ?? undefined,
         value:
@@ -610,7 +556,7 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
       let last = "";
       for (const req of requests) {
         const out = await (client as any).sendTransaction({
-          account: args?.account || address,
+          account: args?.account || senderAddress,
           ...req,
         });
         last = String(out?.hash || "");
