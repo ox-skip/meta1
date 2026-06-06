@@ -25,6 +25,9 @@ export type ActiveWalletSession = {
   chainId: number;
   provider: any | null;
   providerType: string;
+  caipAddress?: string;
+  accountType?: string;
+  smartAccounts?: string[];
   runtime: ActiveWalletRuntime;
 };
 
@@ -42,6 +45,8 @@ function snapshotForMode(mode: WalletMode): ActiveWalletSession {
       chainId: base.chainId,
       provider: base.provider,
       providerType: base.providerType || "base_smart",
+      accountType: "smartAccount",
+      smartAccounts: base.address ? [base.address] : [],
       runtime: base.runtime,
     };
   }
@@ -54,6 +59,9 @@ function snapshotForMode(mode: WalletMode): ActiveWalletSession {
     chainId: wc.chainId,
     provider: wc.provider,
     providerType: wc.providerType || "walletconnect",
+    caipAddress: wc.caipAddress,
+    accountType: wc.accountType,
+    smartAccounts: wc.smartAccounts,
     runtime: wc.runtime,
   };
 }

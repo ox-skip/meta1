@@ -4,10 +4,12 @@ import React, { useEffect } from "react";
 
 import { AppKit, AppKitProvider, createAppKit, useAccount, useAppKit, useProvider } from "@reown/appkit-react-native";
 import { EthersAdapter } from "@reown/appkit-ethers-react-native";
+// eslint-disable-next-line import/no-unresolved
 import { arbitrum, base, mainnet, optimism, polygon } from "@reown/appkit/networks";
 
 import {
   clearWalletConnectConnection,
+  plainAddressFromCaip,
   parseChainIdFromCaipAddress,
   setWalletConnectConnection,
   setWalletConnectRuntime,
@@ -46,6 +48,44 @@ if (projectId) {
   });
 }
 
+function parseSmartAccounts(raw: unknown) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAddress(raw: unknown) {
+  const value = String(raw || "").trim();
+  return plainAddressFromCaip(value) || value;
+}
+
+function collectSmartAccounts(accountState: any, providerState: any, walletProvider: any) {
+  const out = new Set<string>();
+  const add = (value: unknown) => {
+    const address = normalizeAddress(value);
+    if (/^0x[a-fA-F0-9]{40}$/.test(address)) out.add(address);
+  };
+
+  const allAccounts = Array.isArray(accountState?.allAccounts) ? accountState.allAccounts : [];
+  for (const account of allAccounts) {
+    if (String(account?.type || "").toLowerCase().includes("smart")) {
+      add(account?.address || account?.caipAddress);
+    }
+  }
+
+  const sessionProps = walletProvider?.session?.sessionProperties || providerState?.session?.sessionProperties || {};
+  for (const account of parseSmartAccounts(sessionProps.smartAccounts)) {
+    add(account);
+  }
+
+  return [...out];
+}
+
 function SessionBinder() {
   const appKit = useAppKit() as any;
   const accountState = useAccount() as any;
@@ -61,6 +101,8 @@ function SessionBinder() {
 
   const walletProvider = providerState?.walletProvider ?? providerState?.provider ?? null;
   const providerType = String(providerState?.walletProviderType || providerState?.providerType || "");
+  const smartAccounts = collectSmartAccounts(accountState, providerState, walletProvider);
+  const accountType = String(accountState?.embeddedWalletInfo?.accountType || accountState?.accountType || (smartAccounts.length ? "smartAccount" : ""));
 
   useEffect(() => {
     setWalletConnectRuntime({
@@ -89,8 +131,11 @@ function SessionBinder() {
       chainId,
       provider: walletProvider,
       providerType,
+      caipAddress,
+      accountType,
+      smartAccounts,
     });
-  }, [address, chainId, isConnected, providerType, walletProvider]);
+  }, [accountType, address, caipAddress, chainId, isConnected, providerType, smartAccounts, walletProvider]);
 
   return <AppKit />;
 }

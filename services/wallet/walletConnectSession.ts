@@ -10,6 +10,9 @@ export type WalletConnectSession = {
   chainId: number;
   provider: any | null;
   providerType: string;
+  caipAddress: string;
+  accountType: string;
+  smartAccounts: string[];
   runtime: WalletConnectRuntime;
 };
 
@@ -21,6 +24,9 @@ let state: WalletConnectSession = {
   chainId: 0,
   provider: null,
   providerType: "",
+  caipAddress: "",
+  accountType: "",
+  smartAccounts: [],
   runtime: EMPTY_RUNTIME,
 };
 
@@ -51,6 +57,12 @@ export function parseChainIdFromCaipAddress(caipAddress?: string | null) {
   return Number.isFinite(n) ? n : 0;
 }
 
+export function plainAddressFromCaip(caipAddress?: string | null) {
+  const raw = String(caipAddress || "").trim();
+  const m = /^eip155:\d+:(0x[a-fA-F0-9]{40})$/.exec(raw);
+  return m?.[1] || "";
+}
+
 export function setWalletConnectRuntime(runtime: WalletConnectRuntime) {
   state = {
     ...state,
@@ -65,18 +77,32 @@ export function setWalletConnectConnection(input: {
   chainId?: number | null;
   provider?: any;
   providerType?: string | null;
+  caipAddress?: string | null;
+  accountType?: string | null;
+  smartAccounts?: (string | null | undefined)[] | null;
 }) {
   const nextAddress = String(input.address || "").trim();
-  const nextConnected = Boolean(input.connected) && isAddress(nextAddress);
   const nextChainId = Number(input.chainId);
+  const smartAccounts = (input.smartAccounts ?? [])
+    .map((account) => plainAddressFromCaip(account) || String(account || "").trim())
+    .filter(isAddress);
+  const nextAccountType = String(input.accountType || "");
+  const effectiveAddress =
+    nextAccountType.toLowerCase().includes("smart") && smartAccounts[0]
+      ? smartAccounts[0]
+      : nextAddress;
+  const nextConnected = Boolean(input.connected) && isAddress(effectiveAddress);
 
   state = {
     ...state,
     connected: nextConnected,
-    address: nextConnected ? nextAddress : "",
+    address: nextConnected ? effectiveAddress : "",
     chainId: Number.isFinite(nextChainId) ? nextChainId : 0,
     provider: input.provider ?? null,
     providerType: String(input.providerType || ""),
+    caipAddress: String(input.caipAddress || ""),
+    accountType: nextAccountType,
+    smartAccounts,
   };
 
   notify();
@@ -90,6 +116,9 @@ export function clearWalletConnectConnection() {
     chainId: 0,
     provider: null,
     providerType: "",
+    caipAddress: "",
+    accountType: "",
+    smartAccounts: [],
   };
   notify();
 }
@@ -101,6 +130,9 @@ export function getWalletConnectSession(): WalletConnectSession {
     chainId: state.chainId,
     provider: state.provider,
     providerType: state.providerType,
+    caipAddress: state.caipAddress,
+    accountType: state.accountType,
+    smartAccounts: [...state.smartAccounts],
     runtime: {
       openModal: state.runtime.openModal,
       disconnect: state.runtime.disconnect,

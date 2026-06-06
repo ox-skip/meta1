@@ -367,6 +367,16 @@ async function ensureWalletHasDirectGas(args: {
   }
 }
 
+function preferredSenderAddress(session: ReturnType<typeof getActiveWalletSession>, fallback: string) {
+  const smart = Array.isArray(session.smartAccounts)
+    ? session.smartAccounts.find((account) => isAddress(String(account || "")))
+    : "";
+  if (String(session.accountType || "").toLowerCase().includes("smart") && smart) {
+    return smart as `0x${string}`;
+  }
+  return fallback as `0x${string}`;
+}
+
 function buildChainForWallet(chainConfig: MarketChainConfig, chainOverride?: any) {
   if (chainOverride) return chainOverride;
   const chainId = normalizeChainId((chainConfig as any).chain_id);
@@ -529,6 +539,8 @@ async function ensureConnectedProviderAndAddress(chainConfig: MarketChainConfig)
 export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: string | null) {
   const { provider, chain, address, rpcUrl } = await ensureConnectedProviderAndAddress(chainConfig);
   const chainId = normalizeChainId((chainConfig as any).chain_id);
+  const activeSession = getActiveWalletSession();
+  const senderAddress = preferredSenderAddress(activeSession, address);
 
   const walletClient = createWalletClient({
     chain: chain as any,
@@ -536,22 +548,23 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
   });
 
   const client = {
-    account: address as `0x${string}`,
+    account: senderAddress,
     sendTransaction: async (args: any) => {
       await ensureProviderChain(chain, chainConfig, provider);
 
-      const from = String(args?.account || args?.from || address);
+      const from = String(args?.account || args?.from || senderAddress);
       const to = String(args?.to || "");
       if (!isAddress(from)) throw new Error("Missing valid sender wallet address.");
       if (!isAddress(to)) throw new Error("Missing valid recipient contract/wallet address.");
 
       const session = getActiveWalletSession();
+      const txFrom = preferredSenderAddress(session, from);
       if (session.mode === "walletconnect" && !paymasterUrlForChainId(chainId)) {
         await ensureWalletHasDirectGas({
           rpcUrl,
           chainName: String(chain?.name || chainConfig.chain || "Base"),
           nativeSymbol: String(chain?.nativeCurrency?.symbol || "ETH"),
-          from: from as `0x${string}`,
+          from: txFrom,
           value: args?.value,
         });
       }
@@ -559,11 +572,12 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
       const useWalletSendCalls =
         session.mode === "base_smart" ||
         session.providerType === "base_smart" ||
-        await providerSupportsWalletSendCalls(provider, chainId, from as `0x${string}`);
+        Boolean(session.smartAccounts?.length) ||
+        await providerSupportsWalletSendCalls(provider, chainId, txFrom);
       const smartCallArgs = {
         provider,
         chainId,
-        from: from as `0x${string}`,
+        from: txFrom,
         to: to as `0x${string}`,
         data: (args?.data as `0x${string}` | undefined) ?? undefined,
         value: args?.value,
@@ -607,9 +621,9 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
 
   return {
     chain,
-    account: address as `0x${string}`,
+    account: senderAddress,
     client,
-    address: address as `0x${string}`,
+    address: senderAddress,
     rpcUrl,
   };
 }
