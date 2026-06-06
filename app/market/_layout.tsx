@@ -26,6 +26,7 @@ export default function MarketLayout() {
           <Stack.Screen name="support/index" />
           <Stack.Screen name="support/[ticketId]" />
           <Stack.Screen name="social/index" />
+          <Stack.Screen name="social/[postId]" />
           <Stack.Screen name="dm/[username]" />
           <Stack.Screen name="admin/index" />
           <Stack.Screen name="stock/index" />

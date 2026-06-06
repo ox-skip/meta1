@@ -68,6 +68,7 @@ type Props = {
   profileUserId?: string;
   hideComposer?: boolean;
   mode?: "inline" | "contained";
+  focusPostId?: string;
 };
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
@@ -88,6 +89,10 @@ const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
 const INK = "#090D0B";
 const SOCIAL_BUCKET = "market-social";
+const FEED_BODY_INITIAL_LIMIT = 320;
+const FEED_BODY_WIDE_INITIAL_LIMIT = 520;
+const FEED_BODY_STEP = 620;
+const FEED_BODY_WIDE_STEP = 900;
 
 function fileExtFromMime(mime: string) {
   const m = mime.toLowerCase();
@@ -159,6 +164,14 @@ function formatCount(value: number) {
   if (value < 10_000) return `${(value / 1000).toFixed(1).replace(".0", "")}K`;
   if (value < 1_000_000) return `${Math.floor(value / 1000)}K`;
   return `${(value / 1_000_000).toFixed(1).replace(".0", "")}M`;
+}
+
+function truncateBodyPreview(body: string, limit: number) {
+  if (body.length <= limit) return body;
+  const slice = body.slice(0, limit);
+  const breakAt = Math.max(slice.lastIndexOf(" "), slice.lastIndexOf("\n"));
+  const cutAt = breakAt > Math.floor(limit * 0.72) ? breakAt : limit;
+  return `${slice.slice(0, cutAt).trimEnd()}...`;
 }
 
 function getDisplayName(profile?: FeedProfile | null) {
@@ -278,14 +291,16 @@ function IconButton({
   );
 }
 
-export default function SocialFeed({ profileUserId, hideComposer = false, mode = "inline" }: Props) {
-  const { width } = useWindowDimensions();
+export default function SocialFeed({ profileUserId, hideComposer = false, mode = "inline", focusPostId }: Props) {
+  const { width, height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const activePostId = String(focusPostId || "").trim();
+  const isDetail = !!activePostId;
   const isContained = mode === "contained";
   const isDesktop = width >= 1024;
   const isWide = width >= 760;
-  const showDesktopRail = isContained && isDesktop && !profileUserId;
-  const feedMaxWidth = profileUserId ? 720 : showDesktopRail ? 820 : 700;
+  const showDesktopRail = isContained && isDesktop && !profileUserId && !isDetail;
+  const feedMaxWidth = isDetail ? 820 : profileUserId ? 720 : showDesktopRail ? 820 : 700;
   const shellMaxWidth = showDesktopRail ? 1200 : feedMaxWidth;
   const sideRailWidth = 300;
   const cardRadius = isWide ? 24 : 20;
@@ -293,6 +308,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const postGap = isContained ? 14 : 12;
   const mediaHeight = isDesktop ? 390 : isWide ? 340 : 260;
   const assetSize = isWide ? 92 : 78;
+  const galleryViewportWidth = Math.max(280, Math.min(width - 24, isDesktop ? 980 : width - 16));
+  const galleryMediaHeight = Math.max(300, Math.min(windowHeight - 230, isDesktop ? 650 : Math.max(340, width * 1.08)));
 
   const [meId, setMeId] = useState<string | null>(null);
   const [selfProfile, setSelfProfile] = useState<FeedProfile | null>(null);
@@ -305,6 +322,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const [recording, setRecording] = useState<any>(null);
   const [recordingBusy, setRecordingBusy] = useState(false);
   const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
+  const [galleryMedia, setGalleryMedia] = useState<FeedMedia[]>([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, FeedMedia[]>>({});
@@ -312,6 +331,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [myLikes, setMyLikes] = useState<Record<string, boolean>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [expandedBodySteps, setExpandedBodySteps] = useState<Record<string, number>>({});
 
   const [commentsOpenPost, setCommentsOpenPost] = useState<FeedPost | null>(null);
   const [comments, setComments] = useState<FeedComment[]>([]);
@@ -321,6 +341,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
   const postingLockRef = useRef(false);
   const pendingPostIdsRef = useRef(new Set<string>());
+  const galleryScrollRef = useRef<ScrollView>(null);
   const feedColumnStyle = { width: "100%" as const, maxWidth: feedMaxWidth, alignSelf: "center" as const };
   const cardShadow = isWide
     ? {
@@ -390,10 +411,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       let query = supabase
         .from("market_social_posts")
         .select("id,author_id,body,created_at")
-        .order("created_at", { ascending: false })
-        .limit(80);
+        .order("created_at", { ascending: false });
 
-      if (profileUserId) query = query.eq("author_id", profileUserId);
+      if (activePostId) {
+        query = query.eq("id", activePostId).limit(1);
+      } else {
+        if (profileUserId) query = query.eq("author_id", profileUserId);
+        query = query.limit(80);
+      }
 
       const { data: postRows, error: postErr } = await query;
       if (postErr) throw postErr;
@@ -470,29 +495,78 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     } finally {
       setLoading(false);
     }
-  }, [loadProfiles, meId, profileUserId]);
+  }, [activePostId, loadProfiles, meId, profileUserId]);
+
+  const loadComments = useCallback(
+    async (postId: string) => {
+      const { data, error: commentErr } = await supabase
+        .from("market_social_comments")
+        .select("id,post_id,user_id,body,created_at")
+        .eq("post_id", postId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (commentErr) throw commentErr;
+
+      const rows = (data ?? []) as FeedComment[];
+      setComments(rows);
+
+      const commenterIds = Array.from(new Set(rows.map((comment) => comment.user_id).filter(Boolean)));
+      if (commenterIds.length) {
+        const profiles = await loadProfiles(commenterIds);
+        setProfileMap((prev) => ({ ...prev, ...profiles }));
+      }
+    },
+    [loadProfiles],
+  );
 
   useEffect(() => {
     void fetchPosts();
   }, [fetchPosts]);
 
   useEffect(() => {
+    if (!galleryMedia.length) return;
+    requestAnimationFrame(() => {
+      galleryScrollRef.current?.scrollTo({ x: galleryViewportWidth * galleryIndex, animated: false });
+    });
+  }, [galleryIndex, galleryMedia.length, galleryViewportWidth]);
+
+  useEffect(() => {
+    if (!isDetail || loading) return;
+
+    const detailPost = posts.find((post) => post.id === activePostId);
+    if (!detailPost) {
+      setComments([]);
+      return;
+    }
+
+    void loadComments(detailPost.id).catch((e) => {
+      setError(friendlySocialError(e, "Could not load comments."));
+    });
+  }, [activePostId, isDetail, loadComments, loading, posts]);
+
+  useEffect(() => {
     const ch = supabase
-      .channel(`market-social-feed-${profileUserId || "all"}`)
+      .channel(`market-social-feed-${activePostId || profileUserId || "all"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "market_social_posts" }, (payload) => {
         const row = payload.new as any;
         const oldRow = payload.old as any;
 
-        if (payload.eventType === "INSERT" && row?.id) {
+        if ((payload.eventType === "INSERT" || payload.eventType === "UPDATE") && row?.id) {
           if (pendingPostIdsRef.current.has(String(row.id))) return;
+          if (activePostId && row.id !== activePostId) return;
           if (profileUserId && row.author_id !== profileUserId) return;
-          setPosts((prev) => (prev.some((post) => post.id === row.id) ? prev : [row as FeedPost, ...prev]));
+          setPosts((prev) =>
+            prev.some((post) => post.id === row.id)
+              ? prev.map((post) => (post.id === row.id ? (row as FeedPost) : post))
+              : [row as FeedPost, ...prev],
+          );
           void loadProfiles([String(row.author_id)]).then((profiles) =>
             setProfileMap((prev) => ({ ...prev, ...profiles })),
           );
         }
 
         if (payload.eventType === "DELETE" && oldRow?.id) {
+          if (activePostId && oldRow.id !== activePostId) return;
           setPosts((prev) => prev.filter((post) => post.id !== oldRow.id));
         }
       })
@@ -500,6 +574,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const row = (payload.new ?? payload.old) as any;
         const postId = String(row?.post_id || "");
         if (!postId) return;
+        if (activePostId && postId !== activePostId) return;
 
         setMediaMap((prev) => {
           const current = prev[postId] ?? [];
@@ -527,6 +602,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const row = (payload.new ?? payload.old) as any;
         const postId = String(row?.post_id || "");
         if (!postId) return;
+        if (activePostId && postId !== activePostId) return;
         setReactionCounts((prev) => ({
           ...prev,
           [postId]: Math.max(0, (prev[postId] ?? 0) + (payload.eventType === "DELETE" ? -1 : 1)),
@@ -536,18 +612,19 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         const row = (payload.new ?? payload.old) as any;
         const postId = String(row?.post_id || "");
         if (!postId) return;
+        if (activePostId && postId !== activePostId) return;
         setCommentCounts((prev) => ({
           ...prev,
           [postId]: Math.max(0, (prev[postId] ?? 0) + (payload.eventType === "DELETE" ? -1 : 1)),
         }));
-        if (commentsOpenPost?.id === postId) void loadComments(postId);
+        if (commentsOpenPost?.id === postId || activePostId === postId) void loadComments(postId);
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [commentsOpenPost?.id, loadProfiles, profileUserId]);
+  }, [activePostId, commentsOpenPost?.id, loadComments, loadProfiles, profileUserId]);
 
   async function chooseMedia() {
     if (assets.length >= 4) {
@@ -745,25 +822,6 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     }
   }
 
-  async function loadComments(postId: string) {
-    const { data, error: commentErr } = await supabase
-      .from("market_social_comments")
-      .select("id,post_id,user_id,body,created_at")
-      .eq("post_id", postId)
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (commentErr) throw commentErr;
-
-    const rows = (data ?? []) as FeedComment[];
-    setComments(rows);
-
-    const commenterIds = rows.map((comment) => comment.user_id).filter((userId) => !profileMap[userId]);
-    if (commenterIds.length) {
-      const profiles = await loadProfiles(commenterIds);
-      setProfileMap((prev) => ({ ...prev, ...profiles }));
-    }
-  }
-
   async function openComments(post: FeedPost) {
     setCommentsOpenPost(post);
     setCommentText("");
@@ -775,7 +833,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   async function submitComment() {
-    if (!commentsOpenPost || !meId) return;
+    const targetPost = commentsOpenPost ?? (activePostId ? posts.find((post) => post.id === activePostId) ?? null : null);
+    if (!targetPost || !meId) return;
     const text = commentText.trim();
     if (!text) return;
 
@@ -783,13 +842,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     try {
       const { data, error: insertErr } = await supabase
         .from("market_social_comments")
-        .insert({ post_id: commentsOpenPost.id, user_id: meId, body: text })
+        .insert({ post_id: targetPost.id, user_id: meId, body: text })
         .select("id,post_id,user_id,body,created_at")
         .single();
       if (insertErr) throw insertErr;
 
       if (data) setComments((prev) => [data as FeedComment, ...prev]);
-      setCommentCounts((prev) => ({ ...prev, [commentsOpenPost.id]: (prev[commentsOpenPost.id] ?? 0) + 1 }));
+      setCommentCounts((prev) => ({ ...prev, [targetPost.id]: (prev[targetPost.id] ?? 0) + 1 }));
       setCommentText("");
     } catch (e) {
       setError(friendlySocialError(e, "Could not post comment."));
@@ -804,23 +863,66 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     setPreviewPayload(buildPreviewPayload({ uri, mimeType: media.mime_type, kind: media.kind }));
   }
 
+  function openMediaGallery(media: FeedMedia, collection: FeedMedia[]) {
+    const available = collection.filter((item) => publicUrl(SOCIAL_BUCKET, item.storage_path, item.public_url));
+    if (!available.length) return;
+
+    const nextIndex = Math.max(0, available.findIndex((item) => item.id === media.id));
+    setGalleryMedia(available);
+    setGalleryIndex(nextIndex);
+    requestAnimationFrame(() => {
+      galleryScrollRef.current?.scrollTo({ x: galleryViewportWidth * nextIndex, animated: false });
+    });
+  }
+
+  function closeMediaGallery() {
+    setGalleryMedia([]);
+    setGalleryIndex(0);
+  }
+
+  function goToGalleryIndex(nextIndex: number) {
+    if (!galleryMedia.length) return;
+    const bounded = Math.max(0, Math.min(galleryMedia.length - 1, nextIndex));
+    setGalleryIndex(bounded);
+    requestAnimationFrame(() => {
+      galleryScrollRef.current?.scrollTo({ x: galleryViewportWidth * bounded, animated: true });
+    });
+  }
+
   function openLocalPreview(asset: LocalAsset) {
     setPreviewPayload(buildPreviewPayload({ uri: asset.uri, mimeType: asset.mimeType, kind: asset.kind }));
   }
 
-  function renderMediaTile(media: FeedMedia, height: number, overlayText?: string) {
+  function openPostDetail(postId: string) {
+    if (!postId || isDetail) return;
+    router.push(`/market/social/${postId}` as any);
+  }
+
+  function expandPostBody(postId: string) {
+    setExpandedBodySteps((prev) => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
+  }
+
+  function collapsePostBody(postId: string) {
+    setExpandedBodySteps((prev) => {
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+  }
+
+  function renderMediaTile(media: FeedMedia, height: number, collection: FeedMedia[], overlayText?: string) {
     const uri = publicUrl(SOCIAL_BUCKET, media.storage_path, media.public_url);
     const isImage = media.kind === "image";
 
     return (
-      <Pressable key={media.id} disabled={!uri} onPress={() => openMediaPreview(media)} style={{ flex: 1, minWidth: 0 }}>
+      <Pressable key={media.id} disabled={!uri} onPress={() => openMediaGallery(media, collection)} style={{ flex: 1, minWidth: 0 }}>
         <View
           style={{
             height,
             borderRadius: Math.max(16, cardRadius - 5),
             borderWidth: 1,
-            borderColor: "rgba(255,253,247,0.14)",
-            backgroundColor: "rgba(6,8,7,0.72)",
+            borderColor: "rgba(255,253,247,0.16)",
+            backgroundColor: "rgba(6,8,7,0.76)",
             overflow: "hidden",
             alignItems: "center",
             justifyContent: "center",
@@ -864,6 +966,31 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               }}
             >
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 28 }}>{overlayText}</Text>
+              <Text style={{ marginTop: 4, color: "rgba(255,253,247,0.74)", fontWeight: "800", fontSize: 11 }}>
+                View all
+              </Text>
+            </View>
+          ) : null}
+
+          {collection.length > 1 && !overlayText ? (
+            <View
+              style={{
+                position: "absolute",
+                right: 9,
+                top: 9,
+                borderRadius: 999,
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                backgroundColor: "rgba(6,8,7,0.72)",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.16)",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Ionicons name="images-outline" size={12} color={TEXT} />
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>{collection.length}</Text>
             </View>
           ) : null}
         </View>
@@ -876,13 +1003,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const remainder = media.length - visible.length;
     if (!visible.length) return null;
 
-    if (visible.length === 1) return renderMediaTile(visible[0], mediaHeight, remainder ? `+${remainder}` : undefined);
+    if (visible.length === 1) return renderMediaTile(visible[0], mediaHeight, media, remainder ? `+${remainder}` : undefined);
 
     if (visible.length === 2) {
       return (
         <View style={{ flexDirection: "row", gap: 8 }}>
           {visible.map((item, index) =>
-            renderMediaTile(item, isDesktop ? 280 : isWide ? 240 : 176, index === 1 && remainder ? `+${remainder}` : undefined),
+            renderMediaTile(item, isDesktop ? 280 : isWide ? 240 : 176, media, index === 1 && remainder ? `+${remainder}` : undefined),
           )}
         </View>
       );
@@ -890,12 +1017,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
 
     return (
       <View style={{ gap: 8 }}>
-        {renderMediaTile(visible[0], isDesktop ? 270 : isWide ? 236 : 176)}
+        {renderMediaTile(visible[0], isDesktop ? 270 : isWide ? 236 : 176, media)}
         <View style={{ flexDirection: "row", gap: 8 }}>
           {visible.slice(1).map((item, index) =>
             renderMediaTile(
               item,
               isDesktop ? 142 : isWide ? 136 : 106,
+              media,
               index === visible.slice(1).length - 1 && remainder ? `+${remainder}` : undefined,
             ),
           )}
@@ -904,8 +1032,268 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     );
   }
 
+  function renderMediaGalleryModal() {
+    const current = galleryMedia[galleryIndex];
+    const hasMultiple = galleryMedia.length > 1;
+
+    return (
+      <Modal visible={!!galleryMedia.length} transparent animationType="fade" onRequestClose={closeMediaGallery}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(2,6,4,0.88)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 8,
+            paddingVertical: Math.max(16, insets.top + 8),
+          }}
+        >
+          <View
+            style={{
+              width: galleryViewportWidth,
+              maxHeight: Math.max(420, windowHeight - Math.max(28, insets.top + insets.bottom)),
+              borderRadius: isWide ? 26 : 20,
+              overflow: "hidden",
+              backgroundColor: "rgba(9,13,11,0.98)",
+              borderWidth: 1,
+              borderColor: BORDER_TOP,
+            }}
+          >
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: "rgba(255,253,247,0.11)",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(45,212,191,0.16)",
+                    borderWidth: 1,
+                    borderColor: "rgba(94,234,212,0.34)",
+                  }}
+                >
+                  <Ionicons name={current ? mediaIcon(current.kind) : "images-outline"} size={17} color={TEAL} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>
+                    {current ? previewTitle(current.kind) : "Media"}
+                  </Text>
+                  <Text style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 11 }}>
+                    {galleryIndex + 1} / {Math.max(1, galleryMedia.length)}
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close media viewer"
+                onPress={closeMediaGallery}
+                style={({ pressed }) => ({
+                  width: 38,
+                  height: 38,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                })}
+              >
+                <Ionicons name="close" size={20} color={TEXT} />
+              </Pressable>
+            </View>
+
+            <View style={{ position: "relative", backgroundColor: "#030504" }}>
+              <ScrollView
+                ref={galleryScrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                keyboardShouldPersistTaps="handled"
+                onMomentumScrollEnd={(event) => {
+                  const page = Math.round(event.nativeEvent.contentOffset.x / galleryViewportWidth);
+                  setGalleryIndex(Math.max(0, Math.min(galleryMedia.length - 1, page)));
+                }}
+              >
+                {galleryMedia.map((item) => {
+                  const uri = publicUrl(SOCIAL_BUCKET, item.storage_path, item.public_url);
+                  const isImage = item.kind === "image";
+
+                  return (
+                    <View
+                      key={`gallery-${item.id}`}
+                      style={{
+                        width: galleryViewportWidth,
+                        height: galleryMediaHeight,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: isImage ? 0 : 18,
+                      }}
+                    >
+                      {isImage && uri ? (
+                        <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+                      ) : (
+                        <View
+                          style={{
+                            width: "100%",
+                            maxWidth: 420,
+                            borderRadius: 22,
+                            padding: 18,
+                            alignItems: "center",
+                            backgroundColor: "rgba(255,253,247,0.07)",
+                            borderWidth: 1,
+                            borderColor: BORDER,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 58,
+                              height: 58,
+                              borderRadius: 22,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: item.kind === "audio" ? `${AMBER}24` : `${TEAL}20`,
+                              borderWidth: 1,
+                              borderColor: item.kind === "audio" ? `${AMBER}50` : `${TEAL}46`,
+                            }}
+                          >
+                            <Ionicons name={mediaIcon(item.kind)} size={28} color={item.kind === "audio" ? AMBER : TEAL} />
+                          </View>
+                          <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 16 }}>
+                            {previewTitle(item.kind)}
+                          </Text>
+                          <Pressable
+                            disabled={!uri}
+                            onPress={() => uri && openMediaPreview(item)}
+                            style={({ pressed }) => ({
+                              marginTop: 14,
+                              minHeight: 42,
+                              borderRadius: 15,
+                              paddingHorizontal: 14,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 7,
+                              backgroundColor: pressed ? "rgba(45,212,191,0.22)" : "rgba(45,212,191,0.14)",
+                              borderWidth: 1,
+                              borderColor: "rgba(94,234,212,0.34)",
+                              opacity: uri ? 1 : 0.55,
+                            })}
+                          >
+                            <Ionicons name="open-outline" size={16} color={TEAL} />
+                            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Open</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+
+              {hasMultiple ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous media"
+                    disabled={galleryIndex <= 0}
+                    onPress={() => goToGalleryIndex(galleryIndex - 1)}
+                    style={({ pressed }) => ({
+                      position: "absolute",
+                      left: 10,
+                      top: "50%",
+                      marginTop: -24,
+                      width: 46,
+                      height: 48,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: pressed ? "rgba(255,253,247,0.20)" : "rgba(6,8,7,0.62)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,253,247,0.18)",
+                      opacity: galleryIndex <= 0 ? 0.35 : 1,
+                    })}
+                  >
+                    <Ionicons name="chevron-back" size={24} color={TEXT} />
+                  </Pressable>
+
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Next media"
+                    disabled={galleryIndex >= galleryMedia.length - 1}
+                    onPress={() => goToGalleryIndex(galleryIndex + 1)}
+                    style={({ pressed }) => ({
+                      position: "absolute",
+                      right: 10,
+                      top: "50%",
+                      marginTop: -24,
+                      width: 46,
+                      height: 48,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: pressed ? "rgba(255,253,247,0.20)" : "rgba(6,8,7,0.62)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,253,247,0.18)",
+                      opacity: galleryIndex >= galleryMedia.length - 1 ? 0.35 : 1,
+                    })}
+                  >
+                    <Ionicons name="chevron-forward" size={24} color={TEXT} />
+                  </Pressable>
+                </>
+              ) : null}
+            </View>
+
+            {hasMultiple ? (
+              <View
+                style={{
+                  minHeight: 42,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderTopWidth: 1,
+                  borderTopColor: "rgba(255,253,247,0.11)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                }}
+              >
+                {galleryMedia.map((item, index) => (
+                  <Pressable
+                    key={`gallery-dot-${item.id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open media ${index + 1}`}
+                    onPress={() => goToGalleryIndex(index)}
+                    style={{
+                      width: index === galleryIndex ? 18 : 7,
+                      height: 7,
+                      borderRadius: 999,
+                      backgroundColor: index === galleryIndex ? TEAL : "rgba(255,253,247,0.28)",
+                    }}
+                  />
+                ))}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
   function renderComposer() {
-    if (hideComposer) return null;
+    if (hideComposer || isDetail) return null;
 
     const canPost = !!body.trim() || assets.length > 0;
     const composerShellStyle = {
@@ -1096,21 +1484,48 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     const liked = !!myLikes[post.id];
     const authorName = getDisplayName(author);
     const authorHandle = getHandle(author);
+    const bodyText = post.body ?? "";
+    const bodyBaseLimit = isWide ? FEED_BODY_WIDE_INITIAL_LIMIT : FEED_BODY_INITIAL_LIMIT;
+    const bodyStepSize = isWide ? FEED_BODY_WIDE_STEP : FEED_BODY_STEP;
+    const bodySteps = expandedBodySteps[post.id] ?? 0;
+    const bodyLimit = bodyBaseLimit + bodySteps * bodyStepSize;
+    const bodyIsLong = !isDetail && bodyText.length > bodyBaseLimit;
+    const bodyIsTruncated = !isDetail && bodyText.length > bodyLimit;
+    const visibleBody = isDetail || !bodyIsTruncated ? bodyText : truncateBodyPreview(bodyText, bodyLimit);
 
     return (
-      <View
+      <LinearGradient
+        colors={
+          isDetail
+            ? ["rgba(45,212,191,0.13)", "rgba(13,18,15,0.98)", "rgba(9,13,11,0.98)"]
+            : media.length
+            ? ["rgba(244,183,93,0.11)", "rgba(45,212,191,0.065)", "rgba(13,18,15,0.97)"]
+            : ["rgba(45,212,191,0.10)", "rgba(255,253,247,0.055)", "rgba(13,18,15,0.97)"]
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={{
           ...feedColumnStyle,
           marginBottom: postGap,
-          padding: isWide ? 16 : 14,
+          padding: isWide ? 17 : 14,
           borderRadius: cardRadius,
           borderWidth: 1,
-          borderColor: "rgba(255,253,247,0.14)",
-          backgroundColor: "rgba(13,18,15,0.96)",
+          borderColor: isDetail ? "rgba(94,234,212,0.24)" : "rgba(255,253,247,0.15)",
           overflow: "hidden",
           ...cardShadow,
         }}
       >
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 3,
+            backgroundColor: media.length ? AMBER : TEAL,
+            opacity: 0.88,
+          }}
+        />
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
           <Avatar profile={author} size={isWide ? 46 : 42} />
 
@@ -1147,10 +1562,58 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Store update</Text>
             </View>
 
-            {post.body ? (
-              <Text style={{ marginTop: 11, color: TEXT, fontSize: isWide ? 16 : 15, lineHeight: isWide ? 24 : 22 }}>
-                {post.body}
-              </Text>
+            {bodyText ? (
+              <View style={{ marginTop: 11 }}>
+                <Pressable
+                  disabled={isDetail}
+                  accessibilityRole={isDetail ? undefined : "button"}
+                  accessibilityLabel={isDetail ? undefined : "Open full social post"}
+                  onPress={() => openPostDetail(post.id)}
+                  style={({ pressed }) => ({
+                    opacity: pressed && !isDetail ? 0.82 : 1,
+                  })}
+                >
+                  <Text style={{ color: TEXT, fontSize: isWide ? 16 : 15, lineHeight: isWide ? 24 : 22 }}>
+                    {visibleBody}
+                  </Text>
+                </Pressable>
+
+                {bodyIsLong ? (
+                  <View style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={bodyIsTruncated ? "Show more post text" : "Show less post text"}
+                      onPress={() => (bodyIsTruncated ? expandPostBody(post.id) : collapsePostBody(post.id))}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                        opacity: pressed ? 0.78 : 1,
+                      })}
+                    >
+                      <Text style={{ color: TEAL, fontWeight: "900", fontSize: 13 }}>
+                        {bodyIsTruncated ? "Show more" : "Show less"}
+                      </Text>
+                      <Ionicons name={bodyIsTruncated ? "chevron-down" : "chevron-up"} size={14} color={TEAL} />
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Open full social post"
+                      onPress={() => openPostDetail(post.id)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                        opacity: pressed ? 0.78 : 1,
+                      })}
+                    >
+                      <Text style={{ color: AMBER, fontWeight: "900", fontSize: 13 }}>Open full post</Text>
+                      <Ionicons name="open-outline" size={14} color={AMBER} />
+                    </Pressable>
+                  </View>
+                ) : null}
+              </View>
             ) : null}
 
             {media.length ? <View style={{ marginTop: 14 }}>{renderMediaGrid(media)}</View> : null}
@@ -1177,19 +1640,165 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
               <IconButton
                 icon="chatbubble-outline"
                 label={commentCounts[post.id] ? formatCount(commentCounts[post.id]) : "Comment"}
-                onPress={() => openComments(post)}
+                onPress={() =>
+                  isDetail
+                    ? void loadComments(post.id).catch((e) => setError(friendlySocialError(e, "Could not load comments.")))
+                    : openComments(post)
+                }
                 tone={BLUE}
               />
+              {!isDetail ? (
+                <IconButton
+                  icon="document-text-outline"
+                  label="View"
+                  onPress={() => openPostDetail(post.id)}
+                  tone={AMBER}
+                />
+              ) : null}
               {media.length ? (
                 <IconButton
                   icon="expand-outline"
                   label="Open"
-                  onPress={() => openMediaPreview(media[0])}
+                  onPress={() => openMediaGallery(media[0], media)}
                   tone={TEAL}
                 />
               ) : null}
             </View>
           </View>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  function renderCommentCards() {
+    if (comments.length === 0) {
+      return (
+        <View style={{ borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL, padding: 14 }}>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>No comments available</Text>
+          <Text style={{ marginTop: 5, color: MUTED }}>Be the first to comment.</Text>
+        </View>
+      );
+    }
+
+    return comments.map((comment) => {
+      const commenter = profileMap[comment.user_id];
+      const commentName = commenter?.market_username
+        ? `@${commenter.market_username}`
+        : commenter
+        ? getDisplayName(commenter)
+        : "User";
+
+      return (
+        <View
+          key={comment.id}
+          style={{
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: BORDER,
+            backgroundColor: PANEL,
+            padding: 14,
+          }}
+        >
+          <Text style={{ color: TEXT, fontWeight: "900" }}>{commentName}</Text>
+          <Text style={{ marginTop: 6, color: TEXT, lineHeight: 20 }}>{comment.body}</Text>
+          <Text style={{ marginTop: 6, color: FAINT, fontSize: 11 }}>
+            {new Date(comment.created_at).toLocaleString()}
+          </Text>
+        </View>
+      );
+    });
+  }
+
+  function renderCommentInput() {
+    const canSend = !!meId && !!commentText.trim();
+
+    return (
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+        <TextInput
+          value={commentText}
+          onChangeText={setCommentText}
+          placeholder={meId ? "Write a comment..." : "Sign in to comment..."}
+          placeholderTextColor={FAINT}
+          editable={!!meId}
+          multiline
+          style={{
+            flex: 1,
+            minHeight: 46,
+            maxHeight: 118,
+            borderRadius: 17,
+            borderWidth: 1,
+            borderColor: BORDER,
+            backgroundColor: "rgba(255,253,247,0.06)",
+            color: TEXT,
+            paddingHorizontal: 13,
+            paddingVertical: 11,
+          }}
+        />
+        <Pressable
+          disabled={commentBusy || !canSend}
+          onPress={submitComment}
+          style={({ pressed }) => ({
+            width: 48,
+            height: 48,
+            borderRadius: 17,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: canSend ? TEAL : "rgba(255,253,247,0.12)",
+            opacity: commentBusy || !canSend ? 0.65 : 1,
+            transform: [{ scale: pressed ? 0.96 : 1 }],
+          })}
+        >
+          {commentBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="send" size={17} color={canSend ? INK : MUTED} />}
+        </Pressable>
+      </View>
+    );
+  }
+
+  function renderDetailComments() {
+    if (!isDetail) return null;
+
+    return (
+      <View
+        style={{
+          ...feedColumnStyle,
+          marginBottom: postGap,
+          padding: isWide ? 16 : 14,
+          borderRadius: cardRadius,
+          borderWidth: 1,
+          borderColor: "rgba(255,253,247,0.14)",
+          backgroundColor: "rgba(13,18,15,0.96)",
+          ...cardShadow,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>Comments</Text>
+            <Text style={{ marginTop: 3, color: MUTED, fontSize: 12 }}>{comments.length} visible</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh comments"
+            onPress={() => {
+              if (activePostId) void loadComments(activePostId);
+            }}
+            style={({ pressed }) => ({
+              width: 40,
+              height: 40,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: pressed ? "rgba(255,253,247,0.12)" : "rgba(255,253,247,0.07)",
+              borderWidth: 1,
+              borderColor: BORDER,
+            })}
+          >
+            <Ionicons name="refresh" size={17} color={MUTED} />
+          </Pressable>
+        </View>
+
+        <View style={{ marginTop: 13, gap: 10 }}>{renderCommentCards()}</View>
+        <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: BORDER }}>
+          {renderCommentInput()}
         </View>
       </View>
     );
@@ -1230,10 +1839,14 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         >
           <Ionicons name="chatbubbles-outline" size={22} color={TEAL} />
           <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 17 }}>
-            {profileUserId ? "No posts available" : "No updates available"}
+            {isDetail ? "Post not found" : profileUserId ? "No posts available" : "No updates available"}
           </Text>
           <Text style={{ marginTop: 6, color: MUTED, lineHeight: 19 }}>
-            {profileUserId ? "This seller has no published posts." : "No seller updates match this view."}
+            {isDetail
+              ? "This social post may have been removed or is no longer available."
+              : profileUserId
+              ? "This seller has no published posts."
+              : "No seller updates match this view."}
           </Text>
         </View>
       </View>
@@ -1241,6 +1854,89 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
   }
 
   function renderContainedHeader() {
+    if (isDetail) {
+      return (
+        <View style={{ paddingTop: 14, paddingBottom: 2 }}>
+          <LinearGradient
+            colors={["rgba(45,212,191,0.14)", "rgba(244,183,93,0.08)", "rgba(13,18,15,0.96)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              ...feedColumnStyle,
+              borderRadius: cardRadius,
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.16)",
+              padding: isWide ? 18 : 15,
+              marginBottom: postGap,
+              overflow: "hidden",
+              ...cardShadow,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <View
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 11,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(45,212,191,0.16)",
+                      borderWidth: 1,
+                      borderColor: "rgba(94,234,212,0.34)",
+                    }}
+                  >
+                    <Ionicons name="document-text-outline" size={15} color={TEAL} />
+                  </View>
+                  <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>
+                    Full post
+                  </Text>
+                </View>
+                <Text style={{ marginTop: 9, color: TEXT, fontWeight: "900", fontSize: isWide ? 25 : 22, letterSpacing: 0 }}>
+                  Social Content
+                </Text>
+                <Text style={{ marginTop: 5, color: MUTED, fontSize: 13, lineHeight: 19 }}>
+                  Full seller update, media, reactions, and comments in one place.
+                </Text>
+              </View>
+              <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
+            </View>
+          </LinearGradient>
+        </View>
+      );
+    }
+
+    const headerMediaCount = posts.filter((post) => (mediaMap[post.id] ?? []).length > 0).length;
+    const headerAuthorCount = new Set(posts.map((post) => post.author_id)).size;
+    const headerChip = (icon: IconName, label: string, value: string, tone: string) => (
+      <View
+        style={{
+          minWidth: isWide ? 112 : 96,
+          flexGrow: isWide ? 0 : 1,
+          borderRadius: 16,
+          paddingHorizontal: 11,
+          paddingVertical: 9,
+          backgroundColor: `${tone}12`,
+          borderWidth: 1,
+          borderColor: `${tone}2E`,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <Ionicons name={icon} size={15} color={tone} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+            {value}
+          </Text>
+          <Text numberOfLines={1} style={{ marginTop: 1, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+            {label}
+          </Text>
+        </View>
+      </View>
+    );
+
     if (showDesktopRail) {
       return (
         <View style={{ paddingTop: 14, paddingBottom: 2 }}>
@@ -1285,6 +1981,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 </View>
               </View>
               <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
+            </View>
+            <View style={{ marginTop: 13, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+              {headerChip("newspaper-outline", "Updates", formatCount(posts.length), TEAL)}
+              {headerChip("images-outline", "With media", formatCount(headerMediaCount), AMBER)}
+              {headerChip("storefront-outline", "Stores", formatCount(headerAuthorCount), BLUE)}
             </View>
           </LinearGradient>
           {renderComposer()}
@@ -1346,6 +2047,11 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             </View>
             <IconButton icon="refresh" label="" onPress={fetchPosts} tone={TEAL} />
           </View>
+          <View style={{ marginTop: 14, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+            {headerChip("newspaper-outline", "Updates", formatCount(posts.length), TEAL)}
+            {headerChip("images-outline", "Media", formatCount(headerMediaCount), AMBER)}
+            {headerChip("radio-outline", "Live", loading ? "..." : "Now", ROSE)}
+          </View>
         </LinearGradient>
         {renderComposer()}
       </View>
@@ -1363,6 +2069,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
       >
         {renderComposer()}
         {loading ? renderLoadingState() : posts.length ? posts.map((post) => <React.Fragment key={post.id}>{renderPost(post)}</React.Fragment>) : renderEmptyState()}
+        {isDetail && posts.length ? renderDetailComments() : null}
       </View>
     );
   }
@@ -1444,10 +2151,10 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: isWide ? 15 : 13 }}>
-                Market Social Board
+                {isDetail ? "Social Post" : "Market Social Board"}
               </Text>
               <Text numberOfLines={1} style={{ marginTop: 1, color: MUTED, fontSize: 11, fontWeight: "800" }}>
-                Protected seller updates and storefront activity
+                {isDetail ? "Full update, media, and comments" : "Protected seller updates and storefront activity"}
               </Text>
             </View>
           </Pressable>
@@ -1644,9 +2351,13 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => renderPost(item)}
         ListHeaderComponent={renderContainedHeader()}
-        ListEmptyComponent={!loading ? renderEmptyState() : null}
+        ListEmptyComponent={loading ? renderLoadingState() : renderEmptyState()}
         ListFooterComponent={
-          loading && posts.length ? renderLoadingState() : <View style={{ height: Math.max(20, insets.bottom + 12) }} />
+          isDetail && posts.length
+            ? renderDetailComments()
+            : loading && posts.length
+            ? renderLoadingState()
+            : <View style={{ height: Math.max(20, insets.bottom + 12) }} />
         }
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPosts} tintColor={TEAL} />}
         keyboardShouldPersistTaps="handled"
@@ -1703,6 +2414,8 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
     <View style={{ flex: isContained ? 1 : 0, width: "100%", backgroundColor: isContained ? BG0 : "transparent" }}>
       {isContained ? renderContainedContent() : renderInlineContent()}
 
+      {renderMediaGalleryModal()}
+
       <OrderPreviewModal open={!!previewPayload} onClose={() => setPreviewPayload(null)} payload={previewPayload} />
 
       <MarketMenuModal
@@ -1758,40 +2471,7 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
             </View>
 
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 14, gap: 10 }}>
-              {comments.length === 0 ? (
-                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: PANEL, padding: 14 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900" }}>No comments available</Text>
-                  <Text style={{ marginTop: 5, color: MUTED }}>Be the first to comment.</Text>
-                </View>
-              ) : (
-                comments.map((comment) => {
-                  const commenter = profileMap[comment.user_id];
-                  const commentName = commenter?.market_username
-                    ? `@${commenter.market_username}`
-                    : commenter
-                    ? getDisplayName(commenter)
-                    : "User";
-
-                  return (
-                    <View
-                      key={comment.id}
-                      style={{
-                        borderRadius: 20,
-                        borderWidth: 1,
-                        borderColor: BORDER,
-                        backgroundColor: PANEL,
-                        padding: 14,
-                      }}
-                    >
-                      <Text style={{ color: TEXT, fontWeight: "900" }}>{commentName}</Text>
-                      <Text style={{ marginTop: 6, color: TEXT, lineHeight: 20 }}>{comment.body}</Text>
-                      <Text style={{ marginTop: 6, color: FAINT, fontSize: 11 }}>
-                        {new Date(comment.created_at).toLocaleString()}
-                      </Text>
-                    </View>
-                  );
-                })
-              )}
+              {renderCommentCards()}
             </ScrollView>
 
             <View
@@ -1799,46 +2479,9 @@ export default function SocialFeed({ profileUserId, hideComposer = false, mode =
                 padding: 14,
                 borderTopWidth: 1,
                 borderTopColor: BORDER,
-                flexDirection: "row",
-                alignItems: "flex-end",
-                gap: 10,
               }}
             >
-              <TextInput
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder="Write a comment..."
-                placeholderTextColor={FAINT}
-                multiline
-                style={{
-                  flex: 1,
-                  minHeight: 46,
-                  maxHeight: 118,
-                  borderRadius: 17,
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  backgroundColor: "rgba(255,253,247,0.06)",
-                  color: TEXT,
-                  paddingHorizontal: 13,
-                  paddingVertical: 11,
-                }}
-              />
-              <Pressable
-                disabled={commentBusy || !commentText.trim()}
-                onPress={submitComment}
-                style={({ pressed }) => ({
-                  width: 48,
-                  height: 48,
-                  borderRadius: 17,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: commentText.trim() ? TEAL : "rgba(255,253,247,0.12)",
-                  opacity: commentBusy || !commentText.trim() ? 0.65 : 1,
-                  transform: [{ scale: pressed ? 0.96 : 1 }],
-                })}
-              >
-                {commentBusy ? <ActivityIndicator color={TEXT} /> : <Ionicons name="send" size={17} color={commentText.trim() ? INK : MUTED} />}
-              </Pressable>
+              {renderCommentInput()}
             </View>
           </View>
         </View>

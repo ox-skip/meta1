@@ -46,6 +46,28 @@ function canUseRuntime() {
   return typeof window !== "undefined" && typeof document !== "undefined";
 }
 
+function optionalEnv(name: string) {
+  return String((process.env as any)?.[name] || "").trim();
+}
+
+function getPaymasterUrls() {
+  const baseMainnet =
+    optionalEnv("EXPO_PUBLIC_BASE_PAYMASTER_URL") ||
+    optionalEnv("EXPO_PUBLIC_BASE_PAYMASTER_RPC_URL") ||
+    optionalEnv("EXPO_PUBLIC_BASE_GAS_MANAGER_URL") ||
+    optionalEnv("EXPO_PUBLIC_ALCHEMY_BASE_PAYMASTER_URL");
+  const baseSepolia =
+    optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_PAYMASTER_URL") ||
+    optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_PAYMASTER_RPC_URL") ||
+    optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_GAS_MANAGER_URL") ||
+    optionalEnv("EXPO_PUBLIC_ALCHEMY_BASE_SEPOLIA_PAYMASTER_URL");
+
+  const urls: Record<number, string> = {};
+  if (baseMainnet) urls[8453] = baseMainnet;
+  if (baseSepolia) urls[84532] = baseSepolia;
+  return urls;
+}
+
 function loadRuntime(): BaseRuntime | null {
   if (runtimeFailed || !canUseRuntime()) return null;
   if (runtime) return runtime;
@@ -63,11 +85,13 @@ function loadRuntime(): BaseRuntime | null {
 
 function getSdk(rt: BaseRuntime) {
   if (sdk) return sdk;
+  const paymasterUrls = getPaymasterUrls();
   sdk = rt.createBaseAccountSDK({
     ...metadata,
     preference: {
       telemetry: false,
     },
+    ...(Object.keys(paymasterUrls).length ? { paymasterUrls } : {}),
   });
   return sdk;
 }

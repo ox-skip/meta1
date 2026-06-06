@@ -1,4 +1,4 @@
-import { createWalletClient, custom } from "viem";
+import { createPublicClient, createWalletClient, custom, http } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession } from "@/services/wallet/activeWalletSession";
@@ -81,6 +81,290 @@ function envRpcUrlForChain(chainName?: string | null) {
 
 function toHexChainId(chainId: number) {
   return `0x${chainId.toString(16)}`;
+}
+
+function isHexHash(value?: string | null) {
+  return /^0x[a-fA-F0-9]{64}$/.test(String(value || "").trim());
+}
+
+function rpcQuantity(value: unknown) {
+  if (value === undefined || value === null) return "0x0";
+  try {
+    const raw = typeof value === "bigint" ? value : BigInt(String(value));
+    return `0x${raw.toString(16)}`;
+  } catch {
+    return "0x0";
+  }
+}
+
+function toBigIntValue(value: unknown) {
+  if (value === undefined || value === null) return 0n;
+  try {
+    return typeof value === "bigint" ? value : BigInt(String(value));
+  } catch {
+    return 0n;
+  }
+}
+
+function formatWeiForDisplay(value: bigint) {
+  if (value <= 0n) return "0";
+  const whole = value / 1_000_000_000_000_000_000n;
+  const frac = value % 1_000_000_000_000_000_000n;
+  const fracText = frac.toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
+  return fracText ? `${whole.toString()}.${fracText}` : whole.toString();
+}
+
+function bestWalletError(err: unknown) {
+  const candidates = [
+    (err as any)?.shortMessage,
+    (err as any)?.details,
+    (err as any)?.cause?.shortMessage,
+    (err as any)?.cause?.details,
+    (err as any)?.cause?.message,
+    (err as any)?.message,
+    err,
+  ];
+  for (const value of candidates) {
+    const text = String(value || "").trim();
+    if (text && text !== "[object Object]") return text;
+  }
+  return "unknown wallet error";
+}
+
+function optionalEnv(name: string) {
+  return String((process.env as any)?.[name] || "").trim();
+}
+
+function paymasterUrlForChainId(chainId: number) {
+  if (chainId === 8453) {
+    return (
+      optionalEnv("EXPO_PUBLIC_BASE_PAYMASTER_URL") ||
+      optionalEnv("EXPO_PUBLIC_BASE_PAYMASTER_RPC_URL") ||
+      optionalEnv("EXPO_PUBLIC_BASE_GAS_MANAGER_URL") ||
+      optionalEnv("EXPO_PUBLIC_ALCHEMY_BASE_PAYMASTER_URL")
+    );
+  }
+  if (chainId === 84532) {
+    return (
+      optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_PAYMASTER_URL") ||
+      optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_PAYMASTER_RPC_URL") ||
+      optionalEnv("EXPO_PUBLIC_BASE_SEPOLIA_GAS_MANAGER_URL") ||
+      optionalEnv("EXPO_PUBLIC_ALCHEMY_BASE_SEPOLIA_PAYMASTER_URL")
+    );
+  }
+  return "";
+}
+
+function sendCallsCapabilities(chainId: number) {
+  const paymasterUrl = paymasterUrlForChainId(chainId);
+  return paymasterUrl ? { paymasterService: { url: paymasterUrl, optional: true } } : undefined;
+}
+
+function firstHashFromCallsValue(value: unknown) {
+  const raw = typeof value === "string" ? value : String((value as any)?.id || "");
+  const match = raw.match(/0x[a-fA-F0-9]{64}/);
+  return match?.[0] || "";
+}
+
+function callBundleId(value: unknown) {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  const id = String((value as any)?.id || "").trim();
+  return id || "";
+}
+
+function callsStatusTxHash(status: unknown) {
+  const candidates = [
+    (status as any)?.receipts?.[0]?.transactionHash,
+    (status as any)?.receipt?.transactionHash,
+    (status as any)?.transactionHash,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (isHexHash(value)) return value;
+  }
+  return "";
+}
+
+function isCallsStatusFailureMessage(value: unknown) {
+  const msg = String(value || "").toLowerCase();
+  return msg.includes("failed") || msg.includes("reverted") || msg.includes("rejected");
+}
+
+function isUnsupportedWalletSendCallsError(err: unknown) {
+  const msg = bestWalletError(err).toLowerCase();
+  return (
+    msg.includes("unsupported method") ||
+    msg.includes("method not found") ||
+    msg.includes("method not supported") ||
+    msg.includes("unsupported wc_ method") ||
+    (
+      msg.includes("wallet_sendcalls") &&
+      (
+        msg.includes("unsupported") ||
+        msg.includes("not supported") ||
+        msg.includes("does not exist") ||
+        msg.includes("not available")
+      )
+    )
+  );
+}
+
+async function waitForWalletCallsTxHash(provider: any, id: string, timeoutMs = 75_000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const status = await provider.request({
+        method: "wallet_getCallsStatus",
+        params: [id],
+      });
+      const txHash = callsStatusTxHash(status);
+      if (txHash) return txHash;
+
+      const state = String((status as any)?.status || "").toLowerCase();
+      if (["failure", "failed", "reverted"].includes(state)) {
+        throw new Error(String((status as any)?.message || (status as any)?.error || "wallet_sendCalls failed"));
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || err || "").toLowerCase();
+      if (isCallsStatusFailureMessage(msg)) {
+        throw err;
+      }
+      if (msg.includes("unsupported") || msg.includes("not supported") || msg.includes("method not found")) return "";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  return "";
+}
+
+async function sendSmartWalletCall(args: {
+  provider: any;
+  chainId: number;
+  from: `0x${string}`;
+  to: `0x${string}`;
+  data?: `0x${string}`;
+  value?: unknown;
+}) {
+  try {
+    const capabilities = sendCallsCapabilities(args.chainId);
+    const result = await args.provider.request({
+      method: "wallet_sendCalls",
+      params: [
+        {
+          version: "2.0.0",
+          chainId: toHexChainId(args.chainId),
+          from: args.from,
+          atomicRequired: false,
+          ...(capabilities ? { capabilities } : {}),
+          calls: [
+            {
+              to: args.to,
+              data: args.data || "0x",
+              value: rpcQuantity(args.value),
+            },
+          ],
+        },
+      ],
+    });
+
+    const id = callBundleId(result);
+    let statusHash = "";
+    if (id) {
+      try {
+        statusHash = await waitForWalletCallsTxHash(args.provider, id);
+      } catch (statusErr) {
+        if (isCallsStatusFailureMessage(bestWalletError(statusErr))) throw statusErr;
+      }
+    }
+    const immediateHash = firstHashFromCallsValue(result);
+    const hash = statusHash || immediateHash;
+    if (!hash) {
+      throw new Error("Base smart wallet did not return a transaction hash.");
+    }
+    return { hash, callsId: id || null };
+  } catch (err: any) {
+    throw new Error(`Embedded smart wallet failed to send transaction: ${bestWalletError(err)}`);
+  }
+}
+
+function normalizeCapabilityChainId(chainId: number) {
+  return [toHexChainId(chainId), toHexChainId(chainId).toLowerCase(), String(chainId)];
+}
+
+function capabilityEntrySupportsSendCalls(entry: any) {
+  const atomic = entry?.atomic;
+  if (atomic === true) return true;
+  if (atomic && typeof atomic === "object" && ["supported", "ready"].includes(String(atomic.status || "").toLowerCase())) return true;
+
+  const sendCalls = entry?.sendCalls ?? entry?.wallet_sendCalls;
+  if (sendCalls === true) return true;
+  if (!sendCalls || typeof sendCalls !== "object") return false;
+  if (sendCalls.supported === true) return true;
+  if (sendCalls.status === "supported") return true;
+  if (sendCalls.available === true) return true;
+  return false;
+}
+
+function capabilitiesSupportSendCalls(raw: unknown, chainId: number) {
+  const caps = raw as any;
+  if (!caps || typeof caps !== "object") return false;
+  if (capabilityEntrySupportsSendCalls(caps)) return true;
+
+  for (const key of normalizeCapabilityChainId(chainId)) {
+    if (capabilityEntrySupportsSendCalls(caps[key])) return true;
+  }
+
+  return Object.values(caps).some((entry) => capabilityEntrySupportsSendCalls(entry));
+}
+
+async function providerSupportsWalletSendCalls(provider: any, chainId: number, from: `0x${string}`) {
+  if (!provider || typeof provider.request !== "function") return false;
+  const chainHex = toHexChainId(chainId);
+  const attempts = [
+    [from, [chainHex]],
+    [from],
+    [],
+  ];
+
+  for (const params of attempts) {
+    try {
+      const caps = await provider.request({
+        method: "wallet_getCapabilities",
+        params,
+      });
+      if (capabilitiesSupportSendCalls(caps, chainId)) return true;
+    } catch {
+      // Try the next shape; wallets differ on the optional params they accept.
+    }
+  }
+
+  return false;
+}
+
+async function ensureWalletHasDirectGas(args: {
+  rpcUrl: string;
+  chainName?: string | null;
+  nativeSymbol?: string | null;
+  from: `0x${string}`;
+  value?: unknown;
+}) {
+  if (!args.rpcUrl) return;
+  try {
+    const publicClient = createPublicClient({ transport: http(args.rpcUrl) });
+    const balance = await publicClient.getBalance({ address: args.from });
+    const value = toBigIntValue(args.value);
+    if (balance > value) return;
+
+    const chainName = String(args.chainName || "this chain");
+    const symbol = String(args.nativeSymbol || "ETH");
+    throw new Error(
+      `This WalletConnect wallet needs ${symbol} on ${chainName} for gas. ` +
+        `It currently has ${formatWeiForDisplay(balance)} ${symbol}. ` +
+        `Send a small amount of Base ETH to ${args.from}, or use a native wallet that already has gas.`,
+    );
+  } catch (err: any) {
+    const msg = String(err?.message || err || "");
+    if (msg.includes("needs") && msg.includes("for gas")) throw err;
+  }
 }
 
 function buildChainForWallet(chainConfig: MarketChainConfig, chainOverride?: any) {
@@ -244,6 +528,7 @@ async function ensureConnectedProviderAndAddress(chainConfig: MarketChainConfig)
 
 export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: string | null) {
   const { provider, chain, address, rpcUrl } = await ensureConnectedProviderAndAddress(chainConfig);
+  const chainId = normalizeChainId((chainConfig as any).chain_id);
 
   const walletClient = createWalletClient({
     chain: chain as any,
@@ -259,6 +544,39 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
       const to = String(args?.to || "");
       if (!isAddress(from)) throw new Error("Missing valid sender wallet address.");
       if (!isAddress(to)) throw new Error("Missing valid recipient contract/wallet address.");
+
+      const session = getActiveWalletSession();
+      if (session.mode === "walletconnect" && !paymasterUrlForChainId(chainId)) {
+        await ensureWalletHasDirectGas({
+          rpcUrl,
+          chainName: String(chain?.name || chainConfig.chain || "Base"),
+          nativeSymbol: String(chain?.nativeCurrency?.symbol || "ETH"),
+          from: from as `0x${string}`,
+          value: args?.value,
+        });
+      }
+
+      const useWalletSendCalls =
+        session.mode === "base_smart" ||
+        session.providerType === "base_smart" ||
+        await providerSupportsWalletSendCalls(provider, chainId, from as `0x${string}`);
+      const smartCallArgs = {
+        provider,
+        chainId,
+        from: from as `0x${string}`,
+        to: to as `0x${string}`,
+        data: (args?.data as `0x${string}` | undefined) ?? undefined,
+        value: args?.value,
+      };
+      if (useWalletSendCalls || session.mode === "walletconnect") {
+        try {
+          return await sendSmartWalletCall(smartCallArgs);
+        } catch (smartErr) {
+          if (useWalletSendCalls || !isUnsupportedWalletSendCallsError(smartErr)) {
+            throw smartErr;
+          }
+        }
+      }
 
       const hash = await walletClient.sendTransaction({
         account: from as `0x${string}`,
@@ -295,7 +613,6 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
     rpcUrl,
   };
 }
-
 export async function deriveSmartAccountAddress(_chainConfig: MarketChainConfig, _privateKey: `0x${string}`) {
   const connected = await connectActiveWalletEvm();
   if (!isAddress(connected.address)) {
