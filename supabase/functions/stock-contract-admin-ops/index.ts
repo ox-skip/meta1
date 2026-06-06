@@ -139,6 +139,10 @@ function formatStable(value: bigint, decimals: number) {
   return ethers.formatUnits(value, decimals);
 }
 
+function bufferedMintAmount(value: bigint) {
+  return (value * 9800n) / 10_000n;
+}
+
 function storeKeyForStoreId(storeId: string) {
   return ethers.keccak256(ethers.toUtf8Bytes(String(storeId || "").trim()));
 }
@@ -309,6 +313,8 @@ serve(async (req) => {
         const decimals = Number(await stable.decimals());
         const symbol = String(await stable.symbol().catch(() => "USDC"));
         const stableAmount = ethers.parseUnits(amountText, decimals);
+        const mintAmount = bufferedMintAmount(stableAmount);
+        if (mintAmount <= 0n) return bad("stable_usdc is too small for buffered initial liquidity");
         const vaultBalance = BigInt(await stable.balanceOf(vaultAddress));
         const transferAmount = vaultBalance >= stableAmount ? 0n : stableAmount - vaultBalance;
         const signerBalance = BigInt(await stable.balanceOf(signerAddress));
@@ -318,8 +324,7 @@ serve(async (req) => {
 
         const transferTx = transferAmount > 0n ? await stable.transfer(vaultAddress, transferAmount) : null;
         if (transferTx) await transferTx.wait();
-        await vault.mintInitialPosition.staticCall(stableAmount);
-        const mintTx = await vault.mintInitialPosition(stableAmount);
+        const mintTx = await vault.mintInitialPosition(mintAmount);
         await mintTx.wait();
 
         const nextTokenId = await vault.tokenId();
@@ -338,6 +343,8 @@ serve(async (req) => {
         response.position_token_id = nextTokenId.toString();
         response.vault_existing_stable = formatStable(vaultBalance, decimals);
         response.transferred_stable = formatStable(transferAmount, decimals);
+        response.minted_stable = formatStable(mintAmount, decimals);
+        response.seed_buffer_bps = 200;
         response.transfer_tx_hash = transferTx?.hash ?? null;
       } else if (action === "factory_add_reinvestment" || action === "factory_add_rewards") {
         const storeKey = requireBytes32OrStoreKey(body);
