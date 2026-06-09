@@ -52,10 +52,10 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
     return "We couldn't complete this request right now. Please try again.";
   }
   if (msg.includes("timeout") || msg.includes("aborted")) {
-    return "The request took too long. Please check your connection and try again.";
+    return "The request took too long. Please retry in a moment.";
   }
   if (msg.includes("network request failed") || msg.includes("failed to fetch")) {
-    return "Network connection issue. Please try again.";
+    return "Marketplace server request failed. Please retry in a moment.";
   }
   if (msg.includes("market_listings_price_amount_check") || msg.includes("price_amount must be > 0")) {
     return "Enter a listing price above zero.";

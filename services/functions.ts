@@ -88,7 +88,36 @@ export async function callFn<T>(name: string, body?: any, timeoutMs = 20000): Pr
 
   // Manual fallback path
   let token = await getSupabaseJwtOrThrow();
-  let { res, text, json } = await invokeFn<T>(name, body, timeoutMs, token);
+  let res: Response;
+  let text = "";
+  let json: any = null;
+
+  try {
+    const manual = await invokeFn<T>(name, body, timeoutMs, token);
+    res = manual.res;
+    text = manual.text;
+    json = manual.json;
+  } catch (manualError: any) {
+    const manualMsg = String(manualError?.message || manualError || "request failed");
+    console.log(`[callFn] ${name} -> manual fetch failed`, shortText(manualMsg));
+
+    try {
+      const sdkRetry = await invokeSdkWithTimeout<T>(name, body, token, timeoutMs);
+      if (!sdkRetry.error && sdkRetry.data) {
+        console.log(`[callFn] ${name} -> ok (sdk invoke after manual fetch failure)`);
+        return sdkRetry.data as T;
+      }
+      if (sdkRetry.error) {
+        console.log(`[callFn] ${name} -> sdk retry after manual fetch failure`, shortText(String(sdkRetry.error?.message || sdkRetry.error)));
+      }
+    } catch (sdkError: any) {
+      console.log(`[callFn] ${name} -> sdk retry threw`, shortText(String(sdkError?.message || sdkError)));
+    }
+
+    const err = new Error(`Marketplace server request failed. Please retry in a moment. (${shortText(manualMsg, 140)})`);
+    (err as any).details = { message: manualMsg };
+    throw err;
+  }
 
   if (!res.ok) {
     console.log(`[callFn] ${name} -> HTTP ${res.status}`, shortText(text));

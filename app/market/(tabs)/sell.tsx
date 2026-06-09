@@ -1425,11 +1425,13 @@ export default function SellTab() {
         showFeedback("error", "Permission issue", "Your database permissions blocked this listing insert.");
       } else if (
         errStr.includes("network request failed") ||
-        errStr.includes("failed to fetch") ||
-        errStr.includes("network") ||
+        errStr.includes("failed to fetch")
+      ) {
+        showFeedback("error", "Server request failed", msg);
+      } else if (
         errStr.includes("timeout")
       ) {
-        showFeedback("error", "Connection issue", "Please check your internet connection and try again.");
+        showFeedback("error", "Request timed out", msg);
       } else {
         showFeedback("error", "Failed to create listing", msg);
       }
