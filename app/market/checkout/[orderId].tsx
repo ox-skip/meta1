@@ -541,7 +541,8 @@ export default function Checkout() {
     console.log("[Checkout] payWithUsdc start", { orderId: oid });
     setBusy(true);
     try {
-      const res: any = await payUsdcForOrder(oid);
+      if (!chain) throw new Error("No active chain configuration found.");
+      const res: any = await payUsdcForOrder(oid, chain);
       await showStableDepositResult("USDC", res);
     } catch (e: any) {
       console.log("[Checkout] payWithUsdc error", { message: String(e?.message || e) });
@@ -560,7 +561,7 @@ export default function Checkout() {
                     const activeChain = chain ?? (await getPreferredMarketChain());
                     if (!activeChain) throw new Error("No active chain configuration found.");
                     await replaceSavedWalletWithDevice(activeChain as any);
-                    const retried: any = await payUsdcForOrder(oid);
+                    const retried: any = await payUsdcForOrder(oid, activeChain);
                     await showStableDepositResult("USDC", retried);
                   } catch (retryErr: any) {
                     setErr(friendlyMarketError(retryErr, "Wallet was updated but retry failed."));
@@ -621,7 +622,8 @@ export default function Checkout() {
     console.log("[Checkout] payWithUsdt start", { orderId: oid });
     setBusy(true);
     try {
-      const res: any = await payUsdtForOrder(oid);
+      if (!chain) throw new Error("No active chain configuration found.");
+      const res: any = await payUsdtForOrder(oid, chain);
       await showStableDepositResult("USDT", res);
     } catch (e: any) {
       console.log("[Checkout] payWithUsdt error", { message: String(e?.message || e) });
@@ -640,7 +642,7 @@ export default function Checkout() {
                     const activeChain = chain ?? (await getPreferredMarketChain());
                     if (!activeChain) throw new Error("No active chain configuration found.");
                     await replaceSavedWalletWithDevice(activeChain as any);
-                    const retried: any = await payUsdtForOrder(oid);
+                    const retried: any = await payUsdtForOrder(oid, activeChain);
                     await showStableDepositResult("USDT", retried);
                   } catch (retryErr: any) {
                     setErr(friendlyMarketError(retryErr, "Wallet was updated but retry failed."));

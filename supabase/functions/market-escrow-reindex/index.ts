@@ -15,6 +15,7 @@ type RpcLog = {
 
 type ChainConfig = {
   chain: string;
+  chain_id?: number | null;
   rpc_url: string | null;
   escrow_address: string | null;
   usdc_address: string | null;
@@ -138,7 +139,7 @@ serve(async (req) => {
 
     const { data: cfg, error: cfgErr } = await admin
       .from("market_chain_config")
-      .select("chain,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
+      .select("chain,chain_id,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
       .eq("chain", esc.chain)
       .eq("active", true)
       .maybeSingle();
@@ -157,6 +158,15 @@ serve(async (req) => {
       return json(400, { ok: false, message: `Escrow address missing for ${esc.chain}` });
     }
 
+    const rpcChainId = toNum(await rpcCall(rpcUrl, "eth_chainId", []));
+    const expectedChainId = Number((cfg as ChainConfig).chain_id ?? 0);
+    if (expectedChainId > 0 && rpcChainId > 0 && rpcChainId !== expectedChainId) {
+      return json(400, {
+        ok: false,
+        message: `RPC chain mismatch for ${esc.chain}: expected ${expectedChainId}, got ${rpcChainId}`,
+      });
+    }
+
     const wantKey = normalizeOrderKey(esc.order_key);
     const escrowAddr = String(cfg.escrow_address).toLowerCase();
     const required = Math.max(1, Number(cfg.confirmations_required ?? 1));
@@ -167,6 +177,29 @@ serve(async (req) => {
     let resolvedTxHash = txHashInput;
     let hitBlock = 0;
     let confirmations = 0;
+
+    const scanLatestDepositByOrderKey = async () => {
+      const fromBlock = Math.max(0, latest - 8000);
+      const logs = (await rpcCall(rpcUrl, "eth_getLogs", [
+        {
+          address: cfg.escrow_address,
+          fromBlock: `0x${fromBlock.toString(16)}`,
+          toBlock: `0x${latest.toString(16)}`,
+          topics: [[TOPIC_DEPOSIT_MULTI, TOPIC_DEPOSIT_SINGLE], [`0x${wantKey}`]],
+        },
+      ])) as RpcLog[];
+
+      if (!logs?.length) return null;
+
+      logs.sort((a, b) => {
+        const ab = toNum(a.blockNumber as any);
+        const bb = toNum(b.blockNumber as any);
+        if (ab !== bb) return ab - bb;
+        return toNum(a.logIndex as any) - toNum(b.logIndex as any);
+      });
+
+      return logs[logs.length - 1] ?? null;
+    };
 
     if (txHashInput.startsWith("0x")) {
       const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHashInput]);
@@ -197,34 +230,37 @@ serve(async (req) => {
         }) ?? null;
 
       if (!hit) {
-        return json(404, { ok: false, message: "Deposit event not found in tx logs" });
+        // The supplied hash can be the ERC20 approval tx. Recover by scanning the escrow logs
+        // for this order key on the stored chain instead of stopping here.
+        hit = await scanLatestDepositByOrderKey();
+        if (!hit) {
+          return json(200, {
+            ok: true,
+            applied: false,
+            pending: "event_not_found_yet",
+            checked_tx_hash: txHashInput,
+          });
+        }
       }
       hitBlock = toNum(hit.blockNumber as any) || receiptBlock;
+      confirmations = latest - hitBlock + 1;
+      if (confirmations < required) {
+        return json(200, {
+          ok: true,
+          applied: false,
+          pending: "confirmations",
+          required,
+          confirmations,
+          remaining: Math.max(0, required - confirmations),
+        });
+      }
       resolvedTxHash = String(hit.transactionHash ?? txHashInput).toLowerCase();
     } else {
       // No tx hash yet (AA path): find deposit by order key directly from chain logs.
-      const fromBlock = Math.max(0, latest - 8000);
-      const logs = (await rpcCall(rpcUrl, "eth_getLogs", [
-        {
-          address: cfg.escrow_address,
-          fromBlock: `0x${fromBlock.toString(16)}`,
-          toBlock: `0x${latest.toString(16)}`,
-          topics: [[TOPIC_DEPOSIT_MULTI, TOPIC_DEPOSIT_SINGLE], [`0x${wantKey}`]],
-        },
-      ])) as RpcLog[];
-
-      if (!logs?.length) {
+      hit = await scanLatestDepositByOrderKey();
+      if (!hit) {
         return json(200, { ok: true, applied: false, pending: "event_not_found_yet" });
       }
-
-      logs.sort((a, b) => {
-        const ab = toNum(a.blockNumber as any);
-        const bb = toNum(b.blockNumber as any);
-        if (ab !== bb) return ab - bb;
-        return toNum(a.logIndex as any) - toNum(b.logIndex as any);
-      });
-
-      hit = logs[logs.length - 1] ?? null;
       hitBlock = toNum(hit?.blockNumber as any);
       confirmations = latest - hitBlock + 1;
       if (confirmations < required) {

@@ -210,6 +210,14 @@ async function tryFinalizeOnce(
       p_tx_hash: txHash,
       p_event_type: eventType,
     });
+    const data = out.data as any;
+    if (data?.ok === false) {
+      return {
+        ok: false,
+        error: String(data?.message || data?.reason || `Finalize ${eventType} failed`),
+        data,
+      };
+    }
     return { ok: true, error: null as string | null, data: out.data };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e), data: null as any };
@@ -765,8 +773,12 @@ export function isEvmWalletAddress(value?: string | null) {
   return isEvmAddress(value);
 }
 
-export async function payStableForOrder(orderId: string, symbol: StableSymbol = "USDC") {
-  const chain = await getPreferredMarketChain();
+export async function payStableForOrder(
+  orderId: string,
+  symbol: StableSymbol = "USDC",
+  chainOverride?: MarketChainConfig | null,
+) {
+  const chain = chainOverride ?? (await getPreferredMarketChain());
   if (!chain) throw new Error("No active chain configuration found.");
 
   const localAuth = await requireLocalAuth(`Confirm ${symbol} deposit`);
@@ -949,12 +961,12 @@ export async function payStableForOrder(orderId: string, symbol: StableSymbol = 
   return { ...intent, token_symbol: symbol, token_address: tokenAddress, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null };
 }
 
-export async function payUsdcForOrder(orderId: string) {
-  return payStableForOrder(orderId, "USDC");
+export async function payUsdcForOrder(orderId: string, chainOverride?: MarketChainConfig | null) {
+  return payStableForOrder(orderId, "USDC", chainOverride);
 }
 
-export async function payUsdtForOrder(orderId: string) {
-  return payStableForOrder(orderId, "USDT");
+export async function payUsdtForOrder(orderId: string, chainOverride?: MarketChainConfig | null) {
+  return payStableForOrder(orderId, "USDT", chainOverride);
 }
 
 export async function releaseUsdcForOrder(orderId: string) {

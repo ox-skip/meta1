@@ -5,7 +5,9 @@ import {
   decodeEscrowData,
   findEscrowEventLog,
   hexToAddress,
+  normalizeOrderKey,
   rpcCall,
+  topicsForEscrowEvent,
   toNum,
   type EscrowEventType,
 } from "../_shared/market/escrowEvents.ts";
@@ -57,7 +59,7 @@ Deno.serve(async (req) => {
 
   const { data: cfg, error: cfgErr } = await admin
     .from("market_chain_config")
-    .select("chain,rpc_url,confirmations_required,active,escrow_address,usdc_address")
+    .select("chain,chain_id,rpc_url,confirmations_required,active,escrow_address,usdc_address")
     .eq("chain", esc.chain)
     .eq("active", true)
     .maybeSingle();
@@ -74,6 +76,12 @@ Deno.serve(async (req) => {
   if (!expectedEscrow.startsWith("0x")) return bad("Escrow address missing for selected chain");
   if (cfg.escrow_address && String(cfg.escrow_address).trim().toLowerCase() !== expectedEscrow) {
     return bad("Escrow address mismatch between order mapping and chain config");
+  }
+
+  const rpcChainId = toNum(await rpcCall(rpcUrl, "eth_chainId", []));
+  const expectedChainId = Number((cfg as any).chain_id ?? 0);
+  if (expectedChainId > 0 && rpcChainId > 0 && rpcChainId !== expectedChainId) {
+    return bad(`RPC chain mismatch for ${esc.chain}: expected ${expectedChainId}, got ${rpcChainId}`);
   }
 
   const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [tx_hash]);
@@ -104,8 +112,36 @@ Deno.serve(async (req) => {
     return ok({ ok: true, finalized: false, confirmations, required });
   }
 
-  const hit = findEscrowEventLog(receipt, expectedEscrow, esc.order_key, event_type);
-  if (!hit) return bad(`Expected ${event_type} event not found in tx logs`);
+  let hit = findEscrowEventLog(receipt, expectedEscrow, esc.order_key, event_type);
+  if (!hit) {
+    const fromBlock = Math.max(0, latestBlock - 8000);
+    const logs = await rpcCall(rpcUrl, "eth_getLogs", [
+      {
+        address: expectedEscrow,
+        fromBlock: `0x${fromBlock.toString(16)}`,
+        toBlock: `0x${latestBlock.toString(16)}`,
+        topics: [topicsForEscrowEvent(event_type), [`0x${normalizeOrderKey(esc.order_key)}`]],
+      },
+    ]);
+    hit = findEscrowEventLog({ logs }, expectedEscrow, esc.order_key, event_type);
+    if (!hit) {
+      return ok({
+        ok: true,
+        finalized: false,
+        reason: "event_not_found_yet",
+        checked_tx_hash: tx_hash,
+        event_type,
+        order_id,
+        chain: esc.chain,
+      });
+    }
+
+    const hitBlock = toNum(hit.blockNumber as any);
+    const hitConfirmations = Math.max(0, latestBlock - hitBlock + 1);
+    if (hitConfirmations < required) {
+      return ok({ ok: true, finalized: false, confirmations: hitConfirmations, required });
+    }
+  }
 
   if (event_type === "DEPOSIT") {
     const buyer = hexToAddress(hit.topics?.[2]);
