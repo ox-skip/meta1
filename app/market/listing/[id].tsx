@@ -186,6 +186,32 @@ function ListingReviewCard({ review }: { review: ListingReview }) {
   );
 }
 
+function parseJsonObject(value: unknown) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function getStableRouteFlags(paymentOptions: unknown, listingCurrency: unknown) {
+  const options = parseJsonObject(paymentOptions) ?? {};
+  const currency = String(listingCurrency ?? "").toUpperCase();
+  const hasEnabledStableRoute = options.allow_usdc === true || options.allow_usdt === true;
+
+  return {
+    allowUsdc: options.allow_usdc === true || (!hasEnabledStableRoute && currency === "USDC"),
+    allowUsdt: options.allow_usdt === true || (!hasEnabledStableRoute && currency === "USDT"),
+  };
+}
+
 async function safeLoadListing(listingId: string) {
   const attempt1 = await supabase
     .from(LISTINGS_TABLE)
@@ -689,22 +715,9 @@ export default function ListingDetails() {
         else Alert.alert("Out of stock", msg);
         return;
       }
-      const paymentOptions = (listing.payment_options ?? {}) as any;
-      const hasExplicitRoutes =
-        typeof paymentOptions?.allow_ngn === "boolean" ||
-        typeof paymentOptions?.allow_usdc === "boolean" ||
-        typeof paymentOptions?.allow_usdt === "boolean" ||
-        typeof paymentOptions?.allow_pi === "boolean";
       const listingCurrency = String(listing.currency ?? "").toUpperCase();
-      const allowUsdc = hasExplicitRoutes
-        ? paymentOptions?.allow_usdc === true
-        : listingCurrency === "USDC";
-      const allowUsdt = hasExplicitRoutes
-        ? paymentOptions?.allow_usdt === true
-        : listingCurrency === "USDT";
-      const allowPi = hasExplicitRoutes
-        ? paymentOptions?.allow_pi === true
-        : false;
+      const { allowUsdc, allowUsdt } = getStableRouteFlags(listing.payment_options, listingCurrency);
+      const allowPi = parseJsonObject(listing.payment_options)?.allow_pi === true;
       const hasStableCheckout = allowUsdc || allowUsdt;
       if (!hasStableCheckout && !allowPi) {
         const msg = "This listing does not have an active crypto checkout route right now.";

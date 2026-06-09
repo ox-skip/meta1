@@ -81,6 +81,17 @@ function parseJsonObject(value: unknown) {
   return typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
+function getStableRouteFlags(paymentOptions: unknown, listingCurrency: unknown) {
+  const options = parseJsonObject(paymentOptions) ?? {};
+  const currency = String(listingCurrency ?? "").toUpperCase();
+  const hasEnabledStableRoute = options.allow_usdc === true || options.allow_usdt === true;
+
+  return {
+    allowUsdc: options.allow_usdc === true || (!hasEnabledStableRoute && currency === "USDC"),
+    allowUsdt: options.allow_usdt === true || (!hasEnabledStableRoute && currency === "USDT"),
+  };
+}
+
 function normalizeDeliveryGeo(value: unknown): DeliveryGeo | null {
   const raw = parseJsonObject(value) as any;
   if (!raw) return null;
@@ -214,28 +225,19 @@ export default function Checkout() {
     (order as any)?.unit_price ?? (orderQty > 0 ? orderAmount / orderQty : orderAmount),
   );
   const paymentOptions = ((listing as any)?.payment_options ?? {}) as any;
-  const hasExplicitRoutes =
-    typeof paymentOptions?.allow_usdc === "boolean" ||
-    typeof paymentOptions?.allow_usdt === "boolean" ||
-    typeof paymentOptions?.allow_pi === "boolean";
   const { bySection: checkoutPolicy, loading: checkoutPolicyLoading } = useMarketPolicyBlocks({
     surface: "checkout",
     audience: "buyer",
     orderStatus,
   });
 
-  const allowUsdc = hasExplicitRoutes
-    ? paymentOptions?.allow_usdc === true
-    : listingCurrency === "USDC";
-  const allowUsdt = hasExplicitRoutes
-    ? paymentOptions?.allow_usdt === true
-    : listingCurrency === "USDT";
+  const { allowUsdc, allowUsdt } = getStableRouteFlags(paymentOptions, listingCurrency);
   const enabledRoutes = [
     allowUsdc ? "USDC" : null,
     allowUsdt ? "USDT" : null,
   ].filter(Boolean) as string[];
-  const usdcRequired = orderCurrency === "USDC" ? orderAmount : 0;
-  const usdtRequired = orderCurrency === "USDT" ? orderAmount : 0;
+  const usdcRequired = allowUsdc ? orderAmount : 0;
+  const usdtRequired = allowUsdt ? orderAmount : 0;
   const usdcShortfall = allowUsdc && usdcRequired > 0 ? Math.max(0, usdcRequired - usdcBalance) : 0;
   const usdtShortfall = allowUsdt && usdtRequired > 0 ? Math.max(0, usdtRequired - usdtBalance) : 0;
   const deliveryLat = Number(deliveryGeo?.lat);

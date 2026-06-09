@@ -65,6 +65,13 @@ function buildListingPayload(input: CreateListingInput) {
   const outOfStock = input.category === "product" && stockQty !== null && Number(stockQty) <= 0;
   const requestedActive = typeof input.is_active === "boolean" ? input.is_active : true;
   const paymentOptions = { ...(input.payment_options ?? {}) } as any;
+  if (
+    String(input.currency || "").toUpperCase() === "USDC" &&
+    paymentOptions.allow_usdc !== true &&
+    paymentOptions.allow_usdt !== true
+  ) {
+    paymentOptions.allow_usdc = true;
+  }
   if (outOfStock) {
     paymentOptions.out_of_stock = true;
     paymentOptions.out_of_stock_at = new Date().toISOString();
@@ -166,6 +173,16 @@ async function insertListingImageDirect(
     };
     if (isFirstImage) updates.cover_image_id = data.id;
     if (options?.activateListing === true) updates.is_active = true;
+
+    if (!isFirstImage && options?.activateListing === true) {
+      const { data: listing, error: listingError } = await supabase
+        .from("market_listings")
+        .select("cover_image_id")
+        .eq("id", img.listing_id)
+        .maybeSingle();
+      if (listingError) throw new Error(listingError.message);
+      if (!listing?.cover_image_id) updates.cover_image_id = data.id;
+    }
 
     const { error: listingError } = await supabase
       .from("market_listings")

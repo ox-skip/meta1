@@ -73,7 +73,13 @@ Deno.serve(async (req) => {
     is_active: body.is_active === undefined ? true : !!body.is_active,
   };
   if (Object.prototype.hasOwnProperty.call(body, "availability")) row.availability = body.availability ?? {};
-  if (Object.prototype.hasOwnProperty.call(body, "payment_options")) row.payment_options = body.payment_options ?? {};
+  if (Object.prototype.hasOwnProperty.call(body, "payment_options")) {
+    const paymentOptions = { ...((body.payment_options ?? {}) as Record<string, unknown>) };
+    if (currency === "USDC" && paymentOptions.allow_usdc !== true && paymentOptions.allow_usdt !== true) {
+      paymentOptions.allow_usdc = true;
+    }
+    row.payment_options = paymentOptions;
+  }
   if (Object.prototype.hasOwnProperty.call(body, "website_url")) {
     const websiteUrl = String(body.website_url ?? "").trim();
     if (websiteUrl) {

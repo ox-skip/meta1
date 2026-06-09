@@ -1,6 +1,7 @@
 import { createPublicClient, encodeFunctionData, http } from "viem";
 
 import { supabase } from "@/services/supabase";
+import { callFn } from "@/services/functions";
 import { requireLocalAuth } from "@/utils/secureAuth";
 import { getSmartAccount } from "@/utils/aaWallet";
 import { getPreferredMarketChain, MarketChainConfig } from "@/services/market/chainConfig";
@@ -794,12 +795,22 @@ export async function payStableForOrder(orderId: string, symbol: StableSymbol = 
     fee_bps: number;
     chain: string;
   } = await (async () => {
-    const out = await rpcWithFallback(RPC_DEPOSIT_INTENT_CANDIDATES, {
-      p_order_id: orderId,
-      p_chain: chain.chain,
-      p_token: symbol,
-    });
-    return out.data as any;
+    try {
+      const out = await rpcWithFallback(RPC_DEPOSIT_INTENT_CANDIDATES, {
+        p_order_id: orderId,
+        p_chain: chain.chain,
+        p_token: symbol,
+      });
+      return out.data as any;
+    } catch (error: any) {
+      console.log("[Checkout] deposit intent RPC failed, trying edge function", String(error?.message || error));
+      const out = await callFn("market-usdc-deposit-intent", {
+        order_id: orderId,
+        chain: chain.chain,
+        token: symbol,
+      });
+      return out as any;
+    }
   })();
 
   const tokenAddress =

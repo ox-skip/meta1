@@ -47,13 +47,10 @@ Deno.serve(async (req) => {
   if (!listing || !listing.is_active) return bad("Listing not found or inactive");
 
   const po = (listing.payment_options ?? {}) as Record<string, unknown>;
-  const hasRoutes =
-    typeof po.allow_usdc === "boolean" ||
-    typeof po.allow_usdt === "boolean" ||
-    typeof po.allow_ngn === "boolean";
-
-  const allowUsdc = hasRoutes ? po.allow_usdc === true : String(listing.currency ?? "").toUpperCase() === "USDC";
-  const allowUsdt = hasRoutes ? po.allow_usdt === true : String(listing.currency ?? "").toUpperCase() === "USDT";
+  const listingCurrency = String(listing.currency ?? "").toUpperCase();
+  const hasEnabledStableRoute = po.allow_usdc === true || po.allow_usdt === true;
+  const allowUsdc = po.allow_usdc === true || (!hasEnabledStableRoute && listingCurrency === "USDC");
+  const allowUsdt = po.allow_usdt === true || (!hasEnabledStableRoute && listingCurrency === "USDT");
 
   if (token === "USDC" && !allowUsdc) return bad("Listing does not accept USDC");
   if (token === "USDT" && !allowUsdt) return bad("Listing does not accept USDT");

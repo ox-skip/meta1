@@ -63,9 +63,14 @@ Deno.serve(async (req) => {
     if (curErr) return bad(curErr.message);
 
     if (!cur?.cover_image_id) {
+      const updates: Record<string, unknown> = {
+        cover_image_id: img.id,
+        updated_at: new Date().toISOString(),
+      };
+      if (activateListing) updates.is_active = true;
       const { error: setErr } = await admin
         .from("market_listings")
-        .update({ cover_image_id: img.id, updated_at: new Date().toISOString() })
+        .update(updates)
         .eq("id", listing_id);
       if (setErr) return bad(setErr.message);
     } else if (activateListing) {

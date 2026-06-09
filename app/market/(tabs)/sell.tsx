@@ -12,7 +12,7 @@ import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import { generateListingAiDraft, type MarketAiDraftResult } from "@/services/market/ai";
 import { getAllCategories } from "@/services/market/categories";
-import { createListing, getMySellerProfile, insertListingImages, uploadToBucket } from "@/services/market/marketService";
+import { createListing, getMySellerProfile, insertListingImages, rollbackListingDraft, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
 import { normalizeCountryName } from "@/utils/countryNames";
@@ -611,7 +611,9 @@ export default function SellTab() {
           if (draft.websiteUrl) setWebsiteUrl(draft.websiteUrl);
           if (draft.title) setTitle(draft.title);
           if (draft.description) setDescription(draft.description);
-          if (draft.cryptoCoinMode) setCryptoCoinMode(draft.cryptoCoinMode);
+          if (["all", "usdc", "usdt"].includes(String(draft.cryptoCoinMode))) {
+            setCryptoCoinMode(draft.cryptoCoinMode);
+          }
           if (draft.cryptoNetworkMode) setCryptoNetworkMode(draft.cryptoNetworkMode);
           if (draft.price) setPrice(draft.price);
           if (draft.localCurrency) setLocalCurrency(draft.localCurrency);
@@ -1362,7 +1364,7 @@ export default function SellTab() {
 
       const paymentOptions = {
         allow_crypto: true,
-        allow_usdc: cryptoCoinMode === "all" || cryptoCoinMode === "usdc",
+        allow_usdc: cryptoCoinMode !== "usdt",
         allow_usdt: cryptoCoinMode === "all" || cryptoCoinMode === "usdt",
         allow_pi: false,
         chain_mode: cryptoNetworkMode,
@@ -1475,7 +1477,7 @@ export default function SellTab() {
         ...(category === "service" && deliveryType === "digital" && websiteUrl.trim()
           ? { website_url: websiteUrl.trim() }
           : {}),
-        is_active: true,
+        is_active: mediaAssets.length === 0,
       } as any);
       console.log("[SellTab] createListing -> ok", listing?.id ?? "no-id");
 
@@ -1490,6 +1492,7 @@ export default function SellTab() {
       console.log("[SellTab] upload media -> start", { count: mediaAssets.length });
       setStage("Uploading media...");
       const inserts: any[] = [];
+      const uploadedPaths: string[] = [];
       const mediaIssues: string[] = [];
       let attachedCount = 0;
 
@@ -1514,6 +1517,7 @@ export default function SellTab() {
             upsert: false,
           });
           console.log("[SellTab] upload media -> ok", { index: i, storagePath: up.storagePath });
+          uploadedPaths.push(up.storagePath);
 
           inserts.push({
             listing_id: listing.id,
@@ -1533,13 +1537,25 @@ export default function SellTab() {
         }
       }
 
+      if (inserts.length === 0) {
+        await rollbackListingDraft(listing.id, uploadedPaths);
+        throw new Error(
+          mediaIssues[0] ||
+            "Selected media could not be uploaded. Your listing was not published without media.",
+        );
+      }
+
       if (inserts.length > 0) {
         try {
           console.log("[SellTab] insertListingImages -> start", { count: inserts.length });
           setStage("Saving media...");
-          const rows = await insertListingImages(inserts, { activateListing: false });
+          const rows = await insertListingImages(inserts, { activateListing: true });
           attachedCount = rows?.length ?? 0;
           console.log("[SellTab] insertListingImages -> ok", { count: attachedCount });
+          if (attachedCount <= 0) {
+            await rollbackListingDraft(listing.id, uploadedPaths);
+            throw new Error("Uploaded media could not be attached. Your listing was not published without media.");
+          }
 
           const unattachedCount = Math.max(inserts.length - attachedCount, 0);
           if (unattachedCount > 0) {
@@ -1559,6 +1575,10 @@ export default function SellTab() {
           );
 
           if (failedAttachCount > 0) {
+            if (attachedCount <= 0) {
+              await rollbackListingDraft(listing.id, uploadedPaths);
+              throw new Error(`${attachMessage} Your listing was not published without media.`);
+            }
             mediaIssues.push(
               failedAttachCount === inserts.length
                 ? `Uploaded media could not be attached to the listing. ${attachMessage}`
