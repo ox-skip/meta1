@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import {
   fetchJsonWithTimeout,
   getSupabaseAnonKeyOrThrow,
@@ -866,62 +866,68 @@ export default function MarketOrdersTab() {
           </View>
 
           <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Role</Text>
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 9 }}>
-            <SegButton label="All" active={mode === "all"} onPress={() => setMode("all")} />
-            <SegButton label="Buying" active={mode === "buying"} onPress={() => setMode("buying")} />
-            <SegButton label="Selling" active={mode === "selling"} onPress={() => setMode("selling")} />
-          </View>
+          <TutorialTarget id="market.orders.roleTabs">
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 9 }}>
+              <SegButton label="All" active={mode === "all"} onPress={() => setMode("all")} />
+              <SegButton label="Buying" active={mode === "buying"} onPress={() => setMode("buying")} />
+              <SegButton label="Selling" active={mode === "selling"} onPress={() => setMode("selling")} />
+            </View>
+          </TutorialTarget>
 
           <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Status</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
-            <SegButton label="All" active={statusFilter === "all"} onPress={() => selectStatusFilter("all")} compact />
-            <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => selectStatusFilter("pending")} compact />
-            <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => selectStatusFilter("completed")} compact />
-            <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => selectStatusFilter("cancelled")} compact />
-            <SegButton label="Disputed" active={statusFilter === "disputed"} onPress={() => selectStatusFilter("disputed")} compact />
-          </View>
+          <TutorialTarget id="market.orders.statusFilters">
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
+              <SegButton label="All" active={statusFilter === "all"} onPress={() => selectStatusFilter("all")} compact />
+              <SegButton label="Pending" active={statusFilter === "pending"} onPress={() => selectStatusFilter("pending")} compact />
+              <SegButton label="Completed" active={statusFilter === "completed"} onPress={() => selectStatusFilter("completed")} compact />
+              <SegButton label="Cancelled" active={statusFilter === "cancelled"} onPress={() => selectStatusFilter("cancelled")} compact />
+              <SegButton label="Disputed" active={statusFilter === "disputed"} onPress={() => selectStatusFilter("disputed")} compact />
+            </View>
+          </TutorialTarget>
 
           {statusFilter === "pending" ? (
             <>
               <Text style={{ marginTop: 16, color: MUTED, fontWeight: "900", fontSize: 12 }}>Stage</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
-                <SegButton
-                  label="All"
-                  active={pendingStageFilter === "all"}
-                  onPress={() => setPendingStageFilter("all")}
-                  compact
-                />
-                <SegButton
-                  label="Created"
-                  active={pendingStageFilter === "created"}
-                  onPress={() => setPendingStageFilter("created")}
-                  compact
-                />
-                <SegButton
-                  label="In Escrow"
-                  active={pendingStageFilter === "in_escrow"}
-                  onPress={() => setPendingStageFilter("in_escrow")}
-                  compact
-                />
-                <SegButton
-                  label="Out for Delivery"
-                  active={pendingStageFilter === "out_for_delivery"}
-                  onPress={() => setPendingStageFilter("out_for_delivery")}
-                  compact
-                />
-                <SegButton
-                  label="Uploaded"
-                  active={pendingStageFilter === "deliverable_uploaded"}
-                  onPress={() => setPendingStageFilter("deliverable_uploaded")}
-                  compact
-                />
-                <SegButton
-                  label="Delivered"
-                  active={pendingStageFilter === "delivered"}
-                  onPress={() => setPendingStageFilter("delivered")}
-                  compact
-                />
-              </View>
+              <TutorialTarget id="market.orders.pendingStages">
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 9 }}>
+                  <SegButton
+                    label="All"
+                    active={pendingStageFilter === "all"}
+                    onPress={() => setPendingStageFilter("all")}
+                    compact
+                  />
+                  <SegButton
+                    label="Created"
+                    active={pendingStageFilter === "created"}
+                    onPress={() => setPendingStageFilter("created")}
+                    compact
+                  />
+                  <SegButton
+                    label="In Escrow"
+                    active={pendingStageFilter === "in_escrow"}
+                    onPress={() => setPendingStageFilter("in_escrow")}
+                    compact
+                  />
+                  <SegButton
+                    label="Out for Delivery"
+                    active={pendingStageFilter === "out_for_delivery"}
+                    onPress={() => setPendingStageFilter("out_for_delivery")}
+                    compact
+                  />
+                  <SegButton
+                    label="Uploaded"
+                    active={pendingStageFilter === "deliverable_uploaded"}
+                    onPress={() => setPendingStageFilter("deliverable_uploaded")}
+                    compact
+                  />
+                  <SegButton
+                    label="Delivered"
+                    active={pendingStageFilter === "delivered"}
+                    onPress={() => setPendingStageFilter("delivered")}
+                    compact
+                  />
+                </View>
+              </TutorialTarget>
             </>
           ) : null}
         </View>
@@ -952,7 +958,7 @@ export default function MarketOrdersTab() {
               gap: 10,
             }}
           >
-            {visibleItems.map((o) => {
+            {visibleItems.map((o, index) => {
               const title = o.listing?.title ?? "Order";
               const category = o.listing?.category ?? "Marketplace";
               const delivery = (o.listing?.delivery_type ?? "delivery").replace(/_/g, " ");
@@ -969,9 +975,8 @@ export default function MarketOrdersTab() {
                 ? createdAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
                 : "";
 
-              return (
+              const orderCard = (
                 <Pressable
-                  key={o.id}
                   onPress={() => openOrder(o.id)}
                   accessibilityRole="button"
                   style={({ pressed }) => ({
@@ -1108,6 +1113,13 @@ export default function MarketOrdersTab() {
                   </View>
                 </Pressable>
               );
+              return index === 0 ? (
+                <TutorialTarget key={o.id} id="market.orders.cards">
+                  {orderCard}
+                </TutorialTarget>
+              ) : (
+                <React.Fragment key={o.id}>{orderCard}</React.Fragment>
+              );
             })}
           </View>
         )}
@@ -1115,4 +1127,3 @@ export default function MarketOrdersTab() {
     </LinearGradient>
   );
 }
-

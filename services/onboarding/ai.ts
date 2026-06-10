@@ -13,6 +13,7 @@ export type OnboardingAiInput = {
   stepBody: string;
   targetLabel?: string;
   targetPosition?: TutorialTargetPosition;
+  actionLabel?: string;
   aiHint?: string;
   mode: OnboardingAiMode;
 };
@@ -34,9 +35,10 @@ function cleanText(value: unknown, limit = 900) {
 
 function localGuide(input: OnboardingAiInput) {
   const target = input.targetLabel ? `Focus on ${input.targetLabel}. ` : "";
+  const action = input.actionLabel ? `\n\nTry it now: ${input.actionLabel}` : "";
   if (input.mode === "summary") {
     return cleanText(
-      `${target}${input.stepBody} This is step ${input.stepIndex + 1} of ${input.totalSteps}, so use it as a quick orientation point before moving on.`,
+      `${target}${input.stepBody}${action}`,
       520,
     );
   }
@@ -44,7 +46,7 @@ function localGuide(input: OnboardingAiInput) {
   const context = input.flowSummary ? `\n\nWhy it matters: ${input.flowSummary}` : "";
   const hint = input.aiHint ? `\n\nExtra tip: ${input.aiHint}` : "";
   return cleanText(
-    `${target}${input.stepBody}${context}${hint}\n\nTry it now: look at the highlighted area, understand what control it gives you, then continue when the screen feels familiar.`,
+    `${target}${input.stepBody}${context}${hint}${action || "\n\nTry it now: look at the highlighted area, understand what control it gives you, then continue when the screen feels familiar."}`,
     900,
   );
 }
@@ -63,6 +65,7 @@ export async function explainOnboardingStep(input: OnboardingAiInput): Promise<O
         step_body: input.stepBody,
         target_label: input.targetLabel,
         target_position: input.targetPosition,
+        action_label: input.actionLabel,
         ai_hint: input.aiHint,
         mode: input.mode,
       },

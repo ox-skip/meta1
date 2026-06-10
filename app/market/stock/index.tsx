@@ -29,7 +29,7 @@ import {
   formatStockPrice,
   stockChainLabel,
 } from "@/components/market/stock/StockUi";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { fetchStocksOverview, type StockOverviewItem } from "@/services/market/stocks";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
@@ -157,74 +157,82 @@ export default function StockHomeScreen() {
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
-        <StockPanel style={{ marginTop: 10, overflow: "hidden" }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <StockPill label="Live Market" tone="mint" icon="pulse-outline" compact />
-              <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 31, fontWeight: "900" }}>
-                {formatStockMoney(summary.marketCap)}
-              </Text>
-              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>Combined market value</Text>
+        <TutorialTarget id="stock.home.board">
+          <StockPanel style={{ marginTop: 10, overflow: "hidden" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <StockPill label="Live Market" tone="mint" icon="pulse-outline" compact />
+                <Text style={{ marginTop: 12, color: STOCK.ink, fontSize: 31, fontWeight: "900" }}>
+                  {formatStockMoney(summary.marketCap)}
+                </Text>
+                <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>Combined market value</Text>
+              </View>
+              <View
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(34,211,238,0.12)",
+                  borderWidth: 1,
+                  borderColor: "rgba(34,211,238,0.32)",
+                }}
+              >
+                <Ionicons name="stats-chart" size={25} color={STOCK.cyan} />
+              </View>
             </View>
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 8,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(34,211,238,0.12)",
-                borderWidth: 1,
-                borderColor: "rgba(34,211,238,0.32)",
-              }}
-            >
-              <Ionicons name="stats-chart" size={25} color={STOCK.cyan} />
+
+            <View style={{ marginTop: 16, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+              <StockMetric label="24h Volume" value={formatStockMoney(summary.volume)} tone="cyan" />
+              <StockMetric label="Listed" value={String(items.length)} caption={`${summary.active} active`} />
+            </View>
+          </StockPanel>
+        </TutorialTarget>
+
+        <TutorialTarget id="stock.home.shortcuts">
+          <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
+            <StockActionTile
+              icon="add-circle-outline"
+              label="Create EVM"
+              caption="Verified stores"
+              tone="mint"
+              onPress={() => router.push("/market/stock/create" as any)}
+            />
+            <StockActionTile
+              icon="wallet-outline"
+              label="Portfolio"
+              caption="Positions"
+              tone="cyan"
+              onPress={() => router.push("/market/stock/portfolio" as any)}
+            />
+          </View>
+        </TutorialTarget>
+
+        <TutorialTarget id="stock.home.search">
+          <View>
+            <View style={{ marginTop: 12 }}>
+              <StockSearchField
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search ticker, store, or name"
+              />
+            </View>
+
+            <View style={{ marginTop: 12 }}>
+              <StockSegment
+                value={sortMode}
+                onChange={setSortMode}
+                options={[
+                  { key: "trending", label: "Trending", tone: "mint" },
+                  { key: "most_traded", label: "Most Traded", tone: "cyan" },
+                  { key: "largest_cap", label: "Largest Cap", tone: "amber" },
+                  { key: "new", label: "New", tone: "plain" },
+                ]}
+              />
             </View>
           </View>
-
-          <View style={{ marginTop: 16, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-            <StockMetric label="24h Volume" value={formatStockMoney(summary.volume)} tone="cyan" />
-            <StockMetric label="Listed" value={String(items.length)} caption={`${summary.active} active`} />
-          </View>
-        </StockPanel>
-
-        <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
-          <StockActionTile
-            icon="add-circle-outline"
-            label="Create EVM"
-            caption="Verified stores"
-            tone="mint"
-            onPress={() => router.push("/market/stock/create" as any)}
-          />
-          <StockActionTile
-            icon="wallet-outline"
-            label="Portfolio"
-            caption="Positions"
-            tone="cyan"
-            onPress={() => router.push("/market/stock/portfolio" as any)}
-          />
-        </View>
-
-        <View style={{ marginTop: 12 }}>
-          <StockSearchField
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search ticker, store, or name"
-          />
-        </View>
-
-        <View style={{ marginTop: 12 }}>
-          <StockSegment
-            value={sortMode}
-            onChange={setSortMode}
-            options={[
-              { key: "trending", label: "Trending", tone: "mint" },
-              { key: "most_traded", label: "Most Traded", tone: "cyan" },
-              { key: "largest_cap", label: "Largest Cap", tone: "amber" },
-              { key: "new", label: "New", tone: "plain" },
-            ]}
-          />
-        </View>
+        </TutorialTarget>
 
         {loading ? <StockLoadingState label="Loading market" /> : null}
 
@@ -243,12 +251,12 @@ export default function StockHomeScreen() {
         ) : null}
 
         <View style={{ marginTop: 12, gap: 11 }}>
-          {filtered.map((item) => {
+          {filtered.map((item, index) => {
             const logo = sellerLogoUrl(item.logo_path);
             const change = Number(item.change_24h_pct || 0);
             const positive = change >= 0;
-            return (
-              <StockPanel key={item.identity_id} style={{ padding: 12 }}>
+            const card = (
+              <StockPanel style={{ padding: 12 }}>
                 <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
                   <Pressable
                     disabled={!item.market_username}
@@ -354,6 +362,13 @@ export default function StockHomeScreen() {
                   </Pressable>
                 </View>
               </StockPanel>
+            );
+            return index === 0 ? (
+              <TutorialTarget key={item.identity_id} id="stock.home.openMarket">
+                {card}
+              </TutorialTarget>
+            ) : (
+              <React.Fragment key={item.identity_id}>{card}</React.Fragment>
             );
           })}
         </View>

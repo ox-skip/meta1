@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import MarketMenuModal from "@/components/market/MarketMenuModal";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 import { tutorialFlows } from "@/services/onboarding/definitions";
@@ -561,7 +561,7 @@ export default function MarketAccountTab() {
         }}
       >
         <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
-          {header}
+          <TutorialTarget id="market.account.header">{header}</TutorialTarget>
 
           {!!error ? (
             <View
@@ -815,67 +815,73 @@ export default function MarketAccountTab() {
           )}
 
           <View style={{ marginTop: 18, gap: 16 }}>
-            <SectionShell
-              title="Command center"
-              subtitle="Fast paths for the things sellers and buyers use most."
-            >
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {navTiles.map((tile) => (
-                  <AccountTile
-                    key={tile.route}
-                    title={tile.title}
-                    subtitle={tile.subtitle}
-                    icon={tile.icon}
-                    accent={tile.accent}
-                    badge={tile.badge}
-                    onPress={() => router.push(tile.route as any)}
+            <TutorialTarget id="market.account.commands">
+              <SectionShell
+                title="Command center"
+                subtitle="Fast paths for the things sellers and buyers use most."
+              >
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  {navTiles.map((tile) => (
+                    <AccountTile
+                      key={tile.route}
+                      title={tile.title}
+                      subtitle={tile.subtitle}
+                      icon={tile.icon}
+                      accent={tile.accent}
+                      badge={tile.badge}
+                      onPress={() => router.push(tile.route as any)}
+                    />
+                  ))}
+                </View>
+              </SectionShell>
+            </TutorialTarget>
+
+            <TutorialTarget id="market.account.pulse">
+              <SectionShell
+                title="Account pulse"
+                subtitle="A compact read on what your marketplace account can do right now."
+              >
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <PulseCard
+                    label="Health"
+                    value={`${accountHealthScore}/4 ready`}
+                    detail="Profile, wallet, listings, and verification."
+                    icon="pulse-outline"
+                    accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
                   />
-                ))}
-              </View>
-            </SectionShell>
+                  <TutorialTarget id="market.account.wallet" style={{ flex: 1, minWidth: 168 }}>
+                    <PulseCard
+                      label="Wallet"
+                      value={walletLabel}
+                      detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
+                      icon="wallet-outline"
+                      accent={launchReady.wallet ? SUCCESS : WARNING}
+                    />
+                  </TutorialTarget>
+                  <PulseCard
+                    label="Inventory"
+                    value={`${stats.activeListings}/${stats.allListings}`}
+                    detail="Active listings compared with total listings."
+                    icon="albums-outline"
+                    accent={stats.activeListings > 0 ? TEAL : WARNING}
+                  />
+                  <PulseCard
+                    label="Sales"
+                    value={String(stats.completedOrders)}
+                    detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
+                    icon="receipt-outline"
+                    accent={stats.completedOrders > 0 ? BLUE : ROSE}
+                  />
+                </View>
 
-            <SectionShell
-              title="Account pulse"
-              subtitle="A compact read on what your marketplace account can do right now."
-            >
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                <PulseCard
-                  label="Health"
-                  value={`${accountHealthScore}/4 ready`}
-                  detail="Profile, wallet, listings, and verification."
-                  icon="pulse-outline"
-                  accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
-                />
-                <PulseCard
-                  label="Wallet"
-                  value={walletLabel}
-                  detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
-                  icon="wallet-outline"
-                  accent={launchReady.wallet ? SUCCESS : WARNING}
-                />
-                <PulseCard
-                  label="Inventory"
-                  value={`${stats.activeListings}/${stats.allListings}`}
-                  detail="Active listings compared with total listings."
-                  icon="albums-outline"
-                  accent={stats.activeListings > 0 ? TEAL : WARNING}
-                />
-                <PulseCard
-                  label="Sales"
-                  value={String(stats.completedOrders)}
-                  detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
-                  icon="receipt-outline"
-                  accent={stats.completedOrders > 0 ? BLUE : ROSE}
-                />
-              </View>
-
-              <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
-                <InlineNavButton label="Open full menu" icon="grid-outline" accent={SUCCESS} onPress={() => setMenuOpen(true)} />
-                <InlineNavButton label="Create listing" icon="add-circle-outline" accent={TEAL} onPress={() => router.push("/market/(tabs)/sell" as any)} />
-                <InlineNavButton label="View rewards" icon="gift-outline" accent={WARNING} onPress={() => router.push("/market/(tabs)/rewards" as any)} />
-                <InlineNavButton label="Get support" icon="help-buoy-outline" accent={ROSE} onPress={() => router.push("/market/support" as any)} />
-              </View>
-            </SectionShell>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                  <InlineNavButton label="Open full menu" icon="grid-outline" accent={SUCCESS} onPress={() => setMenuOpen(true)} />
+                  <InlineNavButton label="Create listing" icon="add-circle-outline" accent={TEAL} onPress={() => router.push("/market/(tabs)/sell" as any)} />
+                  <InlineNavButton label="View rewards" icon="gift-outline" accent={WARNING} onPress={() => router.push("/market/(tabs)/rewards" as any)} />
+                  <InlineNavButton label="Get support" icon="help-buoy-outline" accent={ROSE} onPress={() => router.push("/market/support" as any)} />
+                </View>
+              </SectionShell>
+            </TutorialTarget>
 
             <SectionShell
               title="Store summary"

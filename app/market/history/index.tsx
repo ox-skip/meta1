@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { subscribeToAccountNotifications } from "@/services/market/notifications";
 import { fetchMarketHistory, type MarketHistoryEntry } from "@/services/market/history";
 import { tutorialFlows } from "@/services/onboarding/definitions";
@@ -449,7 +449,7 @@ export default function MarketHistoryScreen() {
     const meta = groupMeta(item);
     const tone = statusTone(item.status);
 
-    return (
+    const activityCard = (
       <View>
         {showDate ? (
           <Text style={{ marginTop: index === 0 ? 14 : 22, marginBottom: 8, color: FAINT, fontWeight: "900", fontSize: 12 }}>
@@ -544,6 +544,7 @@ export default function MarketHistoryScreen() {
         </Pressable>
       </View>
     );
+    return index === 0 ? <TutorialTarget id="market.history.records">{activityCard}</TutorialTarget> : activityCard;
   }
 
   const hasActiveFilters = group !== "all" || range !== "all" || currency !== "all" || !!search.trim();
@@ -577,65 +578,68 @@ export default function MarketHistoryScreen() {
           <View>
             <AppHeader title="History" subtitle="Wallet, orders, crypto, stocks, and account activity" bordered={false} style={{ paddingHorizontal: 0, backgroundColor: "transparent" }} />
 
-            <View
-              style={{
-                marginTop: 8,
-                borderRadius: 28,
-                overflow: "hidden",
-                borderWidth: 1,
-                borderColor: BORDER_TOP,
-                backgroundColor: "rgba(9,13,11,0.72)",
-              }}
-            >
-              <LinearGradient
-                colors={["rgba(45,212,191,0.16)", "rgba(255,253,247,0.06)", "rgba(244,183,93,0.10)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ padding: 16 }}
+            <TutorialTarget id="market.history.summary">
+              <View
+                style={{
+                  marginTop: 8,
+                  borderRadius: 28,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: BORDER_TOP,
+                  backgroundColor: "rgba(9,13,11,0.72)",
+                }}
               >
-                <View style={{ flexDirection: isWide ? "row" : "column", gap: 12 }}>
-                  <SummaryCard
-                    label="Net"
-                    value={`${summary.net >= 0 ? "+" : "-"}${formatCurrency(summary.currency, Math.abs(summary.net), summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}`}
-                    sub={`${summary.net >= 0 ? "Positive" : "Negative"} in ${summary.currency}`}
-                    icon={summary.net >= 0 ? "trending-up-outline" : "trending-down-outline"}
-                    accent={summary.net >= 0 ? TEAL : ROSE}
-                  />
-                  <SummaryCard
-                    label="Inflow"
-                    value={formatCurrency(summary.currency, summary.inflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
-                    sub={summary.currencyCount > 1 ? "Primary currency" : "Received"}
-                    icon="arrow-down-circle-outline"
-                    accent={LIME}
-                  />
-                  <SummaryCard
-                    label="Outflow"
-                    value={formatCurrency(summary.currency, summary.outflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
-                    sub="Spent or sent"
-                    icon="arrow-up-circle-outline"
-                    accent={AMBER}
-                  />
-                  <SummaryCard
-                    label="Records"
-                    value={filtered.length.toLocaleString()}
-                    sub={`${summary.transactionCount} financial, ${summary.eventCount} events`}
-                    icon="list-outline"
-                    accent={BLUE}
-                  />
-                </View>
-              </LinearGradient>
-            </View>
+                <LinearGradient
+                  colors={["rgba(45,212,191,0.16)", "rgba(255,253,247,0.06)", "rgba(244,183,93,0.10)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ padding: 16 }}
+                >
+                  <View style={{ flexDirection: isWide ? "row" : "column", gap: 12 }}>
+                    <SummaryCard
+                      label="Net"
+                      value={`${summary.net >= 0 ? "+" : "-"}${formatCurrency(summary.currency, Math.abs(summary.net), summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}`}
+                      sub={`${summary.net >= 0 ? "Positive" : "Negative"} in ${summary.currency}`}
+                      icon={summary.net >= 0 ? "trending-up-outline" : "trending-down-outline"}
+                      accent={summary.net >= 0 ? TEAL : ROSE}
+                    />
+                    <SummaryCard
+                      label="Inflow"
+                      value={formatCurrency(summary.currency, summary.inflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
+                      sub={summary.currencyCount > 1 ? "Primary currency" : "Received"}
+                      icon="arrow-down-circle-outline"
+                      accent={LIME}
+                    />
+                    <SummaryCard
+                      label="Outflow"
+                      value={formatCurrency(summary.currency, summary.outflow, summary.currency === "USDC" || summary.currency === "USDT" ? 6 : 2)}
+                      sub="Spent or sent"
+                      icon="arrow-up-circle-outline"
+                      accent={AMBER}
+                    />
+                    <SummaryCard
+                      label="Records"
+                      value={filtered.length.toLocaleString()}
+                      sub={`${summary.transactionCount} financial, ${summary.eventCount} events`}
+                      icon="list-outline"
+                      accent={BLUE}
+                    />
+                  </View>
+                </LinearGradient>
+              </View>
+            </TutorialTarget>
 
-            <View
-              style={{
-                marginTop: 12,
-                borderRadius: 24,
-                padding: 12,
-                backgroundColor: PANEL,
-                borderWidth: 1,
-                borderColor: BORDER,
-              }}
-            >
+            <TutorialTarget id="market.history.filters">
+              <View
+                style={{
+                  marginTop: 12,
+                  borderRadius: 24,
+                  padding: 12,
+                  backgroundColor: PANEL,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
               <View
                 style={{
                   minHeight: 48,
@@ -729,7 +733,8 @@ export default function MarketHistoryScreen() {
                   <Text style={{ color: TEXT, fontWeight: "900" }}>Clear filters</Text>
                 </Pressable>
               ) : null}
-            </View>
+              </View>
+            </TutorialTarget>
 
             <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <View>

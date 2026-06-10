@@ -46,6 +46,7 @@ type LayoutBox = {
 
 type OnboardingContextValue = {
   activeFlowKey: string | null;
+  activeTargetId: string | null;
   hydrated: boolean;
   claimFlow: (flowKey: string) => boolean;
   dismissFlow: (params: {
@@ -54,7 +55,10 @@ type OnboardingContextValue = {
     completedSteps: number;
   }) => void;
   hasSeenFlow: (flowKey: string) => boolean;
+  registerTarget: (targetId: string, box: LayoutBox | null) => void;
   releaseFlow: (flowKey: string) => void;
+  setActiveTargetId: (targetId: string | null) => void;
+  targetLayouts: Record<string, LayoutBox>;
 };
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -155,6 +159,29 @@ function getTargetBox(position: TutorialTargetPosition, width: number, height: n
   };
 }
 
+function normalizeMeasuredBox(box: LayoutBox, width: number, height: number): LayoutBox {
+  const pad = clamp(Math.min(width, height) * 0.012, 6, 12);
+  const minWidth = 54;
+  const minHeight = 44;
+  const left = clamp(box.left - pad, 8, width - 24);
+  const top = clamp(box.top - pad, 8, height - 24);
+  const rawWidth = Math.max(minWidth, box.width + pad * 2);
+  const rawHeight = Math.max(minHeight, box.height + pad * 2);
+
+  return {
+    left,
+    top,
+    width: clamp(rawWidth, minWidth, Math.max(minWidth, width - left - 8)),
+    height: clamp(rawHeight, minHeight, Math.max(minHeight, height - top - 8)),
+  };
+}
+
+function measuredBoxIsVisible(box: LayoutBox, width: number, height: number) {
+  const right = box.left + box.width;
+  const bottom = box.top + box.height;
+  return box.width > 2 && box.height > 2 && right > 8 && bottom > 8 && box.left < width - 8 && box.top < height - 8;
+}
+
 function getCardStyle(position: TutorialTargetPosition, width: number, height: number): ViewStyle {
   const baseInset = clamp(width * 0.045, 14, 22);
   const cardWidth = clamp(width - baseInset * 2, 310, 470);
@@ -214,7 +241,9 @@ export function OnboardingProvider({
 }) {
   const [hydrated, setHydrated] = useState(false);
   const [activeFlowKey, setActiveFlowKey] = useState<string | null>(null);
+  const [activeTargetId, setActiveTargetId] = useState<string | null>(null);
   const [seenFlows, setSeenFlows] = useState<Record<string, true>>({});
+  const [targetLayouts, setTargetLayouts] = useState<Record<string, LayoutBox>>({});
 
   const activeFlowRef = useRef<string | null>(null);
   const seenFlowsRef = useRef<Record<string, true>>({});
@@ -231,6 +260,8 @@ export function OnboardingProvider({
 
     activeFlowRef.current = null;
     setActiveFlowKey(null);
+    setActiveTargetId(null);
+    setTargetLayouts({});
 
     if (prevUserId && prevUserId !== userId) {
       void AsyncStorage.removeItem(getStorageKey(prevUserId)).catch(() => undefined);
@@ -287,6 +318,33 @@ export function OnboardingProvider({
     if (activeFlowRef.current !== flowKey) return;
     activeFlowRef.current = null;
     setActiveFlowKey(null);
+    setActiveTargetId(null);
+  }, []);
+
+  const registerTarget = useCallback((targetId: string, box: LayoutBox | null) => {
+    const id = String(targetId || "").trim();
+    if (!id) return;
+    setTargetLayouts((current) => {
+      if (!box) {
+        if (!current[id]) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      }
+
+      const prev = current[id];
+      if (
+        prev &&
+        Math.abs(prev.left - box.left) < 1 &&
+        Math.abs(prev.top - box.top) < 1 &&
+        Math.abs(prev.width - box.width) < 1 &&
+        Math.abs(prev.height - box.height) < 1
+      ) {
+        return current;
+      }
+
+      return { ...current, [id]: box };
+    });
   }, []);
 
   const dismissFlow = useCallback(
@@ -321,13 +379,27 @@ export function OnboardingProvider({
   const value = useMemo<OnboardingContextValue>(
     () => ({
       activeFlowKey,
+      activeTargetId,
       hydrated,
       claimFlow,
       dismissFlow,
       hasSeenFlow,
+      registerTarget,
       releaseFlow,
+      setActiveTargetId,
+      targetLayouts,
     }),
-    [activeFlowKey, claimFlow, dismissFlow, hasSeenFlow, hydrated, releaseFlow],
+    [
+      activeFlowKey,
+      activeTargetId,
+      claimFlow,
+      dismissFlow,
+      hasSeenFlow,
+      hydrated,
+      registerTarget,
+      releaseFlow,
+      targetLayouts,
+    ],
   );
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
@@ -346,6 +418,67 @@ export function useOnboardingState() {
   return { activeFlowKey, hydrated };
 }
 
+export function TutorialTarget({
+  id,
+  children,
+  disabled = false,
+  style,
+}: {
+  id: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+  style?: ViewStyle;
+}) {
+  const { activeTargetId, registerTarget } = useOnboardingContext();
+  const ref = useRef<View>(null);
+  const { width, height } = useWindowDimensions();
+
+  const measure = useCallback(() => {
+    if (disabled) return;
+    const node = ref.current;
+    if (!node?.measureInWindow) return;
+    node.measureInWindow((left, top, boxWidth, boxHeight) => {
+      if (
+        !Number.isFinite(left) ||
+        !Number.isFinite(top) ||
+        !Number.isFinite(boxWidth) ||
+        !Number.isFinite(boxHeight) ||
+        boxWidth <= 1 ||
+        boxHeight <= 1
+      ) {
+        return;
+      }
+      registerTarget(id, { left, top, width: boxWidth, height: boxHeight });
+    });
+  }, [disabled, id, registerTarget]);
+
+  useEffect(() => {
+    if (disabled) {
+      registerTarget(id, null);
+      return;
+    }
+    const timers = [0, 120, 360, 720].map((delay) => setTimeout(measure, delay));
+    return () => {
+      timers.forEach(clearTimeout);
+      registerTarget(id, null);
+    };
+  }, [disabled, height, id, measure, registerTarget, width]);
+
+  useEffect(() => {
+    if (activeTargetId !== id || disabled) return;
+    const timers = [0, 80, 220, 500, 900].map((delay) => setTimeout(measure, delay));
+    return () => {
+      timers.forEach(clearTimeout);
+    };
+  }, [activeTargetId, disabled, id, measure]);
+
+  return (
+    <View ref={ref} collapsable={false} onLayout={measure} style={style}>
+      {children}
+    </View>
+  );
+}
+
 export function InAppTutorial({
   enabled = true,
   flow,
@@ -360,6 +493,8 @@ export function InAppTutorial({
     dismissFlow,
     hasSeenFlow,
     releaseFlow,
+    setActiveTargetId,
+    targetLayouts,
   } = useOnboardingContext();
   const { width, height } = useWindowDimensions();
 
@@ -410,6 +545,9 @@ export function InAppTutorial({
     [completeDrag, drag],
   );
 
+  const totalSteps = flow.steps.length;
+  const currentStep = flow.steps[stepIndex];
+
   useEffect(() => {
     if (!enabled) return;
     if (!hydrated) return;
@@ -441,7 +579,15 @@ export function InAppTutorial({
     setAiText("");
     setAiLoading(false);
     setAiSource(null);
-  }, [flow.key, stepIndex]);
+    setActiveTargetId(visible ? currentStep?.targetId ?? null : null);
+  }, [currentStep?.targetId, flow.key, setActiveTargetId, stepIndex, visible]);
+
+  useEffect(() => {
+    setActiveTargetId(visible ? currentStep?.targetId ?? null : null);
+    return () => {
+      setActiveTargetId(null);
+    };
+  }, [currentStep?.targetId, setActiveTargetId, visible]);
 
   useEffect(() => {
     drag.stopAnimation();
@@ -450,8 +596,6 @@ export function InAppTutorial({
     drag.setValue({ x: 0, y: 0 });
   }, [drag, flow.key, height, stepIndex, visible, width]);
 
-  const totalSteps = flow.steps.length;
-  const currentStep = flow.steps[stepIndex];
   const targetPosition = currentStep?.targetPosition ?? "middle";
   const targetLabel = currentStep?.targetLabel ?? flow.title;
 
@@ -474,6 +618,7 @@ export function InAppTutorial({
       stepBody: currentStep.body,
       targetLabel: currentStep.targetLabel,
       targetPosition: currentStep.targetPosition,
+      actionLabel: currentStep.actionLabel,
       aiHint: currentStep.aiHint,
       mode,
     });
@@ -512,10 +657,25 @@ export function InAppTutorial({
 
   if (!visible || !currentStep) return null;
 
-  const targetBox = getTargetBox(targetPosition, width, height);
+  const rawMeasuredTarget = currentStep.targetId ? targetLayouts[currentStep.targetId] : null;
+  const measuredTarget = rawMeasuredTarget && measuredBoxIsVisible(rawMeasuredTarget, width, height)
+    ? rawMeasuredTarget
+    : null;
+  const targetBox = measuredTarget
+    ? normalizeMeasuredBox(measuredTarget, width, height)
+    : getTargetBox(targetPosition, width, height);
   const targetStyle = targetBox as ViewStyle;
   const cardStyle = getCardStyle(targetPosition, width, height);
   const pointerStyle = getPointerStyle(targetPosition, width, height, targetBox);
+  const shadeTop = { top: 0, left: 0, right: 0, height: targetBox.top } as ViewStyle;
+  const shadeBottom = { top: targetBox.top + targetBox.height, left: 0, right: 0, bottom: 0 } as ViewStyle;
+  const shadeLeft = { top: targetBox.top, left: 0, width: targetBox.left, height: targetBox.height } as ViewStyle;
+  const shadeRight = {
+    top: targetBox.top,
+    left: targetBox.left + targetBox.width,
+    right: 0,
+    height: targetBox.height,
+  } as ViewStyle;
 
   return (
     <Modal
@@ -525,9 +685,14 @@ export function InAppTutorial({
       visible={visible}
     >
       <View style={styles.backdrop}>
+        <View pointerEvents="none" style={[styles.shade, shadeTop]} />
+        <View pointerEvents="none" style={[styles.shade, shadeBottom]} />
+        <View pointerEvents="none" style={[styles.shade, shadeLeft]} />
+        <View pointerEvents="none" style={[styles.shade, shadeRight]} />
+
         <View style={[styles.targetFrame, targetStyle]}>
           <LinearGradient
-            colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.12)"]}
+            colors={["rgba(45,212,191,0.08)", "rgba(244,183,93,0.06)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.targetGlow}
@@ -536,7 +701,7 @@ export function InAppTutorial({
               <View style={styles.targetIcon}>
                 <Ionicons name={targetIcon(targetPosition)} size={18} color={BRAND} />
               </View>
-              <Text style={styles.targetCaption}>Look here</Text>
+              <Text style={styles.targetCaption}>{measuredTarget ? "Tap or inspect this" : "Look here"}</Text>
             </View>
             <Text style={styles.targetLabel}>{targetLabel}</Text>
           </LinearGradient>
@@ -613,6 +778,12 @@ export function InAppTutorial({
 
               <Text style={styles.stepTitle}>{currentStep.title}</Text>
               <Text style={styles.stepBody}>{currentStep.body}</Text>
+              {currentStep.actionLabel ? (
+                <View style={styles.tryThisBox}>
+                  <Ionicons name="hand-left-outline" size={16} color={GOLD} />
+                  <Text style={styles.tryThisText}>{currentStep.actionLabel}</Text>
+                </View>
+              ) : null}
 
               <View style={styles.aiPanel}>
                 <View style={styles.aiHeader}>
@@ -705,6 +876,10 @@ export function InAppTutorial({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    backgroundColor: "transparent",
+  },
+  shade: {
+    position: "absolute",
     backgroundColor: "rgba(2,6,23,0.78)",
   },
   targetFrame: {
@@ -719,12 +894,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
     overflow: "hidden",
+    backgroundColor: "rgba(2,6,23,0.08)",
   },
   targetGlow: {
     flex: 1,
     padding: 14,
     justifyContent: "center",
-    backgroundColor: "rgba(10,14,12,0.42)",
+    backgroundColor: "rgba(10,14,12,0.12)",
   },
   targetTopRow: {
     flexDirection: "row",
@@ -752,6 +928,25 @@ const styles = StyleSheet.create({
     color: INK,
     fontSize: 18,
     fontWeight: "900",
+  },
+  tryThisBox: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(244,183,93,0.11)",
+    borderWidth: 1,
+    borderColor: "rgba(244,183,93,0.28)",
+  },
+  tryThisText: {
+    flex: 1,
+    color: "#FFE7B3",
+    fontWeight: "900",
+    fontSize: 12,
+    lineHeight: 17,
   },
   pointer: {
     position: "absolute",

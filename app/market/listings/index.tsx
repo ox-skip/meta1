@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
 import { generateListingAiPerformance, type MarketListingAiPerformanceResult } from "@/services/market/ai";
@@ -642,6 +642,7 @@ export default function ListingsFeed() {
           </Pressable>
         </View>
 
+        <TutorialTarget id="market.listings.controls">
         {/* Search */}
         <View
           style={{
@@ -708,6 +709,7 @@ export default function ListingsFeed() {
             <Pill tone="neutral" active={activeFilter === "disabled"} label="Disabled" onPress={() => setActiveFilter("disabled")} />
           </View>
         ) : null}
+        </TutorialTarget>
 
         {/* Error box */}
         {err ? (
@@ -831,7 +833,7 @@ export default function ListingsFeed() {
   }, [loading, err]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Listing }) => {
+    ({ item, index = 0 }: { item: Listing; index?: number }) => {
       const cover = pickCoverUrl(item, supabaseUrl);
       const coverUrl = cover?.url ?? null;
       const coverKind = cover?.kind ?? "image";
@@ -855,7 +857,7 @@ export default function ListingsFeed() {
         : "rgba(148,163,184,0.35)";
       const statusTxt = isOutOfStock ? "Out of stock" : item.is_active ? "Active" : "Disabled";
 
-      return (
+      const listingCard = (
         <View
           style={{
             width: cardWidth,
@@ -1053,6 +1055,8 @@ export default function ListingsFeed() {
           ) : null}
         </View>
       );
+      const targetId = isMineView ? "market.listings.cards" : "market.listings.feed";
+      return index === 0 ? <TutorialTarget id={targetId}>{listingCard}</TutorialTarget> : listingCard;
     },
     [supabaseUrl, isMineView, rpcToggleActive, rpcDelete, busyId, listingAiBusyId, listingAiResults, runListingAiPerformance, cardWidth, isWide],
   );

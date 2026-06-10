@@ -41,14 +41,16 @@ function buildFallback(input: {
   stepBody: string;
   targetLabel: string;
   flowSummary: string;
+  actionLabel: string;
   mode: "summary" | "full";
 }) {
   const focus = input.targetLabel ? `Focus on ${input.targetLabel}. ` : "";
+  const action = input.actionLabel ? `\n\nTry it now: ${input.actionLabel}` : "";
   if (input.mode === "summary") {
-    return `${focus}${input.stepBody}`;
+    return `${focus}${input.stepBody}${action}`;
   }
   const context = input.flowSummary ? `\n\nWhy it matters: ${input.flowSummary}` : "";
-  return `${focus}${input.stepBody}${context}\n\nUse the highlighted area first, then continue through the tutorial once the control feels clear.`;
+  return `${focus}${input.stepBody}${context}${action || "\n\nUse the highlighted area first, then continue through the tutorial once the control feels clear."}`;
 }
 
 function buildPrompt(input: {
@@ -62,6 +64,7 @@ function buildPrompt(input: {
   stepBody: string;
   targetLabel: string;
   targetPosition: string;
+  actionLabel: string;
   aiHint: string;
 }) {
   const payload = {
@@ -77,6 +80,7 @@ function buildPrompt(input: {
     step_body: input.stepBody,
     highlighted_area: input.targetLabel,
     highlighted_position: input.targetPosition,
+    suggested_user_action: input.actionLabel,
     extra_instruction: input.aiHint,
   };
 
@@ -113,6 +117,7 @@ Deno.serve(async (req) => {
     const stepBody = trimText(body.step_body, 900);
     const targetLabel = trimText(body.target_label, 120);
     const targetPosition = trimText(body.target_position, 40);
+    const actionLabel = trimText(body.action_label, 240);
     const aiHint = trimText(body.ai_hint, 420);
     const stepIndex = Math.max(0, Math.min(50, Number(body.step_index) || 0));
     const totalSteps = Math.max(1, Math.min(50, Number(body.total_steps) || 1));
@@ -121,7 +126,7 @@ Deno.serve(async (req) => {
       return bad("BestCity Ai needs a tutorial step before it can explain it.");
     }
 
-    const fallback = buildFallback({ stepBody, targetLabel, flowSummary, mode });
+    const fallback = buildFallback({ stepBody, targetLabel, flowSummary, actionLabel, mode });
     const result = await requestGeminiJson({
       prompt: buildPrompt({
         mode,
@@ -134,6 +139,7 @@ Deno.serve(async (req) => {
         stepBody,
         targetLabel,
         targetPosition,
+        actionLabel,
         aiHint,
       }),
       responseSchema: RESPONSE_SCHEMA,

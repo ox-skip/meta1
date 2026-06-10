@@ -31,7 +31,7 @@ import {
   formatStockQuantity,
   stockChainLabel,
 } from "@/components/market/stock/StockUi";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import {
   fetchStockDetail,
   getStockQuote,
@@ -912,78 +912,80 @@ export default function StockDetailScreen() {
 
         {!loading && !err && detail ? (
           <>
-            <StockPanel style={{ marginTop: 10 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View
-                  style={{
-                    width: 64,
-                    height: 64,
-                borderRadius: 8,
-                    overflow: "hidden",
-                    borderWidth: 1,
-                    borderColor: STOCK.borderStrong,
-                    backgroundColor: STOCK.panelSoft,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {sellerLogo ? (
-                    <Image source={{ uri: sellerLogo }} style={{ width: 64, height: 64 }} />
-                  ) : (
-                    <Ionicons name="storefront-outline" size={25} color={STOCK.muted} />
-                  )}
-                </View>
+            <TutorialTarget id="stock.detail.stats">
+              <StockPanel style={{ marginTop: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      borderWidth: 1,
+                      borderColor: STOCK.borderStrong,
+                      backgroundColor: STOCK.panelSoft,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {sellerLogo ? (
+                      <Image source={{ uri: sellerLogo }} style={{ width: 64, height: 64 }} />
+                    ) : (
+                      <Ionicons name="storefront-outline" size={25} color={STOCK.muted} />
+                    )}
+                  </View>
 
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>
-                    {title}
-                  </Text>
-                  <View style={{ marginTop: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <Text style={{ color: MUTED, fontSize: 12, flexShrink: 1, fontWeight: "700" }} numberOfLines={1}>
-                      {symbol} - @{detail?.seller?.market_username || "store"}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>
+                      {title}
                     </Text>
-                    {detail?.seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={STOCK.cyan} /> : null}
+                    <View style={{ marginTop: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <Text style={{ color: MUTED, fontSize: 12, flexShrink: 1, fontWeight: "700" }} numberOfLines={1}>
+                        {symbol} - @{detail?.seller?.market_username || "store"}
+                      </Text>
+                      {detail?.seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={STOCK.cyan} /> : null}
+                    </View>
+                    <View style={{ marginTop: 8, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                      <StockPill label={chainText} tone={isPiNativeStock ? "amber" : "cyan"} compact />
+                      <StockPill
+                        label={tradingPaused ? "Paused" : launchGuard ? "Guarded" : "Open"}
+                        tone={tradingPaused ? "red" : "mint"}
+                        compact
+                      />
+                    </View>
                   </View>
-                  <View style={{ marginTop: 8, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                    <StockPill label={chainText} tone={isPiNativeStock ? "amber" : "cyan"} compact />
-                    <StockPill
-                      label={tradingPaused ? "Paused" : launchGuard ? "Guarded" : "Open"}
-                      tone={tradingPaused ? "red" : "mint"}
-                      compact
-                    />
-                  </View>
+
+                  <Pressable
+                    disabled={!detail?.seller?.market_username}
+                    onPress={() =>
+                      detail?.seller?.market_username
+                        ? router.push(`/market/profile/${detail.seller.market_username}` as any)
+                        : undefined
+                    }
+                    style={{
+                      width: 43,
+                      height: 43,
+                      borderRadius: 8,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: STOCK.panelSoft,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      opacity: detail?.seller?.market_username ? 1 : 0.5,
+                    }}
+                  >
+                    <Ionicons name="storefront-outline" size={18} color={STOCK.ink} />
+                  </Pressable>
                 </View>
 
-                <Pressable
-                  disabled={!detail?.seller?.market_username}
-                  onPress={() =>
-                    detail?.seller?.market_username
-                      ? router.push(`/market/profile/${detail.seller.market_username}` as any)
-                      : undefined
-                  }
-                  style={{
-                    width: 43,
-                    height: 43,
-                    borderRadius: 8,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: STOCK.panelSoft,
-                    borderWidth: 1,
-                    borderColor: BORDER,
-                    opacity: detail?.seller?.market_username ? 1 : 0.5,
-                  }}
-                >
-                  <Ionicons name="storefront-outline" size={18} color={STOCK.ink} />
-                </Pressable>
-              </View>
-
-              <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                <StockMetric label="Price" value={formatStockPrice(price, 6)} tone="mint" />
-                <StockMetric label="Market Cap" value={formatStockMoney(mcap)} />
-                <StockMetric label="24h Volume" value={formatStockMoney(vol24)} tone="cyan" />
-                <StockMetric label="24h Trades" value={String(trades24)} tone="amber" />
-              </View>
-            </StockPanel>
+                <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <StockMetric label="Price" value={formatStockPrice(price, 6)} tone="mint" />
+                  <StockMetric label="Market Cap" value={formatStockMoney(mcap)} />
+                  <StockMetric label="24h Volume" value={formatStockMoney(vol24)} tone="cyan" />
+                  <StockMetric label="24h Trades" value={String(trades24)} tone="amber" />
+                </View>
+              </StockPanel>
+            </TutorialTarget>
 
             <View style={{ marginTop: 12 }}>
               <StockSegment
@@ -1100,7 +1102,8 @@ export default function StockDetailScreen() {
               </View>
             ) : null}
 
-            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+            <TutorialTarget id="stock.detail.tabs">
+              <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
               <Pressable
                 onPress={() => setPanel("trade")}
                 style={{
@@ -1143,7 +1146,8 @@ export default function StockDetailScreen() {
               >
                 <Text style={{ color: "#fff", fontWeight: "800" }}>Chat</Text>
               </Pressable>
-            </View>
+              </View>
+            </TutorialTarget>
 
             {panel === "trade" ? (
               <View style={{ marginTop: 10, borderRadius: 14, padding: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
@@ -1488,7 +1492,8 @@ export default function StockDetailScreen() {
       </ScrollView>
 
       {!loading && !err && detail && tradeRail === "evm" ? (
-        <View
+        <TutorialTarget id="stock.detail.quote">
+          <View
           style={{
             position: "absolute",
             left: 14,
@@ -1546,24 +1551,27 @@ export default function StockDetailScreen() {
                 <Text style={{ color: MUTED, fontSize: 11 }}>Preparing price</Text>
               )}
             </View>
-            <Pressable
-              onPress={onQuickBuy}
-              disabled={!canQuickBuy}
-              style={{
-                borderRadius: 8,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                backgroundColor: !canQuickBuy ? "rgba(255,255,255,0.14)" : "rgba(47,214,163,0.34)",
-                borderWidth: 1,
-                borderColor: !canQuickBuy ? "rgba(255,255,255,0.26)" : "rgba(47,214,163,0.58)",
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                {submitting ? "Submitting" : !canQuickBuy ? "Price needed" : `Buy $${formatTradeUsdcAmount(quickAmount)}`}
-              </Text>
-            </Pressable>
+            <TutorialTarget id="stock.detail.confirm">
+              <Pressable
+                onPress={onQuickBuy}
+                disabled={!canQuickBuy}
+                style={{
+                  borderRadius: 8,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  backgroundColor: !canQuickBuy ? "rgba(255,255,255,0.14)" : "rgba(47,214,163,0.34)",
+                  borderWidth: 1,
+                  borderColor: !canQuickBuy ? "rgba(255,255,255,0.26)" : "rgba(47,214,163,0.58)",
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                  {submitting ? "Submitting" : !canQuickBuy ? "Price needed" : `Buy $${formatTradeUsdcAmount(quickAmount)}`}
+                </Text>
+              </Pressable>
+            </TutorialTarget>
           </View>
-        </View>
+          </View>
+        </TutorialTarget>
       ) : null}
 
       <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>

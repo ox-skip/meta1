@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { callFn } from "@/services/functions";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
@@ -933,55 +933,57 @@ export default function ListingDetails() {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            {(listingMedia.length ? listingMedia : [null]).map((media, idx) => (
-              <Pressable
-                key={media ? `${media.id}-${idx}` : `none-${idx}`}
-                onPress={() => (media ? openListingMediaPreview(media.url, media.kind, idx) : null)}
-                disabled={!media}
-                style={{
-                  width: mediaCardWidth,
-                  height: mediaCardHeight,
-                  borderRadius: 24,
-                  overflow: "hidden",
-                  backgroundColor: CARD,
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  borderTopColor: BORDER_TOP,
-                }}
-              >
-                {media ? (
-                  <>
-                    <MarketMediaView
-                      uri={media.url}
-                      kind={media.kind}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode="cover"
-                      autoplay={media.kind === "video"}
-                      muted
-                      loop={media.kind === "video"}
-                      disablePointerEvents
-                    />
-                    {media.kind === "video" ? (
-                      <View style={{ position: "absolute", left: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(6,8,7,0.70)", borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Ionicons name="videocam-outline" size={14} color={TEXT} />
-                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>Tap for full preview</Text>
-                      </View>
-                    ) : null}
-                  </>
-                ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="images-outline" size={34} color={FAINT} />
-                    <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>
-                      No media
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
+        <TutorialTarget id="market.listing.media">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {(listingMedia.length ? listingMedia : [null]).map((media, idx) => (
+                <Pressable
+                  key={media ? `${media.id}-${idx}` : `none-${idx}`}
+                  onPress={() => (media ? openListingMediaPreview(media.url, media.kind, idx) : null)}
+                  disabled={!media}
+                  style={{
+                    width: mediaCardWidth,
+                    height: mediaCardHeight,
+                    borderRadius: 24,
+                    overflow: "hidden",
+                    backgroundColor: CARD,
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    borderTopColor: BORDER_TOP,
+                  }}
+                >
+                  {media ? (
+                    <>
+                      <MarketMediaView
+                        uri={media.url}
+                        kind={media.kind}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                        autoplay={media.kind === "video"}
+                        muted
+                        loop={media.kind === "video"}
+                        disablePointerEvents
+                      />
+                      {media.kind === "video" ? (
+                        <View style={{ position: "absolute", left: 10, bottom: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: "rgba(6,8,7,0.70)", borderWidth: 1, borderColor: BORDER, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="videocam-outline" size={14} color={TEXT} />
+                          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 11 }}>Tap for full preview</Text>
+                        </View>
+                      ) : null}
+                    </>
+                  ) : (
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="images-outline" size={34} color={FAINT} />
+                      <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>
+                        No media
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </TutorialTarget>
         {listingMedia.length > 0 ? (
           <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
             Tap any image or video to view full preview.
@@ -1120,7 +1122,8 @@ export default function ListingDetails() {
           ) : null}
         </View>
 
-        <View
+        <TutorialTarget id="market.listing.community">
+          <View
           style={{
             marginTop: 10,
             borderRadius: 18,
@@ -1175,7 +1178,7 @@ export default function ListingDetails() {
             <Ionicons name="chatbubble-ellipses-outline" size={16} color={MUTED} />
             <Text style={{ color: MUTED, fontWeight: "900" }}>{commentCount}</Text>
           </View>
-        </View>
+          </View>
 
         <View
           style={{
@@ -1187,7 +1190,7 @@ export default function ListingDetails() {
             borderColor: BORDER,
             borderTopColor: BORDER_TOP,
           }}
-        >
+          >
           <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Listing reviews</Text>
@@ -1264,7 +1267,8 @@ export default function ListingDetails() {
               </View>
             )}
           </View>
-        </View>
+          </View>
+        </TutorialTarget>
 
         <View
           style={{
@@ -1276,7 +1280,7 @@ export default function ListingDetails() {
             borderColor: BORDER,
             borderTopColor: BORDER_TOP,
           }}
-        >
+          >
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Available in</Text>
           <Text style={{ marginTop: 10, color: FAINT, fontWeight: "800", fontSize: 11 }}>
             Listed from
@@ -1411,7 +1415,8 @@ export default function ListingDetails() {
           </Text>
         </View>
 
-        <View
+        <TutorialTarget id="market.listing.seller">
+          <View
           style={{
             marginTop: 12,
             borderRadius: 24,
@@ -1513,7 +1518,8 @@ export default function ListingDetails() {
               {seller.bio}
             </Text>
           ) : null}
-        </View>
+          </View>
+        </TutorialTarget>
 
         <View
           style={{
@@ -1682,41 +1688,43 @@ export default function ListingDetails() {
           borderTopColor: BORDER,
         }}
       >
-        <Pressable
-          onPress={buyNow}
-          disabled={isOutOfStock || buyBusy}
-          style={{
-            borderRadius: 22,
-            paddingVertical: 16,
-            alignItems: "center",
-            backgroundColor: isOutOfStock ? "rgba(255,253,247,0.16)" : BRAND,
-            borderWidth: 1,
-            borderColor: isOutOfStock ? BORDER_TOP : BRAND,
-            opacity: isOutOfStock || buyBusy ? 0.85 : 1,
-          }}
-        >
-          {buyBusy ? (
-            <>
-              <ActivityIndicator color={BG0} />
-              <Text style={{ marginTop: 6, color: BG0, fontWeight: "900", fontSize: 16 }}>
-                Starting checkout...
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={{ color: isOutOfStock ? TEXT : BG0, fontWeight: "900", fontSize: 16 }}>
-                {isOutOfStock ? "Out of stock" : hasStockCap ? `Buy ${orderQty} item${orderQty > 1 ? "s" : ""}` : "Buy now"}
-              </Text>
-              <Text style={{ marginTop: 4, color: isOutOfStock ? MUTED : "rgba(6,8,7,0.72)", fontWeight: "800", fontSize: 12 }}>
-                {isOutOfStock
-                  ? "Seller must restock before new orders."
-                  : hasStockCap
-                  ? `Total ${formatCurrency(displayPrice.localCurrency, totalLocal)} (USD ${formatCurrency("USD", totalUsd)}) - escrow protected`
-                  : "Escrow protected - continue to payment"}
-              </Text>
-            </>
-          )}
-        </Pressable>
+        <TutorialTarget id="market.listing.checkout">
+          <Pressable
+            onPress={buyNow}
+            disabled={isOutOfStock || buyBusy}
+            style={{
+              borderRadius: 22,
+              paddingVertical: 16,
+              alignItems: "center",
+              backgroundColor: isOutOfStock ? "rgba(255,253,247,0.16)" : BRAND,
+              borderWidth: 1,
+              borderColor: isOutOfStock ? BORDER_TOP : BRAND,
+              opacity: isOutOfStock || buyBusy ? 0.85 : 1,
+            }}
+          >
+            {buyBusy ? (
+              <>
+                <ActivityIndicator color={BG0} />
+                <Text style={{ marginTop: 6, color: BG0, fontWeight: "900", fontSize: 16 }}>
+                  Starting checkout...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: isOutOfStock ? TEXT : BG0, fontWeight: "900", fontSize: 16 }}>
+                  {isOutOfStock ? "Out of stock" : hasStockCap ? `Buy ${orderQty} item${orderQty > 1 ? "s" : ""}` : "Buy now"}
+                </Text>
+                <Text style={{ marginTop: 4, color: isOutOfStock ? MUTED : "rgba(6,8,7,0.72)", fontWeight: "800", fontSize: 12 }}>
+                  {isOutOfStock
+                    ? "Seller must restock before new orders."
+                    : hasStockCap
+                    ? `Total ${formatCurrency(displayPrice.localCurrency, totalLocal)} (USD ${formatCurrency("USD", totalUsd)}) - escrow protected`
+                    : "Escrow protected - continue to payment"}
+                </Text>
+              </>
+            )}
+          </Pressable>
+        </TutorialTarget>
       </View>
 
 

@@ -18,7 +18,7 @@ import {
   formatStockQuantity,
   stockChainLabel,
 } from "@/components/market/stock/StockUi";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { fetchMyStockPortfolio } from "@/services/market/stocks";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { friendlyMarketError } from "@/utils/marketUx";
@@ -66,37 +66,39 @@ export default function StockPortfolioScreen() {
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
-        <StockPanel style={{ marginTop: 10 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <StockPill label={`${rows.length} Positions`} tone="cyan" icon="layers-outline" compact />
-              <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 32 }}>
-                {formatStockMoney(total)}
-              </Text>
-              <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>Current portfolio value</Text>
+        <TutorialTarget id="stock.portfolio.total">
+          <StockPanel style={{ marginTop: 10 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <StockPill label={`${rows.length} Positions`} tone="cyan" icon="layers-outline" compact />
+                <Text style={{ marginTop: 12, color: STOCK.ink, fontWeight: "900", fontSize: 32 }}>
+                  {formatStockMoney(total)}
+                </Text>
+                <Text style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800" }}>Current portfolio value</Text>
+              </View>
+              <View
+                style={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: 22,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(52,211,153,0.14)",
+                  borderWidth: 1,
+                  borderColor: "rgba(52,211,153,0.38)",
+                }}
+              >
+                <Ionicons name="pie-chart" size={25} color={STOCK.mint} />
+              </View>
             </View>
-            <View
-              style={{
-                width: 58,
-                height: 58,
-                borderRadius: 22,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(52,211,153,0.14)",
-                borderWidth: 1,
-                borderColor: "rgba(52,211,153,0.38)",
-              }}
-            >
-              <Ionicons name="pie-chart" size={25} color={STOCK.mint} />
-            </View>
-          </View>
 
-          <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            <StockMetric label="Unrealized P/L" value={formatStockMoney(summary.pnl)} tone={summary.pnl >= 0 ? "mint" : "red"} />
-            <StockMetric label="Cost Basis" value={formatStockMoney(summary.invested)} />
-            <StockMetric label="Locked" value={formatStockQuantity(summary.locked, 2)} tone="amber" />
-          </View>
-        </StockPanel>
+            <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <StockMetric label="Unrealized P/L" value={formatStockMoney(summary.pnl)} tone={summary.pnl >= 0 ? "mint" : "red"} />
+              <StockMetric label="Cost Basis" value={formatStockMoney(summary.invested)} />
+              <StockMetric label="Locked" value={formatStockQuantity(summary.locked, 2)} tone="amber" />
+            </View>
+          </StockPanel>
+        </TutorialTarget>
 
         {loading ? <StockLoadingState label="Loading portfolio" /> : null}
 
@@ -121,8 +123,9 @@ export default function StockPortfolioScreen() {
           </View>
         ) : null}
 
-        <View style={{ marginTop: 12, gap: 11 }}>
-          {rows.map((row: any) => {
+        <TutorialTarget id="stock.portfolio.positions">
+          <View style={{ marginTop: 12, gap: 11 }}>
+          {rows.map((row: any, index: number) => {
             const stock = row.identity;
             const symbol = String(stock?.symbol || "");
             const name = String(stock?.name || "Stock");
@@ -135,9 +138,8 @@ export default function StockPortfolioScreen() {
             const pnl = Number(row.unrealized_pnl_usdc ?? 0);
             const allocation = total > 0 ? (value / total) * 100 : 0;
 
-            return (
+            const rowCard = (
               <Pressable
-                key={`${row.stock_id}-${row.user_id}`}
                 onPress={() => slug && router.push(`/market/stock/${slug}` as any)}
                 style={{ opacity: slug ? 1 : 0.72 }}
               >
@@ -182,8 +184,16 @@ export default function StockPortfolioScreen() {
                 </StockPanel>
               </Pressable>
             );
+            return index === 0 ? (
+              <TutorialTarget key={`${row.stock_id}-${row.user_id}`} id="stock.portfolio.marketEntry">
+                {rowCard}
+              </TutorialTarget>
+            ) : (
+              <React.Fragment key={`${row.stock_id}-${row.user_id}`}>{rowCard}</React.Fragment>
+            );
           })}
-        </View>
+          </View>
+        </TutorialTarget>
       </ScrollView>
     </StockScreen>
   );

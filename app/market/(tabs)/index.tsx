@@ -22,7 +22,7 @@ import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import { MARKET_DESKTOP_BREAKPOINT, MARKET_DESKTOP_RAIL_WIDTH } from "@/components/market/MarketDesktopSidebar";
 import NotificationBell from "@/components/market/NotificationBell";
-import { InAppTutorial } from "@/components/onboarding/InAppTutorial";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
@@ -1406,7 +1406,7 @@ export default function MarketHome() {
     return items;
   }, [featuredListings, featuredSellers, isDesktop, main, sellersMap, supabaseUrl]);
 
-  const renderListing = ({ item }: { item: ListingRow }) => {
+  const renderListing = ({ item, index = 0 }: { item: ListingRow; index?: number }) => {
     const mediaSource = resolveMarketMediaSource(
       [item.cover ?? null, ...sortMarketMedia(item.images ?? [])],
       supabaseUrl,
@@ -1425,7 +1425,7 @@ export default function MarketHome() {
     const deliveryLabel = String(item.delivery_type || "delivery").replace(/_/g, " ");
     const freshnessLabel = stats.completed > 0 ? `${stats.completed} sold` : "Fresh";
 
-    return (
+    const card = (
       <Pressable
         onPress={() => router.push({ pathname: "/market/listing/[id]" as any, params: { id: item.id } })}
         style={({ pressed }) => ({
@@ -1651,6 +1651,8 @@ export default function MarketHome() {
         </View>
       </Pressable>
     );
+
+    return index === 0 ? <TutorialTarget id="market.home.cards">{card}</TutorialTarget> : card;
   };
 
   const renderSellerCard = ({ item }: { item: SellerCard }) => {
@@ -1760,17 +1762,40 @@ export default function MarketHome() {
 
     if (mode === "desktop") {
       return (
-        <View
-          style={{
-            marginTop: 20,
-            borderRadius: 20,
-            padding: 6,
-            borderWidth: 1,
-            borderColor: "rgba(255,253,247,0.13)",
-            backgroundColor: "rgba(9,13,11,0.50)",
-            flexDirection: "row",
-            gap: 6,
-          }}
+        <TutorialTarget id="market.home.sections">
+          <View
+            style={{
+              marginTop: 20,
+              borderRadius: 20,
+              padding: 6,
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.13)",
+              backgroundColor: "rgba(9,13,11,0.50)",
+              flexDirection: "row",
+              gap: 6,
+            }}
+          >
+            {tabs.map((tab) => (
+              <SectionPill
+                key={tab.key}
+                icon={tab.icon}
+                label={tab.label}
+                active={section === tab.key}
+                onPress={() => switchSection(tab.key)}
+              />
+            ))}
+          </View>
+        </TutorialTarget>
+      );
+    }
+
+    return (
+      <TutorialTarget id="market.home.sections">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 10, marginHorizontal: -pagePadding }}
+          contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 10 }}
         >
           {tabs.map((tab) => (
             <SectionPill
@@ -1778,52 +1803,34 @@ export default function MarketHome() {
               icon={tab.icon}
               label={tab.label}
               active={section === tab.key}
+              stretch={false}
               onPress={() => switchSection(tab.key)}
             />
           ))}
-        </View>
-      );
-    }
-
-    return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ marginTop: 10, marginHorizontal: -pagePadding }}
-        contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 10 }}
-      >
-        {tabs.map((tab) => (
-          <SectionPill
-            key={tab.key}
-            icon={tab.icon}
-            label={tab.label}
-            active={section === tab.key}
-            stretch={false}
-            onPress={() => switchSection(tab.key)}
-          />
-        ))}
-      </ScrollView>
+        </ScrollView>
+      </TutorialTarget>
     );
   }
 
   function renderSearchBar(prominent = false) {
     return section !== "social" ? (
-      <View
-        style={{
-          marginTop: prominent ? 18 : 12,
-          minHeight: prominent ? 58 : 0,
-          flexDirection: "row",
-          gap: 10,
-          alignItems: "center",
-          borderRadius: prominent ? 22 : 18,
-          padding: prominent ? 14 : 12,
-          borderWidth: 1,
-          borderTopWidth: 1,
-          borderColor: prominent ? "rgba(255,253,247,0.18)" : "rgba(255,253,247,0.13)",
-          borderTopColor: "rgba(255,253,247,0.26)",
-          backgroundColor: prominent ? "rgba(9,13,11,0.58)" : "rgba(255,253,247,0.07)",
-        }}
-      >
+      <TutorialTarget id="market.home.search">
+        <View
+          style={{
+            marginTop: prominent ? 18 : 12,
+            minHeight: prominent ? 58 : 0,
+            flexDirection: "row",
+            gap: 10,
+            alignItems: "center",
+            borderRadius: prominent ? 22 : 18,
+            padding: prominent ? 14 : 12,
+            borderWidth: 1,
+            borderTopWidth: 1,
+            borderColor: prominent ? "rgba(255,253,247,0.18)" : "rgba(255,253,247,0.13)",
+            borderTopColor: "rgba(255,253,247,0.26)",
+            backgroundColor: prominent ? "rgba(9,13,11,0.58)" : "rgba(255,253,247,0.07)",
+          }}
+        >
         <Ionicons name="search-outline" size={19} color={prominent ? TEAL : MUTED} />
         <TextInput
           value={q}
@@ -1867,7 +1874,8 @@ export default function MarketHome() {
         >
           <Ionicons name="arrow-forward" size={17} color={TEXT} />
         </Pressable>
-      </View>
+        </View>
+      </TutorialTarget>
     ) : null;
   }
 
@@ -2410,29 +2418,33 @@ export default function MarketHome() {
     if (!isListingDirectory) {
       if (!desktop) {
         return (
-          <CompactDisclosure
-            eyebrow="Store mode"
-            title="Store discovery"
-            summary={directoryMode === "featured" ? "Featured stores" : "Verified stores"}
-            icon="storefront-outline"
-            accent={TEAL}
-            expanded={expandedCards.filters}
-            onToggle={() => toggleExpandedCard("filters")}
-          >
-            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
-              Featured and verified directories help buyers assess a store before opening the full profile.
-            </Text>
-          </CompactDisclosure>
+          <TutorialTarget id="market.home.filters">
+            <CompactDisclosure
+              eyebrow="Store mode"
+              title="Store discovery"
+              summary={directoryMode === "featured" ? "Featured stores" : "Verified stores"}
+              icon="storefront-outline"
+              accent={TEAL}
+              expanded={expandedCards.filters}
+              onToggle={() => toggleExpandedCard("filters")}
+            >
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                Featured and verified directories help buyers assess a store before opening the full profile.
+              </Text>
+            </CompactDisclosure>
+          </TutorialTarget>
         );
       }
 
       return (
-        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
-          <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-            Featured and verified directories help buyers assess a store before opening the full profile.
-          </Text>
-        </GlassPanel>
+        <TutorialTarget id="market.home.filters">
+          <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Store discovery</Text>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Featured and verified directories help buyers assess a store before opening the full profile.
+            </Text>
+          </GlassPanel>
+        </TutorialTarget>
       );
     }
 
@@ -2443,16 +2455,17 @@ export default function MarketHome() {
         ? "All related"
         : "All listings";
       return (
-        <CompactDisclosure
-          eyebrow="Feed scope"
-          title={`${feedScope === "country" ? "Local" : "Global"} feed`}
-          summary={`${locationLabel} - ${categoryLabel} - ${sortBy.replace(/_/g, " ")}`}
-          icon={feedScope === "country" ? "location-outline" : "earth-outline"}
-          accent={feedScope === "country" ? TEAL : BLUE}
-          expanded={expandedCards.filters}
-          onToggle={() => toggleExpandedCard("filters")}
-        >
-          <View style={{ gap: 12 }}>
+        <TutorialTarget id="market.home.filters">
+          <CompactDisclosure
+            eyebrow="Feed scope"
+            title={`${feedScope === "country" ? "Local" : "Global"} feed`}
+            summary={`${locationLabel} - ${categoryLabel} - ${sortBy.replace(/_/g, " ")}`}
+            icon={feedScope === "country" ? "location-outline" : "earth-outline"}
+            accent={feedScope === "country" ? TEAL : BLUE}
+            expanded={expandedCards.filters}
+            onToggle={() => toggleExpandedCard("filters")}
+          >
+            <View style={{ gap: 12 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Feed scope</Text>
@@ -2578,13 +2591,15 @@ export default function MarketHome() {
                 <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
               </View>
             </View>
-          </View>
-        </CompactDisclosure>
+            </View>
+          </CompactDisclosure>
+        </TutorialTarget>
       );
     }
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
+      <TutorialTarget id="market.home.filters">
+        <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
@@ -2713,7 +2728,8 @@ export default function MarketHome() {
           <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
           <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
         </View>
-      </GlassPanel>
+        </GlassPanel>
+      </TutorialTarget>
     );
   }
 
