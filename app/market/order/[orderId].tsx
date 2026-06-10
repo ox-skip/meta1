@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View, Linking, Alert, Modal } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { createPublicClient, http, keccak256, toHex } from "viem";
 
 import MarketPolicyPanel from "@/components/policies/MarketPolicyPanel";
 import { useMarketPolicyBlocks } from "@/hooks/policy/useMarketPolicyBlocks";
@@ -16,7 +15,6 @@ import { releasePiForOrder } from "@/services/market/piCheckout";
 import { getPreferredMarketChain } from "@/services/market/chainConfig";
 import { generateOrderAiRisk, type MarketOrderAiRiskResult } from "@/services/market/ai";
 import { friendlyMarketError } from "@/utils/marketUx";
-import { getRpcUrlForChain } from "@/utils/aaWallet";
 
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import {
@@ -68,41 +66,6 @@ const OTP_TABLE = "market_order_otps";
 const CRYPTO_INTENTS_TABLE = "market_crypto_intents";
 
 const OTP_REQUEST_COOLDOWN_SEC = 30;
-
-const ESCROW_DEPOSIT_SIG_MULTI = keccak256(toHex("EscrowDeposited(bytes32,address,address,address,uint256)"));
-const ESCROW_DEPOSIT_SIG_SINGLE = keccak256(toHex("EscrowDeposited(bytes32,address,address,uint256)"));
-
-function normalizeOrderKey(key: string | null | undefined) {
-  const raw = String(key ?? "").toLowerCase().replace(/^0x/, "");
-  return raw.padStart(64, "0");
-}
-
-function hexToAddress(topicHex?: string): string | null {
-  if (!topicHex || !topicHex.startsWith("0x")) return null;
-  return `0x${topicHex.slice(-40)}`.toLowerCase();
-}
-
-function decodeDepositData(dataHex?: string) {
-  const data = String(dataHex ?? "");
-  if (!data.startsWith("0x")) return { token: null, amountRaw: 0n };
-  const payload = data.slice(2);
-  if (payload.length >= 64 * 2) {
-    const tokenSlot = payload.slice(0, 64);
-    const amountSlot = payload.slice(64, 128);
-    const token = `0x${tokenSlot.slice(24 * 2)}`.toLowerCase();
-    const amountRaw = BigInt(`0x${amountSlot}`);
-    return { token, amountRaw };
-  }
-  if (payload.length >= 64) {
-    const amountRaw = BigInt(`0x${payload.slice(0, 64)}`);
-    return { token: null, amountRaw };
-  }
-  return { token: null, amountRaw: 0n };
-}
-
-function orderKeyFromId(orderId: string) {
-  return keccak256(toHex(String(orderId || "")));
-}
 
 type OrderRow = {
   id: string;
@@ -700,7 +663,10 @@ export default function OrderDetails() {
       try {
         const body: Record<string, unknown> = { order_id: order.id };
         if (isHexHash(defaultDepositHash)) body.tx_hash = defaultDepositHash;
-        await supabase.functions.invoke("market-escrow-reindex", { body }).catch(() => null);
+        const first = await supabase.functions.invoke("market-escrow-reindex", { body }).catch(() => null);
+        if ((first?.data as any)?.applied !== true) {
+          await supabase.functions.invoke("market-escrow-reindex", { body: { order_id: order.id } }).catch(() => null);
+        }
         await load();
       } finally {
         autoSyncBusyRef.current = false;
@@ -1046,149 +1012,85 @@ async function releaseFunds() {
       const txHash = (reindexTx || defaultDepositHash || "").trim();
       if (!txHash) throw new Error("Enter a transaction hash or UserOp hash.");
       if (!isHexHash(txHash)) throw new Error("Enter a valid transaction hash or UserOp hash.");
-      // Client-side reindex: read tx receipt + logs directly, then apply via RPC.
-      let { data: esc, error: escErr } = await supabase
+
+      const { data: esc } = await supabase
         .from("market_crypto_escrows")
-        .select("order_id,order_key,chain,escrow_address,token_address")
+        .select("chain")
         .eq("order_id", order.id)
         .maybeSingle();
 
-      let orderKey = esc?.order_key as string | undefined;
-      let chainName = esc?.chain as string | undefined;
-      let escrowAddress = esc?.escrow_address as string | undefined;
-      let tokenAddress = esc?.token_address as string | undefined;
+      const chainName = String((esc as any)?.chain || latestDepositIntent?.chain || "").trim();
+      let finalizeData: any = null;
 
-      if (escErr || !orderKey) {
-        // Fallback: compute order key locally and read active chain config (no RPC needed).
-        const token = String(order.currency || "USDC").toUpperCase();
-        const { data: cfgRow, error: cfgRowErr } = await supabase
-          .from("market_chain_config")
-          .select("chain,chain_id,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
-          .eq("active", true)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (cfgRowErr || !cfgRow?.chain) throw new Error("Escrow mapping missing.");
-        orderKey = orderKeyFromId(order.id);
-        chainName = String(cfgRow.chain || "");
-        escrowAddress = String(cfgRow.escrow_address || "");
-        tokenAddress =
-          token === "USDT"
-            ? String(cfgRow.usdt_address || "")
-            : String(cfgRow.usdc_address || "");
-      }
-      if (!orderKey || !chainName || !escrowAddress) throw new Error("Escrow mapping missing.");
-
-      const { data: cfg, error: cfgErr } = await supabase
-        .from("market_chain_config")
-        .select("chain,chain_id,rpc_url,escrow_address,usdc_address,usdt_address,confirmations_required")
-        .eq("chain", chainName)
-        .eq("active", true)
-        .maybeSingle();
-      if (cfgErr || !cfg?.chain) throw new Error("Chain config missing.");
-
-      const rpcUrl = getRpcUrlForChain({
-        chain: String(cfg.chain || chainName),
-        chain_id: Number((cfg as any).chain_id ?? 0),
-        rpc_url: cfg.rpc_url ? String(cfg.rpc_url) : null,
-        usdc_address: String((cfg as any).usdc_address || ""),
-        escrow_address: String(cfg.escrow_address || escrowAddress || ""),
-        confirmations_required: Math.max(1, Number(cfg.confirmations_required ?? 1)),
-        active: true,
-      });
-      if (!rpcUrl) throw new Error("Chain RPC URL missing. Set rpc_url or the matching Alchemy RPC env for this chain.");
-
-      const client = createPublicClient({ transport: http(rpcUrl) });
-      const requestCustomRpc = async (method: string, params: unknown[]) => {
-        const req = client.request as unknown as (args: { method: string; params?: unknown[] }) => Promise<any>;
-        return req({ method, params });
-      };
-      let finalTxHash = txHash as `0x${string}`;
-      let receipt: any = null;
-      try {
-        receipt = await client.getTransactionReceipt({ hash: finalTxHash });
-      } catch {
-        // If user pasted a UserOp hash, try to resolve it to a tx hash.
-        try {
-          const uo: any =
-            (await requestCustomRpc("eth_getUserOperationReceipt", [finalTxHash])) ??
-            (await requestCustomRpc("alchemy_getUserOperationReceipt", [finalTxHash]));
-          const opTx = String(uo?.receipt?.transactionHash || uo?.transactionHash || "");
-          if (opTx.startsWith("0x")) {
-            finalTxHash = opTx as `0x${string}`;
-            receipt = await client.getTransactionReceipt({ hash: finalTxHash });
+      if (chainName) {
+        const { data, error } = await supabase.functions.invoke("market-chain-tx-finalize", {
+          body: {
+            order_id: order.id,
+            chain: chainName,
+            tx_hash: txHash,
+            event_type: "DEPOSIT",
+          },
+        });
+        if (error) {
+          console.log("[Order] chain finalize function failed", String(error.message || error));
+        } else {
+          finalizeData = data;
+          if ((data as any)?.finalized === true) {
+            Alert.alert("Deposit confirmed", "Order moved to escrow.");
+            await load();
+            setReindexOpen(false);
+            return;
           }
-        } catch {
-          // ignore
+          const confirmations = Number((data as any)?.confirmations ?? NaN);
+          const required = Number((data as any)?.required ?? NaN);
+          if (Number.isFinite(confirmations) && Number.isFinite(required) && confirmations < required) {
+            Alert.alert(
+              "Awaiting confirmations",
+              `Confirmations: ${confirmations}/${required}\n\nTry again in a few minutes.`,
+            );
+            return;
+          }
         }
       }
-      if (!receipt) {
-        throw new Error("Transaction receipt not found yet.");
-      }
-      if (!receipt?.blockNumber) throw new Error("Transaction receipt not found yet.");
-      if (receipt.status && String(receipt.status).toLowerCase() === "reverted") {
-        throw new Error("Transaction reverted.");
+
+      let { data: reindexData, error: reindexErr } = await supabase.functions.invoke("market-escrow-reindex", {
+        body: {
+          order_id: order.id,
+          tx_hash: txHash,
+        },
+      });
+      if (reindexErr) throw new Error(reindexErr.message || "Deposit resync failed.");
+      if ((reindexData as any)?.applied !== true) {
+        const retry = await supabase.functions.invoke("market-escrow-reindex", {
+          body: { order_id: order.id },
+        });
+        if (!retry.error && retry.data) {
+          reindexData = retry.data;
+        }
       }
 
-      const latest = await client.getBlockNumber();
-      const required = Math.max(1, Number(cfg.confirmations_required ?? 1));
-      const confirmations = Number(latest - receipt.blockNumber + 1n);
-      if (confirmations < required) {
-        Alert.alert(
-          "Awaiting confirmations",
-          `Confirmations: ${confirmations}/${required}\n\nTry again in a few minutes.`,
-        );
+      await load();
+      const { data: fresh } = await supabase
+        .from(ORDERS_TABLE)
+        .select("status")
+        .eq("id", order.id)
+        .maybeSingle();
+      if (String((fresh as any)?.status || "").toUpperCase() === "IN_ESCROW" || (reindexData as any)?.applied === true) {
+        Alert.alert("Deposit confirmed", "Order moved to escrow.");
+        setReindexOpen(false);
         return;
       }
 
-      const wantKey = normalizeOrderKey(orderKey);
-      const escrowAddr = String(cfg.escrow_address || escrowAddress || "").toLowerCase();
-      const logs = receipt.logs || [];
-      const hit = logs.find((log: any) => {
-        const addr = String(log.address || "").toLowerCase();
-        const topic0 = String(log.topics?.[0] || "").toLowerCase();
-        const topic1 = normalizeOrderKey(String(log.topics?.[1] || ""));
-        const isDeposit = topic0 === ESCROW_DEPOSIT_SIG_MULTI || topic0 === ESCROW_DEPOSIT_SIG_SINGLE;
-        return addr === escrowAddr && isDeposit && topic1 === wantKey;
-      });
-      if (!hit) throw new Error("Deposit event not found in tx logs.");
-
-      const buyer = hexToAddress(hit.topics?.[2]);
-      const seller = hexToAddress(hit.topics?.[3]);
-      const { token, amountRaw } = decodeDepositData(hit.data);
-      const tokenAddr = (token || tokenAddress || "").toLowerCase();
-      const amountUnits = Number(amountRaw) / 1_000_000;
-
-      const baseArgs: any = {
-        p_order_id: order.id,
-        p_buyer_wallet: buyer,
-        p_seller_wallet: seller,
-        p_amount_raw: amountRaw ? amountRaw.toString() : null,
-        p_amount_units: amountUnits,
-        p_tx_hash: String(hit.transactionHash ?? finalTxHash),
-        p_log_index: Number(hit.logIndex ?? 0),
-        p_block_number: Number(hit.blockNumber ?? 0),
-        p_block_time: null,
-        p_raw: hit,
-      };
-      let rpcErr = null as any;
-      const { error: applyErr } = await supabase.rpc("market_apply_chain_deposit", {
-        ...baseArgs,
-        p_token_address: tokenAddr,
-      });
-      rpcErr = applyErr;
-      if (applyErr) {
-        const msg = String(applyErr.message || "");
-        if (/function.+does not exist|p_token_address/i.test(msg)) {
-          const { error: retryErr } = await supabase.rpc("market_apply_chain_deposit", baseArgs);
-          rpcErr = retryErr;
-        }
+      const pending = String((reindexData as any)?.pending || (finalizeData as any)?.reason || "").trim();
+      if (pending === "event_not_found_yet") {
+        throw new Error(
+          "Deposit was not found yet. If you pasted the approval transaction, wait for the escrow deposit transaction and retry. The app also scans the escrow logs automatically.",
+        );
       }
-      if (rpcErr) throw rpcErr;
-
-      Alert.alert("Deposit confirmed", "Order moved to escrow.");
-      await load();
-      setReindexOpen(false);
+      if (pending === "receipt") {
+        throw new Error("Transaction receipt is not ready yet. Wait a minute and retry.");
+      }
+      throw new Error("Deposit is not finalized yet. Wait a minute and retry resync.");
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't resync the deposit yet."));
     } finally {
