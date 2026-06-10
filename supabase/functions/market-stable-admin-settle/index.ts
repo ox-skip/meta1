@@ -4,6 +4,7 @@ import { ethers } from "https://esm.sh/ethers@6.16.0";
 
 import { adminError, requireAdmin } from "../_shared/market/admin.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
 import { bad, methodNotAllowed, ok } from "../_shared/market/http.ts";
 
 type Decision = "RELEASE" | "REFUND";
@@ -83,7 +84,7 @@ Deno.serve(async (req) => {
 
     const { data: esc } = await admin
       .from("market_crypto_escrows")
-      .select("order_id,order_key,escrow_address,buyer_wallet,seller_wallet,amount_units,amount_raw,chain")
+      .select("order_id,order_key,escrow_address,buyer_wallet,seller_wallet,token_address,amount_units,amount_raw,chain")
       .eq("order_id", order_id)
       .maybeSingle();
     if (!esc?.order_key || !esc?.escrow_address) return bad("Crypto escrow mapping missing");
@@ -116,16 +117,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    await admin.rpc("market_set_crypto_intent", {
-      p_order_id: order_id,
-      p_intent_type: intentType,
-      p_status: "PROCESSING",
-      p_from_wallet: fromWallet,
-      p_to_wallet: toWallet,
-      p_amount_units: Number(esc.amount_units ?? 0),
-      p_amount_raw: esc.amount_raw ?? null,
-      p_tx_hash: null,
-      p_failure_reason: null,
+    await insertCryptoIntent(admin, {
+      orderId: order_id,
+      intentType,
+      status: "PROCESSING",
+      chain: esc.chain,
+      fromWallet,
+      toWallet,
+      tokenAddress: esc.token_address,
+      escrowAddress: esc.escrow_address,
+      amountUnits: Number(esc.amount_units ?? 0),
+      amountRaw: esc.amount_raw ?? null,
+      orderKey,
     });
 
     const tx =
@@ -133,16 +136,19 @@ Deno.serve(async (req) => {
         ? await contract.arbiterRelease(orderKey)
         : await contract.refund(orderKey);
 
-    await admin.rpc("market_set_crypto_intent", {
-      p_order_id: order_id,
-      p_intent_type: intentType,
-      p_status: "SUBMITTED",
-      p_from_wallet: fromWallet,
-      p_to_wallet: toWallet,
-      p_amount_units: Number(esc.amount_units ?? 0),
-      p_amount_raw: esc.amount_raw ?? null,
-      p_tx_hash: tx.hash,
-      p_failure_reason: null,
+    await insertCryptoIntent(admin, {
+      orderId: order_id,
+      intentType,
+      status: "SUBMITTED",
+      chain: esc.chain,
+      fromWallet,
+      toWallet,
+      tokenAddress: esc.token_address,
+      escrowAddress: esc.escrow_address,
+      amountUnits: Number(esc.amount_units ?? 0),
+      amountRaw: esc.amount_raw ?? null,
+      txHash: tx.hash,
+      orderKey,
     });
 
     await admin.from("market_audit_logs").insert({

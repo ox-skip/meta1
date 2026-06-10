@@ -11,6 +11,8 @@ import {
   toNum,
   type EscrowEventType,
 } from "../_shared/market/escrowEvents.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
+import { applyChainDeposit } from "../_shared/market/chainDeposit.ts";
 type EventType = EscrowEventType;
 
 function isHexHash(v?: string | null) {
@@ -89,16 +91,20 @@ Deno.serve(async (req) => {
 
   const statusHex = String(receipt?.status ?? "0x0");
   if (statusHex !== "0x1") {
-    await admin.rpc("market_set_crypto_intent", {
-      p_order_id: order_id,
-      p_intent_type: event_type,
-      p_status: "FAILED",
-      p_from_wallet: esc.buyer_wallet ?? null,
-      p_to_wallet: esc.seller_wallet ?? null,
-      p_amount_units: Number(esc.amount_units ?? 0),
-      p_amount_raw: esc.amount_raw ?? null,
-      p_tx_hash: tx_hash,
-      p_failure_reason: `Transaction reverted (${statusHex})`,
+    await insertCryptoIntent(admin, {
+      orderId: order_id,
+      intentType: event_type,
+      status: "FAILED",
+      chain: esc.chain,
+      fromWallet: esc.buyer_wallet ?? null,
+      toWallet: esc.seller_wallet ?? null,
+      tokenAddress: esc.token_address,
+      escrowAddress: esc.escrow_address,
+      amountUnits: Number(esc.amount_units ?? 0),
+      amountRaw: esc.amount_raw ?? null,
+      txHash: tx_hash,
+      failureReason: `Transaction reverted (${statusHex})`,
+      orderKey: esc.order_key,
     });
     return bad("Transaction reverted on-chain");
   }
@@ -149,18 +155,19 @@ Deno.serve(async (req) => {
     const { token, amountRaw } = decodeEscrowData(hit.data);
     const tokenAddr = (token || esc.token_address || cfg.usdc_address || "").toLowerCase();
     const amountUnits = Number(amountRaw) / 1_000_000;
-    const { error: applyErr } = await admin.rpc("market_apply_chain_deposit", {
-      p_order_id: esc.order_id,
-      p_buyer_wallet: buyer,
-      p_seller_wallet: seller,
-      p_amount_raw: amountRaw ? amountRaw.toString() : null,
-      p_amount_units: amountUnits,
-      p_tx_hash: String(hit.transactionHash ?? tx_hash),
-      p_log_index: toNum(hit.logIndex as any),
-      p_block_number: toNum(hit.blockNumber as any),
-      p_block_time: null,
-      p_raw: hit,
-      p_token_address: tokenAddr,
+    const { error: applyErr } = await applyChainDeposit(admin, {
+      orderId: esc.order_id,
+      chain: esc.chain,
+      buyerWallet: buyer,
+      sellerWallet: seller,
+      amountRaw: amountRaw ? amountRaw.toString() : null,
+      amountUnits,
+      txHash: String(hit.transactionHash ?? tx_hash),
+      logIndex: toNum(hit.logIndex as any),
+      blockNumber: toNum(hit.blockNumber as any),
+      blockTime: null,
+      raw: hit,
+      tokenAddress: tokenAddr,
     });
     if (applyErr) return bad(applyErr.message);
   } else if (event_type === "RELEASE") {

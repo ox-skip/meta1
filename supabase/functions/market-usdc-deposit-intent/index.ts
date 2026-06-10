@@ -2,6 +2,7 @@ import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { addRaw, feeFromRaw, getFeeBps, getFeeRecipient, orderKeyKeccak, toUsdcRaw } from "../_shared/market/crypto.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
 
 function pickToken(body: any) {
   return String(body?.token ?? body?.currency ?? body?.token_symbol ?? "USDC").toUpperCase();
@@ -132,17 +133,20 @@ Deno.serve(async (req) => {
   const buyerFeeRaw = feeFromRaw(amountRaw, feeBps);
   const buyerTotalRaw = addRaw(amountRaw, buyerFeeRaw);
 
-  await admin.rpc("market_set_crypto_intent", {
-    p_order_id: order.id,
-    p_intent_type: "DEPOSIT",
-    p_status: "CREATED",
-    p_from_wallet: buyerAddr,
-    p_to_wallet: cfg.escrow_address,
-    p_amount_units: amountUnits,
-    p_amount_raw: amountRaw,
-    p_tx_hash: null,
-    p_failure_reason: null,
+  const { error: intentErr } = await insertCryptoIntent(admin, {
+    orderId: order.id,
+    intentType: "DEPOSIT",
+    status: "CREATED",
+    chain: cfg.chain,
+    fromWallet: buyerAddr,
+    toWallet: cfg.escrow_address,
+    tokenAddress,
+    escrowAddress: cfg.escrow_address,
+    amountUnits,
+    amountRaw,
+    orderKey,
   });
+  if (intentErr) return bad(intentErr.message);
 
   return ok({
     ok: true,

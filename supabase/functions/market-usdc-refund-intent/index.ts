@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { ethers } from "https://esm.sh/ethers@6.16.0";
 import { adminError, requireAdmin } from "../_shared/market/admin.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,7 +89,7 @@ serve(async (req) => {
 
     const escRes = await admin
       .from("market_crypto_escrows")
-      .select("order_id,order_key,escrow_address,buyer_wallet,seller_wallet,amount_units,amount_raw,chain")
+      .select("order_id,order_key,escrow_address,buyer_wallet,seller_wallet,token_address,amount_units,amount_raw,chain")
       .eq("order_id", order_id)
       .maybeSingle();
     esc = escRes.data as any;
@@ -109,16 +110,18 @@ serve(async (req) => {
       return json(500, { ok: false, message: "Missing RPC URL or ARBITER_PRIVATE_KEY in secrets" });
     }
 
-    await admin.rpc("market_set_crypto_intent", {
-      p_order_id: order_id,
-      p_intent_type: "REFUND",
-      p_status: "PROCESSING",
-      p_from_wallet: esc.seller_wallet,
-      p_to_wallet: esc.buyer_wallet,
-      p_amount_units: Number(esc.amount_units ?? 0),
-      p_amount_raw: esc.amount_raw ?? null,
-      p_tx_hash: null,
-      p_failure_reason: null,
+    await insertCryptoIntent(admin, {
+      orderId: order_id,
+      intentType: "REFUND",
+      status: "PROCESSING",
+      chain: esc.chain,
+      fromWallet: esc.seller_wallet,
+      toWallet: esc.buyer_wallet,
+      tokenAddress: esc.token_address,
+      escrowAddress: esc.escrow_address,
+      amountUnits: Number(esc.amount_units ?? 0),
+      amountRaw: esc.amount_raw ?? null,
+      orderKey,
     });
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -127,16 +130,19 @@ serve(async (req) => {
 
     const tx = await contract.refund(orderKey);
 
-    await admin.rpc("market_set_crypto_intent", {
-      p_order_id: order_id,
-      p_intent_type: "REFUND",
-      p_status: "SUBMITTED",
-      p_from_wallet: esc.seller_wallet,
-      p_to_wallet: esc.buyer_wallet,
-      p_amount_units: Number(esc.amount_units ?? 0),
-      p_amount_raw: esc.amount_raw ?? null,
-      p_tx_hash: tx.hash,
-      p_failure_reason: null,
+    await insertCryptoIntent(admin, {
+      orderId: order_id,
+      intentType: "REFUND",
+      status: "SUBMITTED",
+      chain: esc.chain,
+      fromWallet: esc.seller_wallet,
+      toWallet: esc.buyer_wallet,
+      tokenAddress: esc.token_address,
+      escrowAddress: esc.escrow_address,
+      amountUnits: Number(esc.amount_units ?? 0),
+      amountRaw: esc.amount_raw ?? null,
+      txHash: tx.hash,
+      orderKey,
     });
 
     await admin.from("market_audit_logs").insert({
@@ -159,16 +165,19 @@ serve(async (req) => {
     if (admin && order_id && esc) {
       const msg = e instanceof Error ? e.message : String(e || "refund_failed");
       try {
-        await admin.rpc("market_set_crypto_intent", {
-          p_order_id: order_id,
-          p_intent_type: "REFUND",
-          p_status: "FAILED",
-          p_from_wallet: esc.seller_wallet ?? null,
-          p_to_wallet: esc.buyer_wallet ?? null,
-          p_amount_units: Number(esc.amount_units ?? 0),
-          p_amount_raw: esc.amount_raw ?? null,
-          p_tx_hash: null,
-          p_failure_reason: msg,
+        await insertCryptoIntent(admin, {
+          orderId: order_id,
+          intentType: "REFUND",
+          status: "FAILED",
+          chain: esc.chain,
+          fromWallet: esc.seller_wallet ?? null,
+          toWallet: esc.buyer_wallet ?? null,
+          tokenAddress: esc.token_address,
+          escrowAddress: esc.escrow_address,
+          amountUnits: Number(esc.amount_units ?? 0),
+          amountRaw: esc.amount_raw ?? null,
+          failureReason: msg,
+          orderKey: esc.order_key,
         });
       } catch {
         // Best-effort failure bookkeeping only.

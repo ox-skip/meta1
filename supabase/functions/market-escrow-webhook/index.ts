@@ -8,6 +8,7 @@ import {
   topicsForEscrowEvent,
   type RpcLog as AlchemyLog,
 } from "../_shared/market/escrowEvents.ts";
+import { applyChainDeposit } from "../_shared/market/chainDeposit.ts";
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -201,19 +202,21 @@ serve(async (req) => {
 
       if (isDeposit) {
         try {
-          await admin.rpc("market_apply_chain_deposit", {
-            p_order_id: esc.order_id,
-            p_buyer_wallet: buyer,
-            p_seller_wallet: seller,
-            p_amount_raw: amountRaw ? amountRaw.toString() : null,
-            p_amount_units: amountUnits,
-            p_tx_hash: txHash,
-            p_log_index: logIndex,
-            p_block_number: blockNumber,
-            p_block_time: blockTime,
-            p_raw: log,
-            p_token_address: tokenAddr || esc.token_address || null,
+          const { error: applyErr } = await applyChainDeposit(admin, {
+            orderId: esc.order_id,
+            chain,
+            buyerWallet: buyer,
+            sellerWallet: seller,
+            amountRaw: amountRaw ? amountRaw.toString() : null,
+            amountUnits,
+            txHash,
+            logIndex,
+            blockNumber,
+            blockTime,
+            raw: log,
+            tokenAddress: tokenAddr || esc.token_address || null,
           });
+          if (applyErr) throw applyErr;
         } catch (e: any) {
           console.error("market-escrow-webhook deposit apply failed", {
             chain,

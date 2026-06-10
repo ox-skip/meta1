@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
@@ -14,6 +15,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const order_id = String(body?.order_id ?? "");
   const tx_hash = String(body?.tx_hash ?? "");
+  const chain = String(body?.chain ?? "").trim();
 
   if (!order_id) return bad("order_id required");
 
@@ -33,12 +35,13 @@ Deno.serve(async (req) => {
 
   const { data: esc, error: escErr } = await admin
     .from("market_crypto_escrows")
-    .select("order_id,buyer_wallet,seller_wallet,amount_units,amount_raw")
+    .select("order_id,chain,order_key,buyer_wallet,seller_wallet,token_address,escrow_address,amount_units,amount_raw")
     .eq("order_id", order_id)
     .maybeSingle();
 
   if (escErr) return bad(escErr.message);
   if (!esc) return bad("Crypto escrow mapping missing");
+  if (chain && esc.chain && chain !== esc.chain) return bad("Chain mismatch");
 
   const { error: updEscErr } = await admin
     .from("market_crypto_escrows")
@@ -50,17 +53,21 @@ Deno.serve(async (req) => {
 
   if (updEscErr) return bad(updEscErr.message);
 
-  await admin.rpc("market_set_crypto_intent", {
-    p_order_id: order_id,
-    p_intent_type: "RELEASE",
-    p_status: "SUBMITTED",
-    p_from_wallet: esc.buyer_wallet,
-    p_to_wallet: esc.seller_wallet,
-    p_amount_units: Number(esc.amount_units ?? 0),
-    p_amount_raw: esc.amount_raw ?? null,
-    p_tx_hash: tx_hash || null,
-    p_failure_reason: null,
+  const { error: intentErr } = await insertCryptoIntent(admin, {
+    orderId: order_id,
+    intentType: "RELEASE",
+    status: "SUBMITTED",
+    chain: esc.chain,
+    fromWallet: esc.buyer_wallet,
+    toWallet: esc.seller_wallet,
+    tokenAddress: esc.token_address,
+    escrowAddress: esc.escrow_address,
+    amountUnits: Number(esc.amount_units ?? 0),
+    amountRaw: esc.amount_raw ?? null,
+    txHash: tx_hash || null,
+    orderKey: esc.order_key,
   });
+  if (intentErr) return bad(intentErr.message);
 
   // Strict finality: status transition happens only after chain confirmation.
 

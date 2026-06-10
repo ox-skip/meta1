@@ -1,5 +1,6 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
+import { insertCryptoIntent } from "../_shared/market/cryptoIntent.ts";
 
 function normalizeOrderKey(value: unknown) {
   const raw = String(value ?? "").trim();
@@ -77,17 +78,20 @@ Deno.serve(async (req) => {
   const isDigital = String(listing?.delivery_type ?? "").toLowerCase() === "digital";
   if (!isDigital && !otp?.verified_at) return bad("OTP not verified");
 
-  await admin.rpc("market_set_crypto_intent", {
-    p_order_id: order_id,
-    p_intent_type: "RELEASE",
-    p_status: "CREATED",
-    p_from_wallet: esc.buyer_wallet,
-    p_to_wallet: esc.seller_wallet,
-    p_amount_units: Number(esc.amount_units ?? 0),
-    p_amount_raw: esc.amount_raw ?? null,
-    p_tx_hash: null,
-    p_failure_reason: null,
+  const { error: intentErr } = await insertCryptoIntent(admin, {
+    orderId: order_id,
+    intentType: "RELEASE",
+    status: "CREATED",
+    chain: esc.chain,
+    fromWallet: esc.buyer_wallet,
+    toWallet: esc.seller_wallet,
+    tokenAddress: esc.token_address,
+    escrowAddress: esc.escrow_address,
+    amountUnits: Number(esc.amount_units ?? 0),
+    amountRaw: esc.amount_raw ?? null,
+    orderKey,
   });
+  if (intentErr) return bad(intentErr.message);
 
   await admin.from("market_audit_logs").insert({
     actor_id: user.id,

@@ -6,10 +6,6 @@ import { requireLocalAuth } from "@/utils/secureAuth";
 import { getSmartAccount } from "@/utils/aaWallet";
 import { getPreferredMarketChain, MarketChainConfig } from "@/services/market/chainConfig";
 
-const RPC_DEPOSIT_INTENT_CANDIDATES = ["market_usdc_deposit_intent_rpc", "market_crypto_deposit_intent_rpc"];
-const RPC_RELEASE_INTENT_CANDIDATES = ["market_usdc_release_intent_rpc", "market_crypto_release_intent_rpc"];
-const RPC_DEPOSIT_SUBMIT_CANDIDATES = ["market_usdc_deposit_submit_rpc", "market_crypto_deposit_submit_rpc"];
-const RPC_RELEASE_SUBMIT_CANDIDATES = ["market_usdc_release_submit_rpc", "market_crypto_release_submit_rpc"];
 const RPC_CHAIN_TX_FINALIZE_CANDIDATES = ["market_chain_tx_finalize_rpc"];
 export const PI_TESTNET_CHAIN = "pi_testnet";
 
@@ -240,6 +236,13 @@ async function tryFinalizeViaFunction(
       },
     });
     if (error) return { ok: false, error: String(error.message || error), data: null as any };
+    if ((data as any)?.ok === false) {
+      return {
+        ok: false,
+        error: String((data as any)?.message || (data as any)?.reason || `Finalize ${eventType} failed`),
+        data,
+      };
+    }
     return { ok: true, error: null as string | null, data };
   } catch (e: any) {
     return { ok: false, error: String(e?.message || e), data: null as any };
@@ -258,13 +261,12 @@ async function settleOrderFromTx(
   if (!isHexHash(txHash)) return false;
 
   for (let i = 0; i < maxAttempts; i++) {
-    const rpcRes = await tryFinalizeOnce(orderId, chainName, txHash, eventType);
-    if (!rpcRes.ok) {
-      console.log("[Checkout] chain finalize RPC failed", rpcRes.error);
-      // Fallback to direct edge function call if RPC wrapper is misconfigured.
-      const fnRes = await tryFinalizeViaFunction(orderId, chainName, txHash, eventType);
-      if (!fnRes.ok) {
-        console.log("[Checkout] chain finalize function fallback failed", fnRes.error);
+    const fnRes = await tryFinalizeViaFunction(orderId, chainName, txHash, eventType);
+    if (!fnRes.ok) {
+      console.log("[Checkout] chain finalize function failed", fnRes.error);
+      const rpcRes = await tryFinalizeOnce(orderId, chainName, txHash, eventType);
+      if (!rpcRes.ok) {
+        console.log("[Checkout] chain finalize RPC fallback failed", rpcRes.error);
       }
     }
 
@@ -297,16 +299,19 @@ async function runReindexFallback(orderId: string, txHash?: string | null) {
   }
 }
 
-async function readLatestDepositIntent(orderId: string) {
-  return readLatestIntent(orderId, "DEPOSIT");
+async function readLatestDepositIntent(orderId: string, chainName?: string | null) {
+  return readLatestIntent(orderId, "DEPOSIT", chainName);
 }
 
-async function readLatestIntent(orderId: string, intentType: ChainFinalizeEvent) {
-  const { data, error } = await supabase
+async function readLatestIntent(orderId: string, intentType: ChainFinalizeEvent, chainName?: string | null) {
+  let query = supabase
     .from("market_crypto_intents")
     .select("tx_hash,client_reference,chain,status,created_at")
     .eq("order_id", orderId)
-    .eq("intent_type", intentType)
+    .eq("intent_type", intentType);
+  if (chainName) query = query.eq("chain", chainName);
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -358,7 +363,7 @@ async function ensureDepositSettled(
     }
 
     if (!resolvedTxHash) {
-      const latest = await readLatestDepositIntent(orderId);
+      const latest = await readLatestDepositIntent(orderId, chain.chain);
       if (latest?.txHash) {
         resolvedTxHash = latest.txHash;
       } else if (latest?.userOpHash) {
@@ -414,7 +419,7 @@ async function ensureReleaseSettled(
       return { settled: true, txHash: resolvedTxHash || "" };
     }
 
-    const latest = await readLatestIntent(orderId, "RELEASE");
+    const latest = await readLatestIntent(orderId, "RELEASE", chain.chain);
     if (latest?.txHash && !resolvedTxHash) {
       resolvedTxHash = latest.txHash;
     }
@@ -807,22 +812,12 @@ export async function payStableForOrder(
     fee_bps: number;
     chain: string;
   } = await (async () => {
-    try {
-      const out = await rpcWithFallback(RPC_DEPOSIT_INTENT_CANDIDATES, {
-        p_order_id: orderId,
-        p_chain: chain.chain,
-        p_token: symbol,
-      });
-      return out.data as any;
-    } catch (error: any) {
-      console.log("[Checkout] deposit intent RPC failed, trying edge function", String(error?.message || error));
-      const out = await callFn("market-usdc-deposit-intent", {
-        order_id: orderId,
-        chain: chain.chain,
-        token: symbol,
-      });
-      return out as any;
-    }
+    const out = await callFn("market-usdc-deposit-intent", {
+      order_id: orderId,
+      chain: chain.chain,
+      token: symbol,
+    });
+    return out as any;
   })();
 
   const tokenAddress =
@@ -923,14 +918,14 @@ export async function payStableForOrder(
   });
 
   try {
-    await rpcWithFallback(RPC_DEPOSIT_SUBMIT_CANDIDATES, {
-      p_order_id: orderId,
-      p_chain: chain.chain,
-      p_token: symbol,
-      p_tx_hash: resolvedTxHash || null,
+    await callFn("market-usdc-deposit-submit", {
+      order_id: orderId,
+      chain: chain.chain,
+      token: symbol,
+      tx_hash: resolvedTxHash || null,
     });
   } catch (e: any) {
-    console.log("[Checkout] deposit submit RPC failed", String(e?.message || e));
+    console.log("[Checkout] deposit submit function failed", String(e?.message || e));
   }
   // Ensure intent is marked submitted even if we only have a userOp hash.
   const intentUpdate: any = { status: "SUBMITTED" };
@@ -940,7 +935,8 @@ export async function payStableForOrder(
     .from("market_crypto_intents")
     .update(intentUpdate)
     .eq("order_id", orderId)
-    .eq("intent_type", "DEPOSIT");
+    .eq("intent_type", "DEPOSIT")
+    .eq("chain", chain.chain);
   if (intentUpdErr) {
     // RLS can block direct updates; the RPC should still have stored it.
     console.log("[Checkout] deposit intent update blocked", intentUpdErr.message);
@@ -991,11 +987,11 @@ export async function releaseUsdcForOrder(orderId: string) {
     escrow_address: string;
     chain: string;
   } = await (async () => {
-    const out = await rpcWithFallback(RPC_RELEASE_INTENT_CANDIDATES, {
-      p_order_id: orderId,
-      p_chain: chain.chain,
+    const out = await callFn("market-usdc-release-intent", {
+      order_id: orderId,
+      chain: chain.chain,
     });
-    return out.data as any;
+    return out as any;
   })();
 
   const data = encodeFunctionData({
@@ -1028,13 +1024,13 @@ export async function releaseUsdcForOrder(orderId: string) {
   });
 
   try {
-    await rpcWithFallback(RPC_RELEASE_SUBMIT_CANDIDATES, {
-      p_order_id: orderId,
-      p_chain: chain.chain,
-      p_tx_hash: resolvedTxHash || null,
+    await callFn("market-usdc-release-submit", {
+      order_id: orderId,
+      chain: chain.chain,
+      tx_hash: resolvedTxHash || null,
     });
   } catch (e: any) {
-    console.log("[Checkout] release submit RPC failed", String(e?.message || e));
+    console.log("[Checkout] release submit function failed", String(e?.message || e));
   }
   const intentUpdate: any = { status: "SUBMITTED" };
   if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
@@ -1043,7 +1039,8 @@ export async function releaseUsdcForOrder(orderId: string) {
     .from("market_crypto_intents")
     .update(intentUpdate)
     .eq("order_id", orderId)
-    .eq("intent_type", "RELEASE");
+    .eq("intent_type", "RELEASE")
+    .eq("chain", chain.chain);
   if (intentUpdErr) {
     console.log("[Checkout] release intent update blocked", intentUpdErr.message);
   }

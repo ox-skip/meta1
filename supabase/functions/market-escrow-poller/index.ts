@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { keccak256, stringToHex } from "https://esm.sh/viem@2.45.1";
 import { envAny } from "../_shared/market/env.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
+import { applyChainDeposit } from "../_shared/market/chainDeposit.ts";
 
 type ChainConfig = {
   chain: string;
@@ -140,19 +141,21 @@ async function processLogs(
     if (isDeposit) {
       const depositTokenAddr = (token || escrowRow.token_address || cfg.usdc_address || "").toLowerCase();
       try {
-        await admin.rpc("market_apply_chain_deposit", {
-          p_order_id: escrowRow.order_id,
-          p_buyer_wallet: buyer,
-          p_seller_wallet: seller,
-          p_amount_raw: amountRaw ? amountRaw.toString() : null,
-          p_amount_units: amountUnits,
-          p_tx_hash: txHash,
-          p_log_index: logIndex,
-          p_block_number: blockNumber,
-          p_block_time: null,
-          p_raw: log,
-          p_token_address: depositTokenAddr,
+        const { error: applyErr } = await applyChainDeposit(admin, {
+          orderId: escrowRow.order_id,
+          chain: cfg.chain,
+          buyerWallet: buyer,
+          sellerWallet: seller,
+          amountRaw: amountRaw ? amountRaw.toString() : null,
+          amountUnits,
+          txHash,
+          logIndex,
+          blockNumber,
+          blockTime: null,
+          raw: log,
+          tokenAddress: depositTokenAddr,
         });
+        if (applyErr) throw applyErr;
       } catch (e: any) {
         console.error("market-escrow-poller deposit apply failed", {
           chain: cfg.chain,

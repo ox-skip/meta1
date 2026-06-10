@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { keccak256, stringToHex } from "https://esm.sh/viem@2.45.1";
 import { envAny } from "../_shared/market/env.ts";
 import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
+import { applyChainDeposit } from "../_shared/market/chainDeposit.ts";
 
 type RpcLog = {
   address?: string;
@@ -289,19 +290,21 @@ serve(async (req) => {
     const tokenAddr = (token || esc.token_address || cfg.usdc_address || "").toLowerCase();
     const amountUnits = Number(amountRaw) / 1_000_000;
 
-    await admin.rpc("market_apply_chain_deposit", {
-      p_order_id: esc.order_id,
-      p_buyer_wallet: buyer,
-      p_seller_wallet: seller,
-      p_amount_raw: amountRaw ? amountRaw.toString() : null,
-      p_amount_units: amountUnits,
-      p_tx_hash: String(hit.transactionHash ?? resolvedTxHash),
-      p_log_index: toNum(hit.logIndex as any),
-      p_block_number: toNum(hit.blockNumber as any),
-      p_block_time: null,
-      p_raw: hit,
-      p_token_address: tokenAddr,
+    const { error: applyErr } = await applyChainDeposit(admin, {
+      orderId: esc.order_id,
+      chain: esc.chain,
+      buyerWallet: buyer,
+      sellerWallet: seller,
+      amountRaw: amountRaw ? amountRaw.toString() : null,
+      amountUnits,
+      txHash: String(hit.transactionHash ?? resolvedTxHash),
+      logIndex: toNum(hit.logIndex as any),
+      blockNumber: toNum(hit.blockNumber as any),
+      blockTime: null,
+      raw: hit,
+      tokenAddress: tokenAddr,
     });
+    if (applyErr) throw applyErr;
 
     return json(200, {
       ok: true,
