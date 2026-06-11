@@ -242,8 +242,8 @@ export default function StockHomeScreen() {
           <View style={{ marginTop: 14 }}>
             <StockEmptyState
               icon="storefront-outline"
-              title="No stock identities"
-              message="Verified stores can publish a tradable stock identity from their seller account."
+              title="No store stocks yet"
+              message="Verified stores can publish a tradable stock market when they are ready to launch."
               actionLabel="Create Stock"
               onAction={() => router.push("/market/stock/create" as any)}
             />

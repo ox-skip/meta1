@@ -1774,7 +1774,7 @@ export default function SellTab() {
           />
           <CardBox style={{ marginTop: 60, alignItems: "center", paddingVertical: 28 }}>
             <ActivityIndicator color={TEAL} />
-            <Text style={{ marginTop: 12, color: MUTED, fontWeight: "900" }}>Checking seller profile...</Text>
+            <Text style={{ marginTop: 12, color: MUTED, fontWeight: "900" }}>Checking storefront...</Text>
           </CardBox>
         </View>
       </LinearGradient>

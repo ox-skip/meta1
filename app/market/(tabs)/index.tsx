@@ -1350,7 +1350,7 @@ export default function MarketHome() {
         : `Showing ${feedLabel} from every country in the marketplace.`
       : directoryMode === "featured"
       ? "Browse promoted storefronts first."
-      : "Browse stores with verified seller profiles.";
+      : "Browse stores with verified storefronts.";
   const heroAccent =
     section === "service" ? TEAL : section === "product" ? BLUE : section === "social" ? AMBER : PURPLE;
   const heroFeaturedItems = useMemo<FeaturedPreviewItem[]>(() => {

@@ -640,7 +640,7 @@ export default function MarketAccountTab() {
                 <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                   <HeaderButton
                     icon="create-outline"
-                    label="Create profile"
+                    label="Set up storefront"
                     accent={WARNING}
                     onPress={() => router.push("/market/profile/create" as any)}
                   />

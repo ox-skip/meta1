@@ -121,7 +121,7 @@ export default function MessagesTab() {
         ) : rows.length === 0 ? (
           <View style={{ marginTop: 14, borderRadius: 22, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
             <Text style={{ color: "#fff", fontWeight: "900" }}>No messages yet</Text>
-            <Text style={{ marginTop: 6, color: MUTED }}>Start a conversation from a listing or seller profile.</Text>
+            <Text style={{ marginTop: 6, color: MUTED }}>Start a conversation from a listing or storefront.</Text>
             <Pressable
               onPress={() => router.push("/market/(tabs)" as any)}
               style={{
