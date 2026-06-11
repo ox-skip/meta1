@@ -31,7 +31,7 @@ import type {
 } from "@/services/onboarding/definitions";
 import { recordOnboardingEvent } from "@/services/onboarding/events";
 
-const STORAGE_PREFIX = "meta:onboarding/session/";
+const STORAGE_PREFIX = "meta:onboarding/v2/";
 const BRAND = "#2DD4BF";
 const GOLD = "#F4B75D";
 const INK = "#FFF7ED";
@@ -182,20 +182,60 @@ function measuredBoxIsVisible(box: LayoutBox, width: number, height: number) {
   return box.width > 2 && box.height > 2 && right > 8 && bottom > 8 && box.left < width - 8 && box.top < height - 8;
 }
 
-function getCardStyle(position: TutorialTargetPosition, width: number, height: number): ViewStyle {
-  const baseInset = clamp(width * 0.045, 14, 22);
-  const cardWidth = clamp(width - baseInset * 2, 310, 470);
-  const left = (width - cardWidth) / 2;
-  const maxHeight = position === "bottom" ? height * 0.46 : height * 0.5;
-  const placement = position === "bottom"
-    ? { top: clamp(height * 0.04, 26, 44) }
-    : { bottom: clamp(height * 0.035, 18, 32) };
+function getCardStyle(
+  position: TutorialTargetPosition,
+  width: number,
+  height: number,
+  targetBox: LayoutBox,
+): ViewStyle {
+  const inset = clamp(width * 0.035, 10, 22);
+  const gap = clamp(height * 0.024, 14, 24);
+  const cardWidth = width >= 900
+    ? clamp(width * 0.28, 318, 386)
+    : clamp(width - inset * 2, 278, 356);
+  const cardMaxHeight = clamp(height * 0.34, 226, width >= 900 ? 330 : 286);
+  const targetCenterY = targetBox.top + targetBox.height / 2;
+  const targetCenterX = targetBox.left + targetBox.width / 2;
+  const topSpace = targetBox.top - inset;
+  const bottomSpace = height - (targetBox.top + targetBox.height) - inset;
+  const leftSpace = targetBox.left - inset;
+  const rightSpace = width - (targetBox.left + targetBox.width) - inset;
+
+  if (width >= 820 && rightSpace >= cardWidth + gap) {
+    return {
+      top: clamp(targetCenterY - cardMaxHeight / 2, inset, height - cardMaxHeight - inset),
+      left: targetBox.left + targetBox.width + gap,
+      width: cardWidth,
+      maxHeight: cardMaxHeight,
+    };
+  }
+
+  if (width >= 820 && leftSpace >= cardWidth + gap) {
+    return {
+      top: clamp(targetCenterY - cardMaxHeight / 2, inset, height - cardMaxHeight - inset),
+      left: targetBox.left - cardWidth - gap,
+      width: cardWidth,
+      maxHeight: cardMaxHeight,
+    };
+  }
+
+  const preferredTop =
+    position === "bottom" || bottomSpace < topSpace
+      ? targetBox.top - cardMaxHeight - gap
+      : targetBox.top + targetBox.height + gap;
+  const fallbackTop =
+    bottomSpace >= topSpace
+      ? targetBox.top + targetBox.height + gap
+      : targetBox.top - cardMaxHeight - gap;
+  const rawTop = preferredTop >= inset && preferredTop + cardMaxHeight <= height - inset
+    ? preferredTop
+    : fallbackTop;
 
   return {
-    ...placement,
-    left,
+    top: clamp(rawTop, inset, height - cardMaxHeight - inset),
+    left: clamp(targetCenterX - cardWidth / 2, inset, width - cardWidth - inset),
     width: cardWidth,
-    maxHeight,
+    maxHeight: cardMaxHeight,
   };
 }
 
@@ -243,29 +283,28 @@ export function OnboardingProvider({
   const [activeFlowKey, setActiveFlowKey] = useState<string | null>(null);
   const [activeTargetId, setActiveTargetId] = useState<string | null>(null);
   const [seenFlows, setSeenFlows] = useState<Record<string, true>>({});
+  const [sessionDeferredFlows, setSessionDeferredFlows] = useState<Record<string, true>>({});
   const [targetLayouts, setTargetLayouts] = useState<Record<string, LayoutBox>>({});
 
   const activeFlowRef = useRef<string | null>(null);
   const seenFlowsRef = useRef<Record<string, true>>({});
-  const prevUserIdRef = useRef<string | null>(null);
+  const sessionDeferredFlowsRef = useRef<Record<string, true>>({});
 
   useEffect(() => {
     seenFlowsRef.current = seenFlows;
   }, [seenFlows]);
 
   useEffect(() => {
-    let cancelled = false;
-    const prevUserId = prevUserIdRef.current;
-    prevUserIdRef.current = userId;
+    sessionDeferredFlowsRef.current = sessionDeferredFlows;
+  }, [sessionDeferredFlows]);
 
+  useEffect(() => {
+    let cancelled = false;
     activeFlowRef.current = null;
     setActiveFlowKey(null);
     setActiveTargetId(null);
     setTargetLayouts({});
-
-    if (prevUserId && prevUserId !== userId) {
-      void AsyncStorage.removeItem(getStorageKey(prevUserId)).catch(() => undefined);
-    }
+    setSessionDeferredFlows({});
 
     if (!userId) {
       setSeenFlows({});
@@ -306,6 +345,7 @@ export function OnboardingProvider({
 
   const claimFlow = useCallback((flowKey: string) => {
     if (seenFlowsRef.current[flowKey]) return false;
+    if (sessionDeferredFlowsRef.current[flowKey]) return false;
     if (activeFlowRef.current && activeFlowRef.current !== flowKey) return false;
     if (activeFlowRef.current !== flowKey) {
       activeFlowRef.current = flowKey;
@@ -357,10 +397,17 @@ export function OnboardingProvider({
       status: "completed" | "skipped";
       completedSteps: number;
     }) => {
-      setSeenFlows((current) => {
-        if (current[flow.key]) return current;
-        return { ...current, [flow.key]: true };
-      });
+      if (status === "completed") {
+        setSeenFlows((current) => {
+          if (current[flow.key]) return current;
+          return { ...current, [flow.key]: true };
+        });
+      } else {
+        setSessionDeferredFlows((current) => {
+          if (current[flow.key]) return current;
+          return { ...current, [flow.key]: true };
+        });
+      }
       releaseFlow(flow.key);
 
       if (!userId) return;
@@ -665,7 +712,7 @@ export function InAppTutorial({
     ? normalizeMeasuredBox(measuredTarget, width, height)
     : getTargetBox(targetPosition, width, height);
   const targetStyle = targetBox as ViewStyle;
-  const cardStyle = getCardStyle(targetPosition, width, height);
+  const cardStyle = getCardStyle(targetPosition, width, height, targetBox);
   const pointerStyle = getPointerStyle(targetPosition, width, height, targetBox);
   const shadeTop = { top: 0, left: 0, right: 0, height: targetBox.top } as ViewStyle;
   const shadeBottom = { top: targetBox.top + targetBox.height, left: 0, right: 0, bottom: 0 } as ViewStyle;
@@ -701,7 +748,7 @@ export function InAppTutorial({
               <View style={styles.targetIcon}>
                 <Ionicons name={targetIcon(targetPosition)} size={18} color={BRAND} />
               </View>
-              <Text style={styles.targetCaption}>{measuredTarget ? "Tap or inspect this" : "Look here"}</Text>
+              <Text style={styles.targetCaption}>{measuredTarget ? "Selected area" : "Key area"}</Text>
             </View>
             <Text style={styles.targetLabel}>{targetLabel}</Text>
           </LinearGradient>
@@ -709,7 +756,7 @@ export function InAppTutorial({
 
         <View pointerEvents="none" style={[styles.pointer, pointerStyle]}>
           <Ionicons name={pointerIcon(targetPosition)} size={38} color={GOLD} />
-          <Text style={styles.pointerText}>follow the highlight</Text>
+          <Text style={styles.pointerText}>Highlighted area</Text>
         </View>
 
         <Animated.View style={[styles.cardShell, cardStyle, { transform: drag.getTranslateTransform() }]}>
@@ -722,26 +769,17 @@ export function InAppTutorial({
             <View style={styles.topRow}>
               <View style={styles.kickerPill}>
                 <Ionicons name="navigate-circle" size={14} color={BRAND} />
-                <Text style={styles.kickerText}>Guided onboarding</Text>
-              </View>
-              <View {...panResponder.panHandlers} style={styles.dragHandle}>
-                <Ionicons name="move-outline" size={14} color={MUTED} />
-                <Text style={styles.dragHandleText}>Move</Text>
-              </View>
-              <Pressable onPress={handleSkip} hitSlop={8} style={styles.skipButton}>
-                <Text style={styles.skipText}>Skip</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.flowRow}>
-              <View style={styles.flowTitleWrap}>
-                <Text style={styles.flowTitle}>{flow.title}</Text>
-                <Text style={styles.progressText}>
-                  Step {stepIndex + 1} of {totalSteps}
+                <Text style={styles.kickerText}>
+                  Step {stepIndex + 1}/{totalSteps}
                 </Text>
               </View>
-              <View style={styles.stepBadge}>
-                <Text style={styles.stepBadgeText}>{stepIndex + 1}</Text>
+              <View style={styles.cardControls}>
+                <View {...panResponder.panHandlers} style={styles.iconButton}>
+                  <Ionicons name="move-outline" size={15} color={MUTED} />
+                </View>
+                <Pressable onPress={handleSkip} hitSlop={8} style={styles.skipButton}>
+                  <Text style={styles.skipText}>Later</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -773,7 +811,7 @@ export function InAppTutorial({
                   <Ionicons name="locate-outline" size={13} color={BRAND} />
                   <Text style={styles.targetPillText}>{targetLabel}</Text>
                 </View>
-                <Text style={styles.stepCounter}>Teaching point</Text>
+                <Text style={styles.stepCounter}>{flow.title}</Text>
               </View>
 
               <Text style={styles.stepTitle}>{currentStep.title}</Text>
@@ -786,17 +824,6 @@ export function InAppTutorial({
               ) : null}
 
               <View style={styles.aiPanel}>
-                <View style={styles.aiHeader}>
-                  <View style={styles.aiTitleRow}>
-                    <Ionicons name="sparkles" size={15} color={GOLD} />
-                    <Text style={styles.aiTitle}>BestCity Ai</Text>
-                  </View>
-                  <Text style={styles.aiOptional}>Optional</Text>
-                </View>
-                <Text style={styles.aiIntro}>
-                  Ask for a quick summary or a fuller coach-style explanation without leaving the tutorial.
-                </Text>
-
                 <View style={styles.aiActions}>
                   <Pressable
                     disabled={aiLoading}
@@ -808,7 +835,7 @@ export function InAppTutorial({
                   >
                     <Ionicons name="flash-outline" size={14} color={aiMode === "summary" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "summary" ? styles.aiButtonTextActive : null]}>
-                      Summarise
+                      Summary
                     </Text>
                   </Pressable>
                   <Pressable
@@ -821,7 +848,7 @@ export function InAppTutorial({
                   >
                     <Ionicons name="school-outline" size={14} color={aiMode === "full" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "full" ? styles.aiButtonTextActive : null]}>
-                      Teach me
+                      Guide me
                     </Text>
                   </Pressable>
                 </View>
@@ -829,13 +856,13 @@ export function InAppTutorial({
                 {aiLoading ? (
                   <View style={styles.aiLoadingRow}>
                     <ActivityIndicator color={BRAND} size="small" />
-                    <Text style={styles.aiLoadingText}>BestCity Ai is preparing this step...</Text>
+                    <Text style={styles.aiLoadingText}>Preparing this guide...</Text>
                   </View>
                 ) : aiText ? (
                   <View style={styles.aiAnswer}>
                     <Text style={styles.aiAnswerText}>{aiText}</Text>
                     {aiSource === "local" ? (
-                      <Text style={styles.aiFallbackText}>Offline guide shown while BestCity Ai is unavailable.</Text>
+                      <Text style={styles.aiFallbackText}>Instant guide shown. Full assistant response is unavailable right now.</Text>
                     ) : null}
                   </View>
                 ) : null}
@@ -857,7 +884,7 @@ export function InAppTutorial({
 
               <Pressable onPress={handleNext} style={styles.primaryButton}>
                 <Text style={styles.primaryButtonText}>
-                  {stepIndex === totalSteps - 1 ? "Done" : "Next"}
+                  {stepIndex === totalSteps - 1 ? "Finish" : "Next"}
                 </Text>
                 <Ionicons
                   name={stepIndex === totalSteps - 1 ? "checkmark-circle" : "chevron-forward"}
@@ -884,7 +911,8 @@ const styles = StyleSheet.create({
   },
   targetFrame: {
     position: "absolute",
-    borderRadius: 24,
+    zIndex: 30,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderColor: "rgba(45,212,191,0.78)",
@@ -898,7 +926,7 @@ const styles = StyleSheet.create({
   },
   targetGlow: {
     flex: 1,
-    padding: 14,
+    padding: 12,
     justifyContent: "center",
     backgroundColor: "rgba(10,14,12,0.12)",
   },
@@ -908,9 +936,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   targetIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(45,212,191,0.16)",
@@ -924,19 +952,19 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   targetLabel: {
-    marginTop: 8,
+    marginTop: 7,
     color: INK,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
   },
   tryThisBox: {
-    marginTop: 12,
+    marginTop: 9,
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     backgroundColor: "rgba(244,183,93,0.11)",
     borderWidth: 1,
     borderColor: "rgba(244,183,93,0.28)",
@@ -945,38 +973,40 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#FFE7B3",
     fontWeight: "900",
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 15,
   },
   pointer: {
     position: "absolute",
-    width: 96,
+    zIndex: 45,
+    width: 82,
     alignItems: "center",
-    gap: 2,
+    gap: 0,
   },
   pointerText: {
     color: "rgba(255,247,237,0.72)",
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "900",
     textTransform: "uppercase",
     textAlign: "center",
   },
   cardShell: {
     position: "absolute",
+    zIndex: 20,
     width: "auto",
-    maxWidth: 470,
+    maxWidth: 386,
     alignSelf: "center",
   },
   card: {
     maxHeight: "100%",
-    borderRadius: 22,
-    padding: 14,
+    borderRadius: 18,
+    padding: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.13)",
     shadowColor: "#000",
-    shadowOpacity: 0.38,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.34,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 12,
   },
   topRow: {
@@ -988,9 +1018,9 @@ const styles = StyleSheet.create({
   kickerPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "rgba(45,212,191,0.13)",
     borderWidth: 1,
@@ -1000,6 +1030,21 @@ const styles = StyleSheet.create({
     color: "#CCFBF1",
     fontWeight: "900",
     fontSize: 11,
+  },
+  cardControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  iconButton: {
+    width: 31,
+    height: 31,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   dragHandle: {
     flexDirection: "row",
@@ -1018,7 +1063,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   skipButton: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)",
@@ -1068,13 +1113,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   progressRow: {
-    marginTop: 13,
+    marginTop: 10,
     flexDirection: "row",
-    gap: 7,
+    gap: 6,
   },
   progressDot: {
     flex: 1,
-    height: 5,
+    height: 4,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.12)",
   },
@@ -1088,7 +1133,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   cardScrollContent: {
-    paddingTop: 14,
+    paddingTop: 10,
     paddingBottom: 2,
   },
   stepHeader: {
@@ -1103,8 +1148,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     alignSelf: "flex-start",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 999,
     backgroundColor: "rgba(45,212,191,0.1)",
     borderWidth: 1,
@@ -1112,33 +1157,33 @@ const styles = StyleSheet.create({
   },
   targetPillText: {
     color: "#CFFAFE",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   stepCounter: {
     color: "rgba(255,247,237,0.5)",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
   },
   stepTitle: {
-    marginTop: 11,
+    marginTop: 9,
     color: "#FFFFFF",
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 20,
     fontWeight: "900",
   },
   stepBody: {
-    marginTop: 7,
+    marginTop: 6,
     color: "rgba(255,255,255,0.76)",
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
   },
   aiPanel: {
-    marginTop: 14,
-    borderRadius: 17,
-    padding: 12,
-    backgroundColor: "rgba(255,255,255,0.055)",
+    marginTop: 10,
+    borderRadius: 13,
+    padding: 8,
+    backgroundColor: "rgba(255,255,255,0.045)",
     borderWidth: 1,
     borderColor: "rgba(244,183,93,0.18)",
   },
@@ -1171,14 +1216,14 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   aiActions: {
-    marginTop: 10,
+    marginTop: 0,
     flexDirection: "row",
-    gap: 8,
+    gap: 7,
   },
   aiButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 12,
+    minHeight: 34,
+    borderRadius: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1193,7 +1238,7 @@ const styles = StyleSheet.create({
   },
   aiButtonText: {
     color: "#CCFBF1",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   aiButtonTextActive: {
@@ -1212,17 +1257,17 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   aiAnswer: {
-    marginTop: 10,
-    borderRadius: 13,
-    padding: 10,
+    marginTop: 8,
+    borderRadius: 11,
+    padding: 9,
     backgroundColor: "rgba(5,10,12,0.45)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
   aiAnswerText: {
     color: "rgba(255,255,255,0.82)",
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: "700",
   },
   aiFallbackText: {
@@ -1232,14 +1277,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   footerRow: {
-    marginTop: 14,
+    marginTop: 10,
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   secondaryButton: {
     flex: 1,
-    minHeight: 45,
-    borderRadius: 14,
+    minHeight: 39,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1253,13 +1298,13 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
   },
   primaryButton: {
     flex: 1.25,
-    minHeight: 45,
-    borderRadius: 14,
+    minHeight: 39,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1270,7 +1315,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: "#061211",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
   },
 });

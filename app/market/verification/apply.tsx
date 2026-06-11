@@ -150,12 +150,12 @@ function StatusPill({ request }: { request: MarketVerificationRequest }) {
 }
 
 function ctaLabel(reqRow: MarketVerificationRequest | null) {
-  if (!reqRow) return "Start verification";
+  if (!reqRow) return "Start identity check";
   if (reqRow.status === "RESUBMISSION_REQUIRED" || reqRow.status === "REJECTED" || reqRow.status === "EXPIRED") {
-    return "Retry verification";
+    return "Retry identity check";
   }
   if (reqRow.status === "VERIFIED") return "Verified";
-  return "Continue verification";
+  return "Continue identity check";
 }
 
 function isVerificationLinkUsable(reqRow: MarketVerificationRequest | null) {
@@ -263,15 +263,15 @@ export default function VerificationApply() {
     setSubmitError(null);
 
     if (!profile) {
-      Alert.alert("Create seller profile", "You need a market seller profile before starting verification.", [
+      Alert.alert("Set up your storefront", "Create a public storefront before starting the secure identity check.", [
         { text: "Cancel", style: "cancel" },
-        { text: "Create profile", onPress: () => router.push("/market/profile/create" as any) },
+        { text: "Set up storefront", onPress: () => router.push("/market/profile/create" as any) },
       ]);
       return;
     }
 
     if (profile.is_verified) {
-      Alert.alert("Already verified", "Your seller account is already verified.");
+      Alert.alert("Already verified", "Your storefront already has a verified badge.");
       return;
     }
 
@@ -338,7 +338,7 @@ export default function VerificationApply() {
     >
       <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: isDesktop ? 24 : 14 }}>
         <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
-          <AppHeader title="Seller verification" subtitle="Government ID trust badge" />
+          <AppHeader title="Store verification" subtitle="Secure identity review" />
         </View>
 
         <ScrollView
@@ -390,22 +390,22 @@ export default function VerificationApply() {
                 </Pressable>
 
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: isDesktop ? 36 : 28, lineHeight: isDesktop ? 42 : 34 }}>
-                  Verify your seller identity
+                  Earn your verified badge
                 </Text>
                 <Text style={{ marginTop: 12, color: MUTED, fontSize: 15, lineHeight: 22, maxWidth: 620 }}>
-                  {storeName} can unlock the verified badge after the provider confirms a supported government ID.
+                  Complete a secure identity check for {storeName}. Once approved, your storefront shows a verified badge to help buyers trust who they are dealing with.
                 </Text>
               </View>
 
               <View style={{ marginTop: 22, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 <InfoTile icon="storefront-outline" title="Store" value={storeName} accent={PURPLE} />
                 <InfoTile icon="shield-checkmark-outline" title="State" value={currentState} accent={profile?.is_verified ? TEAL : AMBER} />
-                <InfoTile icon="lock-closed-outline" title="Provider" value={formatProvider(reqRow?.provider || "Didit")} accent={BLUE} />
+                <InfoTile icon="lock-closed-outline" title="Review" value={formatProvider(reqRow?.provider || "Didit")} accent={BLUE} />
               </View>
             </View>
 
             <View style={{ width: isDesktop ? 330 : "100%", gap: 14 }}>
-              <Card title="Session" icon="scan-outline" accent={BLUE}>
+              <Card title="Identity check" icon="scan-outline" accent={BLUE}>
                 {loading ? (
                   <View style={{ paddingVertical: 18, alignItems: "center" }}>
                     <ActivityIndicator />
@@ -414,21 +414,19 @@ export default function VerificationApply() {
                 ) : reqRow ? (
                   <View style={{ gap: 10 }}>
                     <StatusPill request={reqRow} />
-                    <Text style={{ color: MUTED, lineHeight: 20 }}>
-                      Provider status: {reqRow.provider_review_status || "Waiting"}
-                    </Text>
+                    <Text style={{ color: MUTED, lineHeight: 20 }}>Review status: {reqRow.provider_review_status || "Waiting"}</Text>
                     {reqRow.document_type ? (
                       <Text style={{ color: MUTED, lineHeight: 20 }}>Document: {reqRow.document_type}</Text>
                     ) : null}
                   </View>
                 ) : (
-                  <Text style={{ color: MUTED, lineHeight: 20 }}>No verification session yet.</Text>
+                  <Text style={{ color: MUTED, lineHeight: 20 }}>No identity check has been started yet.</Text>
                 )}
               </Card>
 
               <Card title="Privacy" icon="finger-print-outline" accent={TEAL}>
                 <Text style={{ color: MUTED, lineHeight: 20 }}>
-                  BestCity stores the result and provider reference only.
+                  BestCity stores the verification result and reference only. Your document check is handled through a secure review partner.
                 </Text>
               </Card>
             </View>
@@ -436,9 +434,9 @@ export default function VerificationApply() {
 
           {loading ? null : !profile ? (
             <View style={{ marginTop: 14 }}>
-              <Card title="Create seller profile" icon="person-add-outline" accent={AMBER}>
+              <Card title="Set up your storefront" icon="person-add-outline" accent={AMBER}>
                 <Text style={{ color: MUTED, lineHeight: 20 }}>
-                  Create your market seller profile first, then start verification.
+                  Set up your storefront first, then continue to secure verification.
                 </Text>
                 <Pressable
                   onPress={() => router.push("/market/profile/create" as any)}
@@ -452,7 +450,7 @@ export default function VerificationApply() {
                     borderColor: PURPLE,
                   }}
                 >
-                  <Text style={{ color: TEXT, fontWeight: "900" }}>Create seller profile</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900" }}>Set up storefront</Text>
                 </Pressable>
               </Card>
             </View>
@@ -470,8 +468,8 @@ export default function VerificationApply() {
                   <View style={{ gap: 10 }}>
                     {[
                       "Passport, national ID, driver's license, or residence permit.",
-                      "Country-specific methods may appear when supported by the provider.",
-                      "Your badge updates after provider review or webhook sync.",
+                      "Country-specific methods appear when supported for your document.",
+                      "Your badge updates automatically after approval.",
                     ].map((item) => (
                       <View key={item} style={{ flexDirection: "row", gap: 9, alignItems: "flex-start" }}>
                         <Ionicons name="checkmark-circle-outline" size={18} color={TEAL} />
@@ -499,7 +497,7 @@ export default function VerificationApply() {
               <View style={{ width: isDesktop ? 390 : "100%" }}>
                 <Card title="Continue" icon="open-outline" accent={PURPLE}>
                   <Text style={{ color: MUTED, lineHeight: 20 }}>
-                    The secure provider session opens in your browser.
+                    The secure identity check opens in your browser.
                   </Text>
 
                   <Pressable

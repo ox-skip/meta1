@@ -634,7 +634,7 @@ export default function MarketAccountTab() {
                   Build your market account
                 </Text>
                 <Text style={{ marginTop: 8, color: MUTED, fontSize: 14, lineHeight: 22 }}>
-                  Start with a public seller profile, then connect wallet, list inventory, and unlock buyer trust.
+                  Start with a public store profile, then connect wallet, list inventory, and unlock buyer trust.
                 </Text>
 
                 <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
@@ -904,7 +904,7 @@ export default function MarketAccountTab() {
                   subtitle={
                     profile
                       ? `Store payouts are set to the ${profile.payout_tier === "fast" ? "fast" : "standard"} lane.`
-                      : "Payout preferences appear once the seller profile exists."
+                      : "Payout preferences appear once your store profile exists."
                   }
                   done={Boolean(profile)}
                   optional
@@ -917,7 +917,7 @@ export default function MarketAccountTab() {
                       ? profile.active === false
                         ? "The store profile exists but is currently paused."
                         : "The store profile is active and ready for buyer traffic."
-                      : "The store is not visible until the seller profile is created."
+                      : "The store is not visible until the store profile is created."
                   }
                   done={Boolean(profile && profile.active !== false)}
                   optional={!profile}

@@ -22,6 +22,8 @@ type SellerProfileStatus = {
   is_verified: boolean;
 } | null;
 
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
 const REMINDER_OPTIONS: MarketProfileCompletionReminderOption[] = ["3_days", "1_week", "1_month"];
 
 function isPromptEligibleRoute(pathname: string) {
@@ -54,11 +56,15 @@ export default function MarketProfileCompletionPrompt() {
   const content = useMemo(() => {
     if (stage === "create_profile") {
       return {
-        pill: "Market setup",
-        title: "Create your market profile",
+        pill: "Get started",
+        title: "Set up your storefront",
         body:
-          "You do not have a seller profile yet. Create one now so buyers can find you and you can start listing in the market.",
-        primaryLabel: "Create profile",
+          "Create a public storefront so buyers can recognize your brand, browse your offers, and contact you from one trusted place.",
+        benefits: [
+          { icon: "search-outline" as IconName, text: "Appear in market discovery" },
+          { icon: "bag-handle-outline" as IconName, text: "Publish listings under your brand" },
+        ],
+        primaryLabel: "Set up storefront",
         primaryRoute: "/market/profile/create",
         icon: "storefront-outline" as const,
         accent: "#2DD4BF",
@@ -67,11 +73,15 @@ export default function MarketProfileCompletionPrompt() {
 
     if (stage === "verify_profile") {
       return {
-        pill: "Verification",
-        title: "Verify your seller profile",
+        pill: "Trust badge",
+        title: "Earn your verified badge",
         body:
-          "Your market profile is live, but it is not verified yet. Start verification now or we can remind you again later.",
-        primaryLabel: "Verify now",
+          "Complete a secure identity check to strengthen buyer confidence and show that your storefront has been reviewed.",
+        benefits: [
+          { icon: "shield-checkmark-outline" as IconName, text: "Display a verified badge" },
+          { icon: "sparkles-outline" as IconName, text: "Build trust before checkout" },
+        ],
+        primaryLabel: "Continue verification",
         primaryRoute: "/market/verification/apply",
         icon: "shield-checkmark-outline" as const,
         accent: "#2DD4BF",
@@ -195,21 +205,31 @@ export default function MarketProfileCompletionPrompt() {
     <Modal animationType="fade" onRequestClose={() => undefined} transparent visible={visible}>
       <View style={styles.backdrop}>
         <LinearGradient
-          colors={["#171A13", "#10130E", "#060807"]}
+          colors={["#071211", "#10130E", "#171A13"]}
           start={{ x: 0.12, y: 0 }}
           end={{ x: 0.9, y: 1 }}
           style={styles.card}
         >
-          <View style={[styles.iconWrap, { borderColor: `${content.accent}55`, backgroundColor: `${content.accent}22` }]}>
-            <Ionicons color="#FFFFFF" name={content.icon} size={22} />
-          </View>
-
-          <View style={[styles.pill, { borderColor: `${content.accent}55`, backgroundColor: `${content.accent}18` }]}>
-            <Text style={styles.pillText}>{content.pill}</Text>
+          <View style={styles.headerRow}>
+            <View style={[styles.iconWrap, { borderColor: `${content.accent}55`, backgroundColor: `${content.accent}22` }]}>
+              <Ionicons color="#FFFFFF" name={content.icon} size={20} />
+            </View>
+            <View style={[styles.pill, { borderColor: `${content.accent}55`, backgroundColor: `${content.accent}18` }]}>
+              <Text style={styles.pillText}>{content.pill}</Text>
+            </View>
           </View>
 
           <Text style={styles.title}>{content.title}</Text>
           <Text style={styles.body}>{content.body}</Text>
+
+          <View style={styles.benefitList}>
+            {content.benefits.map((benefit) => (
+              <View key={benefit.text} style={styles.benefitItem}>
+                <Ionicons name={benefit.icon} size={14} color={content.accent} />
+                <Text style={styles.benefitText}>{benefit.text}</Text>
+              </View>
+            ))}
+          </View>
 
           <Pressable
             onPress={handlePrimary}
@@ -220,7 +240,7 @@ export default function MarketProfileCompletionPrompt() {
             </Text>
           </Pressable>
 
-          <Text style={styles.remindLabel}>Remind me again in</Text>
+          <Text style={styles.remindLabel}>Remind me later</Text>
 
           <View style={styles.remindRow}>
             {REMINDER_OPTIONS.map((option) => {
@@ -247,30 +267,40 @@ export default function MarketProfileCompletionPrompt() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(2,6,4,0.72)",
+    backgroundColor: "rgba(2,6,4,0.62)",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 18,
+    justifyContent: "flex-end",
+    padding: 14,
   },
   card: {
     width: "100%",
-    maxWidth: 420,
-    borderRadius: 26,
-    padding: 20,
+    maxWidth: 390,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+    shadowColor: "#000",
+    shadowOpacity: 0.34,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 14,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
   },
   iconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
   },
   pill: {
     alignSelf: "flex-start",
-    marginTop: 16,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -285,19 +315,42 @@ const styles = StyleSheet.create({
   title: {
     marginTop: 14,
     color: "#FFFFFF",
-    fontSize: 24,
+    fontSize: 21,
+    lineHeight: 25,
     fontWeight: "900",
   },
   body: {
-    marginTop: 10,
+    marginTop: 8,
     color: "rgba(255,255,255,0.72)",
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  benefitList: {
+    marginTop: 13,
+    gap: 8,
+  },
+  benefitItem: {
+    minHeight: 36,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  benefitText: {
+    flex: 1,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    fontWeight: "850",
   },
   primaryButton: {
-    marginTop: 18,
-    borderRadius: 16,
-    paddingVertical: 14,
+    marginTop: 15,
+    borderRadius: 14,
+    paddingVertical: 13,
     alignItems: "center",
     borderWidth: 1,
   },
@@ -307,19 +360,21 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   remindLabel: {
-    marginTop: 18,
+    marginTop: 14,
     color: "rgba(255,255,255,0.58)",
     fontSize: 12,
     fontWeight: "800",
   },
   remindRow: {
-    marginTop: 10,
-    gap: 10,
+    marginTop: 9,
+    flexDirection: "row",
+    gap: 8,
   },
   remindButton: {
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",

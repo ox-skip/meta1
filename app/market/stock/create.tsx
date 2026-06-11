@@ -227,9 +227,9 @@ export default function CreateStockIdentityScreen() {
   }
 
   const blockReason = !sellerState.exists
-    ? "Create your seller profile first."
+    ? "Create your store profile first."
     : !sellerState.active
-    ? "Your seller profile is inactive."
+    ? "Your store profile is inactive."
     : !sellerState.verified
     ? "Only verified stores can create a stock market."
     : null;

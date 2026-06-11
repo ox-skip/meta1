@@ -149,7 +149,7 @@ function DetailRow({
 }
 
 function stageMeta(profile: SellerProfile | null, verified: boolean, reqRow: MarketVerificationRequest | null) {
-  if (!profile) return { icon: "person-add-outline" as const, color: AMBER, label: "Profile needed" };
+  if (!profile) return { icon: "person-add-outline" as const, color: AMBER, label: "Storefront needed" };
   if (verified) return { icon: "checkmark-circle" as const, color: TEAL, label: "Verified" };
   if (!reqRow) return { icon: "ellipse-outline" as const, color: FAINT, label: "Not started" };
   if (reqRow.status === "REJECTED") return { icon: "close-circle" as const, color: ROSE, label: "Rejected" };
@@ -170,7 +170,7 @@ export default function VerificationStatus() {
   const verified = Boolean(profile?.is_verified);
 
   const headline = useMemo(() => {
-    if (!profile) return "No seller profile";
+    if (!profile) return "Store profile needed";
     if (verified) return "Verified";
     if (!reqRow) return "Not started";
     if (reqRow.status === "PENDING") {
@@ -178,7 +178,7 @@ export default function VerificationStatus() {
         ? "Verification in progress"
         : "Ready to start";
     }
-    if (reqRow.status === "IN_REVIEW") return "Provider review in progress";
+    if (reqRow.status === "IN_REVIEW") return "Review in progress";
     if (reqRow.status === "REJECTED") return "Verification rejected";
     if (reqRow.status === "RESUBMISSION_REQUIRED") return "Retry required";
     if (reqRow.status === "EXPIRED") return "Session expired";
@@ -186,7 +186,7 @@ export default function VerificationStatus() {
   }, [profile, verified, reqRow]);
 
   const stage = stageMeta(profile, verified, reqRow);
-  const storeName = profile?.business_name || "Your seller account";
+  const storeName = profile?.business_name || "Your store";
 
   async function load(options: { sync?: boolean } = {}) {
     setLoading(true);
@@ -256,7 +256,7 @@ export default function VerificationStatus() {
     >
       <View style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: isDesktop ? 24 : 14 }}>
         <View style={{ alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}>
-          <AppHeader title="Verification" subtitle="Government ID status" />
+          <AppHeader title="Store verification" subtitle="Verified badge status" />
         </View>
 
         <ScrollView
@@ -375,7 +375,7 @@ export default function VerificationStatus() {
                       borderColor: PURPLE,
                     }}
                   >
-                    <Text style={{ color: TEXT, fontWeight: "900" }}>Create seller profile</Text>
+                    <Text style={{ color: TEXT, fontWeight: "900" }}>Set up storefront</Text>
                   </Pressable>
                 ) : (
                   <>
@@ -390,7 +390,7 @@ export default function VerificationStatus() {
                         borderColor: PURPLE,
                       }}
                     >
-                      <Text style={{ color: TEXT, fontWeight: "900" }}>{reqRow ? "Open verification flow" : "Start verification"}</Text>
+                      <Text style={{ color: TEXT, fontWeight: "900" }}>{reqRow ? "Continue identity check" : "Start identity check"}</Text>
                     </Pressable>
                     <Pressable
                       onPress={() => load({ sync: true })}
@@ -411,10 +411,10 @@ export default function VerificationStatus() {
               </Card>
 
               {reqRow ? (
-                <Card title="Provider state" icon="scan-outline" accent={BLUE}>
+                <Card title="Review status" icon="scan-outline" accent={BLUE}>
                   <StatusPill request={reqRow} />
                   <Text style={{ marginTop: 10, color: MUTED, lineHeight: 20 }}>
-                    {reqRow.provider_review_status || "Waiting for provider update"}
+                    {reqRow.provider_review_status || "Waiting for review update"}
                   </Text>
                 </Card>
               ) : null}
@@ -427,18 +427,18 @@ export default function VerificationStatus() {
                 <Card title="Verification details" icon="document-text-outline" accent={AMBER}>
                   {reqRow ? (
                     <>
-                      <DetailRow label="Provider" value={reqRow.provider} accent={BLUE} />
-                      <DetailRow label="Provider status" value={reqRow.provider_review_status} accent={AMBER} />
+                      <DetailRow label="Review partner" value={reqRow.provider} accent={BLUE} />
+                      <DetailRow label="Review status" value={reqRow.provider_review_status} accent={AMBER} />
                       <DetailRow label="Document" value={reqRow.document_type} accent={PURPLE} />
                       <DetailRow label="Country" value={reqRow.country_code} accent={TEAL} />
                       <DetailRow label="Started" value={fmtDate(reqRow.submitted_at)} accent={BLUE} />
-                      <DetailRow label="Last provider update" value={fmtDate(reqRow.provider_last_event_at)} accent={AMBER} />
+                      <DetailRow label="Last update" value={fmtDate(reqRow.provider_last_event_at)} accent={AMBER} />
                       <DetailRow label="Verified at" value={fmtDate(reqRow.verified_at)} accent={TEAL} />
-                      <DetailRow label="Provider note" value={reqRow.last_error} accent={ROSE} />
+                      <DetailRow label="Review note" value={reqRow.last_error} accent={ROSE} />
                     </>
                   ) : (
                     <Text style={{ color: MUTED, lineHeight: 20 }}>
-                      Launch the provider session to begin verification.
+                      Start the secure identity check to begin verification.
                     </Text>
                   )}
                 </Card>
@@ -448,9 +448,9 @@ export default function VerificationStatus() {
                 <Card title="What happens next" icon="git-branch-outline" accent={TEAL}>
                   <View style={{ gap: 10 }}>
                     {[
-                      "Open the provider flow and submit a supported ID.",
+                      "Open the secure review and submit a supported ID.",
                       "Return here and refresh if the webhook is still pending.",
-                      "Your seller badge updates automatically when verified.",
+                      "Your verified badge updates automatically after approval.",
                     ].map((item) => (
                       <View key={item} style={{ flexDirection: "row", gap: 9, alignItems: "flex-start" }}>
                         <Ionicons name="checkmark-circle-outline" size={18} color={TEAL} />
