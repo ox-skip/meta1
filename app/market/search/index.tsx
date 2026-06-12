@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -16,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
 import MarketMediaView from "@/components/market/MarketMediaView";
+import { askBestCityMarketGuide, type BestCityMarketGuideContext } from "@/services/market/ai";
 import { supabase } from "@/services/supabase";
 import { listingMatchesCountry, resolveUserCountry } from "@/utils/country";
 import { formatCountryLabel } from "@/utils/countryNames";
@@ -264,6 +266,19 @@ export default function MarketSearchScreen() {
   const [scopeLabel, setScopeLabel] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [recentTerms, setRecentTerms] = useState<string[]>([]);
+  const [guideVisible, setGuideVisible] = useState(false);
+  const [guideQuestion, setGuideQuestion] = useState("");
+  const [guideAnswer, setGuideAnswer] = useState(
+    "Ask me how to search BestCity Market. I can help you choose product, service, or store mode, rewrite a weak search, explain result ranking, or suggest what to check before opening a listing.",
+  );
+  const [guideLoading, setGuideLoading] = useState(false);
+  const [guideSource, setGuideSource] = useState<"bestcity_ai" | "local" | null>(null);
+  const [guidePrompts, setGuidePrompts] = useState<string[]>([
+    "How should I search?",
+    "Why no results?",
+    "Product or service mode?",
+    "How do I find a store?",
+  ]);
 
   const isDesktop = width >= 900;
   const pagePadding = isDesktop ? 26 : 14;
@@ -486,6 +501,239 @@ export default function MarketSearchScreen() {
   const activeMeta = MODE_META[mode];
   const hasQuery = q.trim().length > 0;
   const showDiscovery = !loading && !hasResults && !err;
+  const searchGuideContext = useMemo<BestCityMarketGuideContext>(
+    () => ({
+      section: "search",
+      directoryMode: mode,
+      feedScope: scopeLabel ? "ranked" : "global",
+      resultCount,
+      locationLabel: scopeLabel ?? "Search ranking",
+      selectedCategory: mode === "all" || mode === "store" ? null : MODE_META[mode].label,
+      query: q.trim(),
+      sortBy: "relevance",
+    }),
+    [mode, q, resultCount, scopeLabel],
+  );
+
+  async function submitGuideQuestion(value?: string) {
+    const question = String(value ?? guideQuestion).trim();
+    if (!question || guideLoading) return;
+
+    setGuideQuestion("");
+    setGuideLoading(true);
+    setGuideAnswer("");
+    setGuideSource(null);
+
+    const result = await askBestCityMarketGuide(
+      [
+        "Help with BestCity Market search.",
+        q.trim() ? `Current search query: ${q.trim()}.` : "There is no current search query.",
+        `Current search mode: ${MODE_META[mode].label}.`,
+        `Visible results: ${resultCount}.`,
+        `User question: ${question}`,
+      ].join(" "),
+      searchGuideContext,
+    );
+
+    setGuideAnswer(result.answer);
+    setGuideSource(result.source);
+    setGuidePrompts(result.followUps.length ? result.followUps : [
+      "How should I search?",
+      "Why no results?",
+      "Product or service mode?",
+      "How do I find a store?",
+    ]);
+    setGuideLoading(false);
+  }
+
+  function renderSearchGuideModal() {
+    return (
+      <Modal animationType="fade" onRequestClose={() => setGuideVisible(false)} transparent visible={guideVisible}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: isDesktop ? "center" : "flex-end",
+            alignItems: "center",
+            padding: isDesktop ? 24 : 0,
+            backgroundColor: "rgba(2,6,8,0.72)",
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close BestCity AI search help"
+            onPress={() => setGuideVisible(false)}
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+
+          <View
+            style={{
+              width: "100%",
+              maxWidth: isDesktop ? 560 : undefined,
+              maxHeight: isDesktop ? 620 : "88%",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              borderBottomLeftRadius: isDesktop ? 24 : 0,
+              borderBottomRightRadius: isDesktop ? 24 : 0,
+              overflow: "hidden",
+              borderWidth: 1,
+              borderColor: BORDER_BRIGHT,
+              backgroundColor: "#07100F",
+              shadowColor: "#000",
+              shadowOpacity: 0.34,
+              shadowRadius: 22,
+              shadowOffset: { width: 0, height: 16 },
+              elevation: 14,
+            }}
+          >
+            <LinearGradient
+              colors={["rgba(45,212,191,0.20)", "rgba(139,92,246,0.13)", "rgba(7,16,15,0.98)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: BORDER }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+                <View
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 16,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(45,212,191,0.18)",
+                    borderWidth: 1,
+                    borderColor: "rgba(94,234,212,0.38)",
+                  }}
+                >
+                  <Ionicons name="sparkles-outline" size={20} color={TEXT} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: "#CCFBF1", fontWeight: "900", fontSize: 11 }}>BESTCITY AI SEARCH HELP</Text>
+                  <Text style={{ marginTop: 3, color: TEXT, fontWeight: "900", fontSize: 19, lineHeight: 23 }}>
+                    Make the search smarter
+                  </Text>
+                  <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 17 }}>
+                    Ask how to phrase a search, pick a mode, understand ranking, or decide what result to open.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setGuideVisible(false)}
+                  hitSlop={8}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,253,247,0.08)",
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                  }}
+                >
+                  <Ionicons name="close" size={18} color={TEXT} />
+                </Pressable>
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ padding: 14 }}
+            >
+              <View
+                style={{
+                  borderRadius: 18,
+                  padding: 13,
+                  backgroundColor: "rgba(255,253,247,0.07)",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                {guideLoading ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+                    <ActivityIndicator color={TEAL} size="small" />
+                    <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>BestCity AI is checking your search...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={{ color: TEXT, fontSize: 13, lineHeight: 19, fontWeight: "700" }}>{guideAnswer}</Text>
+                    {guideSource === "local" ? (
+                      <Text style={{ marginTop: 8, color: "rgba(244,183,93,0.82)", fontSize: 10, fontWeight: "800" }}>
+                        Instant guide shown. Full AI response is unavailable right now.
+                      </Text>
+                    ) : null}
+                  </>
+                )}
+              </View>
+
+              <View style={{ marginTop: 12, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                {guidePrompts.map((prompt) => (
+                  <Pressable
+                    key={prompt}
+                    disabled={guideLoading}
+                    onPress={() => void submitGuideQuestion(prompt)}
+                    style={({ pressed }) => ({
+                      borderRadius: 999,
+                      paddingHorizontal: 11,
+                      paddingVertical: 8,
+                      backgroundColor: "rgba(255,253,247,0.065)",
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                      opacity: guideLoading ? 0.55 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    })}
+                  >
+                    <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{prompt}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View
+                style={{
+                  marginTop: 12,
+                  minHeight: 50,
+                  borderRadius: 17,
+                  paddingLeft: 12,
+                  paddingRight: 6,
+                  paddingVertical: 6,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  backgroundColor: "rgba(255,253,247,0.07)",
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                <TextInput
+                  value={guideQuestion}
+                  onChangeText={setGuideQuestion}
+                  placeholder="Ask why results are weak..."
+                  placeholderTextColor={FAINT}
+                  multiline
+                  style={{ flex: 1, maxHeight: 78, color: TEXT, fontWeight: "800", fontSize: 13, paddingVertical: 8 }}
+                />
+                <Pressable
+                  disabled={guideLoading || !guideQuestion.trim()}
+                  onPress={() => void submitGuideQuestion()}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: guideQuestion.trim() && !guideLoading ? "rgba(45,212,191,0.22)" : "rgba(255,253,247,0.07)",
+                    borderWidth: 1,
+                    borderColor: guideQuestion.trim() && !guideLoading ? "rgba(94,234,212,0.42)" : BORDER,
+                  }}
+                >
+                  <Ionicons name="send" size={16} color={guideQuestion.trim() && !guideLoading ? TEXT : FAINT} />
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <LinearGradient
@@ -498,6 +746,7 @@ export default function MarketSearchScreen() {
         paddingHorizontal: pagePadding,
       }}
     >
+      {renderSearchGuideModal()}
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
@@ -662,6 +911,61 @@ export default function MarketSearchScreen() {
               </View>
             ) : null}
           </LinearGradient>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open BestCity AI search help"
+            onPress={() => setGuideVisible(true)}
+            style={({ pressed }) => ({
+              marginTop: 12,
+              borderRadius: 18,
+              overflow: "hidden",
+              borderWidth: 1,
+              borderTopWidth: 1,
+              borderColor: "rgba(196,181,253,0.34)",
+              borderTopColor: BORDER_BRIGHT,
+              backgroundColor: "rgba(139,92,246,0.10)",
+              transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+            })}
+          >
+            <LinearGradient
+              colors={["rgba(139,92,246,0.20)", "rgba(45,212,191,0.10)", "rgba(9,13,11,0.70)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                minHeight: 58,
+                paddingHorizontal: 13,
+                paddingVertical: 10,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 11,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(139,92,246,0.24)",
+                  borderWidth: 1,
+                  borderColor: "rgba(196,181,253,0.42)",
+                }}
+              >
+                <Ionicons name="sparkles-outline" size={17} color={TEXT} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                  BestCity AI Search Help
+                </Text>
+                <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                  Get help with keywords, modes, stores, ranking, and weak results
+                </Text>
+              </View>
+              <Ionicons name="chatbubble-ellipses-outline" size={17} color="#DDD6FE" />
+            </LinearGradient>
+          </Pressable>
 
           <View
             style={{

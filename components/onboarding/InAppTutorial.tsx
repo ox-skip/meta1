@@ -48,7 +48,7 @@ type OnboardingContextValue = {
   activeFlowKey: string | null;
   activeTargetId: string | null;
   hydrated: boolean;
-  claimFlow: (flowKey: string) => boolean;
+  claimFlow: (flowKey: string, force?: boolean) => boolean;
   dismissFlow: (params: {
     flow: TutorialFlowDefinition;
     status: "completed" | "skipped";
@@ -343,9 +343,9 @@ export function OnboardingProvider({
     return !!seenFlowsRef.current[flowKey];
   }, []);
 
-  const claimFlow = useCallback((flowKey: string) => {
-    if (seenFlowsRef.current[flowKey]) return false;
-    if (sessionDeferredFlowsRef.current[flowKey]) return false;
+  const claimFlow = useCallback((flowKey: string, force = false) => {
+    if (!force && seenFlowsRef.current[flowKey]) return false;
+    if (!force && sessionDeferredFlowsRef.current[flowKey]) return false;
     if (activeFlowRef.current && activeFlowRef.current !== flowKey) return false;
     if (activeFlowRef.current !== flowKey) {
       activeFlowRef.current = flowKey;
@@ -529,9 +529,13 @@ export function TutorialTarget({
 export function InAppTutorial({
   enabled = true,
   flow,
+  autoStart = true,
+  startSignal = 0,
 }: {
   enabled?: boolean;
   flow: TutorialFlowDefinition;
+  autoStart?: boolean;
+  startSignal?: number;
 }) {
   const {
     activeFlowKey,
@@ -597,6 +601,7 @@ export function InAppTutorial({
 
   useEffect(() => {
     if (!enabled) return;
+    if (!autoStart) return;
     if (!hydrated) return;
     if (visible) return;
     if (hasSeenFlow(flow.key)) return;
@@ -605,7 +610,18 @@ export function InAppTutorial({
       setStepIndex(0);
       setVisible(true);
     }
-  }, [activeFlowKey, claimFlow, enabled, flow.key, hasSeenFlow, hydrated, visible]);
+  }, [activeFlowKey, autoStart, claimFlow, enabled, flow.key, hasSeenFlow, hydrated, visible]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (!hydrated) return;
+    if (!startSignal) return;
+    if (activeFlowKey && activeFlowKey !== flow.key) return;
+    if (claimFlow(flow.key, true)) {
+      setStepIndex(0);
+      setVisible(true);
+    }
+  }, [activeFlowKey, claimFlow, enabled, flow.key, hydrated, startSignal]);
 
   useEffect(() => {
     if (enabled) return;

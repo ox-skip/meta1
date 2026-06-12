@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Pressable,
   Platform,
   RefreshControl,
@@ -25,6 +26,7 @@ import NotificationBell from "@/components/market/NotificationBell";
 import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
+import { askBestCityMarketGuide, type BestCityMarketGuideContext } from "@/services/market/ai";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
 import { fetchJsonWithTimeout, getSupabaseAnonKeyOrThrow, getSupabaseFunctionsBaseUrl } from "@/services/net";
 import { tutorialFlows } from "@/services/onboarding/definitions";
@@ -771,6 +773,343 @@ function TrustTimeline({ compact = false }: { compact?: boolean }) {
   );
 }
 
+const DEFAULT_MARKET_GUIDE_PROMPTS = [
+  "How do I buy safely?",
+  "How do I sell on BestCity?",
+  "Explain escrow",
+  "What is the stock market?",
+] as const;
+
+type MarketGuideMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+  source?: "bestcity_ai" | "local";
+};
+
+function createGuideMessage(role: MarketGuideMessage["role"], text: string, source?: MarketGuideMessage["source"]): MarketGuideMessage {
+  return {
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text,
+    source,
+  };
+}
+
+function BestCityMarketGuideSheet({
+  visible,
+  onClose,
+  context,
+  isDesktop,
+  bottomInset,
+  onStartTour,
+  onOpenSearch,
+  onOpenStock,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  context: BestCityMarketGuideContext;
+  isDesktop: boolean;
+  bottomInset: number;
+  onStartTour: () => void;
+  onOpenSearch: () => void;
+  onOpenStock: () => void;
+}) {
+  const [messages, setMessages] = useState<MarketGuideMessage[]>(() => [
+    createGuideMessage(
+      "assistant",
+      "Hi, I can explain BestCity Market from end to end: buying, selling, escrow, orders, seller trust, local and global feeds, search, social updates, wallets, rewards, and stock market tools. Ask me anything about how to use it.",
+    ),
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [followUps, setFollowUps] = useState<string[]>([...DEFAULT_MARKET_GUIDE_PROMPTS]);
+
+  async function submitGuideQuestion(value?: string) {
+    const question = String(value ?? input).trim();
+    if (!question || loading) return;
+
+    setInput("");
+    setLoading(true);
+    setMessages((current) => [...current, createGuideMessage("user", question)]);
+
+    const result = await askBestCityMarketGuide(question, context);
+    setMessages((current) => [...current, createGuideMessage("assistant", result.answer, result.source)]);
+    setFollowUps(result.followUps.length ? result.followUps : [...DEFAULT_MARKET_GUIDE_PROMPTS]);
+    setLoading(false);
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: isDesktop ? "center" : "flex-end",
+          alignItems: "center",
+          padding: isDesktop ? 24 : 0,
+          backgroundColor: "rgba(2,6,8,0.72)",
+        }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close BestCity AI guide"
+          onPress={onClose}
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+        />
+
+        <View
+          style={{
+            width: "100%",
+            maxWidth: isDesktop ? 620 : undefined,
+            maxHeight: isDesktop ? 680 : "90%",
+            borderTopLeftRadius: isDesktop ? 24 : 24,
+            borderTopRightRadius: isDesktop ? 24 : 24,
+            borderBottomLeftRadius: isDesktop ? 24 : 0,
+            borderBottomRightRadius: isDesktop ? 24 : 0,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: "rgba(255,253,247,0.15)",
+            backgroundColor: "#07100F",
+            shadowColor: "#000",
+            shadowOpacity: 0.36,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 18 },
+            elevation: 16,
+          }}
+        >
+          <LinearGradient
+            colors={["rgba(45,212,191,0.20)", "rgba(139,92,246,0.14)", "rgba(7,16,15,0.98)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: "rgba(255,253,247,0.10)" }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(45,212,191,0.20)",
+                  borderWidth: 1,
+                  borderColor: "rgba(94,234,212,0.42)",
+                }}
+              >
+                <Ionicons name="sparkles-outline" size={20} color={TEXT} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: "#CCFBF1", fontWeight: "900", fontSize: 11 }}>BESTCITY AI GUIDE</Text>
+                <Text style={{ marginTop: 3, color: TEXT, fontWeight: "900", fontSize: 19, lineHeight: 23 }}>
+                  Ask how the market works
+                </Text>
+                <Text style={{ marginTop: 4, color: "rgba(255,253,247,0.72)", fontSize: 12, lineHeight: 17 }}>
+                  Get help with buying, selling, escrow, orders, search, trust, social, wallets, rewards, and stocks.
+                </Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={8}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,253,247,0.08)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,253,247,0.13)",
+                }}
+              >
+                <Ionicons name="close" size={18} color={TEXT} />
+              </Pressable>
+            </View>
+
+            <View style={{ marginTop: 13, flexDirection: "row", gap: 8 }}>
+              <Pressable
+                onPress={onStartTour}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  backgroundColor: "rgba(244,183,93,0.17)",
+                  borderWidth: 1,
+                  borderColor: "rgba(244,183,93,0.34)",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                <Ionicons name="navigate-circle-outline" size={16} color={AMBER} />
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Tour</Text>
+              </Pressable>
+              <Pressable
+                onPress={onOpenSearch}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  backgroundColor: "rgba(56,189,248,0.15)",
+                  borderWidth: 1,
+                  borderColor: "rgba(125,211,252,0.30)",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                <Ionicons name="search-outline" size={16} color={BLUE} />
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Search</Text>
+              </Pressable>
+              <Pressable
+                onPress={onOpenStock}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  minHeight: 42,
+                  borderRadius: 14,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  backgroundColor: "rgba(45,212,191,0.15)",
+                  borderWidth: 1,
+                  borderColor: "rgba(94,234,212,0.30)",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                })}
+              >
+                <Ionicons name="trending-up-outline" size={16} color={TEAL} />
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>Stocks</Text>
+              </Pressable>
+            </View>
+          </LinearGradient>
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={{ padding: 14, gap: 10 }}
+          >
+            {messages.map((message) => {
+              const isUser = message.role === "user";
+              return (
+                <View
+                  key={message.id}
+                  style={{
+                    alignSelf: isUser ? "flex-end" : "flex-start",
+                    maxWidth: "88%",
+                    borderRadius: 18,
+                    borderTopRightRadius: isUser ? 6 : 18,
+                    borderTopLeftRadius: isUser ? 18 : 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    backgroundColor: isUser ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.07)",
+                    borderWidth: 1,
+                    borderColor: isUser ? "rgba(94,234,212,0.34)" : "rgba(255,253,247,0.11)",
+                  }}
+                >
+                  <Text style={{ color: TEXT, fontSize: 12, lineHeight: 18, fontWeight: isUser ? "800" : "700" }}>
+                    {message.text}
+                  </Text>
+                  {message.source === "local" ? (
+                    <Text style={{ marginTop: 7, color: "rgba(244,183,93,0.82)", fontSize: 10, fontWeight: "800" }}>
+                      Instant guide shown. Full AI response is unavailable right now.
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
+
+            {loading ? (
+              <View style={{ alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
+                <ActivityIndicator color={TEAL} size="small" />
+                <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>BestCity AI is thinking...</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+
+          <View
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: "rgba(255,253,247,0.10)",
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: Math.max(bottomInset, 10) + 4,
+              backgroundColor: "rgba(6,11,10,0.98)",
+            }}
+          >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {followUps.map((prompt) => (
+                <Pressable
+                  key={prompt}
+                  disabled={loading}
+                  onPress={() => void submitGuideQuestion(prompt)}
+                  style={({ pressed }) => ({
+                    borderRadius: 999,
+                    paddingHorizontal: 11,
+                    paddingVertical: 8,
+                    backgroundColor: "rgba(255,253,247,0.065)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,253,247,0.12)",
+                    opacity: loading ? 0.55 : 1,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  })}
+                >
+                  <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{prompt}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <View
+              style={{
+                marginTop: 10,
+                minHeight: 48,
+                borderRadius: 17,
+                paddingLeft: 12,
+                paddingRight: 6,
+                paddingVertical: 6,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                backgroundColor: "rgba(255,253,247,0.07)",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.13)",
+              }}
+            >
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder="Ask about buying, selling, escrow..."
+                placeholderTextColor={FAINT}
+                multiline
+                style={{ flex: 1, maxHeight: 78, color: TEXT, fontWeight: "800", fontSize: 13, paddingVertical: 8 }}
+              />
+              <Pressable
+                disabled={loading || !input.trim()}
+                onPress={() => void submitGuideQuestion()}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: input.trim() && !loading ? "rgba(45,212,191,0.22)" : "rgba(255,253,247,0.07)",
+                  borderWidth: 1,
+                  borderColor: input.trim() && !loading ? "rgba(94,234,212,0.42)" : "rgba(255,253,247,0.12)",
+                }}
+              >
+                <Ionicons name="send" size={16} color={input.trim() && !loading ? TEXT : FAINT} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function MarketHome() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -793,6 +1132,8 @@ export default function MarketHome() {
   const [userCountry, setUserCountry] = useState<UserCountry | null>(null);
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
+  const [tutorialStartSignal, setTutorialStartSignal] = useState(0);
   const [expandedCards, setExpandedCards] = useState<Record<"featured" | "discovery" | "filters", boolean>>({
     featured: false,
     discovery: false,
@@ -835,6 +1176,21 @@ export default function MarketHome() {
 
   function toggleExpandedCard(key: "featured" | "discovery" | "filters") {
     setExpandedCards((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function startMarketTour() {
+    setGuideVisible(false);
+    setTutorialStartSignal(Date.now());
+  }
+
+  function openMarketSearchFromGuide() {
+    setGuideVisible(false);
+    router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} });
+  }
+
+  function openStockMarketFromGuide() {
+    setGuideVisible(false);
+    router.push("/market/stock" as any);
   }
 
   async function refreshCountry() {
@@ -1275,6 +1631,22 @@ export default function MarketHome() {
     isDesktop ? desktopCardWidth : listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
   const contentBottomPadding = isDesktop ? 38 : Math.max(122, insets.bottom + 102);
   const resultCount = directoryMode === "listings" ? rows.length : directoryRows.length;
+  const selectedCategoryTitle = selectedSlug
+    ? categories.find((item) => item.slug === selectedSlug)?.title ?? selectedSlug
+    : null;
+  const marketGuideContext = useMemo<BestCityMarketGuideContext>(
+    () => ({
+      section,
+      directoryMode,
+      feedScope,
+      resultCount,
+      locationLabel,
+      selectedCategory: selectedCategoryTitle,
+      query: q.trim(),
+      sortBy,
+    }),
+    [directoryMode, feedScope, locationLabel, q, resultCount, section, selectedCategoryTitle, sortBy],
+  );
   const feedLabel = section === "service" ? "services" : section === "product" ? "products" : "listings";
   const searchPlaceholder =
     directoryMode === "listings"
@@ -2490,6 +2862,65 @@ export default function MarketHome() {
       },
     ];
 
+    if (!desktop) {
+      return (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open BestCity AI guide"
+          onPress={() => setGuideVisible(true)}
+          style={({ pressed }) => ({
+            marginTop: 10,
+            borderRadius: 18,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderTopWidth: 1,
+            borderColor: "rgba(196,181,253,0.36)",
+            borderTopColor: "rgba(255,253,247,0.24)",
+            backgroundColor: "rgba(139,92,246,0.11)",
+            transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+          })}
+        >
+          <LinearGradient
+            colors={["rgba(139,92,246,0.22)", "rgba(45,212,191,0.12)", "rgba(9,13,11,0.72)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              minHeight: 58,
+              paddingHorizontal: 13,
+              paddingVertical: 10,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 11,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(139,92,246,0.24)",
+                borderWidth: 1,
+                borderColor: "rgba(196,181,253,0.42)",
+              }}
+            >
+              <Ionicons name="sparkles-outline" size={17} color={TEXT} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                BestCity AI Guide
+              </Text>
+              <Text numberOfLines={1} style={{ marginTop: 2, color: "rgba(255,253,247,0.64)", fontWeight: "800", fontSize: 10 }}>
+                Ask about buying, selling, escrow, orders, search, or stocks
+              </Text>
+            </View>
+            <Ionicons name="chatbubble-ellipses-outline" size={17} color="#DDD6FE" />
+          </LinearGradient>
+        </Pressable>
+      );
+    }
+
     return (
       <GlassPanel style={{ marginTop: 12, padding: desktop ? 15 : 13, backgroundColor: "rgba(139,92,246,0.09)" }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 11 }}>
@@ -2508,15 +2939,41 @@ export default function MarketHome() {
             <Ionicons name="sparkles-outline" size={18} color="#DDD6FE" />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 11 }}>BESTCITY AI BUYER ASSISTANT</Text>
+            <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 11 }}>BESTCITY AI GUIDE</Text>
             <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: desktop ? 16 : 14 }}>
-              Find, trust-check, compare, then buy with more context.
+              Ask how BestCity Market works.
             </Text>
             <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-              Use quick buyer flows for discovery, seller risk signals, listing comparison, and nearby/global decisions.
+              Get guided answers about buying, selling, escrow, orders, search, trust, and stock market tools.
             </Text>
           </View>
         </View>
+
+        <Pressable
+          onPress={() => setGuideVisible(true)}
+          style={({ pressed }) => ({
+            marginTop: 12,
+            minHeight: 46,
+            borderRadius: 15,
+            paddingHorizontal: 12,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            backgroundColor: "rgba(139,92,246,0.16)",
+            borderWidth: 1,
+            borderColor: "rgba(196,181,253,0.34)",
+            transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+          })}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9, flex: 1, minWidth: 0 }}>
+            <Ionicons name="chatbubble-ellipses-outline" size={17} color="#DDD6FE" />
+            <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+              Open AI guide
+            </Text>
+          </View>
+          <Ionicons name="arrow-forward" size={15} color="#DDD6FE" />
+        </Pressable>
 
         <View style={{ marginTop: 12, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
           {actions.map((action) => (
@@ -3214,7 +3671,22 @@ export default function MarketHome() {
 
   return (
     <LinearGradient colors={[BG2, BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1 }}>
-      <InAppTutorial enabled={!loading} flow={tutorialFlows.marketHome} />
+      <InAppTutorial
+        autoStart={false}
+        enabled={!loading}
+        flow={tutorialFlows.marketHome}
+        startSignal={tutorialStartSignal}
+      />
+      <BestCityMarketGuideSheet
+        bottomInset={insets.bottom}
+        context={marketGuideContext}
+        isDesktop={isDesktop}
+        onClose={() => setGuideVisible(false)}
+        onOpenSearch={openMarketSearchFromGuide}
+        onOpenStock={openStockMarketFromGuide}
+        onStartTour={startMarketTour}
+        visible={guideVisible}
+      />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
