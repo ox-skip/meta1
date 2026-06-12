@@ -1136,7 +1136,7 @@ export default function Checkout() {
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Payment options</Text>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-            USDC/USDT routes are loaded from active chain config and deposited into escrow on-chain.
+            Choose your prefered payment route.
           </Text>
           {!enabledRoutes.length ? (
             <Text style={{ marginTop: 8, color: "#FCA5A5", fontSize: 12 }}>
@@ -1230,7 +1230,7 @@ export default function Checkout() {
           </View>
 
           <View style={{ marginTop: 10 }}>
-            <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>Select active network</Text>
+            <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>Select Network</Text>
             {requiredChain ? (
               <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.58)", fontSize: 11 }}>
                 This listing is restricted to {titleCaseChain(requiredChain)}.
