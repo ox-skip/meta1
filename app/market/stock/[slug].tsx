@@ -395,8 +395,9 @@ function CandleChart({ candles }: { candles: Candle[] }) {
 }
 
 export default function StockDetailScreen() {
-  const params = useLocalSearchParams<{ slug?: string }>();
+  const params = useLocalSearchParams<{ slug?: string; side?: string }>();
   const slug = String(params.slug ?? "").trim().toLowerCase();
+  const requestedSide = String(params.side || "").trim().toLowerCase() === "sell" ? "sell" : "buy";
 
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
   const [panel, setPanel] = useState<"trade" | "trades" | "chat">("trade");
@@ -406,7 +407,7 @@ export default function StockDetailScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [tradeRail, setTradeRail] = useState<"evm" | "pi">("evm");
-  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [side, setSide] = useState<"buy" | "sell">(requestedSide);
   const [amountUsdc, setAmountUsdc] = useState("");
   const [quantity, setQuantity] = useState("");
   const [quote, setQuote] = useState<any | null>(null);
@@ -438,6 +439,11 @@ export default function StockDetailScreen() {
   const [chatRows, setChatRows] = useState<any[]>([]);
   const [chatText, setChatText] = useState("");
   const [posting, setPosting] = useState(false);
+
+  useEffect(() => {
+    setSide(requestedSide);
+    setPanel("trade");
+  }, [requestedSide]);
   const [repairing, setRepairing] = useState(false);
 
   async function loadDetail(silent = false) {

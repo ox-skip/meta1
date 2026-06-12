@@ -1284,18 +1284,18 @@ export default function MarketHome() {
     section === "social"
       ? "Stay close to marketplace activity"
       : section === "service"
-      ? "Featured services"
+      ? "Find services with proof and escrow"
       : section === "product"
-      ? "Featured products"
-      : "Featured";
+      ? "Shop products with cleaner signals"
+      : "Discover trusted products and services";
   const heroSubtitle =
     section === "social"
       ? "Browse fresh seller updates, launches, and media from the marketplace."
       : section === "service"
-      ? "Service picks from featured accounts, kept tight so buyers can move fast."
+      ? "Search by need, compare sellers, and check availability before starting the order flow."
       : section === "product"
-      ? "Product picks from featured accounts, with price and media visible at a glance."
-      : "Promoted listings and storefronts surfaced for buyers right now.";
+      ? "Use featured picks, local/global scope, ratings, and escrow signals to choose faster."
+      : "A buyer-first marketplace home with search, category discovery, featured listings, and trust cues in one place.";
   const resultTitle =
     directoryMode === "listings"
       ? `${resultCount} ${feedLabel} in view`
@@ -1405,6 +1405,14 @@ export default function MarketHome() {
     }
     return items;
   }, [featuredListings, featuredSellers, isDesktop, main, sellersMap, supabaseUrl]);
+
+  const discoveryCategoryTiles = useMemo<CategoryItem[]>(() => {
+    if (main) return getCategoriesByMain(main as MarketMainCategory).slice(0, isDesktop ? 10 : 8);
+    return [
+      ...getCategoriesByMain("product").slice(0, isDesktop ? 5 : 4),
+      ...getCategoriesByMain("service").slice(0, isDesktop ? 5 : 4),
+    ];
+  }, [isDesktop, main]);
 
   const renderListing = ({ item, index = 0 }: { item: ListingRow; index?: number }) => {
     const mediaSource = resolveMarketMediaSource(
@@ -2326,6 +2334,253 @@ export default function MarketHome() {
     );
   }
 
+  function selectDiscoveryCategory(item: CategoryItem) {
+    setSection(item.main);
+    setDirectoryMode("listings");
+    setSelectedSlug(item.slug);
+    setQ("");
+  }
+
+  function renderCategoryDiscovery(desktop = false) {
+    if (section === "social") return null;
+
+    return (
+      <GlassPanel style={{ marginTop: 12, padding: desktop ? 15 : 13, backgroundColor: "rgba(255,253,247,0.055)" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>DISCOVER BY CATEGORY</Text>
+            <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: desktop ? 18 : 15 }}>
+              {main ? `${main === "product" ? "Product" : "Service"} categories` : "Popular product and service lanes"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/market/category" as any,
+                params: main ? { mode: main } : undefined,
+              })
+            }
+            style={({ pressed }) => ({
+              width: 38,
+              height: 38,
+              borderRadius: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,253,247,0.075)",
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.13)",
+              transform: [{ scale: pressed ? 0.97 : 1 }],
+            })}
+          >
+            <Ionicons name="grid-outline" size={17} color={TEXT} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 12, marginHorizontal: -4 }}
+          contentContainerStyle={{ paddingHorizontal: 4, gap: 10 }}
+        >
+          {discoveryCategoryTiles.map((item) => {
+            const active = item.main === main && selectedSlug === item.slug;
+            const tone = item.main === "product" ? BLUE : TEAL;
+            return (
+              <Pressable
+                key={`${item.main}:${item.slug}`}
+                onPress={() => selectDiscoveryCategory(item)}
+                style={({ pressed }) => ({
+                  width: desktop ? 166 : 142,
+                  minHeight: 98,
+                  borderRadius: 18,
+                  padding: 12,
+                  justifyContent: "space-between",
+                  backgroundColor: active ? `${tone}1F` : "rgba(9,13,11,0.42)",
+                  borderWidth: 1,
+                  borderColor: active ? `${tone}66` : "rgba(255,253,247,0.12)",
+                  transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+                })}
+              >
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 13,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: `${tone}1F`,
+                    borderWidth: 1,
+                    borderColor: `${tone}45`,
+                  }}
+                >
+                  <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={16} color={tone} />
+                </View>
+                <View>
+                  <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                    {item.main === "product" ? "Products" : "Services"}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </GlassPanel>
+    );
+  }
+
+  function renderBuyerAssistantPanel(desktop = false) {
+    if (section === "social") return null;
+    const hasQuery = !!q.trim();
+    const localReady = feedScope === "country" && !!userCountry;
+    const actionBaseStyle = {
+      flexGrow: 1,
+      flexBasis: desktop ? 124 : mobileActionStack ? "100%" : 132,
+      minHeight: 74,
+      borderRadius: 18,
+      padding: 12,
+      borderWidth: 1,
+    } as const;
+    const actions: Array<{
+      label: string;
+      detail: string;
+      icon: keyof typeof Ionicons.glyphMap;
+      accent: string;
+      onPress: () => void;
+    }> = [
+      {
+        label: hasQuery ? "Search it" : "Find products",
+        detail: hasQuery ? `"${q.trim().slice(0, 24)}"` : "Use guided search",
+        icon: "search-outline",
+        accent: TEAL,
+        onPress: () => router.push({ pathname: "/market/search" as any, params: hasQuery ? { q: q.trim() } : {} }),
+      },
+      {
+        label: "Check trust",
+        detail: "Verified stores",
+        icon: "shield-checkmark-outline",
+        accent: BLUE,
+        onPress: () => {
+          setDirectoryMode("verified");
+          setSelectedSlug(null);
+        },
+      },
+      {
+        label: "Compare",
+        detail: "Sort by price",
+        icon: "git-compare-outline",
+        accent: AMBER,
+        onPress: () => {
+          setDirectoryMode("listings");
+          setSortBy("price_low");
+        },
+      },
+      {
+        label: localReady ? "Nearby" : "Locate",
+        detail: localReady ? locationLabel : "Local feed",
+        icon: "location-outline",
+        accent: TEAL,
+        onPress: async () => {
+          setDirectoryMode("listings");
+          setFeedScope("country");
+          if (!userCountry) await refreshCountry();
+        },
+      },
+    ];
+
+    return (
+      <GlassPanel style={{ marginTop: 12, padding: desktop ? 15 : 13, backgroundColor: "rgba(139,92,246,0.09)" }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 11 }}>
+          <View
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(139,92,246,0.20)",
+              borderWidth: 1,
+              borderColor: "rgba(196,181,253,0.42)",
+            }}
+          >
+            <Ionicons name="sparkles-outline" size={18} color="#DDD6FE" />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: "#DDD6FE", fontWeight: "900", fontSize: 11 }}>BESTCITY AI BUYER ASSISTANT</Text>
+            <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900", fontSize: desktop ? 16 : 14 }}>
+              Find, trust-check, compare, then buy with more context.
+            </Text>
+            <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Use quick buyer flows for discovery, seller risk signals, listing comparison, and nearby/global decisions.
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 12, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+          {actions.map((action) => (
+            <Pressable
+              key={action.label}
+              onPress={action.onPress}
+              style={({ pressed }) => ({
+                ...actionBaseStyle,
+                backgroundColor: `${action.accent}14`,
+                borderColor: `${action.accent}38`,
+                transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+              })}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Ionicons name={action.icon} size={17} color={action.accent} />
+                <Ionicons name="arrow-forward" size={14} color={action.accent} />
+              </View>
+              <Text numberOfLines={1} style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                {action.label}
+              </Text>
+              <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                {action.detail}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
+          {[
+            { label: "Search", icon: "search-outline" as const },
+            { label: "Validate", icon: "shield-checkmark-outline" as const },
+            { label: "Escrow", icon: "lock-closed-outline" as const },
+            { label: "Confirm", icon: "checkmark-done-outline" as const },
+          ].map((step, index, all) => (
+            <React.Fragment key={step.label}>
+              <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}>
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: index < 2 ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.06)",
+                    borderWidth: 1,
+                    borderColor: index < 2 ? "rgba(94,234,212,0.38)" : BORDER,
+                  }}
+                >
+                  <Ionicons name={step.icon} size={13} color={index < 2 ? TEAL : MUTED} />
+                </View>
+                <Text numberOfLines={1} style={{ marginTop: 5, color: index < 2 ? TEXT : MUTED, fontWeight: "800", fontSize: 10 }}>
+                  {step.label}
+                </Text>
+              </View>
+              {index < all.length - 1 ? (
+                <View style={{ width: 15, height: 1, backgroundColor: index === 0 ? "rgba(94,234,212,0.58)" : "rgba(255,253,247,0.13)" }} />
+              ) : null}
+            </React.Fragment>
+          ))}
+        </View>
+      </GlassPanel>
+    );
+  }
+
   function renderDirectoryChooser(desktop = false) {
     if (!desktop) {
       return (
@@ -2457,7 +2712,7 @@ export default function MarketHome() {
       return (
         <TutorialTarget id="market.home.filters">
           <CompactDisclosure
-            eyebrow="Feed scope"
+            eyebrow="Nearby and global"
             title={`${feedScope === "country" ? "Local" : "Global"} feed`}
             summary={`${locationLabel} - ${categoryLabel} - ${sortBy.replace(/_/g, " ")}`}
             icon={feedScope === "country" ? "location-outline" : "earth-outline"}
@@ -2468,7 +2723,7 @@ export default function MarketHome() {
             <View style={{ gap: 12 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Feed scope</Text>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Nearby and global</Text>
                 <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
                   {feedScope === "country"
                     ? "Showing listings specifically available in your current country."
@@ -2602,7 +2857,7 @@ export default function MarketHome() {
         <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, width: desktop ? "100%" : undefined, backgroundColor: "rgba(255,253,247,0.06)" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Feed scope</Text>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Nearby and global</Text>
             <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
               {feedScope === "country"
                 ? "Showing listings specifically available in your current country."
@@ -2844,8 +3099,10 @@ export default function MarketHome() {
           style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
         />
 
-        {renderSectionTabs("mobile")}
         {renderSearchBar(false)}
+        {renderBuyerAssistantPanel(false)}
+        {renderSectionTabs("mobile")}
+        {renderCategoryDiscovery(false)}
         {section !== "social" ? renderStockMarketShortcut(false) : null}
         {renderHeroPanel(false)}
 
@@ -2889,6 +3146,7 @@ export default function MarketHome() {
             }
           >
             {renderHeroPanel(true)}
+            {section === "social" ? null : renderCategoryDiscovery(true)}
             {section === "social" ? null : renderDirectoryChooser(true)}
           </View>
 
@@ -2937,8 +3195,9 @@ export default function MarketHome() {
               </View>
             </GlassPanel>
 
-            <TrustTimeline />
+            {renderBuyerAssistantPanel(true)}
             {section === "social" ? null : renderScopeAndFilters(true)}
+            <TrustTimeline />
           </View>
         </View>
 

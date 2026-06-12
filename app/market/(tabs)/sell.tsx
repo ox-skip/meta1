@@ -2135,11 +2135,60 @@ export default function SellTab() {
             }}
           >
             <SectionTitle
-              title="BestCity Ai listing help"
-              subtitle="Improve the title, description, sub-category hints, and buyer-facing details. This does not publish or overwrite anything unless you apply it."
+              title="Seller assistant"
+              subtitle="Improve title, description, category choice, price hints, and media notes. Suggestions do not publish or overwrite anything unless you apply them."
               icon="sparkles-outline"
               tone={PURPLE}
             />
+            <View style={{ marginTop: 12, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
+              {[
+                {
+                  label: "Title",
+                  ready: !!title.trim(),
+                  note: title.trim() ? "Ready to polish" : "Add what you sell",
+                  icon: "create-outline" as const,
+                },
+                {
+                  label: "Category",
+                  ready: !!selectedSubCategory,
+                  note: selectedSubCategory ? selectedSubCategoryTitle : "Pick the closest lane",
+                  icon: "grid-outline" as const,
+                },
+                {
+                  label: "Pricing",
+                  ready: Number.isFinite(liveLocalInput) && liveLocalInput > 0,
+                  note: Number.isFinite(liveLocalInput) && liveLocalInput > 0 ? pricePreview : "Add buyer price",
+                  icon: "pricetag-outline" as const,
+                },
+                {
+                  label: "Media",
+                  ready: mediaRequirementMet,
+                  note: mediaRequirementMet ? `${mediaAssets.length || "Link"} attached` : "Add proof media",
+                  icon: "images-outline" as const,
+                },
+              ].map((item) => (
+                <View
+                  key={item.label}
+                  style={{
+                    flexGrow: 1,
+                    flexBasis: isWebDesktop ? 150 : 136,
+                    borderRadius: 16,
+                    padding: 11,
+                    backgroundColor: item.ready ? "rgba(45,212,191,0.10)" : "rgba(255,253,247,0.055)",
+                    borderWidth: 1,
+                    borderColor: item.ready ? "rgba(94,234,212,0.34)" : BORDER,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                    <Ionicons name={item.icon} size={15} color={item.ready ? TEAL : MUTED} />
+                    <Text style={{ color: item.ready ? TEXT : MUTED, fontSize: 11, fontWeight: "900" }}>{item.label}</Text>
+                  </View>
+                  <Text numberOfLines={1} style={{ marginTop: 7, color: item.ready ? "rgba(255,253,247,0.86)" : FAINT, fontSize: 11, fontWeight: "800" }}>
+                    {item.note}
+                  </Text>
+                </View>
+              ))}
+            </View>
             <Pressable
               onPress={runAiListingAssistant}
               disabled={aiBusy || submitting}
