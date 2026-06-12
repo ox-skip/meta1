@@ -31,6 +31,7 @@ function normalizeChain(input: unknown): string | null {
   if (raw.includes("137") || raw === "polygon") return "polygon";
   if (raw.includes("56") || raw === "bnb") return "bnb";
   if (raw.includes("10") || raw === "optimism") return "optimism";
+  if (raw.includes("5042002") || raw === "arc" || raw === "arc_testnet" || raw.includes("arc-testnet")) return "arc_testnet";
   if (raw.includes("1") || raw === "ethereum") return "ethereum";
 
   return null;
