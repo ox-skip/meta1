@@ -12,6 +12,7 @@ import AppHeader from "@/components/common/AppHeader";
 import MarketMediaView from "@/components/market/MarketMediaView";
 import { generateListingAiDraft, type MarketAiDraftResult } from "@/services/market/ai";
 import { getAllCategories } from "@/services/market/categories";
+import { fetchMarketChains, type MarketChainConfig } from "@/services/market/chainConfig";
 import { createListing, getMySellerProfile, insertListingImages, rollbackListingDraft, uploadToBucket } from "@/services/market/marketService";
 import { supabase } from "@/services/supabase";
 import { isNigeriaCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
@@ -61,6 +62,44 @@ type AvailabilityGeoHints = Partial<LocationGeo> & {
   municipality?: string;
   village?: string;
 };
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function isEvmAddress(value?: string | null) {
+  return /^0x[a-fA-F0-9]{40}$/.test(String(value || "").trim());
+}
+
+function isUsableAddress(value?: string | null) {
+  const raw = String(value || "").trim();
+  return isEvmAddress(raw) && raw.toLowerCase() !== ZERO_ADDRESS;
+}
+
+function isConfiguredCheckoutNetwork(chain: MarketChainConfig) {
+  return (
+    chain.active === true &&
+    Number(chain.chain_id || 0) > 0 &&
+    isUsableAddress(chain.usdc_address) &&
+    isUsableAddress(chain.escrow_address)
+  );
+}
+
+function titleCaseChain(chain?: string | null) {
+  const raw = String(chain || "").trim();
+  if (!raw) return "Network";
+  if (raw.toLowerCase() === "bnb") return "BNB";
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function networkSupportsCoinMode(chain: MarketChainConfig, coinMode: "all" | "usdc" | "usdt") {
+  if (!isConfiguredCheckoutNetwork(chain)) return false;
+  if (coinMode === "usdt") return isUsableAddress(chain.usdt_address);
+  if (coinMode === "all") return isUsableAddress(chain.usdc_address) || isUsableAddress(chain.usdt_address);
+  return isUsableAddress(chain.usdc_address);
+}
 
 function safeNumber(input: string) {
   const n = Number(String(input).replace(/,/g, "").trim());
@@ -510,7 +549,8 @@ export default function SellTab() {
   const [description, setDescription] = useState("");
   const [cryptoCoinMode, setCryptoCoinMode] = useState<"all" | "usdc" | "usdt">("all");
   const [cryptoNetworkMode, setCryptoNetworkMode] = useState<string>("all");
-  const [availableNetworks, setAvailableNetworks] = useState<Array<{ chain: string; chain_id: number }>>([]);
+  const [availableNetworks, setAvailableNetworks] = useState<MarketChainConfig[]>([]);
+  const [networkConfigError, setNetworkConfigError] = useState<string | null>(null);
   const [price, setPrice] = useState("");
   const [localCurrency, setLocalCurrency] = useState("NGN");
   const [fxUsdToLocal, setFxUsdToLocal] = useState<number | null>(null);
@@ -563,27 +603,44 @@ export default function SellTab() {
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
 
-  // Fetch active networks from Supabase
+  // Fetch active checkout networks from chain config.
   useEffect(() => {
+    let mounted = true;
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("market_chain_config")
-          .select("chain, chain_id")
-          .eq("active", true)
-          .order("chain");
-        
-        if (error) throw error;
-        if (data) {
-          setAvailableNetworks(data);
-        }
+        const chains = await fetchMarketChains();
+        const activeConfigured = chains.filter(isConfiguredCheckoutNetwork);
+        if (!mounted) return;
+        setAvailableNetworks(activeConfigured);
+        setNetworkConfigError(null);
       } catch (e) {
-        console.log("[SellTab] Failed to fetch networks:", e);
-        // Fallback to base and arbitrum if fetch fails
-        setAvailableNetworks([{ chain: "base", chain_id: 8453 }, { chain: "arbitrum", chain_id: 42161 }]);
+        const message = friendlyMarketError(e, "Unable to load active checkout networks.");
+        console.log("[SellTab] Failed to fetch networks:", message);
+        if (!mounted) return;
+        setAvailableNetworks([]);
+        setNetworkConfigError(message);
       }
     })();
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  const paymentNetworks = useMemo(
+    () => availableNetworks.filter((network) => networkSupportsCoinMode(network, cryptoCoinMode)),
+    [availableNetworks, cryptoCoinMode],
+  );
+  const selectedPaymentNetwork =
+    cryptoNetworkMode === "all"
+      ? null
+      : paymentNetworks.find((network) => network.chain === cryptoNetworkMode) ?? null;
+  const hasActivePaymentNetwork = paymentNetworks.length > 0;
+
+  useEffect(() => {
+    if (cryptoNetworkMode === "all") return;
+    if (paymentNetworks.some((network) => network.chain === cryptoNetworkMode)) return;
+    setCryptoNetworkMode("all");
+  }, [cryptoNetworkMode, paymentNetworks]);
 
   // Load draft from localStorage/AsyncStorage on mount
   useEffect(() => {
@@ -1361,6 +1418,16 @@ export default function SellTab() {
         throw new Error("Enter a listing price above zero.");
       }
       const unitPrice = safeFinalPriceUsd;
+      const eligibleNetworks = availableNetworks.filter((network) => networkSupportsCoinMode(network, cryptoCoinMode));
+      if (!eligibleNetworks.length) {
+        throw new Error("No active checkout network is configured for the selected stablecoin route.");
+      }
+      if (
+        cryptoNetworkMode !== "all" &&
+        !eligibleNetworks.some((network) => network.chain === cryptoNetworkMode)
+      ) {
+        throw new Error("Selected checkout network is inactive or missing token/escrow config.");
+      }
 
       const paymentOptions = {
         allow_crypto: true,
@@ -1912,7 +1979,7 @@ export default function SellTab() {
             <>
               <Label>Type your category</Label>
               <Input value={customSub} onChangeText={setCustomSub} placeholder="e.g. Website sales / SaaS / Music production" />
-              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>We'll save it as a searchable sub-category.</Text>
+              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>We&apos;ll save it as a searchable sub-category.</Text>
             </>
           ) : null}
         </CollapsibleCardBox>
@@ -2254,19 +2321,46 @@ export default function SellTab() {
 
           <Label>Network</Label>
           <Row>
-            <Pill active={cryptoNetworkMode === "all"} label="All active networks" onPress={() => setCryptoNetworkMode("all")} />
-            {availableNetworks.map((net) => (
-              <Pill
-                key={net.chain_id}
-                active={cryptoNetworkMode === net.chain}
-                label={`${net.chain.charAt(0).toUpperCase() + net.chain.slice(1)} only`}
-                onPress={() => setCryptoNetworkMode(net.chain)}
-              />
-            ))}
+            <Pill
+              active={cryptoNetworkMode === "all"}
+              label={hasActivePaymentNetwork ? "All active networks" : "No active network"}
+              onPress={() => setCryptoNetworkMode("all")}
+              disabled={!hasActivePaymentNetwork}
+            />
+            {paymentNetworks.map((net) => {
+              const labels = [
+                isUsableAddress(net.usdc_address) ? "USDC" : null,
+                isUsableAddress(net.usdt_address) ? "USDT" : null,
+                net.is_testnet ? "TESTNET" : null,
+              ].filter(Boolean);
+              return (
+                <Pill
+                  key={net.chain}
+                  active={cryptoNetworkMode === net.chain}
+                  label={`${titleCaseChain(net.chain)}${labels.length ? ` (${labels.join("/")})` : ""}`}
+                  onPress={() => setCryptoNetworkMode(net.chain)}
+                />
+              );
+            })}
           </Row>
 
+          {networkConfigError ? (
+            <FeedbackBox tone="error" title="Network config unavailable" message={networkConfigError} />
+          ) : null}
+          {!networkConfigError && !hasActivePaymentNetwork ? (
+            <FeedbackBox
+              tone="error"
+              title="No checkout network"
+              message="Activate at least one chain in market_chain_config with valid token and escrow addresses before publishing crypto listings."
+            />
+          ) : null}
+          {selectedPaymentNetwork ? (
+            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12 }}>
+              Buyers will only be able to check out on {titleCaseChain(selectedPaymentNetwork.chain)}.
+            </Text>
+          ) : null}
           <Text style={{ marginTop: 12, color: MUTED, fontSize: 12 }}>
-            Listings settle in stablecoins (USDC/USDT). Buyers choose their preferred network.
+            Listings settle in stablecoins. Buyers only see active networks from chain config.
           </Text>
         </CardBox>
 

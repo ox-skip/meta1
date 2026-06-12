@@ -8,6 +8,12 @@ function pickToken(body: any) {
   return String(body?.token ?? body?.currency ?? body?.token_symbol ?? "USDC").toUpperCase();
 }
 
+function restrictedChain(paymentOptions: Record<string, unknown>) {
+  const mode = String(paymentOptions?.chain_mode ?? "").trim().toLowerCase();
+  if (!mode || mode === "all") return "";
+  return mode;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -52,9 +58,13 @@ Deno.serve(async (req) => {
   const hasEnabledStableRoute = po.allow_usdc === true || po.allow_usdt === true;
   const allowUsdc = po.allow_usdc === true || (!hasEnabledStableRoute && listingCurrency === "USDC");
   const allowUsdt = po.allow_usdt === true || (!hasEnabledStableRoute && listingCurrency === "USDT");
+  const requiredChain = restrictedChain(po);
 
   if (token === "USDC" && !allowUsdc) return bad("Listing does not accept USDC");
   if (token === "USDT" && !allowUsdt) return bad("Listing does not accept USDT");
+  if (requiredChain && chain.toLowerCase() !== requiredChain) {
+    return bad(`Listing only accepts checkout on ${requiredChain}`);
+  }
 
   const { data: cfg, error: cfgErr } = await admin
     .from("market_chain_config")

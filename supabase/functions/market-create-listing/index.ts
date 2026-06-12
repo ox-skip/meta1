@@ -22,6 +22,48 @@ function assertCategoryRules(category: ListingCategory, delivery_type: DeliveryT
   }
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function isUsableAddress(value: unknown) {
+  const raw = String(value ?? "").trim();
+  return /^0x[a-fA-F0-9]{40}$/.test(raw) && raw.toLowerCase() !== ZERO_ADDRESS;
+}
+
+async function validateStableChainConfig(
+  admin: ReturnType<typeof supabaseAdminClient>,
+  paymentOptions: Record<string, unknown>,
+  currency: Currency,
+) {
+  const allowUsdc = paymentOptions.allow_usdc === true || (currency === "USDC" && paymentOptions.allow_usdt !== true);
+  const allowUsdt = paymentOptions.allow_usdt === true;
+  if (!allowUsdc && !allowUsdt) return;
+
+  const chainMode = String(paymentOptions.chain_mode ?? "all").trim().toLowerCase() || "all";
+  let query = admin
+    .from("market_chain_config")
+    .select("chain,usdc_address,usdt_address,escrow_address,active")
+    .eq("active", true);
+
+  if (chainMode !== "all") query = query.eq("chain", chainMode);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const supportedRows = rows.filter((row) => {
+    if (!isUsableAddress(row.escrow_address)) return false;
+    return (allowUsdc && isUsableAddress(row.usdc_address)) || (allowUsdt && isUsableAddress(row.usdt_address));
+  });
+
+  if (!supportedRows.length) {
+    throw new Error(
+      chainMode === "all"
+        ? "No active checkout network supports this stablecoin route"
+        : `Selected checkout network ${chainMode} is inactive or missing token/escrow config`,
+    );
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -77,6 +119,12 @@ Deno.serve(async (req) => {
     const paymentOptions = { ...((body.payment_options ?? {}) as Record<string, unknown>) };
     if (currency === "USDC" && paymentOptions.allow_usdc !== true && paymentOptions.allow_usdt !== true) {
       paymentOptions.allow_usdc = true;
+    }
+    try {
+      await validateStableChainConfig(admin, paymentOptions, currency);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return bad(message);
     }
     row.payment_options = paymentOptions;
   }

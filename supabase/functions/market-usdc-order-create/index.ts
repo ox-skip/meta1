@@ -56,6 +56,12 @@ function isListingEditGuardError(input: unknown) {
   );
 }
 
+function restrictedChain(paymentOptions: Record<string, unknown>) {
+  const mode = String(paymentOptions?.chain_mode ?? "").trim().toLowerCase();
+  if (!mode || mode === "all") return "";
+  return mode;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -87,6 +93,10 @@ Deno.serve(async (req) => {
   if (listing.seller_id === user.id) return bad("You cannot buy your own listing");
   if (listing.stock_qty !== null && Number(listing.stock_qty) < quantity) return bad("Not enough stock");
   if ((listing as any)?.payment_options?.out_of_stock === true) return bad("Listing is out of stock");
+  const requiredChain = restrictedChain(((listing as any)?.payment_options ?? {}) as Record<string, unknown>);
+  if (requiredChain && chain.toLowerCase() !== requiredChain) {
+    return bad(`Listing only accepts checkout on ${requiredChain}`);
+  }
 
   const expiresAt = (listing as any)?.payment_options?.expires_at;
   if (expiresAt) {

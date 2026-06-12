@@ -32,16 +32,6 @@ import { isWalletMismatchError } from "@/services/market/usdcCheckout";
 import { supabase } from "@/services/supabase";
 import { friendlyMarketError } from "@/utils/marketUx";
 
-const CHAIN_ORDER: Record<string, number> = {
-  base: 0,
-  polygon: 1,
-  bnb: 2,
-  ethereum: 3,
-  arbitrum: 4,
-  optimism: 5,
-  arc_testnet: 6,
-};
-
 function formatMoney(value: number) {
   return Number(value || 0).toFixed(6).replace(/\.?0+$/, "");
 }
@@ -83,21 +73,14 @@ export default function CreateStockIdentityScreen() {
 
   const chainRows = useMemo(
     () =>
-      (chains ?? [])
-        .filter((c: any) =>
-          c?.active &&
-          isSupportedEvmStockChain(String(c?.chain || "")) &&
-          c?.identity_factory &&
-          c?.identity_router &&
-          c?.identity_ownership_controller &&
-          (c?.identity_stable_address || c?.usdc_address)
-        )
-        .sort((a: any, b: any) => {
-          const left = CHAIN_ORDER[String(a?.chain || "").toLowerCase()] ?? 999;
-          const right = CHAIN_ORDER[String(b?.chain || "").toLowerCase()] ?? 999;
-          if (left !== right) return left - right;
-          return String(a?.chain || "").localeCompare(String(b?.chain || ""));
-        }),
+      (chains ?? []).filter((c: any) =>
+        c?.active &&
+        isSupportedEvmStockChain(String(c?.chain || "")) &&
+        c?.identity_factory &&
+        c?.identity_router &&
+        c?.identity_ownership_controller &&
+        (c?.identity_stable_address || c?.usdc_address)
+      ),
     [chains],
   );
 
@@ -131,10 +114,7 @@ export default function CreateStockIdentityScreen() {
           c.identity_ownership_controller &&
           (c.identity_stable_address || c.usdc_address)
         );
-        const defaultChain =
-          availableChains.find((c: any) => String(c.chain || "").toLowerCase() === "base")?.chain ||
-          availableChains[0]?.chain ||
-          "";
+        const defaultChain = availableChains[0]?.chain || "";
         setChains(chainData ?? []);
         setChain(String(defaultChain));
         setSellerState({
@@ -161,6 +141,9 @@ export default function CreateStockIdentityScreen() {
       if (!name.trim() || name.trim().length < 3) throw new Error("Name must be at least 3 characters");
       if (!symbol.trim() || symbol.trim().length < 2) throw new Error("Symbol must be at least 2 characters");
       if (!chain.trim()) throw new Error("Select a network");
+      if (!chainRows.some((row: any) => String(row?.chain || "") === chain)) {
+        throw new Error("Selected launch network is inactive or missing stock contract config.");
+      }
 
       setConfirmVisible(false);
       setSubmitting(true);
@@ -333,9 +316,18 @@ export default function CreateStockIdentityScreen() {
             Choose where this stock will trade.
           </Text>
           <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {chainRows.length === 0 ? (
+              <Text style={{ color: STOCK.muted, fontSize: 12, lineHeight: 18 }}>
+                No active stock launch network is configured yet.
+              </Text>
+            ) : null}
             {chainRows.map((row: any) => {
               const key = String(row.chain || "");
               const active = chain === key;
+              const details = [
+                Number(row.chain_id || 0) > 0 ? `Chain ${row.chain_id}` : null,
+                row.is_testnet ? "Testnet" : null,
+              ].filter(Boolean).join(" / ");
               return (
                 <Pressable
                   key={key}
@@ -354,6 +346,11 @@ export default function CreateStockIdentityScreen() {
                   <Text style={{ color: active ? "#DCEBFF" : STOCK.muted, fontSize: 12, fontWeight: "900" }}>
                     {stockChainLabel(key)}
                   </Text>
+                  {details ? (
+                    <Text style={{ marginTop: 3, color: active ? "rgba(220,235,255,0.72)" : STOCK.faint, fontSize: 10, fontWeight: "800" }}>
+                      {details}
+                    </Text>
+                  ) : null}
                 </Pressable>
               );
             })}

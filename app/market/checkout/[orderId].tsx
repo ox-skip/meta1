@@ -47,6 +47,75 @@ function isAddress(v?: string | null) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(v || ""));
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function isUsableAddress(value?: string | null) {
+  const raw = String(value || "").trim();
+  return isAddress(raw) && raw.toLowerCase() !== ZERO_ADDRESS;
+}
+
+function titleCaseChain(chain?: string | null) {
+  const raw = String(chain || "").trim();
+  if (!raw) return "Network";
+  if (raw.toLowerCase() === "bnb") return "BNB";
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function compactAddress(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!isAddress(raw)) return "";
+  return `${raw.slice(0, 6)}...${raw.slice(-4)}`;
+}
+
+function chainAccent(chain?: string | null) {
+  const raw = String(chain || "").toLowerCase();
+  if (raw.includes("arc")) return "#22D3EE";
+  if (raw.includes("base")) return "#60A5FA";
+  if (raw.includes("polygon")) return "#A78BFA";
+  if (raw.includes("bnb")) return "#FDE68A";
+  return "#2DD4BF";
+}
+
+function isConfiguredActiveChain(chain: MarketChainConfig) {
+  return (
+    chain.active === true &&
+    Number(chain.chain_id || 0) > 0 &&
+    isUsableAddress(chain.usdc_address) &&
+    isUsableAddress(chain.escrow_address)
+  );
+}
+
+function selectedListingChain(paymentOptions: unknown) {
+  const options = parseJsonObject(paymentOptions) ?? {};
+  const mode = String((options as any)?.chain_mode ?? "").trim().toLowerCase();
+  if (!mode || mode === "all") return "";
+  return mode;
+}
+
+function chainSupportsCheckoutRoutes(
+  chain: MarketChainConfig,
+  allowUsdc: boolean,
+  allowUsdt: boolean,
+  requiredChain?: string | null,
+) {
+  if (!isConfiguredActiveChain(chain)) return false;
+  const required = String(requiredChain || "").trim().toLowerCase();
+  if (required && String(chain.chain || "").toLowerCase() !== required) return false;
+  if (!allowUsdc && !allowUsdt) return true;
+  return (allowUsdc && isUsableAddress(chain.usdc_address)) || (allowUsdt && isUsableAddress(chain.usdt_address));
+}
+
+function chainTokenLabels(chain: MarketChainConfig, allowUsdc: boolean, allowUsdt: boolean) {
+  const labels: string[] = [];
+  if (allowUsdc && isUsableAddress(chain.usdc_address)) labels.push("USDC");
+  if (allowUsdt && isUsableAddress(chain.usdt_address)) labels.push("USDT");
+  return labels;
+}
+
 function isHexHash(v?: string | null) {
   return /^0x[a-fA-F0-9]{64}$/.test(String(v || "").trim());
 }
@@ -232,14 +301,24 @@ export default function Checkout() {
   });
 
   const { allowUsdc, allowUsdt } = getStableRouteFlags(paymentOptions, listingCurrency);
+  const requiredChain = selectedListingChain(paymentOptions);
   const enabledRoutes = [
     allowUsdc ? "USDC" : null,
     allowUsdt ? "USDT" : null,
   ].filter(Boolean) as string[];
   const usdcRequired = allowUsdc ? orderAmount : 0;
   const usdtRequired = allowUsdt ? orderAmount : 0;
-  const usdcShortfall = allowUsdc && usdcRequired > 0 ? Math.max(0, usdcRequired - usdcBalance) : 0;
-  const usdtShortfall = allowUsdt && usdtRequired > 0 ? Math.max(0, usdtRequired - usdtBalance) : 0;
+  const availableChains = useMemo(
+    () => chains.filter((c) => chainSupportsCheckoutRoutes(c, allowUsdc, allowUsdt, requiredChain)),
+    [allowUsdc, allowUsdt, chains, requiredChain],
+  );
+  const selectedChainStillAvailable = !!chain && availableChains.some((c) => c.chain === chain.chain);
+  const selectedChainLabels = chain ? chainTokenLabels(chain, allowUsdc, allowUsdt) : [];
+  const canPayUsdc = !!chain && allowUsdc && isUsableAddress(chain.usdc_address);
+  const canPayUsdt = !!chain && allowUsdt && isUsableAddress(chain.usdt_address);
+  const usdcShortfall = canPayUsdc && usdcRequired > 0 ? Math.max(0, usdcRequired - usdcBalance) : 0;
+  const usdtShortfall = canPayUsdt && usdtRequired > 0 ? Math.max(0, usdtRequired - usdtBalance) : 0;
+  const noActiveCheckoutNetwork = enabledRoutes.length > 0 && availableChains.length === 0;
   const deliveryLat = Number(deliveryGeo?.lat);
   const deliveryLng = Number(deliveryGeo?.lng);
   const hasDeliveryCoords = Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng);
@@ -404,11 +483,13 @@ export default function Checkout() {
       }
     })();
     (async () => {
-      const all = await fetchMarketChains().catch(() => []);
+      const all = (await fetchMarketChains().catch(() => [])) as MarketChainConfig[];
+      const activeConfigured = all.filter(isConfiguredActiveChain);
       const preferred = await getPreferredMarketChain().catch(() => null);
+      const preferredActive = preferred && activeConfigured.find((c) => c.chain === preferred.chain);
       if (!mounted) return;
-      setChains(all as MarketChainConfig[]);
-      setChain((preferred as MarketChainConfig | null) ?? ((all as MarketChainConfig[])[0] ?? null));
+      setChains(activeConfigured);
+      setChain(preferredActive ?? (activeConfigured[0] ?? null));
     })();
     (async () => {
       try {
@@ -426,6 +507,18 @@ export default function Checkout() {
   useEffect(() => {
     refreshFunding();
   }, [chain?.chain, order?.id, order?.amount, order?.currency, userCountry?.code, userCountry?.name]);
+
+  useEffect(() => {
+    if (!chains.length) {
+      setChain(null);
+      return;
+    }
+    if (!enabledRoutes.length) return;
+    if (selectedChainStillAvailable) return;
+    const next = availableChains[0] ?? null;
+    setChain(next);
+    if (next) void setPreferredMarketChain(next.chain);
+  }, [availableChains, chains.length, enabledRoutes.length, selectedChainStillAvailable]);
 
   useEffect(() => {
     if (!oid) return;
@@ -532,6 +625,9 @@ export default function Checkout() {
     setErr(null);
     if (!oid) return setErr("Missing orderId");
     if (!allowUsdc) return setErr("This listing does not accept USDC payments.");
+    if (!chain) return setErr("No active checkout network is configured for this order.");
+    if (!selectedChainStillAvailable) return setErr("Selected network is not available for this listing.");
+    if (!canPayUsdc) return setErr(`${titleCaseChain(chain.chain)} is not configured for USDC checkout.`);
     if (usdcShortfall > 0) {
       return setErr(`Insufficient USDC on selected network. Add ${usdcShortfall.toLocaleString(undefined, { maximumFractionDigits: 6 })} USDC and retry.`);
     }
@@ -541,7 +637,6 @@ export default function Checkout() {
     console.log("[Checkout] payWithUsdc start", { orderId: oid });
     setBusy(true);
     try {
-      if (!chain) throw new Error("No active chain configuration found.");
       const res: any = await payUsdcForOrder(oid, chain);
       await showStableDepositResult("USDC", res);
     } catch (e: any) {
@@ -558,7 +653,7 @@ export default function Checkout() {
                 void (async () => {
                   try {
                     setBusy(true);
-                    const activeChain = chain ?? (await getPreferredMarketChain());
+                    const activeChain = chain;
                     if (!activeChain) throw new Error("No active chain configuration found.");
                     await replaceSavedWalletWithDevice(activeChain as any);
                     const retried: any = await payUsdcForOrder(oid, activeChain);
@@ -613,6 +708,9 @@ export default function Checkout() {
     setErr(null);
     if (!oid) return setErr("Missing orderId");
     if (!allowUsdt) return setErr("This listing does not accept USDT payments.");
+    if (!chain) return setErr("No active checkout network is configured for this order.");
+    if (!selectedChainStillAvailable) return setErr("Selected network is not available for this listing.");
+    if (!canPayUsdt) return setErr(`${titleCaseChain(chain.chain)} is not configured for USDT checkout.`);
     if (usdtShortfall > 0) {
       return setErr(`Insufficient USDT on selected network. Add ${usdtShortfall.toLocaleString(undefined, { maximumFractionDigits: 6 })} USDT and retry.`);
     }
@@ -622,7 +720,6 @@ export default function Checkout() {
     console.log("[Checkout] payWithUsdt start", { orderId: oid });
     setBusy(true);
     try {
-      if (!chain) throw new Error("No active chain configuration found.");
       const res: any = await payUsdtForOrder(oid, chain);
       await showStableDepositResult("USDT", res);
     } catch (e: any) {
@@ -639,7 +736,7 @@ export default function Checkout() {
                 void (async () => {
                   try {
                     setBusy(true);
-                    const activeChain = chain ?? (await getPreferredMarketChain());
+                    const activeChain = chain;
                     if (!activeChain) throw new Error("No active chain configuration found.");
                     await replaceSavedWalletWithDevice(activeChain as any);
                     const retried: any = await payUsdtForOrder(oid, activeChain);
@@ -875,7 +972,7 @@ export default function Checkout() {
               }}
             >
               <Text style={{ color: "rgba(254,243,199,0.95)", fontWeight: "900", fontSize: 12 }}>
-                Warning: your delivery location may be outside the seller's availability. You can still continue.
+                Warning: your delivery location may be outside the seller&apos;s availability. You can still continue.
               </Text>
             </View>
           ) : null}
@@ -1039,26 +1136,55 @@ export default function Checkout() {
         >
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>Payment options</Text>
           <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-            - USDC/USDT: uses your connected wallet and deposits into escrow on-chain.
+            USDC/USDT routes are loaded from active chain config and deposited into escrow on-chain.
           </Text>
           {!enabledRoutes.length ? (
             <Text style={{ marginTop: 8, color: "#FCA5A5", fontSize: 12 }}>
               This listing does not have an active crypto checkout route. Ask the seller to republish it with USDC or USDT enabled.
             </Text>
           ) : null}
+          {noActiveCheckoutNetwork ? (
+            <View
+              style={{
+                marginTop: 10,
+                borderRadius: 16,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: "rgba(251,113,133,0.44)",
+                backgroundColor: "rgba(251,113,133,0.10)",
+              }}
+            >
+              <Text style={{ color: "#FCA5A5", fontWeight: "900", fontSize: 12 }}>
+                No active configured network can accept {enabledRoutes.join(" or ")}
+                {requiredChain ? ` on ${titleCaseChain(requiredChain)}` : ""} for this order.
+              </Text>
+              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 18 }}>
+                Activate the chain in market_chain_config with a valid token address and escrow address.
+              </Text>
+            </View>
+          ) : null}
 
           <View
             style={{
               marginTop: 10,
-              borderRadius: 14,
-              padding: 10,
-              backgroundColor: "rgba(255,255,255,0.04)",
+              borderRadius: 18,
+              padding: 12,
+              backgroundColor: chain ? `${chainAccent(chain.chain)}14` : "rgba(255,255,255,0.04)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.1)",
+              borderColor: chain ? `${chainAccent(chain.chain)}55` : "rgba(255,255,255,0.1)",
             }}
           >
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Available balances</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
+                  {chain ? `${titleCaseChain(chain.chain)} balances` : "Available balances"}
+                </Text>
+                <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.58)", fontSize: 11 }} numberOfLines={1}>
+                  {chain
+                    ? `Chain ID ${chain.chain_id}${selectedChainLabels.length ? ` - ${selectedChainLabels.join(" + ")}` : ""}`
+                    : "Choose an active network below"}
+                </Text>
+              </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <BalanceVisibilityToggle
                   hidden={balancesHidden}
@@ -1092,7 +1218,7 @@ export default function Checkout() {
             </Text>
             {walletAddress ? (
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.55)", fontSize: 11 }}>
-                Saved wallet: {walletAddress}
+                Saved wallet: {compactAddress(walletAddress)}
               </Text>
             ) : null}
             {fundingLoading ? (
@@ -1104,45 +1230,86 @@ export default function Checkout() {
           </View>
 
           <View style={{ marginTop: 10 }}>
-            <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>Select network</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-              {chains.map((c) => {
-                const selected = chain?.chain === c.chain;
-                return (
-                  <Pressable
-                    key={c.chain}
-                    disabled={!c.active}
-                    onPress={async () => {
-                      try {
-                        setErr(null);
-                        setChain(c);
-                        await setPreferredMarketChain(c.chain);
-                        await refreshFunding(c);
-                      } catch (e: any) {
-                        setErr(friendlyMarketError(e, "Unable to switch network."));
-                      }
-                    }}
-                    style={{
-                      marginRight: 8,
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderWidth: 1,
-                      borderColor: selected ? "rgba(45,212,191,0.55)" : "rgba(255,255,255,0.12)",
-                      backgroundColor: selected ? "rgba(45,212,191,0.2)" : "rgba(255,255,255,0.05)",
-                      opacity: c.active ? 1 : 0.5,
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 11 }}>
-                      {String(c.chain).toUpperCase().replace("_", " ")}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>Select active network</Text>
+            {requiredChain ? (
+              <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.58)", fontSize: 11 }}>
+                This listing is restricted to {titleCaseChain(requiredChain)}.
+              </Text>
+            ) : null}
+            {availableChains.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                {availableChains.map((c) => {
+                  const selected = chain?.chain === c.chain;
+                  const accent = chainAccent(c.chain);
+                  const tokenLabels = chainTokenLabels(c, allowUsdc, allowUsdt);
+                  return (
+                    <Pressable
+                      key={c.chain}
+                      onPress={async () => {
+                        try {
+                          setErr(null);
+                          setChain(c);
+                          await setPreferredMarketChain(c.chain);
+                          await refreshFunding(c);
+                        } catch (e: any) {
+                          setErr(friendlyMarketError(e, "Unable to switch network."));
+                        }
+                      }}
+                      style={{
+                        marginRight: 10,
+                        minWidth: 132,
+                        borderRadius: 18,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderColor: selected ? `${accent}AA` : "rgba(255,255,255,0.12)",
+                        backgroundColor: selected ? `${accent}26` : "rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }} numberOfLines={1}>
+                          {titleCaseChain(c.chain)}
+                        </Text>
+                        {selected ? <Ionicons name="checkmark-circle" size={16} color={accent} /> : null}
+                      </View>
+                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.58)", fontSize: 10, fontWeight: "800" }}>
+                        Chain {c.chain_id}
+                      </Text>
+                      <View style={{ marginTop: 7, flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
+                        {c.is_testnet ? (
+                          <View style={{ borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: "rgba(251,191,36,0.16)" }}>
+                            <Text style={{ color: "#FDE68A", fontSize: 9, fontWeight: "900" }}>TESTNET</Text>
+                          </View>
+                        ) : null}
+                        {tokenLabels.map((label) => (
+                          <View key={label} style={{ borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: `${accent}22` }}>
+                            <Text style={{ color: accent, fontSize: 9, fontWeight: "900" }}>{label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View
+                style={{
+                  marginTop: 8,
+                  borderRadius: 16,
+                  padding: 12,
+                  backgroundColor: "rgba(255,255,255,0.04)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.10)",
+                }}
+              >
+                <Text style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, lineHeight: 18 }}>
+                  No active checkout network is available from chain config.
+                </Text>
+              </View>
+            )}
             {chain ? (
               <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.6)", fontSize: 11 }}>
-                Active network: {String(chain.chain).toUpperCase().replace("_", " ")}
+                Active network: {titleCaseChain(chain.chain)}
               </Text>
             ) : null}
           </View>
@@ -1214,17 +1381,17 @@ export default function Checkout() {
           <Pill
             icon="logo-bitcoin"
             title="Pay with USDC"
-            subtitle="Approve + deposit into escrow using your connected wallet"
+            subtitle={chain ? `Approve + deposit on ${titleCaseChain(chain.chain)}` : "Select an active network first"}
             onPress={payWithUsdc}
-            disabled={busy || fundingLoading || !allowUsdc || usdcShortfall > 0}
+            disabled={busy || fundingLoading || !selectedChainStillAvailable || !canPayUsdc || usdcShortfall > 0}
           />
 
           <Pill
             icon="cash-outline"
             title="Pay with USDT"
-            subtitle="Approve + deposit into escrow using your connected wallet"
+            subtitle={chain ? `Approve + deposit on ${titleCaseChain(chain.chain)}` : "Select an active network first"}
             onPress={payWithUsdt}
-            disabled={busy || fundingLoading || !allowUsdt || usdtShortfall > 0}
+            disabled={busy || fundingLoading || !selectedChainStillAvailable || !canPayUsdt || usdtShortfall > 0}
           />
 
           {enabledRoutes.length < 2 ? (

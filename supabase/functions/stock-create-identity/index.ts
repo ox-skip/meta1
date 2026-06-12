@@ -333,17 +333,17 @@ Deno.serve(async (req) => {
       .eq("active", true)
       .order("created_at", { ascending: false });
     if (error) return bad(error.message);
-    const rows = data ?? [];
-    const preferredOrder = ["base", "polygon", "bnb", "ethereum", "arbitrum", "optimism", "arc_testnet"];
-    chainConfig = preferredOrder
-      .map((chain) => rows.find((row: any) =>
-        String(row?.chain || "").toLowerCase() === chain &&
-        row.identity_factory &&
-        row.identity_router
-      ))
-      .find(Boolean) ??
-      rows.find((row: any) => isSupportedEvmStockChain(row?.chain) && row.identity_factory && row.identity_router) ??
-      null;
+    const rows = (data ?? []).filter((row: any) =>
+      isSupportedEvmStockChain(row?.chain) &&
+      row.identity_factory &&
+      row.identity_router &&
+      row.identity_ownership_controller &&
+      (row.identity_stable_address || row.usdc_address)
+    );
+    if (rows.length > 1) {
+      return bad("chain required when multiple active stock launch networks are configured");
+    }
+    chainConfig = rows[0] ?? null;
   }
 
   if (!chainConfig?.chain) return bad("No active chain config available");

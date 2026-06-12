@@ -168,22 +168,17 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
 export async function getPreferredMarketChain() {
   const saved = await SecureStore.getItemAsync(KEY_CHAIN);
   const chains = await fetchMarketChains();
-  const active = chains.find((c: MarketChainConfig) => c.active) ?? null;
-  const fallback = chains[0] ?? null;
+  const activeChains = chains.filter((c: MarketChainConfig) => c.active);
+  const active = activeChains[0] ?? null;
 
   if (saved) {
-    const match = chains.find((c: MarketChainConfig) => c.chain === saved);
-    if (match?.active) return match;
+    const match = activeChains.find((c: MarketChainConfig) => c.chain === saved);
+    if (match) return match;
   }
 
   if (active) {
     await SecureStore.setItemAsync(KEY_CHAIN, active.chain);
     return active;
-  }
-
-  if (fallback) {
-    await SecureStore.setItemAsync(KEY_CHAIN, fallback.chain);
-    return fallback;
   }
 
   return null;
