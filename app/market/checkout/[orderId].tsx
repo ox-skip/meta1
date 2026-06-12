@@ -859,7 +859,7 @@ export default function Checkout() {
             {orderCurrency || listingCurrency || "USDC"}
           </Text>
           <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-            Fund only appears when your selected payment wallet is insufficient.
+            
           </Text>
         </View>
 
