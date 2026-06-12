@@ -4,6 +4,7 @@ import { resolveRpcUrlForChain } from "../_shared/market/chainRpc.ts";
 import { keccak_256 } from "https://esm.sh/@noble/hashes@1.3.3/sha3";
 import { ethers } from "https://esm.sh/ethers@6.16.0";
 import {
+  SUPPORTED_EVM_STOCK_CHAIN_LABEL,
   isSupportedEvmStockChain,
   readErc20TotalSupply,
   readFactoryCreationSettings,
@@ -309,7 +310,7 @@ Deno.serve(async (req) => {
 
   if (preferredChain === "pi_testnet") return bad("Use the Pi stock creation flow for pi_testnet identities");
   if (preferredChain && !isSupportedEvmStockChain(preferredChain)) {
-    return bad("EVM stock identity creation is restricted to supported market networks.");
+    return bad(`EVM stock identity creation is restricted to ${SUPPORTED_EVM_STOCK_CHAIN_LABEL}.`);
   }
 
   let chainConfig: any = null;
@@ -348,7 +349,7 @@ Deno.serve(async (req) => {
 
   if (!chainConfig?.chain) return bad("No active chain config available");
   if (!isSupportedEvmStockChain(String(chainConfig.chain))) {
-    return bad("EVM stock identity creation is restricted to supported market networks.");
+    return bad(`EVM stock identity creation is restricted to ${SUPPORTED_EVM_STOCK_CHAIN_LABEL}.`);
   }
   const rpcUrl = resolveRpcUrlForChain(String(chainConfig.chain), chainConfig.rpc_url);
   if (!rpcUrl) return bad(`rpc_url missing for ${chainConfig.chain}`);

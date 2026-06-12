@@ -152,11 +152,27 @@ function localMarketGuide(question: string, context?: BestCityMarketGuideContext
   const location = context?.locationLabel && context.locationLabel !== "Location unavailable"
     ? context.locationLabel
     : "your detected country";
+  const section = String(context?.section || "").toLowerCase();
+  const mode = String(context?.directoryMode || "").toLowerCase();
+  const currentQuery = String(context?.query || "").trim();
 
   let answer =
     "BestCity Market helps you discover products, services, sellers, social updates, and digital stock tools from one market home. Start with Products or Services, use search or category chips to narrow the feed, then open a listing to review media, seller details, delivery terms, comments, trust signals, and checkout options.";
 
-  if (/escrow|trust|safe|payment|pay|checkout|release/.test(q)) {
+  if (section === "search") {
+    const queryHint = currentQuery
+      ? `Your current query is "${currentQuery}". If results are weak, try fewer words, a category word, the seller name, or a direct @username.`
+      : "Start with a concrete product, service, category, seller name, or @username.";
+    const modeHint =
+      mode === "store"
+        ? "Store mode is best for seller names and handles."
+        : mode === "product"
+        ? "Product mode is best for physical items and shippable goods."
+        : mode === "service"
+        ? "Service mode is best for skills, bookings, and work offers."
+        : "All mode checks listings and stores together.";
+    answer = `${queryHint} ${modeHint} BestCity ranks exact titles, store handles, categories, matching descriptions, availability, and freshness first.`;
+  } else if (/escrow|trust|safe|payment|pay|checkout|release/.test(q)) {
     answer =
       "For buying, BestCity is built around a trust flow: review the listing and seller, place the order through checkout, keep payment protected in escrow where supported, confirm delivery or completion, then release funds to the seller. If something feels wrong, use messages, order details, support, or dispute tools instead of moving the deal outside BestCity.";
   } else if (/sell|seller|store|listing|post/.test(q)) {
@@ -179,12 +195,19 @@ function localMarketGuide(question: string, context?: BestCityMarketGuideContext
   return {
     answer: cleanGuideText(answer, 1400),
     source: "local",
-    followUps: [
-      "How do I buy safely?",
-      "How do I sell on BestCity?",
-      "Explain local and global feeds",
-      "What is the stock market?",
-    ],
+    followUps: section === "search"
+      ? [
+          "How should I search?",
+          "Why no results?",
+          "Product or service mode?",
+          "How do I find a store?",
+        ]
+      : [
+          "How do I buy safely?",
+          "How do I sell on BestCity?",
+          "Explain local and global feeds",
+          "What is the stock market?",
+        ],
   };
 }
 
