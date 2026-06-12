@@ -18,6 +18,10 @@ export type MarketChainConfig = {
 };
 
 const EXTERNAL_WALLET_SENTINEL_PK = `0x${"f".repeat(64)}` as `0x${string}`;
+const ARC_TESTNET_CHAIN_ID = 5042002;
+const ARC_TESTNET_USDC_NATIVE = { name: "USDC", symbol: "USDC", decimals: 18 };
+const ARC_TESTNET_PUBLIC_RPC = "https://rpc.testnet.arc.network";
+const ARC_TESTNET_EXPLORER = "https://testnet.arcscan.app";
 
 function isAddress(value: string) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || ""));
@@ -41,6 +45,19 @@ function getFallbackChainById(chainId: number) {
     137: polygon,
     42161: arbitrum,
     10: optimism,
+    [ARC_TESTNET_CHAIN_ID]: {
+      id: ARC_TESTNET_CHAIN_ID,
+      name: "Arc Testnet",
+      nativeCurrency: ARC_TESTNET_USDC_NATIVE,
+      rpcUrls: {
+        default: { http: [ARC_TESTNET_PUBLIC_RPC] },
+        public: { http: [ARC_TESTNET_PUBLIC_RPC] },
+      },
+      blockExplorers: {
+        default: { name: "ArcScan", url: ARC_TESTNET_EXPLORER },
+      },
+      testnet: true,
+    },
   };
   return map[chainId] ?? null;
 }
@@ -307,7 +324,7 @@ async function ensureWalletHasDirectGas(args: {
     throw new Error(
       `This WalletConnect wallet needs ${symbol} on ${chainName} for gas. ` +
         `It currently has ${formatWeiForDisplay(balance)} ${symbol}. ` +
-        `Send a small amount of Base ETH to ${args.from}, or use a native wallet that already has gas.`,
+        `Fund ${args.from} with a small amount of ${symbol}, or use a wallet that already has gas.`,
     );
   } catch (err: any) {
     const msg = String(err?.message || err || "");
@@ -332,14 +349,17 @@ function buildChainForWallet(chainConfig: MarketChainConfig, chainOverride?: any
   if (fallback) return fallback;
 
   const rpc = String(chainConfig.rpc_url || "").trim();
+  const isArcTestnet = chainId === ARC_TESTNET_CHAIN_ID || String(chainConfig.chain || "").toLowerCase() === "arc_testnet";
   return {
     id: chainId,
-    name: String(chainConfig.chain || `Chain ${chainId}`),
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    name: isArcTestnet ? "Arc Testnet" : String(chainConfig.chain || `Chain ${chainId}`),
+    nativeCurrency: isArcTestnet ? ARC_TESTNET_USDC_NATIVE : { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: {
       default: { http: rpc ? [rpc] : [] },
       public: { http: rpc ? [rpc] : [] },
     },
+    blockExplorers: isArcTestnet ? { default: { name: "ArcScan", url: ARC_TESTNET_EXPLORER } } : undefined,
+    testnet: isArcTestnet || undefined,
   } as any;
 }
 
@@ -597,12 +617,18 @@ export function getRpcUrlForChain(chainConfig: MarketChainConfig, chainOverride?
   const chain = buildChainForWallet(chainConfig, chainOverride);
   const apiKey = cleanAlchemyApiKey(process.env.EXPO_PUBLIC_ALCHEMY_API_KEY);
   const explicitAlchemy = alchemyUrlForChainId(chainId, apiKey);
+  const envRpc = envRpcUrlForChain((chainConfig as any).chain);
+  const configuredRpc = String(chainConfig.rpc_url || "").trim();
+
+  if (chainId === ARC_TESTNET_CHAIN_ID || String((chainConfig as any).chain || "").toLowerCase() === "arc_testnet") {
+    return envRpc || configuredRpc || chain?.rpcUrls?.default?.http?.[0] || ARC_TESTNET_PUBLIC_RPC;
+  }
 
   return (
     explicitAlchemy ||
-    envRpcUrlForChain((chainConfig as any).chain) ||
+    envRpc ||
     (apiKey && chain?.rpcUrls?.alchemy?.http?.[0]?.replace("${ALCHEMY_API_KEY}", apiKey)) ||
-    chainConfig.rpc_url ||
+    configuredRpc ||
     chain?.rpcUrls?.default?.http?.[0] ||
     ""
   );

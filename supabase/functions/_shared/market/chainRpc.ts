@@ -26,6 +26,12 @@ function alchemyUrlForChain(chain: string, apiKey: string) {
   return urls[normalized] || "";
 }
 
+function publicRpcUrlForChain(chain: string) {
+  const normalized = String(chain || "").trim().toLowerCase();
+  if (normalized === "arc_testnet") return "https://rpc.testnet.arc.network";
+  return "";
+}
+
 export function resolveRpcUrlForChain(chain: string, configured?: string | null) {
   const direct = String(configured || "").trim();
   if (direct) return direct;
@@ -45,6 +51,9 @@ export function resolveRpcUrlForChain(chain: string, configured?: string | null)
   ]);
   const explicit = envNames.map((name) => String(Deno.env.get(name) || "").trim()).find(Boolean) || "";
   if (explicit) return explicit;
+
+  const publicRpc = publicRpcUrlForChain(chain);
+  if (publicRpc) return publicRpc;
 
   const alchemyKey =
     String(Deno.env.get("ALCHEMY_API_KEY") || "").trim() ||

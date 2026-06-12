@@ -218,6 +218,10 @@ function formatUsdc6(raw: bigint) {
   return fracText ? `${whole.toString()}.${fracText}` : whole.toString();
 }
 
+function nativeGasLabel(chainName?: string | null) {
+  return String(chainName || "").trim().toLowerCase() === "arc_testnet" ? "USDC" : "native gas token";
+}
+
 function formatToken18(raw: bigint) {
   const whole = raw / 1_000_000_000_000_000_000n;
   const frac = raw % 1_000_000_000_000_000_000n;
@@ -651,6 +655,7 @@ export function explorerTxUrl(chain: string, txHash: string) {
     polygon: "https://polygonscan.com/tx/",
     optimism: "https://optimistic.etherscan.io/tx/",
     bnb: "https://bscscan.com/tx/",
+    arc_testnet: "https://testnet.arcscan.app/tx/",
   };
   const prefix = map[c];
   return prefix ? `${prefix}${h}` : null;
@@ -758,7 +763,7 @@ async function resolveTxHash(chain: MarketChainConfig, sendResult: any) {
 
 async function resolveStockChain(chainName: string) {
   if (!isSupportedEvmStockChain(chainName)) {
-    throw new Error("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
+    throw new Error("EVM stock trading is restricted to supported market networks.");
   }
   const chains = await fetchMarketChains();
   const chain = (chains ?? []).find((c) => c.chain === chainName && c.active);
@@ -1079,7 +1084,7 @@ export async function createStockIdentityOnchain(input: {
 
     const nativeBalance = await publicClient.getBalance({ address: address as `0x${string}` });
     if (nativeBalance <= 0n) {
-      throw new Error(`Insufficient ${String(chain.chain || "native")} gas token. Fund this wallet with native gas token first.`);
+      throw new Error(`Insufficient ${nativeGasLabel(chain.chain)} for network fees. Fund this wallet and try again.`);
     }
 
     const creationSettings = await readFactoryCreationSettings(publicClient, factoryAddress);

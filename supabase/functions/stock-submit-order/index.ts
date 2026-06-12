@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     return bad("This is a Pi-native stock. Use the Pi stock market flow.");
   }
   if (!isSupportedEvmStockChain(identity.chain)) {
-    return bad("EVM stock trading is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    return bad("EVM stock trading is restricted to supported market networks.");
   }
   if (!isAddress(String(identity.pool_address || ""))) return bad("Stock pool address is missing");
   if (!isAddress(String(identity.token_address || ""))) return bad("Stock token address is missing");

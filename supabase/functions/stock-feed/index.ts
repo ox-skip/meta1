@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
   const identity = await resolveStockIdentity(admin as any, { stockId, slug });
   if (!identity) return bad("Stock identity not found");
   if (identity.chain !== "pi_testnet" && !isSupportedEvmStockChain(identity.chain)) {
-    return bad("EVM stock market data is restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    return bad("EVM stock market data is restricted to supported market networks.");
   }
 
   const [sellerRes, pointRes, reserveRes, reinvestRes, chainRes] = await Promise.all([

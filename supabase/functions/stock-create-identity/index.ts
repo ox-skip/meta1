@@ -309,7 +309,7 @@ Deno.serve(async (req) => {
 
   if (preferredChain === "pi_testnet") return bad("Use the Pi stock creation flow for pi_testnet identities");
   if (preferredChain && !isSupportedEvmStockChain(preferredChain)) {
-    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
+    return bad("EVM stock identity creation is restricted to supported market networks.");
   }
 
   let chainConfig: any = null;
@@ -334,7 +334,7 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false });
     if (error) return bad(error.message);
     const rows = data ?? [];
-    const preferredOrder = ["base", "polygon", "bnb", "ethereum", "arbitrum", "optimism"];
+    const preferredOrder = ["base", "polygon", "bnb", "ethereum", "arbitrum", "optimism", "arc_testnet"];
     chainConfig = preferredOrder
       .map((chain) => rows.find((row: any) =>
         String(row?.chain || "").toLowerCase() === chain &&
@@ -348,7 +348,7 @@ Deno.serve(async (req) => {
 
   if (!chainConfig?.chain) return bad("No active chain config available");
   if (!isSupportedEvmStockChain(String(chainConfig.chain))) {
-    return bad("EVM stock identity creation is restricted to ethereum, base, arbitrum, optimism, polygon, and BNB mainnet.");
+    return bad("EVM stock identity creation is restricted to supported market networks.");
   }
   const rpcUrl = resolveRpcUrlForChain(String(chainConfig.chain), chainConfig.rpc_url);
   if (!rpcUrl) return bad(`rpc_url missing for ${chainConfig.chain}`);

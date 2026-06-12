@@ -8,7 +8,7 @@ Deno.serve(async (req) => {
 
   let { data, error } = await admin
     .from("market_chain_config")
-    .select("chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,active")
+    .select("chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,is_testnet,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,active")
     .order("active", { ascending: false });
 
   if (error) {

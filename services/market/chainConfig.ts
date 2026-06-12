@@ -14,6 +14,7 @@ export type MarketChainConfig = {
   faucet_cooldown_seconds: number;
   faucet_usdc_amount_raw: string | null;
   faucet_usdt_amount_raw: string | null;
+  is_testnet?: boolean;
   identity_factory?: string | null;
   identity_router?: string | null;
   identity_name_registry?: string | null;
@@ -25,7 +26,9 @@ export type MarketChainConfig = {
 };
 
 const KEY_CHAIN = "bc_market_chain_pref_v2";
-const MAINNET_CHAINS = new Set(["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb"]);
+const EVM_MARKET_CHAINS = new Set(["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb", "arc_testnet"]);
+const ARC_TESTNET_CHAIN_ID = 5042002;
+const ARC_TESTNET_PUBLIC_RPC = "https://rpc.testnet.arc.network";
 
 function parseNumber(input: unknown, fallback: number) {
   const value = Number(input);
@@ -54,6 +57,12 @@ function alchemyUrlForChainId(chainId: number) {
   return urls[chainId] ?? null;
 }
 
+function publicRpcUrlForChain(chainName: unknown, chainId: number) {
+  const normalized = String(chainName || "").trim().toLowerCase();
+  if (normalized === "arc_testnet" || chainId === ARC_TESTNET_CHAIN_ID) return ARC_TESTNET_PUBLIC_RPC;
+  return null;
+}
+
 function envRpcUrlForChain(chainName: unknown) {
   const normalized = String(chainName || "").trim().toLowerCase();
   const upper = normalized.toUpperCase().replace(/[^A-Z0-9]/g, "_");
@@ -75,14 +84,16 @@ function envRpcUrlForChain(chainName: unknown) {
   return names.map((name) => String((process.env as any)?.[name] || "").trim()).find(Boolean) || null;
 }
 
-function isSupportedMainnetChain(input: unknown) {
-  return MAINNET_CHAINS.has(String(input || "").trim().toLowerCase());
+function isSupportedMarketChain(input: unknown) {
+  return EVM_MARKET_CHAINS.has(String(input || "").trim().toLowerCase());
 }
 
 export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
   const normalize = (input: any): MarketChainConfig => {
     const chainId = parseNumber(input?.chain_id, 0);
-    const rpcUrl = input?.rpc_url ? String(input.rpc_url) : envRpcUrlForChain(input?.chain) || alchemyUrlForChainId(chainId);
+    const rpcUrl = input?.rpc_url
+      ? String(input.rpc_url)
+      : envRpcUrlForChain(input?.chain) || publicRpcUrlForChain(input?.chain, chainId) || alchemyUrlForChainId(chainId);
 
     return {
       chain: String(input?.chain ?? ""),
@@ -102,6 +113,7 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
         input?.faucet_usdt_amount_raw === null || input?.faucet_usdt_amount_raw === undefined
           ? null
           : String(input?.faucet_usdt_amount_raw),
+      is_testnet: Boolean(input?.is_testnet),
       identity_factory: input?.identity_factory ? String(input.identity_factory) : null,
       identity_router: input?.identity_router ? String(input.identity_router) : null,
       identity_name_registry: input?.identity_name_registry ? String(input.identity_name_registry) : null,
@@ -118,11 +130,11 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
     const { data: direct, error: directErr } = await supabase
       .from("market_chain_config")
       .select(
-        "chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,active"
+        "chain,chain_id,rpc_url,usdc_address,usdt_address,escrow_address,faucet_address,faucet_active,faucet_cooldown_seconds,faucet_usdc_amount_raw,faucet_usdt_amount_raw,is_testnet,identity_factory,identity_router,identity_name_registry,identity_ownership_controller,identity_liquidity_manager,identity_stable_address,confirmations_required,active"
       )
       .order("active", { ascending: false });
     if (!directErr && direct && direct.length) {
-      const directNorm = direct.filter((row) => isSupportedMainnetChain(row?.chain)).map(normalize);
+      const directNorm = direct.filter((row) => isSupportedMarketChain(row?.chain)).map(normalize);
       const hasValidTokens = directNorm.some((c) => /^0x[a-fA-F0-9]{40}$/.test(c.usdc_address || ""));
       if (hasValidTokens) return directNorm;
     }
@@ -142,14 +154,14 @@ export async function fetchMarketChains(): Promise<MarketChainConfig[]> {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || json?.error || "Failed to load chains");
     const fromFn: MarketChainConfig[] = (json?.chains ?? [])
-      .filter((row: any) => isSupportedMainnetChain(row?.chain))
+      .filter((row: any) => isSupportedMarketChain(row?.chain))
       .map(normalize);
     // Guard against stale function deployments returning empty token addresses.
     const hasValidTokens = fromFn.some((c) => /^0x[a-fA-F0-9]{40}$/.test(c.usdc_address || ""));
     if (fromFn.length && hasValidTokens) return fromFn;
     throw new Error("Chain config payload missing token addresses");
   } catch (e: any) {
-    throw new Error(String(e?.message || "Unable to load mainnet chain configuration."));
+    throw new Error(String(e?.message || "Unable to load market chain configuration."));
   }
 }
 

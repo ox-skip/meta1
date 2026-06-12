@@ -73,7 +73,22 @@ function loadRuntime(): RuntimeModules | null {
 
 function getNetworks(rt: RuntimeModules) {
   const n = rt.networks;
-  return [n.mainnet, n.base, n.polygon, n.arbitrum, n.optimism] as any;
+  const arcTestnet = {
+    id: 5042002,
+    caipNetworkId: "eip155:5042002",
+    chainNamespace: "eip155",
+    name: "Arc Testnet",
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    rpcUrls: {
+      default: { http: ["https://rpc.testnet.arc.network"] },
+      public: { http: ["https://rpc.testnet.arc.network"] },
+    },
+    blockExplorers: {
+      default: { name: "ArcScan", url: "https://testnet.arcscan.app" },
+    },
+    testnet: true,
+  };
+  return [n.mainnet, n.base, n.polygon, n.arbitrum, n.optimism, arcTestnet] as any;
 }
 
 function parseSmartAccounts(raw: unknown) {

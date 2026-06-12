@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     return bad("This is a Pi-native stock. Use the Pi stock market flow.");
   }
   if (!isSupportedEvmStockChain(identity.chain)) {
-    return bad("EVM stock quotes are restricted to ethereum, base, arbitrum, optimism, and polygon mainnet.");
+    return bad("EVM stock quotes are restricted to supported market networks.");
   }
   if (isTradingPaused(identity)) return bad("Trading is paused for this stock");
 

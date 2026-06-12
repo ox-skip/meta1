@@ -1,4 +1,4 @@
-export const SUPPORTED_EVM_STOCK_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb"] as const;
+export const SUPPORTED_EVM_STOCK_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb", "arc_testnet"] as const;
 
 const SUPPORTED_EVM_STOCK_CHAIN_SET = new Set<string>(SUPPORTED_EVM_STOCK_CHAINS);
 

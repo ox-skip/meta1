@@ -778,6 +778,10 @@ export function isEvmWalletAddress(value?: string | null) {
   return isEvmAddress(value);
 }
 
+function nativeGasSymbol(chainName?: string | null) {
+  return String(chainName || "").trim().toLowerCase() === "arc_testnet" ? "USDC" : "ETH";
+}
+
 export async function payStableForOrder(
   orderId: string,
   symbol: StableSymbol = "USDC",
@@ -863,8 +867,9 @@ export async function payStableForOrder(
       }
       // Wallet must have enough native gas token to pay network fees.
       if (ethBal < 50_000_000_000_000n) {
+        const gasSymbol = nativeGasSymbol(chain.chain);
         throw new Error(
-          `Not enough ${chain.chain} ETH for network fees.\n\nWallet: ${address}\nAdd a small amount of gas and try again.`,
+          `Not enough ${gasSymbol} on ${chain.chain} for network fees.\n\nWallet: ${address}\nAdd a small amount of ${gasSymbol} and try again.`,
         );
       }
     }

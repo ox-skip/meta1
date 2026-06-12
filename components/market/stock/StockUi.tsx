@@ -78,6 +78,7 @@ export function stockChainLabel(chain?: unknown) {
   const raw = String(chain || "").trim();
   if (!raw) return "EVM";
   if (raw.toLowerCase() === "pi_testnet") return "External";
+  if (raw.toLowerCase() === "arc_testnet") return "ARC TESTNET";
   return raw.toUpperCase().replace(/_/g, " ");
 }
 

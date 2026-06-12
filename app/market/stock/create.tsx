@@ -39,6 +39,7 @@ const CHAIN_ORDER: Record<string, number> = {
   ethereum: 3,
   arbitrum: 4,
   optimism: 5,
+  arc_testnet: 6,
 };
 
 function formatMoney(value: number) {
