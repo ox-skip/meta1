@@ -683,6 +683,7 @@ export function InAppTutorial({
 
   function handleSkip() {
     setVisible(false);
+    setActiveTargetId(null);
     dismissFlow({
       flow,
       status: "skipped",
@@ -697,6 +698,7 @@ export function InAppTutorial({
   function handleNext() {
     if (stepIndex >= totalSteps - 1) {
       setVisible(false);
+      setActiveTargetId(null);
       dismissFlow({
         flow,
         status: "completed",
@@ -952,16 +954,16 @@ const styles = StyleSheet.create({
   },
   card: {
     height: "100%",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(8,14,24,0.98)",
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(10,16,28,0.95)",
     shadowColor: "#000",
-    shadowOpacity: 0.38,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 12,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 14,
     overflow: "hidden",
   },
   cardHeader: {
@@ -976,31 +978,31 @@ const styles = StyleSheet.create({
   flowTitle: {
     color: BRAND,
     fontSize: 11,
-    lineHeight: 15,
+    lineHeight: 14,
     fontWeight: "900",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   stepTitle: {
     marginTop: 4,
-    color: "#FFFFFF",
-    fontSize: 20,
-    lineHeight: 26,
+    color: "#F8FAFC",
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "900",
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.14)",
     flexShrink: 0,
   },
   progressMeta: {
-    marginTop: 14,
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1008,16 +1010,16 @@ const styles = StyleSheet.create({
   },
   progressLabel: {
     color: MUTED,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "800",
     flexShrink: 0,
   },
   progressTarget: {
     flex: 1,
     color: "rgba(255,247,237,0.58)",
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "800",
     textAlign: "right",
   },
@@ -1035,7 +1037,7 @@ const styles = StyleSheet.create({
   },
   stepScroll: {
     flex: 1,
-    marginTop: 12,
+    marginTop: 10,
   },
   cardScrollContent: {
     paddingBottom: 2,
@@ -1103,10 +1105,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   aiPanel: {
-    marginTop: 14,
+    marginTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
-    paddingTop: 12,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: 10,
   },
   aiActions: {
     flexDirection: "row",
