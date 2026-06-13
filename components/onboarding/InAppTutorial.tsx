@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LinearGradient } from "expo-linear-gradient";
 import React, {
   createContext,
   useCallback,
@@ -12,9 +11,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -85,21 +82,6 @@ function normalizeStoredFlows(raw: string | null): Record<string, true> {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-function targetIcon(position: TutorialTargetPosition): keyof typeof Ionicons.glyphMap {
-  if (position === "top") return "arrow-up-circle";
-  if (position === "bottom") return "arrow-down-circle";
-  if (position === "left") return "arrow-back-circle";
-  if (position === "right") return "arrow-forward-circle";
-  return "scan-circle";
-}
-
-function pointerIcon(position: TutorialTargetPosition): keyof typeof Ionicons.glyphMap {
-  if (position === "bottom") return "arrow-down";
-  if (position === "left") return "arrow-back";
-  if (position === "right") return "arrow-forward";
-  return "arrow-up";
 }
 
 function getTargetBox(position: TutorialTargetPosition, width: number, height: number): LayoutBox {
@@ -182,93 +164,151 @@ function measuredBoxIsVisible(box: LayoutBox, width: number, height: number) {
   return box.width > 2 && box.height > 2 && right > 8 && bottom > 8 && box.left < width - 8 && box.top < height - 8;
 }
 
-function getCardStyle(
-  position: TutorialTargetPosition,
-  width: number,
-  height: number,
-  targetBox: LayoutBox,
-): ViewStyle {
-  const inset = clamp(width * 0.035, 10, 22);
-  const gap = clamp(height * 0.024, 14, 24);
-  const cardWidth = width >= 900
-    ? clamp(width * 0.28, 318, 386)
-    : clamp(width - inset * 2, 278, 356);
-  const cardMaxHeight = clamp(height * 0.34, 226, width >= 900 ? 330 : 286);
-  const targetCenterY = targetBox.top + targetBox.height / 2;
-  const targetCenterX = targetBox.left + targetBox.width / 2;
-  const topSpace = targetBox.top - inset;
-  const bottomSpace = height - (targetBox.top + targetBox.height) - inset;
-  const leftSpace = targetBox.left - inset;
-  const rightSpace = width - (targetBox.left + targetBox.width) - inset;
+type GuidePlacement = "left" | "right" | "top" | "bottom";
 
-  if (width >= 820 && rightSpace >= cardWidth + gap) {
-    return {
-      top: clamp(targetCenterY - cardMaxHeight / 2, inset, height - cardMaxHeight - inset),
-      left: targetBox.left + targetBox.width + gap,
-      width: cardWidth,
-      maxHeight: cardMaxHeight,
-    };
-  }
+type GuideGeometry = {
+  connectorStyle: ViewStyle;
+  markerIcon: keyof typeof Ionicons.glyphMap;
+  markerStyle: ViewStyle;
+  panelStyle: ViewStyle;
+};
 
-  if (width >= 820 && leftSpace >= cardWidth + gap) {
-    return {
-      top: clamp(targetCenterY - cardMaxHeight / 2, inset, height - cardMaxHeight - inset),
-      left: targetBox.left - cardWidth - gap,
-      width: cardWidth,
-      maxHeight: cardMaxHeight,
-    };
-  }
-
-  const preferredTop =
-    position === "bottom" || bottomSpace < topSpace
-      ? targetBox.top - cardMaxHeight - gap
-      : targetBox.top + targetBox.height + gap;
-  const fallbackTop =
-    bottomSpace >= topSpace
-      ? targetBox.top + targetBox.height + gap
-      : targetBox.top - cardMaxHeight - gap;
-  const rawTop = preferredTop >= inset && preferredTop + cardMaxHeight <= height - inset
-    ? preferredTop
-    : fallbackTop;
-
-  return {
-    top: clamp(rawTop, inset, height - cardMaxHeight - inset),
-    left: clamp(targetCenterX - cardWidth / 2, inset, width - cardWidth - inset),
-    width: cardWidth,
-    maxHeight: cardMaxHeight,
-  };
+function getMarkerIcon(placement: GuidePlacement): keyof typeof Ionicons.glyphMap {
+  if (placement === "left") return "arrow-back";
+  if (placement === "right") return "arrow-forward";
+  if (placement === "top") return "arrow-up";
+  return "arrow-down";
 }
 
-function getPointerStyle(position: TutorialTargetPosition, _width: number, height: number, targetBox: LayoutBox): ViewStyle {
-  const centerX = targetBox.left + targetBox.width / 2 - 48;
+function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): GuideGeometry {
+  const inset = clamp(width * 0.035, 14, width >= 900 ? 36 : 24);
+  const gap = clamp(Math.min(width, height) * 0.04, 22, 44);
+  const markerSize = 36;
+  const lineOffset = 10;
+  const targetCenterX = targetBox.left + targetBox.width / 2;
+  const targetCenterY = targetBox.top + targetBox.height / 2;
+  const targetRight = targetBox.left + targetBox.width;
+  const targetBottom = targetBox.top + targetBox.height;
 
-  if (position === "bottom") {
+  if (width >= 900) {
+    const panelWidth = clamp(width * 0.34, 404, 500);
+    const availableHeight = Math.max(280, height - inset * 2);
+    const panelHeight = Math.min(availableHeight, clamp(height * 0.68, 390, 580));
+    const panelTop = clamp(targetCenterY - panelHeight / 2, inset, Math.max(inset, height - panelHeight - inset));
+    const rightSpace = width - targetRight - inset;
+    const leftSpace = targetBox.left - inset;
+    const prefersRight = targetCenterX <= width / 2;
+    const canUseRight = rightSpace >= panelWidth + gap;
+    const canUseLeft = leftSpace >= panelWidth + gap;
+
+    if ((prefersRight && canUseRight) || (!canUseLeft && canUseRight)) {
+      const panelLeft = width - inset - panelWidth;
+      const connectorLeft = targetRight + lineOffset;
+      const connectorWidth = Math.max(20, panelLeft - connectorLeft - 12);
+
+      return {
+        connectorStyle: {
+          height: 3,
+          left: connectorLeft,
+          top: clamp(targetCenterY - 1.5, inset, height - inset),
+          width: connectorWidth,
+        },
+        markerIcon: getMarkerIcon("right"),
+        markerStyle: {
+          left: clamp(targetRight - markerSize / 2, 8, width - markerSize - 8),
+          top: clamp(targetCenterY - markerSize / 2, 8, height - markerSize - 8),
+        },
+        panelStyle: {
+          height: panelHeight,
+          left: panelLeft,
+          top: panelTop,
+          width: panelWidth,
+        },
+      };
+    }
+
+    if (canUseLeft) {
+      const panelLeft = inset;
+      const connectorLeft = panelLeft + panelWidth + 12;
+      const connectorWidth = Math.max(20, targetBox.left - lineOffset - connectorLeft);
+
+      return {
+        connectorStyle: {
+          height: 3,
+          left: connectorLeft,
+          top: clamp(targetCenterY - 1.5, inset, height - inset),
+          width: connectorWidth,
+        },
+        markerIcon: getMarkerIcon("left"),
+        markerStyle: {
+          left: clamp(targetBox.left - markerSize / 2, 8, width - markerSize - 8),
+          top: clamp(targetCenterY - markerSize / 2, 8, height - markerSize - 8),
+        },
+        panelStyle: {
+          height: panelHeight,
+          left: panelLeft,
+          top: panelTop,
+          width: panelWidth,
+        },
+      };
+    }
+  }
+
+  const availableWidth = Math.max(280, width - inset * 2);
+  const panelWidth = Math.min(availableWidth, width >= 900 ? 760 : availableWidth);
+  const availableHeight = Math.max(260, height - inset * 2);
+  const panelHeight = Math.min(availableHeight, clamp(height * 0.44, 300, width >= 900 ? 430 : 380));
+  const panelLeft = (width - panelWidth) / 2;
+  const placeOnTop = targetCenterY > height * 0.52;
+
+  if (placeOnTop) {
+    const panelTop = inset;
+    const connectorTop = panelTop + panelHeight + 10;
+    const connectorHeight = Math.max(0, targetBox.top - connectorTop - 10);
+
     return {
-      top: targetBox.top - 68,
-      left: centerX,
+      connectorStyle: {
+        height: connectorHeight,
+        left: clamp(targetCenterX - 1.5, inset, width - inset),
+        top: connectorTop,
+        width: 3,
+      },
+      markerIcon: getMarkerIcon("top"),
+      markerStyle: {
+        left: clamp(targetCenterX - markerSize / 2, 8, width - markerSize - 8),
+        top: clamp(targetBox.top - markerSize / 2, 8, height - markerSize - 8),
+      },
+      panelStyle: {
+        height: panelHeight,
+        left: panelLeft,
+        top: panelTop,
+        width: panelWidth,
+      },
     };
   }
-  if (position === "left") {
-    return {
-      top: targetBox.top + targetBox.height / 2 - 30,
-      left: targetBox.left + targetBox.width + 12,
-    };
-  }
-  if (position === "right") {
-    return {
-      top: targetBox.top + targetBox.height / 2 - 30,
-      left: targetBox.left - 108,
-    };
-  }
-  if (position === "middle") {
-    return {
-      top: clamp(targetBox.top + targetBox.height + 12, 118, height - 210),
-      left: centerX,
-    };
-  }
+
+  const panelTop = height - inset - panelHeight;
+  const connectorTop = targetBottom + 10;
+  const connectorHeight = Math.max(0, panelTop - connectorTop - 10);
+
   return {
-    top: targetBox.top + targetBox.height + 12,
-    left: centerX,
+    connectorStyle: {
+      height: connectorHeight,
+      left: clamp(targetCenterX - 1.5, inset, width - inset),
+      top: connectorTop,
+      width: 3,
+    },
+    markerIcon: getMarkerIcon("bottom"),
+    markerStyle: {
+      left: clamp(targetCenterX - markerSize / 2, 8, width - markerSize - 8),
+      top: clamp(targetBottom - markerSize / 2, 8, height - markerSize - 8),
+    },
+    panelStyle: {
+      height: panelHeight,
+      left: panelLeft,
+      top: panelTop,
+      width: panelWidth,
+    },
   };
 }
 
@@ -556,45 +596,6 @@ export function InAppTutorial({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"bestcity_ai" | "local" | null>(null);
   const aiRequestRef = useRef(0);
-  const drag = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const dragOffsetRef = useRef({ x: 0, y: 0 });
-  const completeDrag = useCallback(
-    (_event: unknown, gesture: { dx: number; dy: number }) => {
-      drag.flattenOffset();
-      const maxX = Math.max(30, width * 0.36);
-      const maxY = Math.max(36, height * 0.3);
-      const next = {
-        x: clamp(dragOffsetRef.current.x + gesture.dx, -maxX, maxX),
-        y: clamp(dragOffsetRef.current.y + gesture.dy, -maxY, maxY),
-      };
-
-      dragOffsetRef.current = next;
-      Animated.spring(drag, {
-        toValue: next,
-        useNativeDriver: false,
-        bounciness: 0,
-        speed: 18,
-      }).start();
-    },
-    [drag, height, width],
-  );
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 3 || Math.abs(gesture.dy) > 3,
-        onPanResponderGrant: () => {
-          drag.setOffset(dragOffsetRef.current);
-          drag.setValue({ x: 0, y: 0 });
-        },
-        onPanResponderMove: Animated.event([null, { dx: drag.x, dy: drag.y }], {
-          useNativeDriver: false,
-        }),
-        onPanResponderRelease: completeDrag,
-        onPanResponderTerminate: completeDrag,
-      }),
-    [completeDrag, drag],
-  );
 
   const totalSteps = flow.steps.length;
   const currentStep = flow.steps[stepIndex];
@@ -651,13 +652,6 @@ export function InAppTutorial({
       setActiveTargetId(null);
     };
   }, [currentStep?.targetId, setActiveTargetId, visible]);
-
-  useEffect(() => {
-    drag.stopAnimation();
-    dragOffsetRef.current = { x: 0, y: 0 };
-    drag.setOffset({ x: 0, y: 0 });
-    drag.setValue({ x: 0, y: 0 });
-  }, [drag, flow.key, height, stepIndex, visible, width]);
 
   const targetPosition = currentStep?.targetPosition ?? "middle";
   const targetLabel = currentStep?.targetLabel ?? flow.title;
@@ -728,8 +722,10 @@ export function InAppTutorial({
     ? normalizeMeasuredBox(measuredTarget, width, height)
     : getTargetBox(targetPosition, width, height);
   const targetStyle = targetBox as ViewStyle;
-  const cardStyle = getCardStyle(targetPosition, width, height, targetBox);
-  const pointerStyle = getPointerStyle(targetPosition, width, height, targetBox);
+  const guideGeometry = getGuideGeometry(width, height, targetBox);
+  const progressFillStyle = {
+    width: `${Math.round(((stepIndex + 1) / totalSteps) * 100)}%`,
+  } as ViewStyle;
   const shadeTop = { top: 0, left: 0, right: 0, height: targetBox.top } as ViewStyle;
   const shadeBottom = { top: targetBox.top + targetBox.height, left: 0, right: 0, bottom: 0 } as ViewStyle;
   const shadeLeft = { top: targetBox.top, left: 0, width: targetBox.left, height: targetBox.height } as ViewStyle;
@@ -753,67 +749,36 @@ export function InAppTutorial({
         <View pointerEvents="none" style={[styles.shade, shadeLeft]} />
         <View pointerEvents="none" style={[styles.shade, shadeRight]} />
 
-        <View style={[styles.targetFrame, targetStyle]}>
-          <LinearGradient
-            colors={["rgba(45,212,191,0.08)", "rgba(244,183,93,0.06)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.targetGlow}
-          >
-            <View style={styles.targetTopRow}>
-              <View style={styles.targetIcon}>
-                <Ionicons name={targetIcon(targetPosition)} size={18} color={BRAND} />
-              </View>
-              <Text style={styles.targetCaption}>{measuredTarget ? "Selected area" : "Key area"}</Text>
-            </View>
-            <Text style={styles.targetLabel}>{targetLabel}</Text>
-          </LinearGradient>
+        <View pointerEvents="none" style={[styles.targetFrame, targetStyle]}>
+          <View style={styles.targetGlow} />
         </View>
 
-        <View pointerEvents="none" style={[styles.pointer, pointerStyle]}>
-          <Ionicons name={pointerIcon(targetPosition)} size={38} color={GOLD} />
-          <Text style={styles.pointerText}>Highlighted area</Text>
+        <View pointerEvents="none" style={[styles.connectorLine, guideGeometry.connectorStyle]} />
+        <View pointerEvents="none" style={[styles.connectorMarker, guideGeometry.markerStyle]}>
+          <Ionicons name={guideGeometry.markerIcon} size={17} color="#061211" />
+          <Text style={styles.connectorMarkerText}>{stepIndex + 1}</Text>
         </View>
 
-        <Animated.View style={[styles.cardShell, cardStyle, { transform: drag.getTranslateTransform() }]}>
-          <LinearGradient
-            colors={["#130F0B", "#111C1B", "#071220"]}
-            start={{ x: 0.08, y: 0 }}
-            end={{ x: 0.95, y: 1 }}
-            style={styles.card}
-          >
-            <View style={styles.topRow}>
-              <View style={styles.kickerPill}>
-                <Ionicons name="navigate-circle" size={14} color={BRAND} />
-                <Text style={styles.kickerText}>
-                  Step {stepIndex + 1}/{totalSteps}
-                </Text>
+        <View style={[styles.cardShell, guideGeometry.panelStyle]}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.flowTitle}>{flow.title}</Text>
+                <Text style={styles.stepTitle}>{currentStep.title}</Text>
               </View>
-              <View style={styles.cardControls}>
-                <View {...panResponder.panHandlers} style={styles.iconButton}>
-                  <Ionicons name="move-outline" size={15} color={MUTED} />
-                </View>
-                <Pressable onPress={handleSkip} hitSlop={8} style={styles.skipButton}>
-                  <Text style={styles.skipText}>Later</Text>
-                </Pressable>
-              </View>
+              <Pressable accessibilityLabel="Close tour" onPress={handleSkip} hitSlop={8} style={styles.closeButton}>
+                <Ionicons name="close" size={18} color={INK} />
+              </Pressable>
             </View>
 
-            <View style={styles.progressRow}>
-              {flow.steps.map((_, index) => {
-                const active = index === stepIndex;
-                const done = index < stepIndex;
-                return (
-                  <View
-                    key={`${flow.key}-step-${index}`}
-                    style={[
-                      styles.progressDot,
-                      done ? styles.progressDotDone : null,
-                      active ? styles.progressDotActive : null,
-                    ]}
-                  />
-                );
-              })}
+            <View style={styles.progressMeta}>
+              <Text style={styles.progressLabel}>
+                Step {stepIndex + 1} of {totalSteps}
+              </Text>
+              <Text style={styles.progressTarget} numberOfLines={1}>{targetLabel}</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, progressFillStyle]} />
             </View>
 
             <ScrollView
@@ -822,19 +787,20 @@ export function InAppTutorial({
               contentContainerStyle={styles.cardScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.stepHeader}>
-                <View style={styles.targetPill}>
-                  <Ionicons name="locate-outline" size={13} color={BRAND} />
-                  <Text style={styles.targetPillText}>{targetLabel}</Text>
+              <View style={styles.focusBox}>
+                <View style={styles.focusIcon}>
+                  <Ionicons name="locate-outline" size={18} color={BRAND} />
                 </View>
-                <Text style={styles.stepCounter}>{flow.title}</Text>
+                <View style={styles.focusCopy}>
+                  <Text style={styles.focusLabel}>Focus area</Text>
+                  <Text style={styles.focusTitle} numberOfLines={2}>{targetLabel}</Text>
+                </View>
               </View>
 
-              <Text style={styles.stepTitle}>{currentStep.title}</Text>
               <Text style={styles.stepBody}>{currentStep.body}</Text>
               {currentStep.actionLabel ? (
                 <View style={styles.tryThisBox}>
-                  <Ionicons name="hand-left-outline" size={16} color={GOLD} />
+                  <Ionicons name="hand-left-outline" size={18} color={GOLD} />
                   <Text style={styles.tryThisText}>{currentStep.actionLabel}</Text>
                 </View>
               ) : null}
@@ -849,7 +815,7 @@ export function InAppTutorial({
                       aiMode === "summary" ? styles.aiButtonActive : null,
                     ]}
                   >
-                    <Ionicons name="flash-outline" size={14} color={aiMode === "summary" ? "#071211" : BRAND} />
+                    <Ionicons name="flash-outline" size={15} color={aiMode === "summary" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "summary" ? styles.aiButtonTextActive : null]}>
                       Summary
                     </Text>
@@ -862,7 +828,7 @@ export function InAppTutorial({
                       aiMode === "full" ? styles.aiButtonActive : null,
                     ]}
                   >
-                    <Ionicons name="school-outline" size={14} color={aiMode === "full" ? "#071211" : BRAND} />
+                    <Ionicons name="school-outline" size={15} color={aiMode === "full" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "full" ? styles.aiButtonTextActive : null]}>
                       Guide me
                     </Text>
@@ -886,6 +852,9 @@ export function InAppTutorial({
             </ScrollView>
 
             <View style={styles.footerRow}>
+              <Pressable onPress={handleSkip} style={styles.laterButton}>
+                <Text style={styles.laterButtonText}>Later</Text>
+              </Pressable>
               <Pressable
                 disabled={stepIndex === 0}
                 onPress={handleBack}
@@ -909,8 +878,8 @@ export function InAppTutorial({
                 />
               </Pressable>
             </View>
-          </LinearGradient>
-        </Animated.View>
+          </View>
+        </View>
       </View>
     </Modal>
   );
@@ -923,323 +892,231 @@ const styles = StyleSheet.create({
   },
   shade: {
     position: "absolute",
-    backgroundColor: "rgba(2,6,23,0.78)",
+    backgroundColor: "rgba(2,6,23,0.76)",
   },
   targetFrame: {
     position: "absolute",
     zIndex: 30,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: "rgba(45,212,191,0.78)",
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: "rgba(45,212,191,0.95)",
     shadowColor: BRAND,
-    shadowOpacity: 0.4,
-    shadowRadius: 22,
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
     overflow: "hidden",
-    backgroundColor: "rgba(2,6,23,0.08)",
+    backgroundColor: "rgba(45,212,191,0.07)",
   },
   targetGlow: {
     flex: 1,
-    padding: 12,
-    justifyContent: "center",
-    backgroundColor: "rgba(10,14,12,0.12)",
-  },
-  targetTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  targetIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(45,212,191,0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(45,212,191,0.34)",
-  },
-  targetCaption: {
-    color: "rgba(204,251,241,0.88)",
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  targetLabel: {
-    marginTop: 7,
-    color: INK,
-    fontSize: 16,
-    fontWeight: "900",
-  },
-  tryThisBox: {
-    marginTop: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    backgroundColor: "rgba(244,183,93,0.11)",
-    borderWidth: 1,
-    borderColor: "rgba(244,183,93,0.28)",
+    backgroundColor: "rgba(45,212,191,0.08)",
   },
-  tryThisText: {
-    flex: 1,
-    color: "#FFE7B3",
-    fontWeight: "900",
-    fontSize: 11,
-    lineHeight: 15,
-  },
-  pointer: {
+  connectorLine: {
     position: "absolute",
-    zIndex: 45,
-    width: 82,
-    alignItems: "center",
-    gap: 0,
+    zIndex: 34,
+    borderRadius: 999,
+    backgroundColor: "rgba(244,183,93,0.9)",
   },
-  pointerText: {
-    color: "rgba(255,247,237,0.72)",
-    fontSize: 8,
-    fontWeight: "900",
-    textTransform: "uppercase",
+  connectorMarker: {
+    position: "absolute",
+    zIndex: 36,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: GOLD,
+    borderWidth: 2,
+    borderColor: "rgba(255,247,237,0.9)",
+    shadowColor: GOLD,
+    shadowOpacity: 0.38,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
+  },
+  connectorMarkerText: {
+    position: "absolute",
+    right: -4,
+    bottom: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    overflow: "hidden",
     textAlign: "center",
+    color: "#061211",
+    backgroundColor: INK,
+    fontSize: 10,
+    lineHeight: 16,
+    fontWeight: "900",
   },
   cardShell: {
     position: "absolute",
-    zIndex: 20,
-    width: "auto",
-    maxWidth: 386,
-    alignSelf: "center",
+    zIndex: 40,
   },
   card: {
-    maxHeight: "100%",
+    height: "100%",
     borderRadius: 18,
-    padding: 12,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(8,14,24,0.98)",
     shadowColor: "#000",
-    shadowOpacity: 0.34,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
     elevation: 12,
+    overflow: "hidden",
   },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  kickerPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(45,212,191,0.13)",
-    borderWidth: 1,
-    borderColor: "rgba(45,212,191,0.28)",
-  },
-  kickerText: {
-    color: "#CCFBF1",
-    fontWeight: "900",
-    fontSize: 11,
-  },
-  cardControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  iconButton: {
-    width: 31,
-    height: 31,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.055)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  dragHandle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
-  },
-  dragHandleText: {
-    color: MUTED,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  skipButton: {
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  skipText: {
-    color: "rgba(255,255,255,0.76)",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-  flowRow: {
-    marginTop: 14,
+  cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
   },
-  flowTitleWrap: {
+  cardHeaderText: {
     flex: 1,
   },
   flowTitle: {
-    color: "#FFFFFF",
+    color: BRAND,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "900",
-    fontSize: 21,
-    lineHeight: 25,
+    textTransform: "uppercase",
   },
-  progressText: {
-    marginTop: 5,
+  stepTitle: {
+    marginTop: 6,
+    color: "#FFFFFF",
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+  closeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  progressMeta: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  progressLabel: {
     color: MUTED,
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800",
   },
-  stepBadge: {
+  progressTarget: {
+    flex: 1,
+    color: "rgba(255,247,237,0.58)",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+  progressTrack: {
+    marginTop: 8,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: BRAND,
+  },
+  stepScroll: {
+    flex: 1,
+    marginTop: 16,
+  },
+  cardScrollContent: {
+    paddingBottom: 4,
+  },
+  focusBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    padding: 12,
+    backgroundColor: "rgba(45,212,191,0.09)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.22)",
+  },
+  focusIcon: {
     width: 42,
     height: 42,
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(244,183,93,0.16)",
-    borderWidth: 1,
-    borderColor: "rgba(244,183,93,0.34)",
+    backgroundColor: "rgba(45,212,191,0.12)",
   },
-  stepBadgeText: {
-    color: GOLD,
-    fontWeight: "900",
-    fontSize: 17,
-  },
-  progressRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    gap: 6,
-  },
-  progressDot: {
+  focusCopy: {
     flex: 1,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
   },
-  progressDotDone: {
-    backgroundColor: "rgba(45,212,191,0.45)",
-  },
-  progressDotActive: {
-    backgroundColor: BRAND,
-  },
-  stepScroll: {
-    flexShrink: 1,
-  },
-  cardScrollContent: {
-    paddingTop: 10,
-    paddingBottom: 2,
-  },
-  stepHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  targetPill: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(45,212,191,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(45,212,191,0.22)",
-  },
-  targetPillText: {
-    color: "#CFFAFE",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  stepCounter: {
-    color: "rgba(255,247,237,0.5)",
-    fontSize: 9,
+  focusLabel: {
+    color: "rgba(204,251,241,0.72)",
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  stepTitle: {
-    marginTop: 9,
-    color: "#FFFFFF",
-    fontSize: 16,
+  focusTitle: {
+    marginTop: 3,
+    color: INK,
+    fontSize: 15,
     lineHeight: 20,
     fontWeight: "900",
   },
   stepBody: {
-    marginTop: 6,
-    color: "rgba(255,255,255,0.76)",
-    fontSize: 12,
-    lineHeight: 17,
+    marginTop: 16,
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  tryThisBox: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 11,
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    backgroundColor: "rgba(244,183,93,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(244,183,93,0.3)",
+  },
+  tryThisText: {
+    flex: 1,
+    color: "#FFE7B3",
+    fontWeight: "800",
+    fontSize: 13,
+    lineHeight: 18,
   },
   aiPanel: {
-    marginTop: 10,
-    borderRadius: 13,
-    padding: 8,
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor: "rgba(244,183,93,0.18)",
-  },
-  aiHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  aiTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  aiTitle: {
-    color: INK,
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  aiOptional: {
-    color: "rgba(255,247,237,0.52)",
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  aiIntro: {
-    marginTop: 6,
-    color: "rgba(255,247,237,0.64)",
-    fontSize: 12,
-    lineHeight: 17,
+    marginTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+    paddingTop: 14,
   },
   aiActions: {
-    marginTop: 0,
     flexDirection: "row",
-    gap: 7,
+    gap: 10,
   },
   aiButton: {
     flex: 1,
-    minHeight: 34,
-    borderRadius: 10,
+    minHeight: 40,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1254,63 +1131,77 @@ const styles = StyleSheet.create({
   },
   aiButtonText: {
     color: "#CCFBF1",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
   },
   aiButtonTextActive: {
     color: "#071211",
   },
   aiLoadingRow: {
-    marginTop: 10,
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 6,
   },
   aiLoadingText: {
-    color: "rgba(255,247,237,0.68)",
-    fontSize: 12,
+    color: MUTED,
+    fontSize: 13,
     fontWeight: "800",
   },
   aiAnswer: {
-    marginTop: 8,
-    borderRadius: 11,
-    padding: 9,
-    backgroundColor: "rgba(5,10,12,0.45)",
+    marginTop: 12,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.055)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
   aiAnswerText: {
     color: "rgba(255,255,255,0.82)",
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "700",
   },
   aiFallbackText: {
     marginTop: 8,
-    color: "rgba(244,183,93,0.78)",
-    fontSize: 10,
+    color: "rgba(244,183,93,0.82)",
+    fontSize: 11,
+    lineHeight: 16,
     fontWeight: "800",
   },
   footerRow: {
-    marginTop: 10,
+    marginTop: 16,
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
+  },
+  laterButton: {
+    minWidth: 72,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  laterButtonText: {
+    color: MUTED,
+    fontSize: 13,
+    fontWeight: "900",
   },
   secondaryButton: {
     flex: 1,
-    minHeight: 39,
+    minHeight: 44,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
   },
   secondaryButtonDisabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
   secondaryButtonText: {
     color: "#FFFFFF",
@@ -1319,7 +1210,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1.25,
-    minHeight: 39,
+    minHeight: 44,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
@@ -1327,11 +1218,11 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: BRAND,
     borderWidth: 1,
-    borderColor: "rgba(204,251,241,0.52)",
+    borderColor: "rgba(204,251,241,0.58)",
   },
   primaryButtonText: {
     color: "#061211",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "900",
   },
 });
