@@ -1,30 +1,30 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
 } from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  type ViewStyle,
+    ActivityIndicator,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    useWindowDimensions,
+    View,
+    type ViewStyle,
 } from "react-native";
 
 import { explainOnboardingStep, type OnboardingAiMode } from "@/services/onboarding/ai";
 import type {
-  TutorialFlowDefinition,
-  TutorialTargetPosition,
+    TutorialFlowDefinition,
+    TutorialTargetPosition,
 } from "@/services/onboarding/definitions";
 import { recordOnboardingEvent } from "@/services/onboarding/events";
 
@@ -85,21 +85,19 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getTargetBox(position: TutorialTargetPosition, width: number, height: number): LayoutBox {
-  const inset = clamp(width * 0.045, 16, width >= 900 ? 36 : 24);
-  const contentWidth = width >= 900 ? clamp(width - inset * 2, 740, 1080) : width;
-  const contentLeft = (width - contentWidth) / 2;
-  const topWidth = width >= 900 ? clamp(width * 0.34, 340, 430) : width - inset * 2;
-  const centeredWidth = width >= 900 ? clamp(width * 0.44, 420, 560) : width - inset * 2;
-  const sideWidth = clamp(width * 0.34, 154, 220);
-  const topBase = clamp(height * 0.085, 52, 88);
-  const middleBase = clamp(height * 0.28, 150, height * 0.42);
+  const inset = clamp(width * 0.04, 12, 32);
+  const topWidth = width >= 900 ? clamp(width * 0.32, 300, 400) : width - inset * 2;
+  const centeredWidth = width >= 900 ? clamp(width * 0.42, 380, 540) : width - inset * 2;
+  const sideWidth = clamp(width * 0.32, 140, 200);
+  const topBase = clamp(height * 0.08, 48, 80);
+  const middleBase = clamp(height * 0.3, 140, height * 0.45);
 
   if (position === "left") {
     return {
       top: middleBase,
       left: inset,
       width: sideWidth,
-      height: 122,
+      height: 120,
     };
   }
 
@@ -108,16 +106,16 @@ function getTargetBox(position: TutorialTargetPosition, width: number, height: n
       top: middleBase,
       left: width - inset - sideWidth,
       width: sideWidth,
-      height: 122,
+      height: 120,
     };
   }
 
   if (position === "bottom") {
     return {
-      top: height - clamp(height * 0.2, 150, 230),
+      top: height - clamp(height * 0.22, 140, 220),
       left: (width - centeredWidth) / 2,
       width: centeredWidth,
-      height: 92,
+      height: 88,
     };
   }
 
@@ -126,18 +124,15 @@ function getTargetBox(position: TutorialTargetPosition, width: number, height: n
       top: middleBase,
       left: (width - centeredWidth) / 2,
       width: centeredWidth,
-      height: 96,
+      height: 92,
     };
   }
 
-  const desktopLeft = width >= 900
-    ? clamp(contentLeft + clamp(contentWidth * 0.025, 16, 28), inset, width - topWidth - inset)
-    : (width - topWidth) / 2;
   return {
     top: topBase,
-    left: desktopLeft,
+    left: (width - topWidth) / 2,
     width: topWidth,
-    height: width >= 900 ? 74 : 72,
+    height: 70,
   };
 }
 
@@ -181,19 +176,19 @@ function getMarkerIcon(placement: GuidePlacement): keyof typeof Ionicons.glyphMa
 }
 
 function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): GuideGeometry {
-  const inset = clamp(width * 0.035, 14, width >= 900 ? 36 : 24);
-  const gap = clamp(Math.min(width, height) * 0.04, 22, 44);
+  const inset = clamp(width * 0.03, 12, 32);
+  const gap = clamp(Math.min(width, height) * 0.035, 18, 40);
   const markerSize = 36;
-  const lineOffset = 10;
+  const lineOffset = 8;
   const targetCenterX = targetBox.left + targetBox.width / 2;
   const targetCenterY = targetBox.top + targetBox.height / 2;
   const targetRight = targetBox.left + targetBox.width;
   const targetBottom = targetBox.top + targetBox.height;
 
   if (width >= 900) {
-    const panelWidth = clamp(width * 0.34, 404, 500);
-    const availableHeight = Math.max(280, height - inset * 2);
-    const panelHeight = Math.min(availableHeight, clamp(height * 0.68, 390, 580));
+    const panelWidth = clamp(width * 0.32, 360, 480);
+    const availableHeight = Math.max(300, height - inset * 2);
+    const panelHeight = Math.min(availableHeight, clamp(height * 0.65, 360, 540));
     const panelTop = clamp(targetCenterY - panelHeight / 2, inset, Math.max(inset, height - panelHeight - inset));
     const rightSpace = width - targetRight - inset;
     const leftSpace = targetBox.left - inset;
@@ -204,7 +199,7 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
     if ((prefersRight && canUseRight) || (!canUseLeft && canUseRight)) {
       const panelLeft = width - inset - panelWidth;
       const connectorLeft = targetRight + lineOffset;
-      const connectorWidth = Math.max(20, panelLeft - connectorLeft - 12);
+      const connectorWidth = Math.max(16, panelLeft - connectorLeft - 12);
 
       return {
         connectorStyle: {
@@ -230,7 +225,7 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
     if (canUseLeft) {
       const panelLeft = inset;
       const connectorLeft = panelLeft + panelWidth + 12;
-      const connectorWidth = Math.max(20, targetBox.left - lineOffset - connectorLeft);
+      const connectorWidth = Math.max(16, targetBox.left - lineOffset - connectorLeft);
 
       return {
         connectorStyle: {
@@ -254,17 +249,17 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
     }
   }
 
-  const availableWidth = Math.max(280, width - inset * 2);
-  const panelWidth = Math.min(availableWidth, width >= 900 ? 760 : availableWidth);
-  const availableHeight = Math.max(260, height - inset * 2);
-  const panelHeight = Math.min(availableHeight, clamp(height * 0.44, 300, width >= 900 ? 430 : 380));
+  const availableWidth = Math.max(260, width - inset * 2);
+  const panelWidth = Math.min(availableWidth, availableWidth);
+  const availableHeight = Math.max(280, height - inset * 2);
+  const panelHeight = Math.min(availableHeight, clamp(height * 0.5, 280, 360));
   const panelLeft = (width - panelWidth) / 2;
   const placeOnTop = targetCenterY > height * 0.52;
 
   if (placeOnTop) {
     const panelTop = inset;
     const connectorTop = panelTop + panelHeight + 10;
-    const connectorHeight = Math.max(0, targetBox.top - connectorTop - 10);
+    const connectorHeight = Math.max(0, targetBox.top - connectorTop - 8);
 
     return {
       connectorStyle: {
@@ -288,7 +283,7 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
   }
 
   const panelTop = height - inset - panelHeight;
-  const connectorTop = targetBottom + 10;
+  const connectorTop = targetBottom + 8;
   const connectorHeight = Math.max(0, panelTop - connectorTop - 10);
 
   return {
@@ -957,8 +952,8 @@ const styles = StyleSheet.create({
   },
   card: {
     height: "100%",
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
     backgroundColor: "rgba(8,14,24,0.98)",
@@ -980,46 +975,49 @@ const styles = StyleSheet.create({
   },
   flowTitle: {
     color: BRAND,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "900",
     textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   stepTitle: {
-    marginTop: 6,
+    marginTop: 4,
     color: "#FFFFFF",
-    fontSize: 23,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: "900",
   },
   closeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+    flexShrink: 0,
   },
   progressMeta: {
-    marginTop: 18,
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
   },
   progressLabel: {
     color: MUTED,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "800",
+    flexShrink: 0,
   },
   progressTarget: {
     flex: 1,
     color: "rgba(255,247,237,0.58)",
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: "800",
     textAlign: "right",
   },
@@ -1037,61 +1035,62 @@ const styles = StyleSheet.create({
   },
   stepScroll: {
     flex: 1,
-    marginTop: 16,
+    marginTop: 12,
   },
   cardScrollContent: {
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   focusBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    borderRadius: 14,
-    padding: 12,
+    gap: 10,
+    borderRadius: 12,
+    padding: 10,
     backgroundColor: "rgba(45,212,191,0.09)",
     borderWidth: 1,
     borderColor: "rgba(45,212,191,0.22)",
   },
   focusIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(45,212,191,0.12)",
+    flexShrink: 0,
   },
   focusCopy: {
     flex: 1,
   },
   focusLabel: {
     color: "rgba(204,251,241,0.72)",
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "900",
     textTransform: "uppercase",
   },
   focusTitle: {
-    marginTop: 3,
+    marginTop: 2,
     color: INK,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "900",
   },
   stepBody: {
-    marginTop: 16,
+    marginTop: 12,
     color: "rgba(255,255,255,0.8)",
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "600",
   },
   tryThisBox: {
-    marginTop: 16,
+    marginTop: 12,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 11,
-    borderRadius: 14,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
+    gap: 10,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: "rgba(244,183,93,0.12)",
     borderWidth: 1,
     borderColor: "rgba(244,183,93,0.3)",
@@ -1100,27 +1099,27 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#FFE7B3",
     fontWeight: "800",
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   aiPanel: {
-    marginTop: 18,
+    marginTop: 14,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.1)",
-    paddingTop: 14,
+    paddingTop: 12,
   },
   aiActions: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   aiButton: {
     flex: 1,
-    minHeight: 40,
-    borderRadius: 12,
+    minHeight: 38,
+    borderRadius: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
+    gap: 6,
     backgroundColor: "rgba(45,212,191,0.08)",
     borderWidth: 1,
     borderColor: "rgba(45,212,191,0.2)",
@@ -1131,71 +1130,71 @@ const styles = StyleSheet.create({
   },
   aiButtonText: {
     color: "#CCFBF1",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
   aiButtonTextActive: {
     color: "#071211",
   },
   aiLoadingRow: {
-    marginTop: 12,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   aiLoadingText: {
     color: MUTED,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
   },
   aiAnswer: {
-    marginTop: 12,
-    borderRadius: 12,
-    padding: 12,
+    marginTop: 10,
+    borderRadius: 10,
+    padding: 10,
     backgroundColor: "rgba(255,255,255,0.055)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
   aiAnswerText: {
     color: "rgba(255,255,255,0.82)",
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: "700",
   },
   aiFallbackText: {
-    marginTop: 8,
+    marginTop: 6,
     color: "rgba(244,183,93,0.82)",
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 14,
     fontWeight: "800",
   },
   footerRow: {
-    marginTop: 16,
+    marginTop: 12,
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
   },
   laterButton: {
-    minWidth: 72,
-    minHeight: 44,
-    borderRadius: 12,
+    minWidth: 64,
+    minHeight: 40,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
   },
   laterButtonText: {
     color: MUTED,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
   },
   secondaryButton: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
+    minHeight: 40,
+    borderRadius: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
@@ -1205,24 +1204,24 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
   },
   primaryButton: {
-    flex: 1.25,
-    minHeight: 44,
-    borderRadius: 12,
+    flex: 1.2,
+    minHeight: 40,
+    borderRadius: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 4,
     backgroundColor: BRAND,
     borderWidth: 1,
     borderColor: "rgba(204,251,241,0.58)",
   },
   primaryButtonText: {
     color: "#061211",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
   },
 });
