@@ -1,6 +1,6 @@
-import * as SecureStore from "@/utils/secureStore";
-import { supabase } from "@/services/supabase";
 import { getSupabaseAnonKeyOrThrow, getSupabaseFunctionsBaseUrl } from "@/services/net";
+import { supabase } from "@/services/supabase";
+import * as SecureStore from "@/utils/secureStore";
 
 export type MarketChainConfig = {
   chain: string;
@@ -26,7 +26,19 @@ export type MarketChainConfig = {
 };
 
 const KEY_CHAIN = "bc_market_chain_pref_v2";
-const EVM_MARKET_CHAINS = new Set(["ethereum", "base", "arbitrum", "optimism", "polygon", "bnb", "arc_testnet"]);
+const EVM_MARKET_CHAINS = new Set([
+  "ethereum",
+  "base",
+  "arbitrum",
+  "optimism",
+  "polygon",
+  "bnb",
+  "arc_testnet",
+  "base_sepolia",
+  "bnb_testnet",
+  "arbitrum_sepolia",
+  "polygon_amoy",
+]);
 const ARC_TESTNET_CHAIN_ID = 5042002;
 const ARC_TESTNET_PUBLIC_RPC = "https://rpc.testnet.arc.network";
 
