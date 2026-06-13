@@ -3,39 +3,39 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Modal,
-  Pressable,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    Text,
+    TextInput,
+    useWindowDimensions,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import ListingOriginBadge from "@/components/market/ListingOriginBadge";
-import MarketMediaView from "@/components/market/MarketMediaView";
 import { MARKET_DESKTOP_BREAKPOINT, MARKET_DESKTOP_RAIL_WIDTH } from "@/components/market/MarketDesktopSidebar";
+import MarketMediaView from "@/components/market/MarketMediaView";
 import NotificationBell from "@/components/market/NotificationBell";
-import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import OfficialMarketSocials from "@/components/market/OfficialMarketSocials";
 import SocialFeed from "@/components/market/SocialFeed";
+import { InAppTutorial, TutorialTarget } from "@/components/onboarding/InAppTutorial";
 import { askBestCityMarketGuide, type BestCityMarketGuideContext } from "@/services/market/ai";
 import { CategoryItem, getCategoriesByMain, MarketMainCategory } from "@/services/market/categories";
 import { fetchJsonWithTimeout, getSupabaseAnonKeyOrThrow, getSupabaseFunctionsBaseUrl } from "@/services/net";
 import { tutorialFlows } from "@/services/onboarding/definitions";
 import { supabase } from "@/services/supabase";
-import { friendlyMarketError } from "@/utils/marketUx";
-import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
 import { getCachedCountry, listingMatchesCountry, resolveUserCountry, type UserCountry } from "@/utils/country";
-import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 import { formatCountryLabel } from "@/utils/countryNames";
+import { resolveMarketMediaSource, sortMarketMedia } from "@/utils/marketMedia";
+import { friendlyMarketError } from "@/utils/marketUx";
+import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 
 const BG0 = "#060807";
 const BG1 = "#10130E";
@@ -1133,12 +1133,14 @@ export default function MarketHome() {
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [locatingCountry, setLocatingCountry] = useState(false);
   const [guideVisible, setGuideVisible] = useState(false);
+  const [toolsVisible, setToolsVisible] = useState(false);
   const [tutorialStartSignal, setTutorialStartSignal] = useState(0);
   const [expandedCards, setExpandedCards] = useState<Record<"featured" | "discovery" | "filters", boolean>>({
     featured: false,
     discovery: false,
     filters: false,
   });
+  
 
   const main = section === "service" ? "service" : section === "product" ? "product" : null;
   const usableWidth = Math.max(320, width);
@@ -3038,6 +3040,7 @@ export default function MarketHome() {
     );
   }
 
+
   function renderDirectoryChooser(desktop = false) {
     if (!desktop) {
       return (
@@ -3551,24 +3554,38 @@ export default function MarketHome() {
           title="Marketplace"
           subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
-          rightSlot={<NotificationBell />}
+          rightSlot={
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <NotificationBell />
+              <Pressable
+                onPress={() => setToolsVisible(true)}
+                style={({ pressed }) => ({
+                  width: 36,
+                  height: 36,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? "rgba(255,253,247,0.06)" : "rgba(255,253,247,0.03)",
+                })}
+              >
+                <Ionicons name="ellipsis-vertical" size={18} color={TEXT} />
+              </Pressable>
+            </View>
+          }
           bordered={false}
           style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
         />
 
         {renderSearchBar(false)}
-        {renderBuyerAssistantPanel(false)}
         {renderSectionTabs("mobile")}
-        {renderCategoryDiscovery(false)}
-        {section !== "social" ? renderStockMarketShortcut(false) : null}
         {renderHeroPanel(false)}
+
 
         {section === "social" ? (
           renderSocialPanel(false)
         ) : (
           <>
             {renderDirectoryChooser(false)}
-            {renderScopeAndFilters(false)}
             {renderStatusBlock()}
           </>
         )}
@@ -3583,7 +3600,24 @@ export default function MarketHome() {
           title="Marketplace"
           subtitle={section === "social" ? "Seller updates and marketplace media" : "Escrow-protected buying and selling"}
           showAccount={false}
-          rightSlot={<NotificationBell />}
+          rightSlot={
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <NotificationBell />
+              <Pressable
+                onPress={() => setToolsVisible(true)}
+                style={({ pressed }) => ({
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: pressed ? "rgba(255,253,247,0.06)" : "rgba(255,253,247,0.03)",
+                })}
+              >
+                <Ionicons name="ellipsis-vertical" size={18} color={TEXT} />
+              </Pressable>
+            </View>
+          }
           bordered={false}
           style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24), paddingBottom: 8 }}
         />
@@ -3652,9 +3686,9 @@ export default function MarketHome() {
               </View>
             </GlassPanel>
 
-            {renderBuyerAssistantPanel(true)}
-            {section === "social" ? null : renderScopeAndFilters(true)}
-            <TrustTimeline />
+            <Pressable onPress={() => setToolsVisible(true)} style={{ padding: 6, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,253,247,0.03)' }}>
+              <Ionicons name="layers-outline" size={20} color={TEAL} />
+            </Pressable>
           </View>
         </View>
 
@@ -3666,6 +3700,80 @@ export default function MarketHome() {
           </>
         )}
       </>
+    );
+  }
+
+  function MarketToolsModal() {
+    return (
+      <Modal visible={toolsVisible} animationType="slide" transparent onRequestClose={() => setToolsVisible(false)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}>
+          <View style={{ backgroundColor: BG0, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: "80%" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Market tools</Text>
+              <Pressable onPress={() => setToolsVisible(false)} style={{ padding: 8 }}>
+                <Ionicons name="close" size={18} color={MUTED} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ marginTop: 12 }} contentContainerStyle={{ gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  setToolsVisible(false);
+                  setGuideVisible(true);
+                }}
+                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Open BestCity AI Guide</Text>
+                <Text style={{ color: MUTED, marginTop: 4 }}>Ask about buying, selling, escrow, orders, and search</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setToolsVisible(false);
+                  router.push({ pathname: "/market/category" as any, params: main ? { mode: main } : undefined });
+                }}
+                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Browse categories</Text>
+                <Text style={{ color: MUTED, marginTop: 4 }}>{main ? `${main === "product" ? "Products" : "Services"} categories` : "Popular lanes"}</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setToolsVisible(false);
+                  setExpandedCards((prev) => ({ ...prev, filters: true }));
+                }}
+                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Filters & scope</Text>
+                <Text style={{ color: MUTED, marginTop: 4 }}>Open nearby/global filters and sort options</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setToolsVisible(false);
+                  router.push("/market/stock" as any);
+                }}
+                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Open Stock Market</Text>
+                <Text style={{ color: MUTED, marginTop: 4 }}>Trade seller stock and positions</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setToolsVisible(false);
+                  setExpandedCards((prev) => ({ ...prev, featured: true }));
+                }}
+                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
+              >
+                <Text style={{ color: TEXT, fontWeight: "900" }}>Featured preview</Text>
+                <Text style={{ color: MUTED, marginTop: 4 }}>Open featured listings and storefronts</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     );
   }
 
@@ -3687,6 +3795,7 @@ export default function MarketHome() {
         onStartTour={startMarketTour}
         visible={guideVisible}
       />
+      <MarketToolsModal />
       <FlatList
         data={section === "social" ? [] : (directoryMode === "listings" ? rows : (directoryRows as any))}
         key={section === "social" ? "social" : `${directoryMode}-${listingColumns}`}
