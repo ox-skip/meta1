@@ -586,6 +586,7 @@ export function InAppTutorial({
 
   const [stepIndex, setStepIndex] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [dismissedLocally, setDismissedLocally] = useState(false);
   const [aiMode, setAiMode] = useState<OnboardingAiMode | null>(null);
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -600,13 +601,14 @@ export function InAppTutorial({
     if (!autoStart) return;
     if (!hydrated) return;
     if (visible) return;
+    if (dismissedLocally) return;
     if (hasSeenFlow(flow.key)) return;
     if (activeFlowKey && activeFlowKey !== flow.key) return;
     if (claimFlow(flow.key)) {
       setStepIndex(0);
       setVisible(true);
     }
-  }, [activeFlowKey, autoStart, claimFlow, enabled, flow.key, hasSeenFlow, hydrated, visible]);
+  }, [activeFlowKey, autoStart, claimFlow, dismissedLocally, enabled, flow.key, hasSeenFlow, hydrated, visible]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -614,6 +616,7 @@ export function InAppTutorial({
     if (!startSignal) return;
     if (activeFlowKey && activeFlowKey !== flow.key) return;
     if (claimFlow(flow.key, true)) {
+      setDismissedLocally(false);
       setStepIndex(0);
       setVisible(true);
     }
@@ -625,6 +628,10 @@ export function InAppTutorial({
     setVisible(false);
     releaseFlow(flow.key);
   }, [enabled, flow.key, releaseFlow, visible]);
+
+  useEffect(() => {
+    setDismissedLocally(false);
+  }, [flow.key]);
 
   useEffect(() => {
     return () => {
@@ -682,6 +689,7 @@ export function InAppTutorial({
   }
 
   function handleSkip() {
+    setDismissedLocally(true);
     setVisible(false);
     setActiveTargetId(null);
     dismissFlow({
@@ -697,6 +705,7 @@ export function InAppTutorial({
 
   function handleNext() {
     if (stepIndex >= totalSteps - 1) {
+      setDismissedLocally(true);
       setVisible(false);
       setActiveTargetId(null);
       dismissFlow({
