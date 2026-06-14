@@ -304,22 +304,27 @@ function SectionPill({
       style={({ pressed }) => ({
         flex: stretch ? 1 : undefined,
         minWidth: stretch ? undefined : 106,
-        height: 46,
-        borderRadius: 16,
-        paddingHorizontal: stretch ? 8 : 14,
+        height: 48,
+        borderRadius: 18,
+        paddingHorizontal: stretch ? 12 : 14,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: active ? "rgba(45,212,191,0.15)" : "rgba(255,253,247,0.055)",
+        backgroundColor: active ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.04)",
         borderWidth: 1,
         borderTopWidth: 1,
-        borderColor: active ? "rgba(45,212,191,0.46)" : BORDER,
-        borderTopColor: active ? "rgba(255,253,247,0.30)" : BORDER_TOP,
-        transform: [{ scale: pressed ? 0.98 : 1 }],
+        borderColor: active ? "rgba(45,212,191,0.5)" : "rgba(255,253,247,0.12)",
+        borderTopColor: active ? "rgba(255,253,247,0.28)" : BORDER_TOP,
+        shadowColor: "#000",
+        shadowOpacity: active ? 0.18 : 0.06,
+        shadowRadius: active ? 14 : 5,
+        shadowOffset: { width: 0, height: active ? 10 : 2 },
+        elevation: active ? 4 : 0,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
       })}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         {icon ? <Ionicons name={icon} size={15} color={active ? TEAL : MUTED} /> : null}
-        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "800" }}>{label}</Text>
+        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 13 }}>{label}</Text>
       </View>
     </Pressable>
   );
@@ -2204,13 +2209,17 @@ export default function MarketHome() {
             flexDirection: "row",
             gap: 10,
             alignItems: "center",
-            borderRadius: prominent ? 22 : 18,
-            padding: prominent ? 14 : 12,
+            borderRadius: prominent ? 24 : 20,
+            padding: prominent ? 16 : 13,
             borderWidth: 1,
             borderTopWidth: 1,
-            borderColor: prominent ? "rgba(255,253,247,0.18)" : "rgba(255,253,247,0.13)",
-            borderTopColor: "rgba(255,253,247,0.26)",
-            backgroundColor: prominent ? "rgba(9,13,11,0.58)" : "rgba(255,253,247,0.07)",
+            borderColor: prominent ? "rgba(45,212,191,0.26)" : "rgba(255,253,247,0.15)",
+            borderTopColor: prominent ? "rgba(255,253,247,0.28)" : "rgba(255,253,247,0.2)",
+            backgroundColor: prominent ? "rgba(9,13,11,0.74)" : "rgba(255,253,247,0.05)",
+            shadowColor: "#000",
+            shadowOpacity: prominent ? 0.14 : 0,
+            shadowRadius: prominent ? 18 : 0,
+            shadowOffset: { width: 0, height: 8 },
           }}
         >
         <Ionicons name="search-outline" size={19} color={prominent ? TEAL : MUTED} />
@@ -2328,29 +2337,28 @@ export default function MarketHome() {
   function renderHeroPreviewRail(compact = false) {
     if (!heroFeaturedItems.length) {
       return (
-        <View
+        <GlassPanel
           style={{
             marginTop: compact ? 14 : 0,
-            borderRadius: compact ? 18 : 22,
-            padding: compact ? 12 : 16,
-            borderWidth: 1,
-            borderColor: "rgba(255,253,247,0.13)",
-            backgroundColor: "rgba(255,253,247,0.065)",
-            minHeight: compact ? 104 : 180,
+            borderRadius: compact ? 18 : 24,
+            padding: compact ? 14 : 18,
+            borderColor: "rgba(255,253,247,0.14)",
+            backgroundColor: "rgba(255,253,247,0.05)",
+            minHeight: compact ? 118 : 190,
             justifyContent: "center",
             gap: 10,
           }}
         >
           <View
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 15,
+              width: 44,
+              height: 44,
+              borderRadius: 16,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(45,212,191,0.16)",
+              backgroundColor: "rgba(45,212,191,0.18)",
               borderWidth: 1,
-              borderColor: "rgba(94,234,212,0.34)",
+              borderColor: "rgba(94,234,212,0.36)",
             }}
           >
             <Ionicons name="sparkles-outline" size={18} color={TEAL} />
@@ -2358,10 +2366,10 @@ export default function MarketHome() {
           <Text style={{ color: TEXT, fontWeight: "900", fontSize: compact ? 13 : 15 }}>
             Featured
           </Text>
-          <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>
+          <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
             Promoted listings and storefronts will appear here when available.
           </Text>
-        </View>
+        </GlassPanel>
       );
     }
 
@@ -2371,7 +2379,7 @@ export default function MarketHome() {
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ marginTop: 14, marginHorizontal: -16 }}
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
         >
           {heroFeaturedItems.map((item) => (
             <Pressable
@@ -2379,43 +2387,52 @@ export default function MarketHome() {
               disabled={item.disabled}
               onPress={() => item.route && router.push(item.route)}
               style={({ pressed }) => ({
-                width: 176,
-                borderRadius: 18,
+                width: 178,
+                borderRadius: 20,
                 overflow: "hidden",
                 borderWidth: 1,
-                borderColor: "rgba(255,253,247,0.13)",
-                backgroundColor: "rgba(255,253,247,0.07)",
+                borderColor: "rgba(255,253,247,0.16)",
+                backgroundColor: pressed ? "rgba(45,212,191,0.12)" : "rgba(255,253,247,0.06)",
                 transform: [{ scale: pressed ? 0.985 : 1 }],
               })}
             >
-              <View style={{ height: 86, backgroundColor: "rgba(255,253,247,0.07)" }}>
-                {item.uri ? (
-                  item.featureType === "store" ? (
-                    <Image source={{ uri: item.uri }} style={{ width: "100%", height: "100%" }} />
+              <LinearGradient
+                colors={["rgba(45,212,191,0.14)", "rgba(255,253,247,0.04)", "rgba(9,13,11,0.88)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ paddingBottom: 12 }}
+              >
+                <View style={{ height: 92, backgroundColor: "rgba(255,253,247,0.08)", overflow: "hidden" }}>
+                  {item.uri ? (
+                    item.featureType === "store" ? (
+                      <Image source={{ uri: item.uri }} style={{ width: "100%", height: "100%" }} />
+                    ) : (
+                      <MarketMediaView
+                        uri={item.uri}
+                        kind={item.mediaKind}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode={item.mediaKind === "video" ? "contain" : "cover"}
+                        muted
+                        disablePointerEvents
+                      />
+                    )
                   ) : (
-                    <MarketMediaView
-                      uri={item.uri}
-                      kind={item.mediaKind}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode={item.mediaKind === "video" ? "contain" : "cover"}
-                      muted
-                      disablePointerEvents
-                    />
-                  )
-                ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name={item.featureType === "store" ? "storefront-outline" : "image-outline"} size={20} color={MUTED} />
-                  </View>
-                )}
-              </View>
-              <View style={{ padding: 10 }}>
-                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
-                  {item.title}
-                </Text>
-                <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 10 }}>
-                  {item.subtitle}
-                </Text>
-                <Text numberOfLines={1} style={{ marginTop: 3, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name={item.featureType === "store" ? "storefront-outline" : "image-outline"} size={20} color={MUTED} />
+                    </View>
+                  )}
+                </View>
+                <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
+                  <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontWeight: "800", fontSize: 10 }}>
+                    {item.subtitle}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+                <Text numberOfLines={1} style={{ marginTop: 6, color: item.accent, fontWeight: "900", fontSize: 12 }}>
                   {item.meta}
                 </Text>
               </View>
@@ -2426,42 +2443,42 @@ export default function MarketHome() {
     }
 
     return (
-      <View style={{ gap: 11 }}>
+      <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED</Text>
           <View
             style={{
               borderRadius: 999,
-              paddingHorizontal: 9,
+              paddingHorizontal: 10,
               paddingVertical: 5,
-              backgroundColor: "rgba(45,212,191,0.14)",
+              backgroundColor: "rgba(45,212,191,0.16)",
               borderWidth: 1,
-              borderColor: "rgba(94,234,212,0.28)",
+              borderColor: "rgba(94,234,212,0.30)",
             }}
           >
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 10 }}>{heroFeaturedItems.length} active</Text>
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 254 }} contentContainerStyle={{ gap: 10 }}>
+        <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 260 }} contentContainerStyle={{ gap: 12 }}>
           {heroFeaturedItems.map((item) => (
             <Pressable
               key={item.key}
               disabled={item.disabled}
               onPress={() => item.route && router.push(item.route)}
               style={({ pressed }) => ({
-                borderRadius: 18,
+                borderRadius: 20,
                 overflow: "hidden",
                 borderWidth: 1,
-                borderColor: pressed ? "rgba(244,183,93,0.34)" : "rgba(255,253,247,0.13)",
-                backgroundColor: pressed ? "rgba(255,253,247,0.10)" : "rgba(9,13,11,0.62)",
+                borderColor: pressed ? "rgba(244,183,93,0.34)" : "rgba(255,253,247,0.14)",
+                backgroundColor: pressed ? "rgba(255,253,247,0.10)" : "rgba(9,13,11,0.64)",
                 flexDirection: "row",
                 alignItems: "center",
-                opacity: item.disabled ? 0.64 : 1,
+                opacity: item.disabled ? 0.62 : 1,
                 transform: [{ translateY: pressed ? 1 : 0 }],
               })}
             >
-              <View style={{ width: 74, height: 74, backgroundColor: "rgba(255,253,247,0.07)" }}>
+              <View style={{ width: 76, height: 76, backgroundColor: "rgba(255,253,247,0.08)", overflow: "hidden" }}>
                 {item.uri ? (
                   item.featureType === "store" ? (
                     <Image source={{ uri: item.uri }} style={{ width: "100%", height: "100%" }} />
@@ -2481,30 +2498,28 @@ export default function MarketHome() {
                   </View>
                 )}
               </View>
-              <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 10 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: item.accent,
-                      fontWeight: "900",
-                      fontSize: 9,
-                    }}
-                  >
-                    {item.featureType === "store" ? "STORE" : "LISTING"}
-                  </Text>
-                </View>
-                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>
+              <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 12 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: item.accent,
+                    fontWeight: "900",
+                    fontSize: 10,
+                  }}
+                >
+                  {item.featureType === "store" ? "STORE" : "LISTING"}
+                </Text>
+                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 14, marginTop: 6 }}>
                   {item.title}
                 </Text>
                 <Text numberOfLines={1} style={{ marginTop: 4, color: MUTED, fontWeight: "800", fontSize: 11 }}>
                   {item.subtitle}
                 </Text>
-                <Text numberOfLines={1} style={{ marginTop: 4, color: item.accent, fontWeight: "900", fontSize: 12 }}>
+                <Text numberOfLines={1} style={{ marginTop: 6, color: item.accent, fontWeight: "900", fontSize: 12 }}>
                   {item.meta}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={MUTED} style={{ marginRight: 12 }} />
+              <Ionicons name="chevron-forward" size={16} color={MUTED} style={{ marginRight: 14 }} />
             </Pressable>
           ))}
         </ScrollView>
@@ -2518,78 +2533,103 @@ export default function MarketHome() {
 
     if (desktop) {
       return (
-        <LinearGradient
-          colors={[`${heroAccent}24`, "rgba(244,183,93,0.10)", "rgba(255,253,247,0.055)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            flex: 1,
-            minHeight: 276,
-            borderRadius: 22,
-            padding: 20,
-            borderWidth: 1,
-            borderColor: "rgba(255,253,247,0.17)",
-            overflow: "hidden",
-            shadowColor: "#000",
-            shadowOpacity: 0.24,
-            shadowRadius: 26,
-            shadowOffset: { width: 0, height: 18 },
-            elevation: 8,
-          }}
-        >
-          <View style={{ flex: 1, flexDirection: showPreviewShelf ? "row" : "column", gap: 18 }}>
-            <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between" }}>
-              <View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
-                  {section !== "social" ? (
-                    <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
-                  ) : null}
+        <View style={{ position: "relative", marginTop: 12 }}>
+          <LinearGradient
+            colors={[`${heroAccent}22`, "rgba(255,253,247,0.06)", "rgba(9,13,11,0.76)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              flex: 1,
+              minHeight: 292,
+              borderRadius: 26,
+              padding: 24,
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.17)",
+              overflow: "hidden",
+              shadowColor: "#000",
+              shadowOpacity: 0.28,
+              shadowRadius: 30,
+              shadowOffset: { width: 0, height: 18 },
+              elevation: 10,
+            }}
+          >
+            <View
+              style={{
+                position: "absolute",
+                top: -32,
+                right: -20,
+                width: 180,
+                height: 180,
+                borderRadius: 90,
+                backgroundColor: `${heroAccent}18`,
+                opacity: 0.55,
+              }}
+            />
+            <View
+              style={{
+                position: "absolute",
+                bottom: -38,
+                left: -28,
+                width: 152,
+                height: 152,
+                borderRadius: 76,
+                backgroundColor: "rgba(255,253,247,0.06)",
+              }}
+            />
+            <View style={{ flex: 1, flexDirection: showPreviewShelf ? "row" : "column", gap: 18 }}>
+              <View style={{ flex: 1, minWidth: 0, justifyContent: "space-between" }}>
+                <View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
+                    {section !== "social" ? (
+                      <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
+                    ) : null}
+                  </View>
+                  <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: showPreviewShelf ? 36 : 32, lineHeight: showPreviewShelf ? 42 : 38 }}>
+                    {heroTitle}
+                  </Text>
+                  <Text style={{ marginTop: 10, color: "rgba(255,253,247,0.76)", lineHeight: 22, fontSize: 14, maxWidth: 650 }}>
+                    {heroSubtitle}
+                  </Text>
                 </View>
-                <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: showPreviewShelf ? 34 : 30, lineHeight: showPreviewShelf ? 39 : 35 }}>
-                  {heroTitle}
-                </Text>
-                <Text style={{ marginTop: 8, color: "rgba(255,253,247,0.76)", lineHeight: 20, fontSize: 13, maxWidth: 650 }}>
-                  {heroSubtitle}
-                </Text>
+
+                <View style={{ marginTop: 18 }}>
+                  {section === "social" ? (
+                    <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap", maxWidth: 620 }}>
+                      <QuickAction
+                        label="Seller Board"
+                        subtitle="Open full feed"
+                        icon="chatbubbles-outline"
+                        accent={AMBER}
+                        onPress={() => router.push("/market/social" as any)}
+                      />
+                      <QuickAction
+                        label="Shopping"
+                        subtitle="Return to listings"
+                        icon="storefront-outline"
+                        accent={BLUE}
+                        onPress={() => switchSection("all")}
+                      />
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: "row", alignItems: "stretch", gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>{renderSearchBar(true)}</View>
+                      {renderStockMarketShortcut(true)}
+                    </View>
+                  )}
+
+                  {renderSectionTabs("desktop")}
+                </View>
               </View>
 
-              <View style={{ marginTop: 14 }}>
-                {section === "social" ? (
-                  <View style={{ flexDirection: "row", gap: 12, maxWidth: 600 }}>
-                    <QuickAction
-                      label="Seller Board"
-                      subtitle="Open full feed"
-                      icon="chatbubbles-outline"
-                      accent={AMBER}
-                      onPress={() => router.push("/market/social" as any)}
-                    />
-                    <QuickAction
-                      label="Shopping"
-                      subtitle="Return to listings"
-                      icon="storefront-outline"
-                      accent={BLUE}
-                      onPress={() => switchSection("all")}
-                    />
-                  </View>
-                ) : (
-                  <View style={{ flexDirection: "row", alignItems: "stretch", gap: 10 }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>{renderSearchBar(true)}</View>
-                    {renderStockMarketShortcut(true)}
-                  </View>
-                )}
-
-                {renderSectionTabs("desktop")}
-              </View>
+              {showPreviewShelf ? (
+                <View style={{ width: 296, justifyContent: "center" }}>
+                  {renderHeroPreviewRail(false)}
+                </View>
+              ) : null}
             </View>
-
-            {showPreviewShelf ? (
-              <View style={{ width: 286, justifyContent: "center" }}>
-                {renderHeroPreviewRail(false)}
-              </View>
-            ) : null}
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        </View>
       );
     }
 
@@ -2605,24 +2645,24 @@ export default function MarketHome() {
         style={{ marginTop: 12 }}
       >
         <LinearGradient
-          colors={[`${heroAccent}18`, "rgba(244,183,93,0.07)", "rgba(255,253,247,0.035)"]}
+          colors={[`${heroAccent}18`, "rgba(244,183,93,0.08)", "rgba(255,253,247,0.04)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
             borderRadius: 18,
-            padding: 13,
+            padding: 14,
             borderWidth: 1,
-            borderColor: "rgba(255,253,247,0.12)",
+            borderColor: "rgba(255,253,247,0.14)",
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <CardBadge label={kicker} icon={section === "social" ? "people-outline" : "shield-checkmark-outline"} tone={section === "social" ? "gold" : "teal"} />
             {section !== "social" ? (
               <CardBadge label={feedScope === "country" ? "Local first" : "Global feed"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} tone="blue" />
             ) : null}
           </View>
-          <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 21, lineHeight: 26 }}>{heroTitle}</Text>
-          <Text style={{ marginTop: 6, color: MUTED, lineHeight: 18, fontSize: 12 }} numberOfLines={2}>
+          <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 22, lineHeight: 28 }}>{heroTitle}</Text>
+          <Text style={{ marginTop: 7, color: MUTED, lineHeight: 19, fontSize: 12 }} numberOfLines={2}>
             {heroSubtitle}
           </Text>
 
@@ -2631,9 +2671,9 @@ export default function MarketHome() {
           {section !== "social" ? (
             <View
               style={{
-                marginTop: 12,
+                marginTop: 14,
                 flexDirection: mobileActionStack ? "column" : "row",
-                gap: 8,
+                gap: 10,
                 flexWrap: "wrap",
               }}
             >
@@ -3042,66 +3082,26 @@ export default function MarketHome() {
 
 
   function renderDirectoryChooser(desktop = false) {
-    if (!desktop) {
-      return (
-        <CompactDisclosure
-          eyebrow={directoryMode === "listings" ? "Discovery" : "Seller directory"}
-          title={resultTitle}
-          summary={directoryMode === "listings" ? `${feedLabel} - ${feedScope === "country" ? "Local" : "Global"}` : "Featured and verified stores"}
-          icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
-          accent={heroAccent}
-          expanded={expandedCards.discovery}
-          onToggle={() => toggleExpandedCard("discovery")}
-        >
-          <View style={{ gap: 12 }}>
-            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>{resultSubtitle}</Text>
-            <View style={{ flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
-              <Chip
-                label="Listings"
-                icon="grid-outline"
-                active={directoryMode === "listings"}
-                onPress={() => setDirectoryMode("listings")}
-              />
-              <Chip
-                label="Featured Stores"
-                icon="flame"
-                iconColor="#FDBA74"
-                active={directoryMode === "featured"}
-                onPress={() => setDirectoryMode("featured")}
-              />
-              <Chip
-                label="Verified Stores"
-                icon="checkmark-circle"
-                iconColor={BLUE}
-                active={directoryMode === "verified"}
-                onPress={() => setDirectoryMode("verified")}
-              />
-            </View>
-          </View>
-        </CompactDisclosure>
-      );
-    }
+    const label = directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY";
+    const subtitle = directoryMode === "listings" ? `${feedLabel} - ${feedScope === "country" ? "Local" : "Global"}` : "Featured and verified stores";
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, backgroundColor: "rgba(255,253,247,0.06)" }}>
-        <Text style={{ color: MUTED, fontWeight: "800", fontSize: 11 }}>
-          {directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY"}
-        </Text>
-
-        <View style={{ marginTop: 6, flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: desktop ? 20 : 18 }}>{resultTitle}</Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{resultSubtitle}</Text>
+      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, backgroundColor: "rgba(255,253,247,0.05)" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
+            <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: desktop ? 20 : 18 }}>{resultTitle}</Text>
+            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{subtitle}</Text>
           </View>
           <View
             style={{
-              minWidth: 48,
+              minWidth: 52,
               borderRadius: 999,
               paddingHorizontal: 12,
               paddingVertical: 8,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: "rgba(45,212,191,0.16)",
+              backgroundColor: "rgba(45,212,191,0.18)",
               borderWidth: 1,
               borderColor: "rgba(94,234,212,0.38)",
             }}
@@ -3110,7 +3110,7 @@ export default function MarketHome() {
           </View>
         </View>
 
-        <View style={{ marginTop: 11, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+        <View style={{ marginTop: 14, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
           <Chip
             label="Listings"
             icon="grid-outline"
@@ -3118,11 +3118,35 @@ export default function MarketHome() {
             onPress={() => setDirectoryMode("listings")}
           />
           <Chip
+            label="Featured Stores"
+            icon="flame"
+            iconColor="#FDBA74"
+            active={directoryMode === "featured"}
+            onPress={() => setDirectoryMode("featured")}
+          />
+          <Chip
             label="Verified Stores"
             icon="checkmark-circle"
             iconColor={BLUE}
             active={directoryMode === "verified"}
             onPress={() => setDirectoryMode("verified")}
+          />
+        </View>
+
+        <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SectionPill
+            icon="earth-outline"
+            label="Global"
+            active={feedScope === "global"}
+            onPress={() => setFeedScope("global")}
+            stretch={false}
+          />
+          <SectionPill
+            icon="location-outline"
+            label="Local"
+            active={feedScope === "country"}
+            onPress={() => setFeedScope("country")}
+            stretch={false}
           />
         </View>
       </GlassPanel>
@@ -3180,133 +3204,118 @@ export default function MarketHome() {
             expanded={expandedCards.filters}
             onToggle={() => toggleExpandedCard("filters")}
           >
-            <View style={{ gap: 12 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Nearby and global</Text>
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                  {feedScope === "country"
-                    ? "Showing listings specifically available in your current country."
-                    : "Showing every listing currently available in the marketplace."}
-                </Text>
+            <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.04)", marginTop: 6 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Nearby and global</Text>
+                  <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    {feedScope === "country"
+                      ? "Showing listings specifically available in your current country."
+                      : "Showing every listing currently available in the marketplace."}
+                  </Text>
+                </View>
+                <Pressable
+                  disabled={locatingCountry}
+                  onPress={async () => {
+                    const c = await refreshCountry();
+                    if (feedScope === "country") await loadListings(c);
+                  }}
+                  style={({ pressed }) => ({
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? "rgba(45,212,191,0.16)" : "rgba(255,253,247,0.10)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,253,247,0.14)",
+                    opacity: locatingCountry ? 0.6 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                  })}
+                >
+                  {locatingCountry ? <ActivityIndicator size="small" color={TEXT} /> : <Ionicons name="refresh" size={16} color={TEXT} />}
+                </Pressable>
               </View>
-              <Pressable
-                disabled={locatingCountry}
-                onPress={async () => {
-                  const c = await refreshCountry();
-                  if (feedScope === "country") await loadListings(c);
-                }}
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(255,253,247,0.08)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,253,247,0.12)",
-                  opacity: locatingCountry ? 0.6 : 1,
-                }}
-              >
-                {locatingCountry ? <ActivityIndicator size="small" /> : <Ionicons name="refresh" size={15} color={TEXT} />}
-              </Pressable>
-            </View>
 
-            <View style={{ flexDirection: "row", gap: 9 }}>
-              <SectionPill
-                icon="location-outline"
-                label="Local"
-                active={feedScope === "country"}
-                onPress={() => setFeedScope("country")}
-              />
-              <SectionPill
-                icon="earth-outline"
-                label="Global"
-                active={feedScope === "global"}
-                onPress={() => setFeedScope("global")}
-              />
-            </View>
-
-            <View
-              style={{
-                borderRadius: 15,
-                padding: 11,
-                borderWidth: 1,
-                borderColor: "rgba(255,253,247,0.12)",
-                backgroundColor: "rgba(9,13,11,0.42)",
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 9,
-              }}
-            >
-              <Ionicons name="location-outline" size={17} color={TEAL} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
-                <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>
-                  {feedScope === "country"
-                    ? userCountry
-                      ? "Only listings matched to your country are shown here."
-                      : "Showing Global while your country is being detected."
-                    : "Global feed shows listings from every country."}
-                </Text>
+              <View style={{ marginTop: 14, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                <SectionPill
+                  icon="location-outline"
+                  label="Local"
+                  active={feedScope === "country"}
+                  onPress={() => setFeedScope("country")}
+                />
+                <SectionPill
+                  icon="earth-outline"
+                  label="Global"
+                  active={feedScope === "global"}
+                  onPress={() => setFeedScope("global")}
+                />
               </View>
-            </View>
 
-            {feedScope === "country" && !userCountry ? (
               <View
                 style={{
-                  borderRadius: 14,
-                  padding: 11,
+                  marginTop: 12,
+                  borderRadius: 18,
+                  padding: 14,
                   borderWidth: 1,
-                  borderColor: BORDER,
-                  backgroundColor: "rgba(255,253,247,0.055)",
+                  borderColor: "rgba(255,253,247,0.12)",
+                  backgroundColor: "rgba(9,13,11,0.42)",
                 }}
               >
-                <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>Enable location to filter to your country. Until then, the feed stays visible with Global listings.</Text>
-                {countryErr ? (
-                  <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.55)", fontSize: 12 }}>{countryErr}</Text>
-                ) : null}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Ionicons name="location-outline" size={18} color={TEAL} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{locationLabel}</Text>
+                    <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>
+                      {feedScope === "country"
+                        ? userCountry
+                          ? "Only listings matched to your country are shown here."
+                          : "Showing Global while your country is being detected."
+                        : "Global feed shows listings from every country."}
+                    </Text>
+                  </View>
+                </View>
               </View>
-            ) : null}
 
-            {categories.length ? (
-              <View>
+              {feedScope === "country" && !userCountry ? (
+                <View
+                  style={{
+                    marginTop: 12,
+                    borderRadius: 15,
+                    padding: 13,
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    backgroundColor: "rgba(255,253,247,0.05)",
+                  }}
+                >
+                  <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                    Enable location to filter to your country. Until then, the feed stays visible with Global listings.
+                  </Text>
+                  {countryErr ? (
+                    <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.55)", fontSize: 12 }}>{countryErr}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <View style={{ marginTop: 14 }}>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Related categories</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }} contentContainerStyle={{ gap: 10 }}>
                   <Chip label="All" active={!selectedSlug} onPress={() => setSelectedSlug(null)} />
                   {categories.map((c) => (
-                    <View key={c.slug} style={{ marginLeft: 10 }}>
-                      <Chip label={c.title} active={selectedSlug === c.slug} onPress={() => setSelectedSlug(c.slug)} />
-                    </View>
+                    <Chip key={c.slug} label={c.title} active={selectedSlug === c.slug} onPress={() => setSelectedSlug(c.slug)} />
                   ))}
                 </ScrollView>
               </View>
-            ) : (
-              <View
-                style={{
-                  borderRadius: 15,
-                  padding: 11,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,253,247,0.12)",
-                  backgroundColor: "rgba(255,253,247,0.055)",
-                }}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>All listing types</Text>
-                <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                  This view mixes products and services together.
-                </Text>
-              </View>
-            )}
 
-            <View>
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Sort</Text>
-              <View style={{ marginTop: 8, flexDirection: "row", gap: 9, flexWrap: "wrap" }}>
-                <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
-                <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
-                <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
+              <View style={{ marginTop: 14 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Sort</Text>
+                <View style={{ marginTop: 10, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                  <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
+                  <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
+                  <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
+                </View>
               </View>
-            </View>
-            </View>
+            </GlassPanel>
           </CompactDisclosure>
         </TutorialTarget>
       );
@@ -3470,6 +3479,25 @@ export default function MarketHome() {
     return null;
   }
 
+  function renderFeedScopePills(desktop = false) {
+    return (
+      <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+        <SectionPill
+          icon="earth-outline"
+          label="Global"
+          active={feedScope === "global"}
+          onPress={() => setFeedScope("global")}
+        />
+        <SectionPill
+          icon="location-outline"
+          label="Local"
+          active={feedScope === "country"}
+          onPress={() => setFeedScope("country")}
+        />
+      </View>
+    );
+  }
+
   function renderSocialPanel(desktop = false) {
     return (
       <>
@@ -3494,14 +3522,12 @@ export default function MarketHome() {
             alignItems: "center",
           }}
         >
-          <View
+          <GlassPanel
             style={{
               width: "100%",
               maxWidth: desktop ? 760 : undefined,
               backgroundColor: "rgba(9,13,11,0.96)",
-              borderWidth: 1,
-              borderColor: "rgba(255,253,247,0.10)",
-              borderRadius: desktop ? 24 : 0,
+              borderRadius: desktop ? 24 : 20,
               overflow: "hidden",
             }}
           >
@@ -3577,9 +3603,9 @@ export default function MarketHome() {
         />
 
         {renderSearchBar(false)}
+        {renderFeedScopePills(false)}
         {renderSectionTabs("mobile")}
         {renderHeroPanel(false)}
-
 
         {section === "social" ? (
           renderSocialPanel(false)
@@ -3637,6 +3663,7 @@ export default function MarketHome() {
             }
           >
             {renderHeroPanel(true)}
+            {renderFeedScopePills(true)}
             {section === "social" ? null : renderCategoryDiscovery(true)}
             {section === "social" ? null : renderDirectoryChooser(true)}
           </View>
@@ -3704,73 +3731,199 @@ export default function MarketHome() {
   }
 
   function MarketToolsModal() {
+    const toolCards = [
+      {
+        label: "Open AI guide",
+        body: "Ask about buying, selling, escrow, orders, and search.",
+        icon: "sparkles-outline",
+        onPress: () => {
+          setToolsVisible(false);
+          setGuideVisible(true);
+        },
+      },
+      {
+        label: "Browse categories",
+        body: main ? `${main === "product" ? "Products" : "Services"} categories` : "Popular lanes",
+        icon: "grid-outline",
+        onPress: () => {
+          setToolsVisible(false);
+          router.push({ pathname: "/market/category" as any, params: main ? { mode: main } : undefined });
+        },
+      },
+      {
+        label: "Filters & scope",
+        body: "Local/global and sort controls",
+        icon: "filter-outline",
+        onPress: () => {
+          setToolsVisible(false);
+          setExpandedCards((prev) => ({ ...prev, filters: true }));
+        },
+      },
+      {
+        label: "Stock Market",
+        body: "Open seller stock tools",
+        icon: "trending-up-outline",
+        onPress: () => {
+          setToolsVisible(false);
+          router.push("/market/stock" as any);
+        },
+      },
+    ];
+
     return (
       <Modal visible={toolsVisible} animationType="slide" transparent onRequestClose={() => setToolsVisible(false)}>
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" }}>
-          <View style={{ backgroundColor: BG0, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxHeight: "80%" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Market tools</Text>
-              <Pressable onPress={() => setToolsVisible(false)} style={{ padding: 8 }}>
-                <Ionicons name="close" size={18} color={MUTED} />
-              </Pressable>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.72)", justifyContent: "flex-end" }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setToolsVisible(false)} />
+          <View
+            style={{
+              maxHeight: "86%",
+              paddingTop: 0,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              backgroundColor: BG0,
+              borderWidth: 1,
+              borderColor: "rgba(255,253,247,0.08)",
+              overflow: "hidden",
+            }}
+          >
+            <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 8 }}>
+              <View
+                style={{
+                  width: 56,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,253,247,0.12)",
+                }}
+              />
             </View>
 
-            <ScrollView style={{ marginTop: 12 }} contentContainerStyle={{ gap: 10 }}>
-              <Pressable
-                onPress={() => {
-                  setToolsVisible(false);
-                  setGuideVisible(true);
-                }}
-                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Open BestCity AI Guide</Text>
-                <Text style={{ color: MUTED, marginTop: 4 }}>Ask about buying, selling, escrow, orders, and search</Text>
-              </Pressable>
+            <LinearGradient
+              colors={["rgba(45,212,191,0.18)", "rgba(56,189,248,0.12)", "rgba(9,13,11,0.96)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 18, gap: 14 }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>Marketplace toolkit</Text>
+                  <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.78)", fontSize: 13, lineHeight: 19 }}>
+                    High-impact controls for feed scope, discovery, and built-in AI guidance.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setToolsVisible(false)}
+                  style={({ pressed }) => ({
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? "rgba(255,253,247,0.12)" : "rgba(255,253,247,0.08)",
+                  })}
+                >
+                  <Ionicons name="close" size={20} color={TEXT} />
+                </Pressable>
+              </View>
 
-              <Pressable
-                onPress={() => {
-                  setToolsVisible(false);
-                  router.push({ pathname: "/market/category" as any, params: main ? { mode: main } : undefined });
-                }}
-                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Browse categories</Text>
-                <Text style={{ color: MUTED, marginTop: 4 }}>{main ? `${main === "product" ? "Products" : "Services"} categories` : "Popular lanes"}</Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <CardBadge label={feedScope === "country" ? "Local feed" : "Global feed"} tone={feedScope === "country" ? "teal" : "blue"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} />
+                <CardBadge label={directoryMode === "listings" ? "Listings" : "Stores"} tone="purple" icon="options-outline" />
+              </View>
+            </LinearGradient>
 
-              <Pressable
-                onPress={() => {
-                  setToolsVisible(false);
-                  setExpandedCards((prev) => ({ ...prev, filters: true }));
-                }}
-                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Filters & scope</Text>
-                <Text style={{ color: MUTED, marginTop: 4 }}>Open nearby/global filters and sort options</Text>
-              </Pressable>
+            <View style={{ paddingHorizontal: 20, gap: 16, paddingBottom: 18 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                {toolCards.map((card) => (
+                  <Pressable
+                    key={card.label}
+                    onPress={card.onPress}
+                    style={({ pressed }) => ({
+                      flex: 1,
+                      minWidth: 148,
+                      borderRadius: 22,
+                      padding: 16,
+                      backgroundColor: pressed ? "rgba(45,212,191,0.16)" : "rgba(255,253,247,0.035)",
+                      borderWidth: 1,
+                      borderColor: "rgba(255,253,247,0.12)",
+                      shadowColor: "#000",
+                      shadowOpacity: pressed ? 0.18 : 0.08,
+                      shadowRadius: pressed ? 20 : 12,
+                      shadowOffset: { width: 0, height: 10 },
+                      elevation: pressed ? 6 : 3,
+                    })}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 14,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "rgba(45,212,191,0.16)",
+                          borderWidth: 1,
+                          borderColor: "rgba(94,234,212,0.35)",
+                        }}
+                      >
+                        <Ionicons name={card.icon as any} size={18} color={TEAL} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }} numberOfLines={1}>{card.label}</Text>
+                        <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{card.body}</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
 
-              <Pressable
-                onPress={() => {
-                  setToolsVisible(false);
-                  router.push("/market/stock" as any);
-                }}
-                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Open Stock Market</Text>
-                <Text style={{ color: MUTED, marginTop: 4 }}>Trade seller stock and positions</Text>
-              </Pressable>
+              <GlassPanel style={{ padding: 18, borderRadius: 24, backgroundColor: "rgba(255,253,247,0.04)", borderColor: "rgba(255,253,247,0.12)" }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Feed controls</Text>
+                <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                  Lock your marketplace view to local or global listings, and toggle between listings and store discovery.
+                </Text>
+                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <SectionPill
+                    icon="earth-outline"
+                    label="Global"
+                    active={feedScope === "global"}
+                    onPress={() => setFeedScope("global")}
+                  />
+                  <SectionPill
+                    icon="location-outline"
+                    label="Local"
+                    active={feedScope === "country"}
+                    onPress={() => setFeedScope("country")}
+                  />
+                </View>
+                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <SectionPill
+                    icon="grid-outline"
+                    label="Listings"
+                    active={directoryMode === "listings"}
+                    onPress={() => setDirectoryMode("listings")}
+                    stretch={false}
+                  />
+                  <SectionPill
+                    icon="storefront-outline"
+                    label="Stores"
+                    active={directoryMode !== "listings"}
+                    onPress={() => setDirectoryMode("featured")}
+                    stretch={false}
+                  />
+                </View>
+              </GlassPanel>
 
-              <Pressable
-                onPress={() => {
-                  setToolsVisible(false);
-                  setExpandedCards((prev) => ({ ...prev, featured: true }));
-                }}
-                style={({ pressed }) => ({ padding: 12, borderRadius: 12, backgroundColor: pressed ? CARD_RAISED : CARD, borderWidth: 1, borderColor: BORDER })}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Featured preview</Text>
-                <Text style={{ color: MUTED, marginTop: 4 }}>Open featured listings and storefronts</Text>
-              </Pressable>
-            </ScrollView>
+              {section !== "social" ? (
+                <View style={{ padding: 16, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,253,247,0.12)", backgroundColor: "rgba(255,253,247,0.03)" }}>
+                  <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED PREVIEW</Text>
+                  {heroFeaturedItems.length ? (
+                    <View style={{ marginTop: 12 }}>{renderHeroPreviewRail(true)}</View>
+                  ) : (
+                    <Text style={{ marginTop: 10, color: MUTED, fontSize: 12 }}>Featured listings and storefronts appear here once active.</Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
       </Modal>
