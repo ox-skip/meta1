@@ -3567,7 +3567,7 @@ export default function MarketHome() {
             <View style={{ padding: desktop ? 14 : 0 }}>
               <SocialFeed />
             </View>
-          </View>
+          </GlassPanel>
         </View>
       </>
     );
