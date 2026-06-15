@@ -291,22 +291,26 @@ function SectionPill({
   onPress,
   icon,
   stretch = true,
+  compact = false,
+  minWidth,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
   stretch?: boolean;
+  compact?: boolean;
+  minWidth?: number;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         flex: stretch ? 1 : undefined,
-        minWidth: stretch ? undefined : 106,
-        height: 48,
-        borderRadius: 18,
-        paddingHorizontal: stretch ? 12 : 14,
+        minWidth: stretch ? undefined : minWidth ?? (compact ? 88 : 106),
+        height: compact ? 40 : 48,
+        borderRadius: compact ? 14 : 18,
+        paddingHorizontal: stretch ? (compact ? 10 : 12) : compact ? 12 : 14,
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: active ? "rgba(45,212,191,0.18)" : "rgba(255,253,247,0.04)",
@@ -322,9 +326,9 @@ function SectionPill({
         transform: [{ scale: pressed ? 0.985 : 1 }],
       })}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        {icon ? <Ionicons name={icon} size={15} color={active ? TEAL : MUTED} /> : null}
-        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: 13 }}>{label}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: compact ? 6 : 8 }}>
+        {icon ? <Ionicons name={icon} size={compact ? 14 : 15} color={active ? TEAL : MUTED} /> : null}
+        <Text style={{ color: active ? TEXT : MUTED, fontWeight: "900", fontSize: compact ? 12 : 13 }}>{label}</Text>
       </View>
     </Pressable>
   );
@@ -1154,15 +1158,11 @@ export default function MarketHome() {
   const hasDesktopRail = Platform.OS === "web" && usableWidth >= MARKET_DESKTOP_BREAKPOINT;
   const reservedDesktopRailWidth = hasDesktopRail ? MARKET_DESKTOP_RAIL_WIDTH : 0;
   const layoutWidth = Math.max(320, usableWidth - reservedDesktopRailWidth);
-  const contentMaxWidth = isDesktop ? 1240 : width >= 1240 ? 1120 : undefined;
+  const contentMaxWidth = isDesktop ? 1180 : width >= 1240 ? 1120 : undefined;
   const contentOuterWidth = Math.min(contentMaxWidth ?? layoutWidth, layoutWidth);
   const contentInnerWidth = contentOuterWidth - pagePadding * 2;
   const desktopListInset = isDesktop ? Math.max(0, (layoutWidth - contentOuterWidth) / 2) + pagePadding : 0;
-  const desktopSidePanelWidth = 298;
-  const desktopContentGap = 14;
-  const resultsInnerWidth = isDesktop
-    ? Math.max(320, contentInnerWidth - desktopSidePanelWidth - desktopContentGap)
-    : contentInnerWidth;
+  const resultsInnerWidth = contentInnerWidth;
   const gridGap = isDesktop ? 14 : 12;
   const mobileActionStack = width < 390;
   const categories = useMemo<CategoryItem[]>(
@@ -1624,7 +1624,17 @@ export default function MarketHome() {
     });
   }, [directoryMode, featuredSellers, verifiedSellers, q]);
   const isListingDirectory = section !== "social" && directoryMode === "listings";
-  const responsiveListingColumns = resultsInnerWidth >= 1100 ? 3 : resultsInnerWidth >= 620 ? 2 : 1;
+  const responsiveListingColumns = isDesktop
+    ? resultsInnerWidth >= 1080
+      ? 4
+      : resultsInnerWidth >= 760
+      ? 3
+      : resultsInnerWidth >= 540
+      ? 2
+      : 1
+    : resultsInnerWidth >= 620
+    ? 2
+    : 1;
   const sellerDirectoryColumns = isDesktop && resultsInnerWidth >= 760 ? 2 : 1;
   const listingColumns = isListingDirectory ? responsiveListingColumns : sellerDirectoryColumns;
   const desktopCardWidth =
@@ -1633,7 +1643,7 @@ export default function MarketHome() {
       : (resultsInnerWidth - gridGap * (listingColumns - 1)) / listingColumns;
   const listingCardWidth =
     isDesktop ? desktopCardWidth : listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
-  const listingMediaAspectRatio = listingColumns === 1 ? 4 / 3 : isDesktop ? 1.12 : 1;
+  const listingMediaAspectRatio = listingColumns === 1 ? 4 / 3 : isDesktop ? 1 : 1;
   const sellerCardWidth =
     isDesktop ? desktopCardWidth : listingColumns === 1 ? undefined : listingColumns === 2 ? "48.7%" : "31.9%";
   const contentBottomPadding = isDesktop ? 38 : Math.max(122, insets.bottom + 102);
@@ -1819,8 +1829,8 @@ export default function MarketHome() {
           width: listingCardWidth as any,
           marginHorizontal: listingColumns === 1 && !isDesktop ? pagePadding : 0,
           marginLeft: listingColumns === 1 && isDesktop ? desktopListInset : undefined,
-          marginTop: isDesktop ? 7 : 16,
-          borderRadius: 22,
+          marginTop: isDesktop ? 12 : 14,
+          borderRadius: isDesktop ? 16 : 20,
           overflow: "hidden",
           borderWidth: 1,
           borderTopWidth: 1,
@@ -1828,9 +1838,9 @@ export default function MarketHome() {
           borderTopColor: BORDER_TOP,
           backgroundColor: isDesktop ? "rgba(10,13,11,0.96)" : CARD_RAISED,
           shadowColor: "#000",
-          shadowOpacity: isDesktop ? 0.34 : 0.25,
-          shadowRadius: isDesktop ? 28 : 20,
-          shadowOffset: { width: 0, height: isDesktop ? 18 : 12 },
+          shadowOpacity: isDesktop ? 0.22 : 0.25,
+          shadowRadius: isDesktop ? 18 : 20,
+          shadowOffset: { width: 0, height: isDesktop ? 12 : 12 },
           elevation: 7,
           transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
         })}
@@ -1921,10 +1931,10 @@ export default function MarketHome() {
 
         <View
           style={{
-            minHeight: isDesktop ? 220 : undefined,
-            paddingHorizontal: isDesktop ? 16 : 14,
-            paddingTop: isDesktop ? 16 : 14,
-            paddingBottom: isDesktop ? 16 : 14,
+            minHeight: isDesktop ? 190 : undefined,
+            paddingHorizontal: isDesktop ? 14 : 14,
+            paddingTop: isDesktop ? 13 : 14,
+            paddingBottom: isDesktop ? 14 : 14,
             backgroundColor: "rgba(9,13,11,0.92)",
           }}
         >
@@ -1947,7 +1957,7 @@ export default function MarketHome() {
                 marginTop: showDiscount ? 2 : 0,
                 color: TEXT,
                 fontWeight: "900",
-                fontSize: listingColumns === 1 ? 24 : 21,
+                fontSize: isDesktop ? (listingColumns >= 3 ? 19 : 21) : listingColumns === 1 ? 24 : 21,
                 letterSpacing: 0,
               }}
             >
@@ -1967,7 +1977,7 @@ export default function MarketHome() {
 
           <Text
             numberOfLines={2}
-            style={{ marginTop: 10, color: TEXT, fontWeight: "800", fontSize: 14, lineHeight: 19 }}
+            style={{ marginTop: 10, color: TEXT, fontWeight: "800", fontSize: isDesktop ? 13 : 14, lineHeight: isDesktop ? 18 : 19 }}
           >
             {item.title ?? "Untitled"}
           </Text>
@@ -2152,14 +2162,14 @@ export default function MarketHome() {
         <TutorialTarget id="market.home.sections">
           <View
             style={{
-              marginTop: 20,
-              borderRadius: 20,
-              padding: 6,
+              borderRadius: 16,
+              padding: 4,
               borderWidth: 1,
               borderColor: "rgba(255,253,247,0.13)",
               backgroundColor: "rgba(9,13,11,0.50)",
               flexDirection: "row",
-              gap: 6,
+              alignSelf: "flex-start",
+              gap: 4,
             }}
           >
             {tabs.map((tab) => (
@@ -2168,6 +2178,9 @@ export default function MarketHome() {
                 icon={tab.icon}
                 label={tab.label}
                 active={section === tab.key}
+                compact
+                stretch={false}
+                minWidth={96}
                 onPress={() => switchSection(tab.key)}
               />
             ))}
@@ -2181,8 +2194,8 @@ export default function MarketHome() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 10, marginHorizontal: -pagePadding }}
-          contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 10 }}
+          style={{ marginTop: 9, marginHorizontal: -pagePadding }}
+          contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 8 }}
         >
           {tabs.map((tab) => (
             <SectionPill
@@ -2191,6 +2204,8 @@ export default function MarketHome() {
               label={tab.label}
               active={section === tab.key}
               stretch={false}
+              compact
+              minWidth={94}
               onPress={() => switchSection(tab.key)}
             />
           ))}
@@ -2199,18 +2214,18 @@ export default function MarketHome() {
     );
   }
 
-  function renderSearchBar(prominent = false) {
+  function renderSearchBar(prominent = false, compact = false) {
     return section !== "social" ? (
       <TutorialTarget id="market.home.search">
         <View
           style={{
-            marginTop: prominent ? 18 : 12,
-            minHeight: prominent ? 58 : 0,
+            marginTop: compact ? 0 : prominent ? 18 : 12,
+            minHeight: compact ? 46 : prominent ? 58 : 0,
             flexDirection: "row",
-            gap: 10,
+            gap: compact ? 8 : 10,
             alignItems: "center",
-            borderRadius: prominent ? 24 : 20,
-            padding: prominent ? 16 : 13,
+            borderRadius: compact ? 16 : prominent ? 24 : 20,
+            padding: compact ? 10 : prominent ? 16 : 13,
             borderWidth: 1,
             borderTopWidth: 1,
             borderColor: prominent ? "rgba(45,212,191,0.26)" : "rgba(255,253,247,0.15)",
@@ -2232,15 +2247,15 @@ export default function MarketHome() {
           onSubmitEditing={() =>
             router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })
           }
-          style={{ flex: 1, minWidth: 0, color: TEXT, fontWeight: "800", fontSize: prominent ? 15 : 14 }}
+          style={{ flex: 1, minWidth: 0, color: TEXT, fontWeight: "800", fontSize: compact ? 13 : prominent ? 15 : 14 }}
         />
         {q.trim() ? (
           <Pressable
             onPress={() => setQ("")}
             hitSlop={8}
             style={{
-              width: 36,
-              height: 36,
+              width: compact ? 32 : 36,
+              height: compact ? 32 : 36,
               borderRadius: 12,
               alignItems: "center",
               justifyContent: "center",
@@ -2253,9 +2268,9 @@ export default function MarketHome() {
         <Pressable
           onPress={() => router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} })}
           style={{
-            width: prominent ? 44 : 38,
-            height: prominent ? 44 : 38,
-            borderRadius: prominent ? 15 : 13,
+            width: compact ? 34 : prominent ? 44 : 38,
+            height: compact ? 34 : prominent ? 44 : 38,
+            borderRadius: compact ? 12 : prominent ? 15 : 13,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: "rgba(45,212,191,0.20)",
@@ -3082,72 +3097,98 @@ export default function MarketHome() {
 
 
   function renderDirectoryChooser(desktop = false) {
-    const label = directoryMode === "listings" ? "DISCOVERY" : "SELLER DIRECTORY";
-    const subtitle = directoryMode === "listings" ? `${feedLabel} - ${feedScope === "country" ? "Local" : "Global"}` : "Featured and verified stores";
+    const label = directoryMode === "listings" ? "Listings" : directoryMode === "featured" ? "Featured" : "Verified";
+    const subtitle = directoryMode === "listings" ? `${feedScope === "country" ? "Local" : "Global"} ${feedLabel}` : "Store directory";
 
     return (
-      <GlassPanel style={{ marginTop: desktop ? 0 : 12, padding: desktop ? 16 : 14, backgroundColor: "rgba(255,253,247,0.05)" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
-            <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: desktop ? 20 : 18 }}>{resultTitle}</Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12 }}>{subtitle}</Text>
+      <GlassPanel
+        style={{
+          marginTop: desktop ? 10 : 9,
+          padding: desktop ? 10 : 11,
+          borderRadius: desktop ? 16 : 18,
+          backgroundColor: "rgba(255,253,247,0.045)",
+        }}
+      >
+        <View
+          style={{
+            flexDirection: desktop ? "row" : "column",
+            alignItems: desktop ? "center" : "stretch",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minWidth: desktop ? 210 : undefined }}>
+            <View
+              style={{
+                minWidth: 44,
+                height: 38,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(45,212,191,0.18)",
+                borderWidth: 1,
+                borderColor: "rgba(94,234,212,0.38)",
+              }}
+            >
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{resultCount}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: desktop ? 14 : 13 }} numberOfLines={1}>
+                {label}
+              </Text>
+              <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, fontWeight: "800" }} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </View>
           </View>
+
           <View
             style={{
-              minWidth: 52,
-              borderRadius: 999,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
+              flexDirection: "row",
+              flexWrap: "wrap",
               alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(45,212,191,0.18)",
-              borderWidth: 1,
-              borderColor: "rgba(94,234,212,0.38)",
+              justifyContent: desktop ? "flex-end" : "flex-start",
+              gap: 8,
+              flex: desktop ? 1 : undefined,
             }}
           >
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{resultCount}</Text>
+            <Chip
+              label="Listings"
+              icon="grid-outline"
+              active={directoryMode === "listings"}
+              onPress={() => setDirectoryMode("listings")}
+            />
+            <Chip
+              label="Featured"
+              icon="flame"
+              iconColor="#FDBA74"
+              active={directoryMode === "featured"}
+              onPress={() => setDirectoryMode("featured")}
+            />
+            <Chip
+              label="Verified"
+              icon="checkmark-circle"
+              iconColor={BLUE}
+              active={directoryMode === "verified"}
+              onPress={() => setDirectoryMode("verified")}
+            />
+            <Pressable
+              onPress={() => setToolsVisible(true)}
+              style={({ pressed }) => ({
+                width: 38,
+                height: 38,
+                borderRadius: 14,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: pressed ? "rgba(45,212,191,0.16)" : "rgba(255,253,247,0.06)",
+                borderWidth: 1,
+                borderColor: "rgba(255,253,247,0.13)",
+                transform: [{ scale: pressed ? 0.96 : 1 }],
+              })}
+            >
+              <Ionicons name="options-outline" size={17} color={TEAL} />
+            </Pressable>
           </View>
-        </View>
-
-        <View style={{ marginTop: 14, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-          <Chip
-            label="Listings"
-            icon="grid-outline"
-            active={directoryMode === "listings"}
-            onPress={() => setDirectoryMode("listings")}
-          />
-          <Chip
-            label="Featured Stores"
-            icon="flame"
-            iconColor="#FDBA74"
-            active={directoryMode === "featured"}
-            onPress={() => setDirectoryMode("featured")}
-          />
-          <Chip
-            label="Verified Stores"
-            icon="checkmark-circle"
-            iconColor={BLUE}
-            active={directoryMode === "verified"}
-            onPress={() => setDirectoryMode("verified")}
-          />
-        </View>
-
-        <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <SectionPill
-            icon="earth-outline"
-            label="Global"
-            active={feedScope === "global"}
-            onPress={() => setFeedScope("global")}
-            stretch={false}
-          />
-          <SectionPill
-            icon="location-outline"
-            label="Local"
-            active={feedScope === "country"}
-            onPress={() => setFeedScope("country")}
-            stretch={false}
-          />
         </View>
       </GlassPanel>
     );
@@ -3481,18 +3522,32 @@ export default function MarketHome() {
 
   function renderFeedScopePills(desktop = false) {
     return (
-      <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+      <View
+        style={{
+          marginTop: desktop ? 0 : 9,
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignSelf: desktop ? "flex-start" : undefined,
+          gap: desktop ? 6 : 8,
+        }}
+      >
         <SectionPill
           icon="earth-outline"
           label="Global"
           active={feedScope === "global"}
           onPress={() => setFeedScope("global")}
+          compact
+          stretch={!desktop}
+          minWidth={desktop ? 94 : undefined}
         />
         <SectionPill
           icon="location-outline"
           label="Local"
           active={feedScope === "country"}
           onPress={() => setFeedScope("country")}
+          compact
+          stretch={!desktop}
+          minWidth={desktop ? 94 : undefined}
         />
       </View>
     );
@@ -3602,15 +3657,14 @@ export default function MarketHome() {
           style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
         />
 
-        {renderSearchBar(false)}
-        {renderFeedScopePills(false)}
+        {section !== "social" ? renderSearchBar(false, true) : null}
         {renderSectionTabs("mobile")}
-        {renderHeroPanel(false)}
 
         {section === "social" ? (
           renderSocialPanel(false)
         ) : (
           <>
+            {renderFeedScopePills(false)}
             {renderDirectoryChooser(false)}
             {renderStatusBlock()}
           </>
@@ -3648,81 +3702,37 @@ export default function MarketHome() {
           style={{ backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: Math.max(insets.top + 18, 24), paddingBottom: 8 }}
         />
 
-        <View
-          style={
-            section === "social"
-              ? { marginTop: 4, flexDirection: "row", alignItems: "flex-start", gap: desktopContentGap }
-              : { marginTop: 4, position: "relative", zIndex: 2 }
-          }
+        <GlassPanel
+          style={{
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 18,
+            backgroundColor: "rgba(255,253,247,0.045)",
+          }}
         >
-          <View
-            style={
-              section === "social"
-                ? { flex: 1, minWidth: 0, gap: 10 }
-                : { width: resultsInnerWidth, maxWidth: "100%", gap: 10 }
-            }
-          >
-            {renderHeroPanel(true)}
-            {renderFeedScopePills(true)}
-            {section === "social" ? null : renderCategoryDiscovery(true)}
-            {section === "social" ? null : renderDirectoryChooser(true)}
-          </View>
-
-          <View
-            style={
-              section === "social"
-                ? { width: desktopSidePanelWidth, gap: 12 }
-                : {
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    width: desktopSidePanelWidth,
-                    gap: 12,
-                    zIndex: 3,
-                  }
-            }
-          >
-            <GlassPanel style={{ padding: 16, backgroundColor: "rgba(255,253,247,0.06)" }}>
-              <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>MARKET PULSE</Text>
-              <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
-                <MarketMetric
-                  label="In view"
-                  value={String(resultCount)}
-                  icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
-                />
-                <MarketMetric
-                  label="Verified"
-                  value={String(verifiedSellers.length)}
-                  icon="checkmark-circle-outline"
-                  tone={BLUE}
-                />
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            {section !== "social" ? (
+              <View style={{ flex: 1, minWidth: 340, maxWidth: 520 }}>{renderSearchBar(false, true)}</View>
+            ) : (
+              <View style={{ minWidth: 240, flex: 1 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Seller activity</Text>
+                <Text style={{ marginTop: 2, color: MUTED, fontSize: 11, fontWeight: "800" }} numberOfLines={1}>
+                  Storefront updates and marketplace media
+                </Text>
               </View>
-              <View style={{ marginTop: 10, flexDirection: "row", gap: 10 }}>
-                <MarketMetric
-                  label="Scope"
-                  value={directoryMode === "listings" ? (feedScope === "country" ? "Local" : "Global") : "Stores"}
-                  icon={feedScope === "country" ? "location-outline" : "earth-outline"}
-                  tone={AMBER}
-                />
-                <MarketMetric
-                  label="Mode"
-                  value={directoryMode === "listings" ? "Listings" : "Stores"}
-                  icon="options-outline"
-                  tone={TEAL}
-                />
-              </View>
-            </GlassPanel>
-
-            <Pressable onPress={() => setToolsVisible(true)} style={{ padding: 6, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,253,247,0.03)' }}>
-              <Ionicons name="layers-outline" size={20} color={TEAL} />
-            </Pressable>
+            )}
+            {renderSectionTabs("desktop")}
+            {section !== "social" ? (
+              <View style={{ marginLeft: "auto" }}>{renderFeedScopePills(true)}</View>
+            ) : null}
           </View>
-        </View>
+        </GlassPanel>
 
         {section === "social" ? (
           renderSocialPanel(true)
         ) : (
           <>
+            {renderDirectoryChooser(true)}
             {renderStatusBlock()}
           </>
         )}
@@ -3742,21 +3752,21 @@ export default function MarketHome() {
         },
       },
       {
-        label: "Browse categories",
+        label: "Search market",
+        body: q.trim() ? `Use "${q.trim().slice(0, 24)}"` : "Listings, stores, and categories",
+        icon: "search-outline",
+        onPress: () => {
+          setToolsVisible(false);
+          router.push({ pathname: "/market/search" as any, params: q.trim() ? { q: q.trim() } : {} });
+        },
+      },
+      {
+        label: "Categories",
         body: main ? `${main === "product" ? "Products" : "Services"} categories` : "Popular lanes",
         icon: "grid-outline",
         onPress: () => {
           setToolsVisible(false);
           router.push({ pathname: "/market/category" as any, params: main ? { mode: main } : undefined });
-        },
-      },
-      {
-        label: "Filters & scope",
-        body: "Local/global and sort controls",
-        icon: "filter-outline",
-        onPress: () => {
-          setToolsVisible(false);
-          setExpandedCards((prev) => ({ ...prev, filters: true }));
         },
       },
       {
@@ -3769,24 +3779,44 @@ export default function MarketHome() {
         },
       },
     ];
+    const panelWidth = isDesktop ? Math.min(560, usableWidth - 48) : undefined;
 
     return (
       <Modal visible={toolsVisible} animationType="slide" transparent onRequestClose={() => setToolsVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.72)", justifyContent: "flex-end" }}>
-          <Pressable style={{ flex: 1 }} onPress={() => setToolsVisible(false)} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.72)",
+            justifyContent: isDesktop ? "center" : "flex-end",
+            alignItems: isDesktop ? "flex-end" : "stretch",
+            padding: isDesktop ? 22 : 0,
+          }}
+        >
+          <Pressable
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+            onPress={() => setToolsVisible(false)}
+          />
           <View
             style={{
-              maxHeight: "86%",
+              width: panelWidth as any,
+              maxHeight: isDesktop ? "92%" : "88%",
               paddingTop: 0,
-              borderTopLeftRadius: 28,
+              borderTopLeftRadius: isDesktop ? 24 : 28,
               borderTopRightRadius: 28,
-              backgroundColor: BG0,
+              borderBottomLeftRadius: isDesktop ? 24 : 0,
+              borderBottomRightRadius: isDesktop ? 24 : 0,
+              backgroundColor: "rgba(6,8,7,0.98)",
               borderWidth: 1,
-              borderColor: "rgba(255,253,247,0.08)",
+              borderColor: "rgba(255,253,247,0.10)",
               overflow: "hidden",
+              shadowColor: "#000",
+              shadowOpacity: 0.34,
+              shadowRadius: 30,
+              shadowOffset: { width: 0, height: 18 },
+              elevation: 12,
             }}
           >
-            <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 8 }}>
+            <View style={{ alignItems: "center", paddingTop: isDesktop ? 8 : 10, paddingBottom: 8 }}>
               <View
                 style={{
                   width: 56,
@@ -3801,13 +3831,13 @@ export default function MarketHome() {
               colors={["rgba(45,212,191,0.18)", "rgba(56,189,248,0.12)", "rgba(9,13,11,0.96)"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 18, gap: 14 }}
+              style={{ paddingHorizontal: isDesktop ? 18 : 20, paddingTop: isDesktop ? 18 : 22, paddingBottom: 16, gap: 14 }}
             >
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: 22 }}>Marketplace toolkit</Text>
+                  <Text style={{ color: TEXT, fontWeight: "900", fontSize: isDesktop ? 20 : 22 }}>Market controls</Text>
                   <Text style={{ marginTop: 6, color: "rgba(255,253,247,0.78)", fontSize: 13, lineHeight: 19 }}>
-                    High-impact controls for feed scope, discovery, and built-in AI guidance.
+                    {resultTitle}. Scope, discovery, categories, and featured previews live here.
                   </Text>
                 </View>
                 <Pressable
@@ -3828,10 +3858,34 @@ export default function MarketHome() {
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 <CardBadge label={feedScope === "country" ? "Local feed" : "Global feed"} tone={feedScope === "country" ? "teal" : "blue"} icon={feedScope === "country" ? "location-outline" : "earth-outline"} />
                 <CardBadge label={directoryMode === "listings" ? "Listings" : "Stores"} tone="purple" icon="options-outline" />
+                <CardBadge label={`${resultCount} in view`} tone="gold" icon="analytics-outline" />
+              </View>
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <MarketMetric
+                  label="In view"
+                  value={String(resultCount)}
+                  icon={directoryMode === "listings" ? "grid-outline" : "people-outline"}
+                />
+                <MarketMetric
+                  label="Verified"
+                  value={String(verifiedSellers.length)}
+                  icon="checkmark-circle-outline"
+                  tone={BLUE}
+                />
+                <MarketMetric
+                  label="Scope"
+                  value={directoryMode === "listings" ? (feedScope === "country" ? "Local" : "Global") : "Stores"}
+                  icon={feedScope === "country" ? "location-outline" : "earth-outline"}
+                  tone={AMBER}
+                />
               </View>
             </LinearGradient>
 
-            <View style={{ paddingHorizontal: 20, gap: 16, paddingBottom: 18 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: isDesktop ? 18 : 20, gap: 14, paddingTop: 14, paddingBottom: Math.max(18, insets.bottom + 18) }}
+            >
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
                 {toolCards.map((card) => (
                   <Pressable
@@ -3839,9 +3893,9 @@ export default function MarketHome() {
                     onPress={card.onPress}
                     style={({ pressed }) => ({
                       flex: 1,
-                      minWidth: 148,
-                      borderRadius: 22,
-                      padding: 16,
+                      minWidth: isDesktop ? 160 : 148,
+                      borderRadius: 16,
+                      padding: 14,
                       backgroundColor: pressed ? "rgba(45,212,191,0.16)" : "rgba(255,253,247,0.035)",
                       borderWidth: 1,
                       borderColor: "rgba(255,253,247,0.12)",
@@ -3855,9 +3909,9 @@ export default function MarketHome() {
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                       <View
                         style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 14,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 13,
                           alignItems: "center",
                           justifyContent: "center",
                           backgroundColor: "rgba(45,212,191,0.16)",
@@ -3876,45 +3930,42 @@ export default function MarketHome() {
                 ))}
               </View>
 
-              <GlassPanel style={{ padding: 18, borderRadius: 24, backgroundColor: "rgba(255,253,247,0.04)", borderColor: "rgba(255,253,247,0.12)" }}>
+              <GlassPanel style={{ padding: 14, borderRadius: 18, backgroundColor: "rgba(255,253,247,0.04)", borderColor: "rgba(255,253,247,0.12)" }}>
                 <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>Feed controls</Text>
-                <Text style={{ marginTop: 6, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                  Lock your marketplace view to local or global listings, and toggle between listings and store discovery.
-                </Text>
-                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                   <SectionPill
                     icon="earth-outline"
                     label="Global"
                     active={feedScope === "global"}
                     onPress={() => setFeedScope("global")}
+                    compact
+                    stretch={false}
                   />
                   <SectionPill
                     icon="location-outline"
                     label="Local"
                     active={feedScope === "country"}
                     onPress={() => setFeedScope("country")}
+                    compact
+                    stretch={false}
                   />
                 </View>
-                <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  <SectionPill
-                    icon="grid-outline"
-                    label="Listings"
-                    active={directoryMode === "listings"}
-                    onPress={() => setDirectoryMode("listings")}
-                    stretch={false}
-                  />
-                  <SectionPill
-                    icon="storefront-outline"
-                    label="Stores"
-                    active={directoryMode !== "listings"}
-                    onPress={() => setDirectoryMode("featured")}
-                    stretch={false}
-                  />
+                <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <Chip label="Listings" icon="grid-outline" active={directoryMode === "listings"} onPress={() => setDirectoryMode("listings")} />
+                  <Chip label="Featured" icon="flame" iconColor="#FDBA74" active={directoryMode === "featured"} onPress={() => setDirectoryMode("featured")} />
+                  <Chip label="Verified" icon="checkmark-circle" iconColor={BLUE} active={directoryMode === "verified"} onPress={() => setDirectoryMode("verified")} />
+                </View>
+                <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <Chip label="Newest" active={sortBy === "newest"} onPress={() => setSortBy("newest")} />
+                  <Chip label="Price Low" active={sortBy === "price_low"} onPress={() => setSortBy("price_low")} />
+                  <Chip label="Price High" active={sortBy === "price_high"} onPress={() => setSortBy("price_high")} />
                 </View>
               </GlassPanel>
 
+              {section !== "social" ? renderCategoryDiscovery(isDesktop) : null}
+
               {section !== "social" ? (
-                <View style={{ padding: 16, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,253,247,0.12)", backgroundColor: "rgba(255,253,247,0.03)" }}>
+                <View style={{ padding: 14, borderRadius: 18, borderWidth: 1, borderColor: "rgba(255,253,247,0.12)", backgroundColor: "rgba(255,253,247,0.03)" }}>
                   <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>FEATURED PREVIEW</Text>
                   {heroFeaturedItems.length ? (
                     <View style={{ marginTop: 12 }}>{renderHeroPreviewRail(true)}</View>
@@ -3923,7 +3974,7 @@ export default function MarketHome() {
                   )}
                 </View>
               ) : null}
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>

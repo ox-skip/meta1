@@ -16,14 +16,14 @@ type IconName = React.ComponentProps<typeof Ionicons>["name"];
 type Tone = "mint" | "cyan" | "amber" | "red" | "plain";
 
 export const STOCK = {
-  bgTop: "#081018",
-  bgMid: "#0B0F14",
-  bgBottom: "#040608",
-  panel: "rgba(255,255,255,0.07)",
-  panelStrong: "rgba(255,255,255,0.12)",
-  panelSoft: "rgba(255,255,255,0.045)",
-  border: "rgba(255,255,255,0.14)",
-  borderStrong: "rgba(255,255,255,0.24)",
+  bgTop: "#07110D",
+  bgMid: "#0B1110",
+  bgBottom: "#050706",
+  panel: "rgba(247,250,252,0.07)",
+  panelStrong: "rgba(247,250,252,0.12)",
+  panelSoft: "rgba(247,250,252,0.045)",
+  border: "rgba(247,250,252,0.13)",
+  borderStrong: "rgba(247,250,252,0.24)",
   ink: "#F7FAFC",
   muted: "rgba(247,250,252,0.68)",
   faint: "rgba(247,250,252,0.44)",
@@ -107,10 +107,15 @@ export function StockPanel({
       style={[
         {
           borderRadius: 8,
-          padding: 14,
+          padding: 12,
           backgroundColor: tone === "plain" ? STOCK.panel : colors.bg,
           borderWidth: 1,
           borderColor: tone === "plain" ? STOCK.border : colors.border,
+          shadowColor: "#000",
+          shadowOpacity: 0.14,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 9 },
+          elevation: 3,
         },
         style,
       ]}
@@ -174,7 +179,7 @@ export function StockMetric({
           flex: 1,
           minWidth: 96,
           borderRadius: 8,
-          padding: 12,
+          padding: 10,
           backgroundColor: tone === "plain" ? STOCK.panelSoft : colors.bg,
           borderWidth: 1,
           borderColor: tone === "plain" ? STOCK.border : colors.border,
@@ -182,8 +187,8 @@ export function StockMetric({
         style,
       ]}
     >
-      <Text style={{ color: STOCK.muted, fontSize: 11, fontWeight: "800" }}>{label}</Text>
-      <Text style={{ marginTop: 5, color: STOCK.ink, fontSize: 17, fontWeight: "900" }}>{value}</Text>
+      <Text style={{ color: STOCK.muted, fontSize: 10, fontWeight: "900" }}>{label}</Text>
+      <Text style={{ marginTop: 5, color: STOCK.ink, fontSize: 15, fontWeight: "900" }} numberOfLines={1}>{value}</Text>
       {caption ? <Text style={{ marginTop: 3, color: STOCK.faint, fontSize: 10, fontWeight: "700" }}>{caption}</Text> : null}
     </View>
   );

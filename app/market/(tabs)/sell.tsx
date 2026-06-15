@@ -259,9 +259,9 @@ function CardBox({ children, style }: any) {
     <View
       style={[
         {
-          marginTop: 14,
-          borderRadius: 24,
-          padding: 16,
+          marginTop: 10,
+          borderRadius: 18,
+          padding: 14,
           backgroundColor: CARD,
           borderWidth: 1,
           borderTopWidth: 1,
@@ -301,9 +301,9 @@ function Input(props: any) {
       style={[
         {
           marginTop: 8,
-          borderRadius: 18,
+          borderRadius: 14,
           paddingHorizontal: 14,
-          paddingVertical: 13,
+          paddingVertical: 12,
           color: TEXT,
           backgroundColor: "rgba(9,13,11,0.52)",
           borderWidth: 1,
@@ -336,10 +336,11 @@ function Pill({
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        flexGrow: 1,
-        flexBasis: 118,
-        minHeight: 48,
-        borderRadius: 17,
+        flexGrow: 0,
+        flexBasis: undefined,
+        minWidth: 112,
+        minHeight: 42,
+        borderRadius: 14,
         paddingHorizontal: 12,
         alignItems: "center",
         justifyContent: "center",
@@ -364,7 +365,7 @@ function Chip({ active, label, onPress, icon }: { active: boolean; label: string
       onPress={onPress}
       style={({ pressed }) => ({
         paddingHorizontal: 12,
-        paddingVertical: 9,
+        paddingVertical: 8,
         borderRadius: 999,
         backgroundColor: active ? "rgba(244,183,93,0.16)" : "rgba(255,253,247,0.06)",
         borderWidth: 1,
@@ -387,8 +388,8 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
       <Pressable
         onPress={() => setOpen(!open)}
         style={{
-          borderRadius: 24,
-          padding: 16,
+          borderRadius: 18,
+          padding: 14,
           backgroundColor: CARD,
           borderWidth: 1,
           borderColor: BORDER,
@@ -412,7 +413,7 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
         />
       </Pressable>
       {open ? (
-        <View style={{ marginTop: 8, borderRadius: 20, padding: 16, backgroundColor: "rgba(255,253,247,0.055)", borderWidth: 1, borderColor: BORDER }}>
+        <View style={{ marginTop: 8, borderRadius: 16, padding: 14, backgroundColor: "rgba(255,253,247,0.055)", borderWidth: 1, borderColor: BORDER }}>
           {children}
         </View>
       ) : null}
@@ -472,9 +473,9 @@ function MetricTile({
     <View
       style={{
         flex: 1,
-        minWidth: 108,
-        borderRadius: 18,
-        padding: 12,
+        minWidth: 118,
+        borderRadius: 14,
+        padding: 10,
         backgroundColor: "rgba(255,253,247,0.06)",
         borderWidth: 1,
         borderColor: `${tone}3D`,
@@ -484,7 +485,7 @@ function MetricTile({
         <Ionicons name={icon} size={14} color={tone} />
         <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11 }}>{label}</Text>
       </View>
-      <Text numberOfLines={1} style={{ marginTop: 7, color: TEXT, fontWeight: "900", fontSize: 16 }}>
+      <Text numberOfLines={1} style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: 14 }}>
         {value}
       </Text>
     </View>
@@ -598,7 +599,7 @@ export default function SellTab() {
   const stickyPublishBottom = isWebDesktop ? Math.max(insets.bottom, 18) : floatingTabBarHeight + 22;
   const scrollBottomPadding = stickyPublishBottom + 132;
   const pagePadding = isWebDesktop ? 28 : 16;
-  const contentMaxWidth = isWebDesktop ? 1120 : undefined;
+  const contentMaxWidth = isWebDesktop ? 1040 : undefined;
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -1765,32 +1766,56 @@ export default function SellTab() {
   function renderSellHero() {
     return (
       <LinearGradient
-        colors={[`${category === "product" ? BLUE : TEAL}22`, "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
+        colors={[`${category === "product" ? BLUE : TEAL}1F`, "rgba(255,253,247,0.055)", "rgba(9,13,11,0.62)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
-          marginTop: 12,
-          borderRadius: 28,
-          padding: isWebDesktop ? 24 : 16,
+          marginTop: 8,
+          borderRadius: 18,
+          padding: isWebDesktop ? 14 : 13,
           borderWidth: 1,
           borderColor: "rgba(255,253,247,0.16)",
           overflow: "hidden",
           shadowColor: "#000",
-          shadowOpacity: 0.22,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 16 },
-          elevation: 7,
+          shadowOpacity: 0.16,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 10 },
+          elevation: 4,
         }}
       >
-        <View style={{ flexDirection: isWebDesktop ? "row" : "column", gap: 18, alignItems: "stretch" }}>
+        <View style={{ flexDirection: isWebDesktop ? "row" : "column", gap: 12, alignItems: isWebDesktop ? "center" : "stretch" }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-              <Chip
-                active
-                label={listingModeLabel}
-                icon={category === "product" ? "cube-outline" : deliveryType === "digital" ? "cloud-outline" : "walk-outline"}
-                onPress={() => {}}
-              />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: `${category === "product" ? BLUE : TEAL}20`,
+                  borderWidth: 1,
+                  borderColor: `${category === "product" ? BLUE : TEAL}48`,
+                }}
+              >
+                <Ionicons name={category === "product" ? "cube-outline" : "sparkles-outline"} size={18} color={category === "product" ? BLUE : TEAL} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: isWebDesktop ? 18 : 16 }} numberOfLines={1}>
+                  Create listing
+                </Text>
+                <Text style={{ marginTop: 2, color: MUTED, fontSize: 12, fontWeight: "800" }} numberOfLines={1}>
+                  {listingModeLabel} - {readyCount}/{readyChecks.length} basics complete
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ marginTop: 10, height: 7, borderRadius: 999, backgroundColor: "rgba(255,253,247,0.10)", overflow: "hidden" }}>
+              <View style={{ width: `${readinessPercent}%`, height: "100%", borderRadius: 999, backgroundColor: readyCount === readyChecks.length ? TEAL : AMBER }} />
+            </View>
+            <View style={{ marginTop: 10, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <Chip active={category === "product"} label="Product" icon="cube-outline" onPress={() => setCategory("product")} />
+              <Chip active={category === "service"} label="Service" icon="sparkles-outline" onPress={() => setCategory("service")} />
               <Chip
                 active={mediaRequirementMet}
                 label={mediaRequirementMet ? "Media ready" : "Needs media"}
@@ -1798,34 +1823,66 @@ export default function SellTab() {
                 onPress={() => {}}
               />
             </View>
-
-            <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: isWebDesktop ? 34 : 26, lineHeight: isWebDesktop ? 40 : 32 }}>
-              Build a listing buyers can trust.
-            </Text>
-            <Text style={{ marginTop: 8, color: MUTED, lineHeight: 21, maxWidth: 680 }}>
-              Add clear details, set where buyers can purchase, attach proof media, and publish through escrow-backed checkout.
-            </Text>
-
-            <View style={{ marginTop: 16, height: 8, borderRadius: 999, backgroundColor: "rgba(255,253,247,0.10)", overflow: "hidden" }}>
-              <View style={{ width: `${readinessPercent}%`, height: "100%", borderRadius: 999, backgroundColor: readyCount === readyChecks.length ? TEAL : AMBER }} />
-            </View>
-            <Text style={{ marginTop: 8, color: MUTED, fontSize: 12, fontWeight: "800" }}>
-              {readyCount}/{readyChecks.length} publish basics complete
-            </Text>
           </View>
 
-          <View style={{ width: isWebDesktop ? 360 : undefined, gap: 10 }}>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <MetricTile label="Type" value={category === "product" ? "Product" : "Service"} icon="storefront-outline" tone={category === "product" ? BLUE : TEAL} />
+          <View style={{ width: isWebDesktop ? 438 : undefined }}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
               <MetricTile label="Price" value={pricePreview} icon="pricetag-outline" tone={AMBER} />
-            </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
               <MetricTile label="Category" value={selectedSubCategoryTitle} icon="grid-outline" tone={PURPLE} />
+            </View>
+            <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
               <MetricTile label="Media" value={mediaAssets.length ? `${mediaAssets.length} items` : "Empty"} icon="images-outline" tone={TEAL} />
+              <MetricTile label="Reach" value={availabilityScope} icon="location-outline" tone={BLUE} />
             </View>
           </View>
         </View>
+
+        <View style={{ marginTop: 10, flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+          <Pill active={deliveryType === "physical"} label="Physical" icon="car-outline" disabled={category !== "product"} onPress={() => setDeliveryType("physical")} />
+          <Pill active={deliveryType === "digital"} label="Digital" icon="cloud-outline" disabled={category !== "service"} onPress={() => setDeliveryType("digital")} />
+          <Pill active={deliveryType === "in_person"} label="In-person" icon="walk-outline" disabled={category !== "service"} onPress={() => setDeliveryType("in_person")} />
+        </View>
       </LinearGradient>
+    );
+  }
+
+  function renderDesktopPublishSummary() {
+    if (!isWebDesktop) return null;
+    return (
+      <CardBox style={{ marginTop: 10, backgroundColor: "rgba(9,13,11,0.62)" }}>
+        <SectionTitle title="Publish status" subtitle="Compact checklist for the listing currently being drafted." icon="shield-checkmark-outline" tone={TEAL} />
+        <View style={{ marginTop: 12, gap: 9 }}>
+          {[
+            { label: "Title", ready: !!title.trim(), value: title.trim() || "Missing", icon: "create-outline" as const },
+            { label: "Category", ready: !!selectedSubCategory, value: selectedSubCategoryTitle, icon: "grid-outline" as const },
+            { label: "Price", ready: Number.isFinite(liveLocalInput) && liveLocalInput > 0, value: pricePreview, icon: "pricetag-outline" as const },
+            { label: "Media", ready: mediaRequirementMet, value: mediaAssets.length ? `${mediaAssets.length} items` : "Missing", icon: "images-outline" as const },
+          ].map((item) => (
+            <View key={item.label} style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+              <View
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 11,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: item.ready ? "rgba(45,212,191,0.15)" : "rgba(255,253,247,0.06)",
+                  borderWidth: 1,
+                  borderColor: item.ready ? "rgba(94,234,212,0.34)" : BORDER,
+                }}
+              >
+                <Ionicons name={item.ready ? "checkmark" : item.icon} size={14} color={item.ready ? TEAL : MUTED} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{item.label}</Text>
+                <Text style={{ marginTop: 2, color: MUTED, fontSize: 11 }} numberOfLines={1}>
+                  {item.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </CardBox>
     );
   }
 
@@ -1859,10 +1916,10 @@ export default function SellTab() {
             style={{ backgroundColor: "transparent", paddingHorizontal: 0 }}
           />
           <LinearGradient
-            colors={["rgba(45,212,191,0.18)", "rgba(244,183,93,0.08)", "rgba(255,253,247,0.055)"]}
+            colors={["rgba(45,212,191,0.18)", "rgba(56,189,248,0.08)", "rgba(255,253,247,0.055)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{ marginTop: 34, borderRadius: 28, padding: 20, borderWidth: 1, borderColor: "rgba(255,253,247,0.16)" }}
+            style={{ marginTop: 24, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: "rgba(255,253,247,0.16)" }}
           >
             <View
               style={{
@@ -1922,35 +1979,21 @@ export default function SellTab() {
       >
         {renderSellHero()}
 
-        <CardBox>
-          <SectionTitle
-            title="Listing setup"
-            subtitle="Choose the selling mode first. The rest of the form adapts to products, digital work, or in-person services."
-            icon="options-outline"
-            tone={category === "product" ? BLUE : TEAL}
-          />
-          <Row>
-            <Pill active={category === "product"} label="Product" icon="cube-outline" onPress={() => setCategory("product")} />
-            <Pill active={category === "service"} label="Service" icon="sparkles-outline" onPress={() => setCategory("service")} />
-          </Row>
+        <View style={{ flexDirection: isWebDesktop ? "row" : "column", alignItems: "flex-start", gap: isWebDesktop ? 12 : 0 }}>
+          <View style={{ flex: 1, minWidth: 0, width: isWebDesktop ? undefined : "100%" }}>
 
-          <Label>Delivery</Label>
-          <Row>
-            <Pill active={deliveryType === "physical"} label="Physical" icon="car-outline" disabled={category !== "product"} onPress={() => setDeliveryType("physical")} />
-            <Pill active={deliveryType === "digital"} label="Digital" icon="cloud-outline" disabled={category !== "service"} onPress={() => setDeliveryType("digital")} />
-            <Pill active={deliveryType === "in_person"} label="In-person" icon="walk-outline" disabled={category !== "service"} onPress={() => setDeliveryType("in_person")} />
-          </Row>
-
-          {category === "service" && deliveryType === "digital" ? (
-            <>
-              <Label>Portfolio URL (optional)</Label>
-              <Input value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="https://example.com" autoCapitalize="none" />
-              <Text style={{ marginTop: 8, color: MUTED, fontSize: 12, lineHeight: 18 }}>
-                Optional public website, portfolio, or project link buyers can preview before purchase.
-              </Text>
-            </>
-          ) : null}
-        </CardBox>
+        {category === "service" && deliveryType === "digital" ? (
+          <CardBox>
+            <SectionTitle
+              title="Portfolio link"
+              subtitle="Optional public website, portfolio, or project link buyers can preview before purchase."
+              icon="link-outline"
+              tone={TEAL}
+            />
+            <Label>Portfolio URL</Label>
+            <Input value={websiteUrl} onChangeText={setWebsiteUrl} placeholder="https://example.com" autoCapitalize="none" />
+          </CardBox>
+        ) : null}
 
         <CollapsibleCardBox title="Category" defaultOpen={true}>
 
@@ -2596,6 +2639,26 @@ export default function SellTab() {
           ) : null}
         </CardBox>
 
+          </View>
+          {isWebDesktop ? (
+            <View style={{ width: 314 }}>
+              {renderDesktopPublishSummary()}
+              <CardBox style={{ backgroundColor: "rgba(255,253,247,0.045)" }}>
+                <SectionTitle title="Quick mode" subtitle="Change product/service and delivery without stretching the main form." icon="options-outline" tone={category === "product" ? BLUE : TEAL} />
+                <Row>
+                  <Pill active={category === "product"} label="Product" icon="cube-outline" onPress={() => setCategory("product")} />
+                  <Pill active={category === "service"} label="Service" icon="sparkles-outline" onPress={() => setCategory("service")} />
+                </Row>
+                <Row>
+                  <Pill active={deliveryType === "physical"} label="Physical" icon="car-outline" disabled={category !== "product"} onPress={() => setDeliveryType("physical")} />
+                  <Pill active={deliveryType === "digital"} label="Digital" icon="cloud-outline" disabled={category !== "service"} onPress={() => setDeliveryType("digital")} />
+                  <Pill active={deliveryType === "in_person"} label="In-person" icon="walk-outline" disabled={category !== "service"} onPress={() => setDeliveryType("in_person")} />
+                </Row>
+              </CardBox>
+            </View>
+          ) : null}
+        </View>
+
         {stage ? (
           <View style={{ marginTop: 12, borderRadius: 18, borderWidth: 1, borderColor: "rgba(94,234,212,0.28)", backgroundColor: "rgba(45,212,191,0.10)", padding: 12, flexDirection: "row", gap: 10, alignItems: "center" }}>
             <ActivityIndicator color={TEAL} />
@@ -2621,7 +2684,7 @@ export default function SellTab() {
           style={{
             width: "100%",
             maxWidth: isWebDesktop ? 720 : contentMaxWidth,
-            borderRadius: 24,
+            borderRadius: 16,
             padding: 10,
             backgroundColor: "rgba(9,13,11,0.94)",
             borderWidth: 1,

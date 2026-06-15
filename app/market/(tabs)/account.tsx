@@ -37,13 +37,13 @@ type AdminAccessState = {
   roleKey: string | null;
 };
 
-const BG0 = "#0B0907";
-const BG1 = "#22160D";
-const PANEL = "rgba(24,18,14,0.9)";
-const PANEL_ALT = "rgba(255,255,255,0.04)";
-const BORDER = "rgba(245,158,11,0.16)";
-const TEXT = "#FFF7ED";
-const MUTED = "rgba(255,247,237,0.68)";
+const BG0 = "#050706";
+const BG1 = "#0B1210";
+const PANEL = "rgba(247,250,252,0.065)";
+const PANEL_ALT = "rgba(247,250,252,0.045)";
+const BORDER = "rgba(247,250,252,0.12)";
+const TEXT = "#FFFDF7";
+const MUTED = "rgba(255,253,247,0.68)";
 const SUCCESS = "#4ADE80";
 const WARNING = "#F59E0B";
 const DANGER = "#F87171";
@@ -74,9 +74,9 @@ function HeaderButton({
       onPress={onPress}
       style={{
         minWidth: 126,
-        borderRadius: 18,
+        borderRadius: 12,
         paddingHorizontal: 14,
-        paddingVertical: 13,
+        paddingVertical: 11,
         backgroundColor: `${accent}18`,
         borderWidth: 1,
         borderColor: `${accent}2E`,
@@ -98,8 +98,8 @@ function StatCard({ value, label }: { value: string; label: string }) {
       style={{
         flex: 1,
         minWidth: 90,
-        borderRadius: 18,
-        padding: 14,
+        borderRadius: 12,
+        padding: 12,
         backgroundColor: PANEL_ALT,
         borderWidth: 1,
         borderColor: "rgba(255,255,255,0.06)",
@@ -123,11 +123,16 @@ function SectionShell({
   return (
     <View
       style={{
-        borderRadius: 28,
-        padding: 18,
+        borderRadius: 14,
+        padding: 16,
         backgroundColor: PANEL,
         borderWidth: 1,
         borderColor: BORDER,
+        shadowColor: "#000",
+        shadowOpacity: 0.13,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 9 },
+        elevation: 3,
       }}
     >
       <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{title}</Text>
@@ -158,8 +163,8 @@ function ReadinessRow({
   return (
     <View
       style={{
-        borderRadius: 18,
-        padding: 14,
+        borderRadius: 12,
+        padding: 12,
         backgroundColor: PANEL_ALT,
         borderWidth: 1,
         borderColor: "rgba(255,255,255,0.06)",
@@ -172,7 +177,7 @@ function ReadinessRow({
         style={{
           width: 40,
           height: 40,
-          borderRadius: 14,
+          borderRadius: 10,
           alignItems: "center",
           justifyContent: "center",
           backgroundColor: done ? "rgba(74,222,128,0.14)" : optional ? "rgba(245,158,11,0.14)" : "rgba(255,255,255,0.08)",
@@ -225,7 +230,7 @@ function AccountTile({
       style={({ pressed }) => ({
         flex: 1,
         minWidth: 154,
-        borderRadius: 22,
+        borderRadius: 14,
         overflow: "hidden",
         borderWidth: 1,
         borderColor: `${accent}35`,
@@ -234,17 +239,17 @@ function AccountTile({
       })}
     >
       <LinearGradient
-        colors={[`${accent}1F`, "rgba(255,255,255,0.035)", "rgba(11,9,7,0.34)"]}
+        colors={[`${accent}1F`, "rgba(255,255,255,0.035)", "rgba(5,7,6,0.34)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ minHeight: 124, padding: 14, justifyContent: "space-between" }}
+        style={{ minHeight: 106, padding: 13, justifyContent: "space-between" }}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <View
             style={{
               width: 38,
               height: 38,
-              borderRadius: 14,
+              borderRadius: 11,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: `${accent}22`,
@@ -289,20 +294,20 @@ function PulseCard({
       style={{
         flex: 1,
         minWidth: 168,
-        borderRadius: 22,
-        padding: 14,
+        borderRadius: 12,
+        padding: 12,
         backgroundColor: "rgba(255,255,255,0.045)",
         borderWidth: 1,
         borderColor: `${accent}30`,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
-        <View style={{ width: 34, height: 34, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: `${accent}18` }}>
+        <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: `${accent}18` }}>
           <Ionicons name={icon} size={16} color={accent} />
         </View>
         <Text style={{ color: MUTED, fontWeight: "900", fontSize: 11, textTransform: "uppercase", flex: 1 }} numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={{ marginTop: 12, color: TEXT, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>{value}</Text>
+      <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 18 }} numberOfLines={1}>{value}</Text>
       <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{detail}</Text>
     </View>
   );
@@ -324,7 +329,7 @@ function InlineNavButton({
       onPress={onPress}
       style={({ pressed }) => ({
         minHeight: 42,
-        borderRadius: 15,
+        borderRadius: 12,
         paddingHorizontal: 12,
         flexDirection: "row",
         alignItems: "center",
@@ -501,10 +506,10 @@ export default function MarketAccountTab() {
       }}
     >
       <View style={{ flex: 1 }}>
-        <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(245,158,11,0.14)", borderWidth: 1, borderColor: "rgba(245,158,11,0.26)" }}>
-          <Text style={{ color: WARNING, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, textTransform: "uppercase" }}>Account</Text>
+        <View style={{ alignSelf: "flex-start", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(45,212,191,0.12)", borderWidth: 1, borderColor: "rgba(94,234,212,0.24)" }}>
+          <Text style={{ color: TEAL, fontSize: 11, fontWeight: "900", textTransform: "uppercase" }}>Account</Text>
         </View>
-        <Text style={{ marginTop: 12, color: TEXT, fontSize: 30, fontWeight: "900" }}>Market command center</Text>
+        <Text style={{ marginTop: 10, color: TEXT, fontSize: isDesktop ? 28 : 24, fontWeight: "900" }}>Market command center</Text>
         <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>
           Store identity, selling tools, rewards, wallet, support, and growth shortcuts.
         </Text>
@@ -533,11 +538,11 @@ export default function MarketAccountTab() {
 
   if (loading) {
     return (
-      <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+      <LinearGradient colors={[BG1, "#07100C", BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
         <View style={{ paddingTop: insets.top + 18, paddingHorizontal: 16 }}>
           <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
             {header}
-            <View style={{ marginTop: 22, borderRadius: 32, padding: 28, alignItems: "center", backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
+            <View style={{ marginTop: 22, borderRadius: 14, padding: 28, alignItems: "center", backgroundColor: PANEL, borderWidth: 1, borderColor: BORDER }}>
               <ActivityIndicator color={WARNING} />
               <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>Loading account</Text>
               <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
@@ -551,7 +556,7 @@ export default function MarketAccountTab() {
   }
 
   return (
-    <LinearGradient colors={[BG1, BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
+    <LinearGradient colors={[BG1, "#07100C", BG0]} start={{ x: 0.1, y: 0 }} end={{ x: 0.92, y: 1 }} style={{ flex: 1 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.marketAccount} />
       <ScrollView
         contentContainerStyle={{
@@ -567,7 +572,7 @@ export default function MarketAccountTab() {
             <View
               style={{
                 marginTop: 18,
-                borderRadius: 22,
+                borderRadius: 14,
                 padding: 16,
                 backgroundColor: "rgba(248,113,113,0.12)",
                 borderWidth: 1,
@@ -600,15 +605,15 @@ export default function MarketAccountTab() {
             <View
               style={{
                 marginTop: 20,
-                borderRadius: 34,
+                borderRadius: 16,
                 overflow: "hidden",
                 borderWidth: 1,
                 borderColor: BORDER,
-                backgroundColor: PANEL,
+                backgroundColor: "rgba(247,250,252,0.06)",
               }}
             >
               <LinearGradient
-                colors={["rgba(245,158,11,0.18)", "rgba(0,0,0,0)"]}
+                colors={["rgba(45,212,191,0.16)", "rgba(56,189,248,0.08)", "rgba(0,0,0,0)"]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
@@ -619,15 +624,15 @@ export default function MarketAccountTab() {
                   style={{
                     width: 72,
                     height: 72,
-                    borderRadius: 24,
+                    borderRadius: 16,
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: "rgba(245,158,11,0.14)",
+                    backgroundColor: "rgba(45,212,191,0.14)",
                     borderWidth: 1,
-                    borderColor: "rgba(245,158,11,0.26)",
+                    borderColor: "rgba(94,234,212,0.26)",
                   }}
                 >
-                  <Ionicons name="storefront-outline" size={30} color={WARNING} />
+                  <Ionicons name="storefront-outline" size={30} color={TEAL} />
                 </View>
 
                 <Text style={{ marginTop: 18, color: TEXT, fontWeight: "900", fontSize: 26 }}>
@@ -658,19 +663,19 @@ export default function MarketAccountTab() {
             <View
               style={{
                 marginTop: 20,
-                borderRadius: 34,
+                borderRadius: 16,
                 overflow: "hidden",
                 borderWidth: 1,
                 borderColor: BORDER,
-                backgroundColor: PANEL,
+                backgroundColor: "rgba(247,250,252,0.06)",
               }}
             >
-              <View style={{ height: isDesktop ? 220 : 188, backgroundColor: "#1A120C" }}>
+              <View style={{ height: isDesktop ? 190 : 166, backgroundColor: "#07100C" }}>
                 {banner ? (
                   <Image source={{ uri: banner }} style={{ width: "100%", height: "100%" }} />
                 ) : (
                   <LinearGradient
-                    colors={["#5B3A11", "#1A120D"]}
+                    colors={["#123C35", "#07100C"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={{ width: "100%", height: "100%" }}
@@ -715,12 +720,12 @@ export default function MarketAccountTab() {
                       borderRadius: 999,
                       paddingHorizontal: 10,
                       paddingVertical: 6,
-                      backgroundColor: "rgba(245,158,11,0.16)",
+                      backgroundColor: "rgba(56,189,248,0.14)",
                       borderWidth: 1,
-                      borderColor: "rgba(245,158,11,0.28)",
+                      borderColor: "rgba(125,211,252,0.26)",
                     }}
                   >
-                    <Text style={{ color: WARNING, fontWeight: "900", fontSize: 11 }}>
+                    <Text style={{ color: BLUE, fontWeight: "900", fontSize: 11 }}>
                       {profile.payout_tier === "fast" ? "Fast payouts" : "Standard payouts"}
                     </Text>
                   </View>
@@ -754,7 +759,7 @@ export default function MarketAccountTab() {
                     style={{
                       width: 92,
                       height: 92,
-                      borderRadius: 28,
+                    borderRadius: 18,
                       overflow: "hidden",
                       borderWidth: 2,
                       borderColor: "rgba(255,247,237,0.22)",
@@ -814,128 +819,132 @@ export default function MarketAccountTab() {
             </View>
           )}
 
-          <View style={{ marginTop: 18, gap: 16 }}>
-            <TutorialTarget id="market.account.commands">
+          <View style={{ marginTop: 18, flexDirection: isDesktop ? "row" : "column", alignItems: "flex-start", gap: 16 }}>
+            <View style={{ flex: 1, minWidth: 0, width: isDesktop ? undefined : "100%", gap: 16 }}>
+              <TutorialTarget id="market.account.commands">
+                <SectionShell
+                  title="Command center"
+                  subtitle="Fast paths for the things sellers and buyers use most."
+                >
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                    {navTiles.map((tile) => (
+                      <AccountTile
+                        key={tile.route}
+                        title={tile.title}
+                        subtitle={tile.subtitle}
+                        icon={tile.icon}
+                        accent={tile.accent}
+                        badge={tile.badge}
+                        onPress={() => router.push(tile.route as any)}
+                      />
+                    ))}
+                  </View>
+                </SectionShell>
+              </TutorialTarget>
+
               <SectionShell
-                title="Command center"
-                subtitle="Fast paths for the things sellers and buyers use most."
+                title="Store summary"
+                subtitle="Public visibility, payouts, and seller status."
               >
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  {navTiles.map((tile) => (
-                    <AccountTile
-                      key={tile.route}
-                      title={tile.title}
-                      subtitle={tile.subtitle}
-                      icon={tile.icon}
-                      accent={tile.accent}
-                      badge={tile.badge}
-                      onPress={() => router.push(tile.route as any)}
-                    />
-                  ))}
+                <View style={{ gap: 10 }}>
+                  <ReadinessRow
+                    icon="eye-outline"
+                    title="Public storefront"
+                    subtitle={
+                      profile?.market_username
+                        ? `Your public store is available at @${profile.market_username}.`
+                        : "Create the public storefront handle to expose the seller page."
+                    }
+                    done={Boolean(profile?.market_username)}
+                  />
+                  <ReadinessRow
+                    icon="cash-outline"
+                    title="Payout configuration"
+                    subtitle={
+                      profile
+                        ? `Store payouts are set to the ${profile.payout_tier === "fast" ? "fast" : "standard"} lane.`
+                        : "Payout preferences appear once your store profile exists."
+                    }
+                    done={Boolean(profile)}
+                    optional
+                  />
+                  <ReadinessRow
+                    icon="storefront-outline"
+                    title="Store visibility"
+                    subtitle={
+                      profile
+                        ? profile.active === false
+                          ? "The store profile exists but is currently paused."
+                          : "The store profile is active and ready for buyer traffic."
+                        : "The store is not visible until the store profile is created."
+                    }
+                    done={Boolean(profile && profile.active !== false)}
+                    optional={!profile}
+                  />
                 </View>
               </SectionShell>
-            </TutorialTarget>
+            </View>
 
-            <TutorialTarget id="market.account.pulse">
-              <SectionShell
-                title="Account pulse"
-                subtitle="A compact read on what your marketplace account can do right now."
-              >
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                  <PulseCard
-                    label="Health"
-                    value={`${accountHealthScore}/4 ready`}
-                    detail="Profile, wallet, listings, and verification."
-                    icon="pulse-outline"
-                    accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
-                  />
-                  <TutorialTarget id="market.account.wallet" style={{ flex: 1, minWidth: 168 }}>
+            <View style={{ width: isDesktop ? 390 : "100%", gap: 16 }}>
+              <TutorialTarget id="market.account.pulse">
+                <SectionShell
+                  title="Account pulse"
+                  subtitle="A compact read on what your marketplace account can do right now."
+                >
+                  <View style={{ flexDirection: isDesktop ? "column" : "row", flexWrap: "wrap", gap: 10 }}>
                     <PulseCard
-                      label="Wallet"
-                      value={walletLabel}
-                      detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
-                      icon="wallet-outline"
-                      accent={launchReady.wallet ? SUCCESS : WARNING}
+                      label="Health"
+                      value={`${accountHealthScore}/4 ready`}
+                      detail="Profile, wallet, listings, and verification."
+                      icon="pulse-outline"
+                      accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
                     />
-                  </TutorialTarget>
-                  <PulseCard
-                    label="Inventory"
-                    value={`${stats.activeListings}/${stats.allListings}`}
-                    detail="Active listings compared with total listings."
-                    icon="albums-outline"
-                    accent={stats.activeListings > 0 ? TEAL : WARNING}
-                  />
-                  <PulseCard
-                    label="Sales"
-                    value={String(stats.completedOrders)}
-                    detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
-                    icon="receipt-outline"
-                    accent={stats.completedOrders > 0 ? BLUE : ROSE}
-                  />
-                </View>
+                    <TutorialTarget id="market.account.wallet" style={{ flex: 1, minWidth: 168 }}>
+                      <PulseCard
+                        label="Wallet"
+                        value={walletLabel}
+                        detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
+                        icon="wallet-outline"
+                        accent={launchReady.wallet ? SUCCESS : WARNING}
+                      />
+                    </TutorialTarget>
+                    <PulseCard
+                      label="Inventory"
+                      value={`${stats.activeListings}/${stats.allListings}`}
+                      detail="Active listings compared with total listings."
+                      icon="albums-outline"
+                      accent={stats.activeListings > 0 ? TEAL : WARNING}
+                    />
+                    <PulseCard
+                      label="Sales"
+                      value={String(stats.completedOrders)}
+                      detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
+                      icon="receipt-outline"
+                      accent={stats.completedOrders > 0 ? BLUE : ROSE}
+                    />
+                  </View>
 
-                <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
-                  <InlineNavButton label="Open full menu" icon="grid-outline" accent={SUCCESS} onPress={() => setMenuOpen(true)} />
-                  <InlineNavButton label="Create listing" icon="add-circle-outline" accent={TEAL} onPress={() => router.push("/market/(tabs)/sell" as any)} />
-                  <InlineNavButton label="View rewards" icon="gift-outline" accent={WARNING} onPress={() => router.push("/market/(tabs)/rewards" as any)} />
-                  <InlineNavButton label="Get support" icon="help-buoy-outline" accent={ROSE} onPress={() => router.push("/market/support" as any)} />
+                  <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+                    <InlineNavButton label="Open full menu" icon="grid-outline" accent={SUCCESS} onPress={() => setMenuOpen(true)} />
+                    <InlineNavButton label="Create listing" icon="add-circle-outline" accent={TEAL} onPress={() => router.push("/market/(tabs)/sell" as any)} />
+                    <InlineNavButton label="View rewards" icon="gift-outline" accent={WARNING} onPress={() => router.push("/market/(tabs)/rewards" as any)} />
+                    <InlineNavButton label="Get support" icon="help-buoy-outline" accent={ROSE} onPress={() => router.push("/market/support" as any)} />
+                  </View>
+                </SectionShell>
+              </TutorialTarget>
+
+              <SectionShell
+                title="Checklist"
+                subtitle="Important items for selling and payouts."
+              >
+                <View style={{ gap: 10 }}>
+                  <ReadinessRow icon="person-circle-outline" title="Seller profile" subtitle="A public seller identity exists and can be used for listings and discovery." done={launchReady.profile} />
+                  <ReadinessRow icon="wallet-outline" title="Wallet connection" subtitle="A wallet address is connected or saved for payments and transfers." done={launchReady.wallet} />
+                  <ReadinessRow icon="albums-outline" title="Live inventory" subtitle="At least one listing has been created to activate the selling flow." done={launchReady.listings} />
+                  <ReadinessRow icon="shield-checkmark-outline" title="Verification" subtitle="Optional trust layer for stronger buyer confidence and profile credibility." done={launchReady.verification} optional />
                 </View>
               </SectionShell>
-            </TutorialTarget>
-
-            <SectionShell
-              title="Store summary"
-              subtitle="Public visibility, payouts, and seller status."
-            >
-              <View style={{ gap: 10 }}>
-                <ReadinessRow
-                  icon="eye-outline"
-                  title="Public storefront"
-                  subtitle={
-                    profile?.market_username
-                      ? `Your public store is available at @${profile.market_username}.`
-                      : "Create the public storefront handle to expose the seller page."
-                  }
-                  done={Boolean(profile?.market_username)}
-                />
-                <ReadinessRow
-                  icon="cash-outline"
-                  title="Payout configuration"
-                  subtitle={
-                    profile
-                      ? `Store payouts are set to the ${profile.payout_tier === "fast" ? "fast" : "standard"} lane.`
-                      : "Payout preferences appear once your store profile exists."
-                  }
-                  done={Boolean(profile)}
-                  optional
-                />
-                <ReadinessRow
-                  icon="storefront-outline"
-                  title="Store visibility"
-                  subtitle={
-                    profile
-                      ? profile.active === false
-                        ? "The store profile exists but is currently paused."
-                        : "The store profile is active and ready for buyer traffic."
-                      : "The store is not visible until the store profile is created."
-                  }
-                  done={Boolean(profile && profile.active !== false)}
-                  optional={!profile}
-                />
-              </View>
-            </SectionShell>
-
-            <SectionShell
-              title="Checklist"
-              subtitle="Important items for selling and payouts."
-            >
-              <View style={{ gap: 10 }}>
-                <ReadinessRow icon="person-circle-outline" title="Seller profile" subtitle="A public seller identity exists and can be used for listings and discovery." done={launchReady.profile} />
-                <ReadinessRow icon="wallet-outline" title="Wallet connection" subtitle="A wallet address is connected or saved for payments and transfers." done={launchReady.wallet} />
-                <ReadinessRow icon="albums-outline" title="Live inventory" subtitle="At least one listing has been created to activate the selling flow." done={launchReady.listings} />
-                <ReadinessRow icon="shield-checkmark-outline" title="Verification" subtitle="Optional trust layer for stronger buyer confidence and profile credibility." done={launchReady.verification} optional />
-              </View>
-            </SectionShell>
+            </View>
           </View>
         </View>
       </ScrollView>

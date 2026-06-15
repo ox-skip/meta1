@@ -13,6 +13,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Svg, { Defs, Line, LinearGradient as SvgGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
@@ -395,6 +396,7 @@ function CandleChart({ candles }: { candles: Candle[] }) {
 }
 
 export default function StockDetailScreen() {
+  const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{ slug?: string; side?: string }>();
   const slug = String(params.slug ?? "").trim().toLowerCase();
   const requestedSide = String(params.side || "").trim().toLowerCase() === "sell" ? "sell" : "buy";
@@ -894,6 +896,8 @@ export default function StockDetailScreen() {
   const canQuickBuy = tradeRail === "evm" && !submitting && !tradingPaused && !!quickQuote && !quickQuoteErr;
   const isStoreOwner = !!currentUserId && String(detail?.identity?.store_id || "") === String(currentUserId);
   const canAddLiquidity = isStoreOwner && !isPiNativeStock && !addingLiquidity && Number(liquidityAmount || 0) > 0;
+  const isWide = width >= 980;
+  const pageMaxWidth = isWide ? 1120 : undefined;
 
   useEffect(() => {
     if (isPiNativeStock) {
@@ -904,10 +908,12 @@ export default function StockDetailScreen() {
   }, [isPiNativeStock, tradeRail]);
 
   return (
-    <StockScreen>
+    <StockScreen style={{ paddingHorizontal: isWide ? 28 : 16 }}>
       <InAppTutorial enabled={!loading && !!detail} flow={tutorialFlows.stockDetail} />
-      <AppHeader title="Stock Market" subtitle="Price, chart, trades, and community." />
-      <ScrollView contentContainerStyle={{ paddingBottom: 148 }}>
+      <View style={{ alignSelf: "center", width: "100%", maxWidth: pageMaxWidth }}>
+        <AppHeader title="Stock Market" subtitle="Price, chart, trades, and community." />
+      </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: 148, alignSelf: "center", width: "100%", maxWidth: pageMaxWidth }}>
         {loading ? <StockLoadingState label="Loading stock" /> : null}
 
         {!!err ? (
@@ -919,12 +925,12 @@ export default function StockDetailScreen() {
         {!loading && !err && detail ? (
           <>
             <TutorialTarget id="stock.detail.stats">
-              <StockPanel style={{ marginTop: 10 }}>
+              <StockPanel style={{ marginTop: 10, padding: isWide ? 14 : 12, backgroundColor: "rgba(247,250,252,0.06)" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View
                     style={{
-                      width: 64,
-                      height: 64,
+                      width: isWide ? 58 : 54,
+                      height: isWide ? 58 : 54,
                       borderRadius: 8,
                       overflow: "hidden",
                       borderWidth: 1,
@@ -935,14 +941,14 @@ export default function StockDetailScreen() {
                     }}
                   >
                     {sellerLogo ? (
-                      <Image source={{ uri: sellerLogo }} style={{ width: 64, height: 64 }} />
+                      <Image source={{ uri: sellerLogo }} style={{ width: isWide ? 58 : 54, height: isWide ? 58 : 54 }} />
                     ) : (
                       <Ionicons name="storefront-outline" size={25} color={STOCK.muted} />
                     )}
                   </View>
 
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>
+                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: isWide ? 22 : 19 }} numberOfLines={1}>
                       {title}
                     </Text>
                     <View style={{ marginTop: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -952,6 +958,7 @@ export default function StockDetailScreen() {
                       {detail?.seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={STOCK.cyan} /> : null}
                     </View>
                     <View style={{ marginTop: 8, flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                      <StockPill label={`/stock/${slug}`} tone="plain" compact />
                       <StockPill label={chainText} tone={isPiNativeStock ? "amber" : "cyan"} compact />
                       <StockPill
                         label={tradingPaused ? "Paused" : launchGuard ? "Guarded" : "Open"}
@@ -984,7 +991,7 @@ export default function StockDetailScreen() {
                   </Pressable>
                 </View>
 
-                <View style={{ marginTop: 16, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                   <StockMetric label="Price" value={formatStockPrice(price, 6)} tone="mint" />
                   <StockMetric label="Market Cap" value={formatStockMoney(mcap)} />
                   <StockMetric label="24h Volume" value={formatStockMoney(vol24)} tone="cyan" />
@@ -992,6 +999,9 @@ export default function StockDetailScreen() {
                 </View>
               </StockPanel>
             </TutorialTarget>
+
+            <View style={{ marginTop: 10, flexDirection: isWide ? "row" : "column", gap: 12, alignItems: "flex-start" }}>
+              <View style={{ flex: 1, minWidth: 0, width: isWide ? undefined : "100%" }}>
 
             <View style={{ marginTop: 12 }}>
               <StockSegment
@@ -1107,6 +1117,9 @@ export default function StockDetailScreen() {
                 </Text>
               </View>
             ) : null}
+
+              </View>
+              <View style={{ width: isWide ? 368 : ("100%" as any) }}>
 
             <TutorialTarget id="stock.detail.tabs">
               <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
@@ -1493,6 +1506,8 @@ export default function StockDetailScreen() {
                 </View>
               </View>
             ) : null}
+              </View>
+            </View>
           </>
         ) : null}
       </ScrollView>
