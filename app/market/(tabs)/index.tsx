@@ -3511,7 +3511,7 @@ export default function MarketHome() {
     if (err) {
       return (
         <GlassPanel style={{ marginTop: 14, padding: 12 }}>
-          <Text style={{ color: TEXT, fontWeight: "900" }}>Couldn't load data</Text>
+          <Text style={{ color: TEXT, fontWeight: "900" }}>{"Couldn't load data"}</Text>
           <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>
         </GlassPanel>
       );
@@ -3799,7 +3799,8 @@ export default function MarketHome() {
           <View
             style={{
               width: panelWidth as any,
-              maxHeight: isDesktop ? "92%" : "88%",
+              height: isDesktop ? "92%" : "88%",
+              maxHeight: isDesktop ? 760 : undefined,
               paddingTop: 0,
               borderTopLeftRadius: isDesktop ? 24 : 28,
               borderTopRightRadius: 28,
@@ -3883,7 +3884,10 @@ export default function MarketHome() {
             </LinearGradient>
 
             <ScrollView
+              style={{ flex: 1 }}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
               contentContainerStyle={{ paddingHorizontal: isDesktop ? 18 : 20, gap: 14, paddingTop: 14, paddingBottom: Math.max(18, insets.bottom + 18) }}
             >
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>

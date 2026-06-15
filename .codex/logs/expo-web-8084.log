@@ -1,0 +1,7 @@
+
+> fintech@1.0.0 web
+> expo start --web --port 8084
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_ALCHEMY_API_KEY EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID openai
+Starting project at E:\meta\meta

@@ -114,29 +114,36 @@ function StatCard({ value, label }: { value: string; label: string }) {
 function SectionShell({
   title,
   subtitle,
+  accent = TEAL,
   children,
 }: {
   title: string;
   subtitle: string;
+  accent?: string;
   children: React.ReactNode;
 }) {
   return (
     <View
       style={{
-        borderRadius: 14,
+        borderRadius: 10,
         padding: 16,
-        backgroundColor: PANEL,
+        backgroundColor: "rgba(247,250,252,0.045)",
         borderWidth: 1,
         borderColor: BORDER,
+        borderLeftWidth: 4,
+        borderLeftColor: `${accent}70`,
         shadowColor: "#000",
-        shadowOpacity: 0.13,
-        shadowRadius: 18,
+        shadowOpacity: 0.08,
+        shadowRadius: 14,
         shadowOffset: { width: 0, height: 9 },
-        elevation: 3,
+        elevation: 2,
       }}
     >
-      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{title}</Text>
-      <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 20 }}>{subtitle}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+        <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: accent }} />
+        <Text style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>{title}</Text>
+      </View>
+      <Text style={{ marginTop: 7, color: MUTED, fontSize: 13, lineHeight: 20 }}>{subtitle}</Text>
       <View style={{ marginTop: 16 }}>{children}</View>
     </View>
   );
@@ -228,50 +235,47 @@ function AccountTile({
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        flex: 1,
-        minWidth: 154,
-        borderRadius: 14,
-        overflow: "hidden",
+        flexGrow: 1,
+        flexBasis: 240,
+        minWidth: 214,
+        minHeight: 78,
+        borderRadius: 10,
         borderWidth: 1,
-        borderColor: `${accent}35`,
-        backgroundColor: "rgba(255,255,255,0.045)",
-        transform: [{ translateY: pressed ? 1 : 0 }, { scale: pressed ? 0.985 : 1 }],
+        borderColor: pressed ? `${accent}55` : "rgba(255,255,255,0.10)",
+        borderLeftWidth: 4,
+        borderLeftColor: `${accent}88`,
+        backgroundColor: pressed ? `${accent}18` : "rgba(255,255,255,0.04)",
+        transform: [{ translateY: pressed ? 1 : 0 }],
       })}
     >
-      <LinearGradient
-        colors={[`${accent}1F`, "rgba(255,255,255,0.035)", "rgba(5,7,6,0.34)"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ minHeight: 106, padding: 13, justifyContent: "space-between" }}
-      >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 11,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: `${accent}22`,
-              borderWidth: 1,
-              borderColor: `${accent}45`,
-            }}
-          >
-            <Ionicons name={icon} size={18} color={accent} />
+      <View style={{ flex: 1, padding: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: `${accent}18`,
+            borderWidth: 1,
+            borderColor: `${accent}38`,
+          }}
+        >
+          <Ionicons name={icon} size={18} color={accent} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14, flexShrink: 1 }} numberOfLines={1}>{title}</Text>
+            {badge ? (
+              <View style={{ borderRadius: 999, paddingHorizontal: 7, paddingVertical: 4, backgroundColor: `${accent}18`, borderWidth: 1, borderColor: `${accent}35` }}>
+                <Text style={{ color: accent, fontWeight: "900", fontSize: 9 }}>{badge}</Text>
+              </View>
+            ) : null}
           </View>
-          {badge ? (
-            <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5, backgroundColor: `${accent}18`, borderWidth: 1, borderColor: `${accent}38` }}>
-              <Text style={{ color: accent, fontWeight: "900", fontSize: 10 }}>{badge}</Text>
-            </View>
-          ) : (
-            <Ionicons name="arrow-forward" size={16} color={accent} />
-          )}
+          <Text style={{ marginTop: 4, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>{subtitle}</Text>
         </View>
-        <View>
-          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }} numberOfLines={1}>{title}</Text>
-          <Text style={{ marginTop: 5, color: MUTED, fontSize: 11, lineHeight: 16 }} numberOfLines={2}>{subtitle}</Text>
-        </View>
-      </LinearGradient>
+        <Ionicons name="arrow-forward" size={16} color={accent} />
+      </View>
     </Pressable>
   );
 }
@@ -309,6 +313,35 @@ function PulseCard({
       </View>
       <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 18 }} numberOfLines={1}>{value}</Text>
       <Text style={{ marginTop: 5, color: MUTED, fontSize: 12, lineHeight: 17 }} numberOfLines={2}>{detail}</Text>
+    </View>
+  );
+}
+
+function HealthDial({
+  score,
+  total,
+  accent,
+}: {
+  score: number;
+  total: number;
+  accent: string;
+}) {
+  const pct = Math.max(0, Math.min(1, total > 0 ? score / total : 0));
+  return (
+    <View
+      style={{
+        width: 112,
+        height: 112,
+        borderRadius: 56,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: `${accent}12`,
+        borderWidth: 8,
+        borderColor: pct >= 0.75 ? `${SUCCESS}88` : pct >= 0.5 ? `${WARNING}88` : `${ROSE}88`,
+      }}
+    >
+      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 26 }}>{score}/{total}</Text>
+      <Text style={{ marginTop: 2, color: MUTED, fontWeight: "900", fontSize: 10, textTransform: "uppercase" }}>ready</Text>
     </View>
   );
 }
@@ -434,6 +467,54 @@ export default function MarketAccountTab() {
       route: "/market/support",
     },
   ];
+
+  function renderCommandStrip() {
+    const primary = navTiles.slice(0, isDesktop ? 6 : 5);
+    const items = primary.map((tile) => (
+      <Pressable
+        key={`strip-${tile.route}`}
+        onPress={() => router.push(tile.route as any)}
+        style={({ pressed }) => ({
+          minWidth: isDesktop ? 184 : 168,
+          minHeight: 54,
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          backgroundColor: pressed ? `${tile.accent}20` : "rgba(255,255,255,0.045)",
+          borderWidth: 1,
+          borderColor: `${tile.accent}34`,
+        })}
+      >
+        <Ionicons name={tile.icon} size={18} color={tile.accent} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 12 }}>{tile.title}</Text>
+          <Text numberOfLines={1} style={{ marginTop: 2, color: MUTED, fontSize: 10, fontWeight: "800" }}>{tile.subtitle}</Text>
+        </View>
+      </Pressable>
+    ));
+
+    if (isDesktop) {
+      return <View style={{ marginTop: 18, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{items}</View>;
+    }
+
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginTop: 18, marginHorizontal: -16 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          gap: 10,
+          flexDirection: "row",
+          flexWrap: "nowrap",
+        }}
+      >
+        {items}
+      </ScrollView>
+    );
+  }
 
   async function load() {
     setError(null);
@@ -567,6 +648,7 @@ export default function MarketAccountTab() {
       >
         <View style={{ maxWidth: 1280, width: "100%", alignSelf: "center" }}>
           <TutorialTarget id="market.account.header">{header}</TutorialTarget>
+          {renderCommandStrip()}
 
           {!!error ? (
             <View
@@ -890,38 +972,37 @@ export default function MarketAccountTab() {
                 <SectionShell
                   title="Account pulse"
                   subtitle="A compact read on what your marketplace account can do right now."
+                  accent={WARNING}
                 >
-                  <View style={{ flexDirection: isDesktop ? "column" : "row", flexWrap: "wrap", gap: 10 }}>
-                    <PulseCard
-                      label="Health"
-                      value={`${accountHealthScore}/4 ready`}
-                      detail="Profile, wallet, listings, and verification."
-                      icon="pulse-outline"
-                      accent={accountHealthScore >= 3 ? SUCCESS : WARNING}
-                    />
-                    <TutorialTarget id="market.account.wallet" style={{ flex: 1, minWidth: 168 }}>
+                  <View style={{ flexDirection: isDesktop ? "row" : "column", gap: 14, alignItems: isDesktop ? "center" : "stretch" }}>
+                    <View style={{ alignItems: isDesktop ? "center" : "flex-start" }}>
+                      <HealthDial score={accountHealthScore} total={4} accent={accountHealthScore >= 3 ? SUCCESS : WARNING} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                      <TutorialTarget id="market.account.wallet" style={{ flex: 1, minWidth: 168 }}>
+                        <PulseCard
+                          label="Wallet"
+                          value={walletLabel}
+                          detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
+                          icon="wallet-outline"
+                          accent={launchReady.wallet ? SUCCESS : WARNING}
+                        />
+                      </TutorialTarget>
                       <PulseCard
-                        label="Wallet"
-                        value={walletLabel}
-                        detail={wallet.savedAddress || wallet.connectedAddress ? "Address available for market actions." : "Connect or save an address before payouts."}
-                        icon="wallet-outline"
-                        accent={launchReady.wallet ? SUCCESS : WARNING}
+                        label="Inventory"
+                        value={`${stats.activeListings}/${stats.allListings}`}
+                        detail="Active listings compared with total listings."
+                        icon="albums-outline"
+                        accent={stats.activeListings > 0 ? TEAL : WARNING}
                       />
-                    </TutorialTarget>
-                    <PulseCard
-                      label="Inventory"
-                      value={`${stats.activeListings}/${stats.allListings}`}
-                      detail="Active listings compared with total listings."
-                      icon="albums-outline"
-                      accent={stats.activeListings > 0 ? TEAL : WARNING}
-                    />
-                    <PulseCard
-                      label="Sales"
-                      value={String(stats.completedOrders)}
-                      detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
-                      icon="receipt-outline"
-                      accent={stats.completedOrders > 0 ? BLUE : ROSE}
-                    />
+                      <PulseCard
+                        label="Sales"
+                        value={String(stats.completedOrders)}
+                        detail={`${stats.orders} total order${stats.orders === 1 ? "" : "s"} across buying and selling.`}
+                        icon="receipt-outline"
+                        accent={stats.completedOrders > 0 ? BLUE : ROSE}
+                      />
+                    </View>
                   </View>
 
                   <View style={{ marginTop: 14, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>

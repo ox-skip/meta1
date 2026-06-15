@@ -1,0 +1,14 @@
+(node:7588) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+The /android project does not contain any URI schemes. Expo CLI will not be able to use links to launch the project. You can configure a custom URI scheme using the --scheme option.
+Error [ERR_UNSUPPORTED_ESM_URL_SCHEME]: Error loading Metro config at: E:\meta\meta\metro.config.js
+Only URLs with a scheme in: file, data, and node are supported by the default ESM loader. On Windows, absolute paths must be valid file:// URLs. Received protocol 'e:'
+Error: Only URLs with a scheme in: file, data, and node are supported by the default ESM loader. On Windows, absolute paths must be valid file:// URLs. Received protocol 'e:'
+    at throwIfUnsupportedURLScheme (node:internal/modules/esm/load:241:11)
+    at defaultLoad (node:internal/modules/esm/load:132:3)
+    at ModuleLoader.load (node:internal/modules/esm/loader:724:12)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:543:56)
+    at ModuleLoader.#createModuleJob (node:internal/modules/esm/loader:567:36)
+    at ModuleLoader.#getJobFromResolveResult (node:internal/modules/esm/loader:297:34)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:265:41)
+    at ModuleLoader.import (node:internal/modules/esm/loader:605:23)

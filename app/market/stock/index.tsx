@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import AppHeader from "@/components/common/AppHeader";
 import {
@@ -136,6 +138,7 @@ function uniqueChainRows(items: StockOverviewItem[], rows: ChainRow[]) {
 
 export default function StockHomeScreen() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isWide = width >= 920;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,6 +148,7 @@ export default function StockHomeScreen() {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("trending");
   const [watchIds, setWatchIds] = useState<string[]>([]);
+  const [toolsVisible, setToolsVisible] = useState(false);
 
   async function load() {
     setErr(null);
@@ -408,71 +412,82 @@ export default function StockHomeScreen() {
     );
   }
 
-  function renderStockCard(item: StockOverviewItem, index: number) {
+  function renderStockRow(item: StockOverviewItem, index: number, compact = false) {
     const logo = sellerLogoUrl(item.logo_path);
     const change = finiteNumber(item.change_24h_pct);
     const positive = change >= 0;
     const watched = watchIds.includes(item.identity_id);
     const status = stockStatusLabel(item.status);
     const statusTone = stockStatusTone(item.status);
+    const rowWide = isWide && !compact;
 
-    const card = (
-      <StockPanel
-        style={{
-          width: isWide ? ("32.2%" as any) : "100%",
-          minWidth: isWide ? 292 : undefined,
-          padding: 11,
-          backgroundColor: "rgba(247,250,252,0.06)",
-          borderColor: "rgba(247,250,252,0.13)",
-        }}
+    const row = (
+      <Pressable
+        onPress={() => openStock(item)}
+        style={({ pressed }) => ({
+          marginTop: compact ? 0 : 10,
+          borderRadius: compact ? 0 : 16,
+          paddingVertical: compact ? 13 : 14,
+          paddingHorizontal: compact ? 4 : 14,
+          backgroundColor: compact
+            ? "transparent"
+            : pressed
+            ? "rgba(98,168,255,0.12)"
+            : "rgba(247,250,252,0.045)",
+          borderBottomWidth: compact ? 1 : 0,
+          borderBottomColor: "rgba(247,250,252,0.10)",
+          borderWidth: compact ? 0 : 1,
+          borderColor: compact ? "transparent" : "rgba(247,250,252,0.13)",
+          transform: [{ translateY: pressed && !compact ? 1 : 0 }],
+        })}
       >
-        <View style={{ gap: 11 }}>
-          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-            <Pressable
-              disabled={!item.market_username}
-              onPress={() => item.market_username ? router.push(`/market/profile/${item.market_username}` as any) : undefined}
-              style={{
-                width: 46,
-                height: 46,
-                borderRadius: 8,
-                overflow: "hidden",
-                borderWidth: 1,
-                borderColor: STOCK.borderStrong,
-                backgroundColor: STOCK.panelSoft,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {logo ? (
-                <Image source={{ uri: logo }} style={{ width: 46, height: 46 }} />
-              ) : (
-                <Ionicons name="storefront-outline" size={20} color={STOCK.muted} />
-              )}
-            </Pressable>
+        <View style={{ flexDirection: rowWide ? "row" : "column", gap: rowWide ? 16 : 12, alignItems: rowWide ? "center" : "stretch" }}>
+          <View style={{ flex: 1.2, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", gap: 11, alignItems: "center" }}>
+              <Pressable
+                disabled={!item.market_username}
+                onPress={() => item.market_username ? router.push(`/market/profile/${item.market_username}` as any) : undefined}
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: STOCK.borderStrong,
+                  backgroundColor: STOCK.panelSoft,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {logo ? (
+                  <Image source={{ uri: logo }} style={{ width: 48, height: 48 }} />
+                ) : (
+                  <Ionicons name="storefront-outline" size={20} color={STOCK.muted} />
+                )}
+              </Pressable>
 
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text numberOfLines={1} style={{ color: STOCK.ink, fontWeight: "900", fontSize: 15, flexShrink: 1 }}>
-                  {item.token_symbol}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                  <Text numberOfLines={1} style={{ color: STOCK.ink, fontWeight: "900", fontSize: 16, flexShrink: 1 }}>
+                    {item.token_symbol}
+                  </Text>
+                  {item.is_verified ? <Ionicons name="checkmark-circle" size={15} color={STOCK.cyan} /> : null}
+                  <StockPill label={status} tone={statusTone} compact />
+                </View>
+                <Text numberOfLines={1} style={{ marginTop: 4, color: STOCK.ink, fontWeight: "800", fontSize: 12 }}>
+                  {item.token_name}
                 </Text>
-                {item.is_verified ? <Ionicons name="checkmark-circle" size={14} color={STOCK.cyan} /> : null}
+                <Text numberOfLines={1} style={{ marginTop: 4, color: STOCK.faint, fontWeight: "800", fontSize: 10 }}>
+                  @{item.market_username || "store"} / {stockChainLabel(item.chain)} / {formatLastTrade(item.last_trade_at)}
+                </Text>
               </View>
-              <Text numberOfLines={1} style={{ marginTop: 3, color: STOCK.ink, fontWeight: "800", fontSize: 12 }}>
-                {item.token_name}
-              </Text>
-              <Text numberOfLines={1} style={{ marginTop: 3, color: STOCK.faint, fontWeight: "800", fontSize: 10 }}>
-                /stock/{item.slug}
-              </Text>
-            </View>
 
-            <View style={{ alignItems: "flex-end", gap: 6 }}>
-              <StockPill label={formatStockPct(change)} tone={positive ? "mint" : "red"} icon={positive ? "trending-up-outline" : "trending-down-outline"} compact />
               <Pressable
                 onPress={() => toggleWatch(item.identity_id)}
                 style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 8,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
                   alignItems: "center",
                   justifyContent: "center",
                   backgroundColor: watched ? "rgba(245,184,75,0.18)" : STOCK.panelSoft,
@@ -480,101 +495,470 @@ export default function StockHomeScreen() {
                   borderColor: watched ? "rgba(245,184,75,0.42)" : STOCK.border,
                 }}
               >
-                <Ionicons name={watched ? "star" : "star-outline"} size={15} color={watched ? STOCK.amber : STOCK.ink} />
+                <Ionicons name={watched ? "star" : "star-outline"} size={16} color={watched ? STOCK.amber : STOCK.ink} />
+              </Pressable>
+            </View>
+
+            <View style={{ marginTop: 12, flexDirection: "row", gap: 14, flexWrap: "wrap" }}>
+              {[
+                ["Price", formatStockPrice(item.price, 4), STOCK.ink],
+                ["Vol", formatStockMoney(item.volume_24h_quote), STOCK.cyan],
+                ["Cap", formatStockMoney(item.market_cap), STOCK.muted],
+                ["Trades", String(finiteNumber(item.trades_24h)), STOCK.amber],
+              ].map(([label, value, tone]) => (
+                <View key={label} style={{ minWidth: compact ? 76 : 88 }}>
+                  <Text style={{ color: STOCK.faint, fontSize: 9, fontWeight: "900", textTransform: "uppercase" }}>{label}</Text>
+                  <Text numberOfLines={1} style={{ marginTop: 3, color: tone, fontSize: label === "Price" ? 16 : 12, fontWeight: "900" }}>
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <View style={{ width: rowWide ? 238 : "100%", gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <MiniSparkline values={item.sparkline_prices ?? [finiteNumber(item.price)]} positive={positive} width={compact ? 96 : 118} height={38} />
+              <StockPill label={formatStockPct(change)} tone={positive ? "mint" : "red"} icon={positive ? "trending-up-outline" : "trending-down-outline"} compact />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <Pressable
+                onPress={() => openStock(item, "buy")}
+                style={{
+                  flex: 1,
+                  minHeight: 38,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(47,214,163,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(47,214,163,0.48)",
+                  flexDirection: "row",
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="add-outline" size={16} color="#D7FFF3" />
+                <Text style={{ color: "#D7FFF3", fontWeight: "900" }}>Buy</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => openStock(item, "sell")}
+                style={{
+                  flex: 1,
+                  minHeight: 38,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,92,122,0.15)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,92,122,0.42)",
+                  flexDirection: "row",
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="remove-outline" size={16} color="#FFE3EA" />
+                <Text style={{ color: "#FFE3EA", fontWeight: "900" }}>Sell</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => openStock(item)}
+                style={{
+                  width: 40,
+                  minHeight: 38,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: STOCK.panelSoft,
+                  borderWidth: 1,
+                  borderColor: STOCK.border,
+                }}
+              >
+                <Ionicons name="open-outline" size={16} color={STOCK.ink} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    );
+
+    return index === 0 && !compact ? (
+      <TutorialTarget key={item.identity_id} id="stock.home.openMarket">
+        {row}
+      </TutorialTarget>
+    ) : (
+      <React.Fragment key={`${item.identity_id}-${compact ? "modal" : "main"}`}>{row}</React.Fragment>
+    );
+  }
+
+  function renderStockHero() {
+    const leader = summary.leader;
+    const leaderChange = leader ? finiteNumber(leader.change_24h_pct) : 0;
+    const leaderPositive = leaderChange >= 0;
+
+    return (
+      <LinearGradient
+        colors={["rgba(98,168,255,0.18)", "rgba(47,214,163,0.10)", "rgba(247,250,252,0.045)"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          marginTop: 10,
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: "rgba(247,250,252,0.15)",
+          padding: isWide ? 18 : 14,
+          overflow: "hidden",
+        }}
+      >
+        <View style={{ flexDirection: isWide ? "row" : "column", gap: isWide ? 18 : 14, alignItems: isWide ? "center" : "stretch" }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(47,214,163,0.16)",
+                  borderWidth: 1,
+                  borderColor: "rgba(47,214,163,0.36)",
+                }}
+              >
+                <Ionicons name="pulse-outline" size={20} color={STOCK.mint} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: isWide ? 25 : 20 }} numberOfLines={1}>
+                  Digital stock board
+                </Text>
+                <Text style={{ marginTop: 3, color: STOCK.muted, fontWeight: "800", fontSize: 12 }} numberOfLines={1}>
+                  {filtered.length} in view / {summary.active} active / {summary.chains.length} networks
+                </Text>
+              </View>
+            </View>
+
+            <TutorialTarget id="stock.home.search">
+              <View style={{ marginTop: 14 }}>
+                <StockSearchField
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search ticker, store, network, or slug"
+                />
+              </View>
+            </TutorialTarget>
+
+            <View style={{ marginTop: 12, flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
+              <TutorialTarget id="stock.home.shortcuts">
+                <Pressable
+                  onPress={() => setToolsVisible(true)}
+                  style={({ pressed }) => ({
+                    minHeight: 42,
+                    borderRadius: 12,
+                    paddingHorizontal: 13,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    backgroundColor: pressed ? "rgba(98,168,255,0.22)" : "rgba(98,168,255,0.16)",
+                    borderWidth: 1,
+                    borderColor: "rgba(98,168,255,0.38)",
+                  })}
+                >
+                  <Ionicons name="options-outline" size={17} color={STOCK.cyan} />
+                  <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 12 }}>Market tools</Text>
+                </Pressable>
+              </TutorialTarget>
+              <Pressable
+                onPress={() => router.push("/market/stock/create" as any)}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 12,
+                  paddingHorizontal: 13,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: "rgba(47,214,163,0.16)",
+                  borderWidth: 1,
+                  borderColor: "rgba(47,214,163,0.38)",
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={17} color={STOCK.mint} />
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 12 }}>Launch</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => router.push("/market/stock/portfolio" as any)}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 12,
+                  paddingHorizontal: 13,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: "rgba(245,184,75,0.14)",
+                  borderWidth: 1,
+                  borderColor: "rgba(245,184,75,0.36)",
+                }}
+              >
+                <Ionicons name="wallet-outline" size={17} color={STOCK.amber} />
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 12 }}>Portfolio</Text>
               </Pressable>
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 20 }} numberOfLines={1}>
-                {formatStockPrice(item.price, 4)}
-              </Text>
-              <Text style={{ marginTop: 3, color: STOCK.muted, fontWeight: "800", fontSize: 10 }} numberOfLines={1}>
-                @{item.market_username || "store"} - {formatLastTrade(item.last_trade_at)}
-              </Text>
-            </View>
-            <MiniSparkline values={item.sparkline_prices ?? [finiteNumber(item.price)]} positive={positive} width={112} height={38} />
+          <View
+            style={{
+              width: isWide ? 360 : "100%",
+              borderRadius: 16,
+              padding: 14,
+              backgroundColor: "rgba(5,7,6,0.38)",
+              borderWidth: 1,
+              borderColor: "rgba(247,250,252,0.12)",
+            }}
+          >
+            <Text style={{ color: STOCK.faint, fontSize: 10, fontWeight: "900", textTransform: "uppercase" }}>Most active now</Text>
+            {leader ? (
+              <>
+                <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ color: STOCK.ink, fontWeight: "900", fontSize: 19 }}>
+                      {leader.token_symbol} / {formatStockPrice(leader.price, 4)}
+                    </Text>
+                    <Text numberOfLines={1} style={{ marginTop: 4, color: STOCK.muted, fontWeight: "800", fontSize: 12 }}>
+                      {leader.token_name}
+                    </Text>
+                  </View>
+                  <StockPill label={formatStockPct(leaderChange)} tone={leaderPositive ? "mint" : "red"} icon={leaderPositive ? "trending-up-outline" : "trending-down-outline"} compact />
+                </View>
+                <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <MiniSparkline values={leader.sparkline_prices ?? [finiteNumber(leader.price)]} positive={leaderPositive} width={132} height={42} />
+                  <Pressable
+                    onPress={() => openStock(leader)}
+                    style={{
+                      minHeight: 40,
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(47,214,163,0.18)",
+                      borderWidth: 1,
+                      borderColor: "rgba(47,214,163,0.42)",
+                    }}
+                  >
+                    <Text style={{ color: "#D7FFF3", fontWeight: "900", fontSize: 12 }}>Open</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <Text style={{ marginTop: 10, color: STOCK.muted, lineHeight: 18 }}>Stocks will appear here after the market feed loads.</Text>
+            )}
           </View>
-
-          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-            <StockPill label={stockChainLabel(item.chain)} tone="cyan" icon="git-network-outline" compact />
-            <StockPill label={status} tone={statusTone} icon={statusTone === "amber" ? "rocket-outline" : "pulse-outline"} compact />
-          </View>
         </View>
-
-        <View style={{ marginTop: 10, flexDirection: "row", gap: 7 }}>
-          <StockMetric label="Vol" value={formatStockMoney(item.volume_24h_quote)} tone="cyan" style={{ minWidth: 0, padding: 8 }} />
-          <StockMetric label="Cap" value={formatStockMoney(item.market_cap)} style={{ minWidth: 0, padding: 8 }} />
-          <StockMetric label="Trades" value={String(finiteNumber(item.trades_24h))} tone="amber" style={{ minWidth: 0, padding: 8 }} />
-        </View>
-
-        <View style={{ marginTop: 10, flexDirection: "row", gap: 7 }}>
-          <Pressable
-            onPress={() => openStock(item, "buy")}
-            style={{
-              flex: 1,
-              minHeight: 38,
-              borderRadius: 8,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(47,214,163,0.18)",
-              borderWidth: 1,
-              borderColor: "rgba(47,214,163,0.48)",
-            }}
-          >
-            <Text style={{ color: "#D7FFF3", fontWeight: "900" }}>Buy</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => openStock(item, "sell")}
-            style={{
-              flex: 1,
-              minHeight: 38,
-              borderRadius: 8,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,92,122,0.15)",
-              borderWidth: 1,
-              borderColor: "rgba(255,92,122,0.42)",
-            }}
-          >
-            <Text style={{ color: "#FFE3EA", fontWeight: "900" }}>Sell</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => openStock(item)}
-            style={{
-              width: 38,
-              minHeight: 38,
-              borderRadius: 8,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: STOCK.panelSoft,
-              borderWidth: 1,
-              borderColor: STOCK.border,
-            }}
-          >
-            <Ionicons name="open-outline" size={16} color={STOCK.ink} />
-          </Pressable>
-        </View>
-      </StockPanel>
+      </LinearGradient>
     );
+  }
 
-    return index === 0 ? (
-      <TutorialTarget key={item.identity_id} id="stock.home.openMarket">
-        {card}
-      </TutorialTarget>
-    ) : (
-      <React.Fragment key={item.identity_id}>{card}</React.Fragment>
+  function StockToolsModal() {
+    const panelWidth = isWide ? Math.min(720, width - 48) : undefined;
+
+    return (
+      <Modal visible={toolsVisible} animationType="slide" transparent onRequestClose={() => setToolsVisible(false)}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.72)",
+            justifyContent: isWide ? "center" : "flex-end",
+            alignItems: isWide ? "flex-end" : "stretch",
+            padding: isWide ? 22 : 0,
+          }}
+        >
+          <Pressable
+            style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+            onPress={() => setToolsVisible(false)}
+          />
+          <View
+            style={{
+              width: panelWidth as any,
+              height: isWide ? "90%" : "88%",
+              maxHeight: isWide ? 780 : undefined,
+              borderTopLeftRadius: isWide ? 24 : 28,
+              borderTopRightRadius: 28,
+              borderBottomLeftRadius: isWide ? 24 : 0,
+              borderBottomRightRadius: isWide ? 24 : 0,
+              backgroundColor: "rgba(5,7,6,0.98)",
+              borderWidth: 1,
+              borderColor: "rgba(247,250,252,0.12)",
+              overflow: "hidden",
+              shadowColor: "#000",
+              shadowOpacity: 0.34,
+              shadowRadius: 30,
+              shadowOffset: { width: 0, height: 18 },
+              elevation: 12,
+            }}
+          >
+            <View style={{ alignItems: "center", paddingTop: isWide ? 8 : 10, paddingBottom: 8 }}>
+              <View style={{ width: 56, height: 5, borderRadius: 999, backgroundColor: "rgba(247,250,252,0.14)" }} />
+            </View>
+
+            <LinearGradient
+              colors={["rgba(47,214,163,0.18)", "rgba(98,168,255,0.13)", "rgba(5,7,6,0.96)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ paddingHorizontal: isWide ? 18 : 20, paddingTop: isWide ? 16 : 18, paddingBottom: 16, gap: 13 }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: isWide ? 20 : 22 }}>Stock controls</Text>
+                  <Text style={{ marginTop: 5, color: STOCK.muted, fontSize: 13, lineHeight: 19 }}>
+                    Search, sorting, watchlist, analytics, and the complete stock board live here.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => setToolsVisible(false)}
+                  style={({ pressed }) => ({
+                    width: 40,
+                    height: 40,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: pressed ? "rgba(247,250,252,0.13)" : "rgba(247,250,252,0.08)",
+                  })}
+                >
+                  <Ionicons name="close" size={20} color={STOCK.ink} />
+                </Pressable>
+              </View>
+
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <StockPill label={`${filtered.length} in view`} tone="cyan" icon="analytics-outline" compact />
+                <StockPill label={`${summary.active} active`} tone="mint" icon="pulse-outline" compact />
+                <StockPill label={`${summary.guarded} guarded`} tone={summary.guarded ? "amber" : "plain"} icon="rocket-outline" compact />
+                <StockPill label={`${summary.chains.length} networks`} tone="cyan" icon="git-network-outline" compact />
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              contentContainerStyle={{ paddingHorizontal: isWide ? 18 : 20, paddingTop: 14, paddingBottom: Math.max(22, insets.bottom + 22), gap: 14 }}
+            >
+              <StockPanel style={{ padding: isWide ? 14 : 12, backgroundColor: "rgba(247,250,252,0.055)" }}>
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 13 }}>Filter board</Text>
+                <View style={{ marginTop: 12 }}>
+                  <StockSearchField
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search ticker, store, network, or slug"
+                  />
+                </View>
+                <View style={{ marginTop: 12 }}>
+                  <StockSegment
+                    value={sortMode}
+                    onChange={setSortMode}
+                    options={[
+                      { key: "trending", label: "Trending", tone: "mint" },
+                      { key: "most_traded", label: "Most Traded", tone: "cyan" },
+                      { key: "largest_cap", label: "Largest Cap", tone: "amber" },
+                      { key: "new", label: "New Launches", tone: "plain" },
+                    ]}
+                  />
+                </View>
+              </StockPanel>
+
+              <View style={{ flexDirection: isWide ? "row" : "column", gap: 10 }}>
+                <StockActionTile
+                  icon="add-circle-outline"
+                  label="Launch Stock"
+                  caption="Create a store market"
+                  tone="mint"
+                  onPress={() => {
+                    setToolsVisible(false);
+                    router.push("/market/stock/create" as any);
+                  }}
+                />
+                <StockActionTile
+                  icon="wallet-outline"
+                  label="Portfolio"
+                  caption="Positions and PnL"
+                  tone="cyan"
+                  onPress={() => {
+                    setToolsVisible(false);
+                    router.push("/market/stock/portfolio" as any);
+                  }}
+                />
+                <StockActionTile
+                  icon="storefront-outline"
+                  label="Marketplace"
+                  caption="Back to listings"
+                  tone="amber"
+                  onPress={() => {
+                    setToolsVisible(false);
+                    router.push("/market" as any);
+                  }}
+                />
+              </View>
+
+              {renderWatchlist()}
+
+              <StockPanel style={{ backgroundColor: "rgba(47,214,163,0.07)", borderColor: "rgba(47,214,163,0.22)" }}>
+                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 13 }}>Market pulse</Text>
+                <View style={{ marginTop: 12, flexDirection: isWide ? "row" : "column", gap: 10 }}>
+                  <StockMetric label="Market Value" value={formatStockMoney(summary.marketCap)} tone="mint" />
+                  <StockMetric label="24h Volume" value={formatStockMoney(summary.volume)} tone="cyan" />
+                  <StockMetric label="Trades" value={String(summary.trades)} tone="amber" />
+                  <StockMetric label="Networks" value={String(summary.chains.length)} />
+                </View>
+                {summary.leader ? (
+                  <Pressable onPress={() => openStock(summary.leader!)} style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: STOCK.muted, fontSize: 10, fontWeight: "900" }}>MOST ACTIVE</Text>
+                      <Text numberOfLines={1} style={{ marginTop: 3, color: STOCK.ink, fontWeight: "900" }}>
+                        {summary.leader.token_symbol} - {summary.leader.token_name}
+                      </Text>
+                    </View>
+                    <StockPill label={formatStockPct(finiteNumber(summary.leader.change_24h_pct))} tone={finiteNumber(summary.leader.change_24h_pct) >= 0 ? "mint" : "red"} compact />
+                  </Pressable>
+                ) : null}
+              </StockPanel>
+
+              {renderAssistant()}
+
+              <View
+                style={{
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: "rgba(247,250,252,0.12)",
+                  backgroundColor: "rgba(247,250,252,0.035)",
+                  paddingHorizontal: 12,
+                  paddingBottom: 8,
+                }}
+              >
+                <View style={{ paddingVertical: 13, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 14 }}>Full stock board</Text>
+                    <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }}>
+                      {filtered.length} result{filtered.length === 1 ? "" : "s"} with current filters.
+                    </Text>
+                  </View>
+                  <StockPill label={sortMode.replace(/_/g, " ").toUpperCase()} tone="plain" compact />
+                </View>
+                {filtered.map((item, index) => renderStockRow(item, index, true))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     );
   }
 
   const pageMaxWidth = isWide ? 1160 : undefined;
-  const leader = summary.leader;
-  const leaderChange = leader ? finiteNumber(leader.change_24h_pct) : 0;
+  const visibleStockRows = filtered.slice(0, isWide ? 12 : 8);
+  const hiddenStockRows = Math.max(0, filtered.length - visibleStockRows.length);
 
   return (
     <StockScreen style={{ paddingHorizontal: isWide ? 28 : 16 }}>
       <InAppTutorial enabled={!loading} flow={tutorialFlows.stockHome} />
+      <StockToolsModal />
       <View style={{ alignSelf: "center", width: "100%", maxWidth: pageMaxWidth }}>
         <AppHeader title="Digital Stock" subtitle="Trading dashboard for store-backed markets." />
       </View>
@@ -582,42 +966,7 @@ export default function StockHomeScreen() {
         contentContainerStyle={{ paddingBottom: 34, alignSelf: "center", width: "100%", maxWidth: pageMaxWidth }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
       >
-        <TutorialTarget id="stock.home.search">
-          <StockPanel style={{ marginTop: 10, padding: isWide ? 12 : 10 }}>
-            <View style={{ flexDirection: isWide ? "row" : "column", alignItems: isWide ? "center" : "stretch", gap: 10 }}>
-              <View style={{ flex: 1, minWidth: isWide ? 320 : undefined }}>
-                <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: isWide ? 20 : 17 }}>Store stock market</Text>
-                <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }} numberOfLines={1}>
-                  {filtered.length} stock slugs in view
-                </Text>
-              </View>
-              <View style={{ flex: isWide ? 1.2 : undefined, minWidth: 0 }}>
-                <StockSearchField
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search ticker, store, network, or slug"
-                />
-              </View>
-            </View>
-            <View style={{ marginTop: 10, flexDirection: isWide ? "row" : "column", gap: 10, alignItems: isWide ? "center" : "stretch" }}>
-              <StockSegment
-                value={sortMode}
-                onChange={setSortMode}
-                options={[
-                  { key: "trending", label: "Trending", tone: "mint" },
-                  { key: "most_traded", label: "Most Traded", tone: "cyan" },
-                  { key: "largest_cap", label: "Largest Cap", tone: "amber" },
-                  { key: "new", label: "New Launches", tone: "plain" },
-                ]}
-              />
-              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginLeft: isWide ? "auto" : undefined }}>
-                <StockPill label={`${summary.active} active`} tone="mint" icon="pulse-outline" compact />
-                <StockPill label={`${summary.guarded} guarded`} tone={summary.guarded ? "amber" : "plain"} icon="rocket-outline" compact />
-                <StockPill label={`${summary.chains.length} networks`} tone="cyan" icon="git-network-outline" compact />
-              </View>
-            </View>
-          </StockPanel>
-        </TutorialTarget>
+        {renderStockHero()}
 
         {loading ? <StockLoadingState label="Loading market" /> : null}
 
@@ -635,69 +984,83 @@ export default function StockHomeScreen() {
           </View>
         ) : null}
 
-        <View style={{ marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 18 }}>Active stocks</Text>
-            <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }}>
-              {filtered.length} in view - buy and sell open the existing trade screen.
-            </Text>
-          </View>
-          <StockPill label={sortMode.replace(/_/g, " ").toUpperCase()} tone="plain" compact />
-        </View>
-
-        <View style={{ marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          {filtered.map((item, index) => renderStockCard(item, index))}
-        </View>
-
-        <TutorialTarget id="stock.home.shortcuts">
-          <View style={{ marginTop: 14, flexDirection: isWide ? "row" : "column", gap: 10 }}>
-            <StockActionTile
-              icon="add-circle-outline"
-              label="Launch Stock"
-              caption="Uses active DB chain config"
-              tone="mint"
-              onPress={() => router.push("/market/stock/create" as any)}
-            />
-            <StockActionTile
-              icon="wallet-outline"
-              label="Portfolio"
-              caption="Positions and PnL"
-              tone="cyan"
-              onPress={() => router.push("/market/stock/portfolio" as any)}
-            />
-            <StockActionTile
-              icon="storefront-outline"
-              label="Marketplace"
-              caption="Back to listings"
-              tone="amber"
-              onPress={() => router.push("/market" as any)}
-            />
-          </View>
-        </TutorialTarget>
-
-        {renderWatchlist()}
-
-        <TutorialTarget id="stock.home.board">
-          <StockPanel style={{ marginTop: 12, backgroundColor: "rgba(47,214,163,0.07)", borderColor: "rgba(47,214,163,0.22)" }}>
-            <View style={{ flexDirection: isWide ? "row" : "column", gap: 10 }}>
-              <StockMetric label="Market Value" value={formatStockMoney(summary.marketCap)} tone="mint" />
-              <StockMetric label="24h Volume" value={formatStockMoney(summary.volume)} tone="cyan" />
-              <StockMetric label="Trades" value={String(summary.trades)} tone="amber" />
-              <StockMetric label="Networks" value={String(summary.chains.length)} />
-            </View>
-            {leader ? (
-              <Pressable onPress={() => openStock(leader)} style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        {!loading && filtered.length > 0 ? (
+          <TutorialTarget id="stock.home.board">
+            <View
+              style={{
+                marginTop: 14,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: "rgba(247,250,252,0.12)",
+                backgroundColor: "rgba(247,250,252,0.035)",
+                paddingHorizontal: isWide ? 14 : 12,
+                paddingBottom: 12,
+              }}
+            >
+              <View
+                style={{
+                  paddingTop: 14,
+                  paddingBottom: 4,
+                  flexDirection: isWide ? "row" : "column",
+                  alignItems: isWide ? "center" : "stretch",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: STOCK.muted, fontSize: 10, fontWeight: "900" }}>MOST ACTIVE</Text>
-                  <Text numberOfLines={1} style={{ marginTop: 3, color: STOCK.ink, fontWeight: "900" }}>{leader.token_symbol} - {leader.token_name}</Text>
+                  <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 18 }}>Active stocks</Text>
+                  <Text style={{ marginTop: 3, color: STOCK.muted, fontSize: 12 }}>
+                    Showing {visibleStockRows.length} of {filtered.length}. Tools holds filters, analytics, watchlist, and the full board.
+                  </Text>
                 </View>
-                <StockPill label={formatStockPct(leaderChange)} tone={leaderChange >= 0 ? "mint" : "red"} compact />
-              </Pressable>
-            ) : null}
-          </StockPanel>
-        </TutorialTarget>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <StockPill label={sortMode.replace(/_/g, " ").toUpperCase()} tone="plain" compact />
+                  <Pressable
+                    onPress={() => setToolsVisible(true)}
+                    style={{
+                      minHeight: 34,
+                      borderRadius: 10,
+                      paddingHorizontal: 11,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      backgroundColor: "rgba(98,168,255,0.14)",
+                      borderWidth: 1,
+                      borderColor: "rgba(98,168,255,0.34)",
+                    }}
+                  >
+                    <Ionicons name="options-outline" size={15} color={STOCK.cyan} />
+                    <Text style={{ color: STOCK.ink, fontWeight: "900", fontSize: 11 }}>Tools</Text>
+                  </Pressable>
+                </View>
+              </View>
 
-        {renderAssistant()}
+              {visibleStockRows.map((item, index) => renderStockRow(item, index))}
+
+              {hiddenStockRows > 0 ? (
+                <Pressable
+                  onPress={() => setToolsVisible(true)}
+                  style={{
+                    marginTop: 12,
+                    minHeight: 44,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: 8,
+                    backgroundColor: "rgba(247,250,252,0.06)",
+                    borderWidth: 1,
+                    borderColor: "rgba(247,250,252,0.13)",
+                  }}
+                >
+                  <Ionicons name="albums-outline" size={17} color={STOCK.cyan} />
+                  <Text style={{ color: STOCK.ink, fontWeight: "900" }}>Open {hiddenStockRows} more in tools</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </TutorialTarget>
+        ) : null}
       </ScrollView>
     </StockScreen>
   );

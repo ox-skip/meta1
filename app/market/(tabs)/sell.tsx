@@ -32,10 +32,7 @@ const TEAL = "#2DD4BF";
 const AMBER = "#F4B75D";
 const BLUE = "#38BDF8";
 const ROSE = "#FB7185";
-const CARD = "rgba(255,253,247,0.065)";
-const CARD_RAISED = "rgba(255,253,247,0.09)";
 const BORDER = "rgba(255,253,247,0.12)";
-const BORDER_TOP = "rgba(255,253,247,0.24)";
 const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
 const FAINT = "rgba(255,253,247,0.44)";
@@ -259,19 +256,19 @@ function CardBox({ children, style }: any) {
     <View
       style={[
         {
-          marginTop: 10,
-          borderRadius: 18,
-          padding: 14,
-          backgroundColor: CARD,
+          marginTop: 12,
+          borderRadius: 10,
+          padding: 16,
+          backgroundColor: "rgba(255,253,247,0.045)",
           borderWidth: 1,
-          borderTopWidth: 1,
           borderColor: BORDER,
-          borderTopColor: BORDER_TOP,
+          borderLeftWidth: 4,
+          borderLeftColor: "rgba(45,212,191,0.42)",
           shadowColor: "#000",
-          shadowOpacity: 0.14,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 10 },
-          elevation: 4,
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 2,
         },
         style,
       ]}
@@ -388,21 +385,21 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
       <Pressable
         onPress={() => setOpen(!open)}
         style={{
-          borderRadius: 18,
-          padding: 14,
-          backgroundColor: CARD,
+          borderRadius: 10,
+          padding: 15,
+          backgroundColor: "rgba(255,253,247,0.045)",
           borderWidth: 1,
           borderColor: BORDER,
-          borderTopColor: BORDER_TOP,
-          borderTopWidth: 1,
+          borderLeftWidth: 4,
+          borderLeftColor: open ? "rgba(244,183,93,0.58)" : "rgba(255,253,247,0.18)",
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "center",
           shadowColor: "#000",
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
+          shadowOpacity: 0.08,
+          shadowRadius: 14,
           shadowOffset: { width: 0, height: 8 },
-          elevation: 3,
+          elevation: 2,
         }}
       >
         <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>{title}</Text>
@@ -413,7 +410,7 @@ function CollapsibleCardBox({ title, children, defaultOpen = false }: any) {
         />
       </Pressable>
       {open ? (
-        <View style={{ marginTop: 8, borderRadius: 16, padding: 14, backgroundColor: "rgba(255,253,247,0.055)", borderWidth: 1, borderColor: BORDER }}>
+        <View style={{ marginTop: 8, borderRadius: 10, padding: 14, backgroundColor: "rgba(255,253,247,0.035)", borderWidth: 1, borderColor: BORDER }}>
           {children}
         </View>
       ) : null}
@@ -489,6 +486,68 @@ function MetricTile({
         {value}
       </Text>
     </View>
+  );
+}
+
+function BuilderActionButton({
+  icon,
+  label,
+  detail,
+  tone,
+  active,
+  loading,
+  onPress,
+  style,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  detail: string;
+  tone: string;
+  active?: boolean;
+  loading?: boolean;
+  onPress: () => void;
+  style?: any;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      style={({ pressed }) => ([
+        {
+          minHeight: 68,
+          borderRadius: 10,
+          padding: 12,
+          backgroundColor: active ? `${tone}1F` : "rgba(255,253,247,0.045)",
+          borderWidth: 1,
+          borderColor: active ? `${tone}55` : "rgba(255,253,247,0.12)",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 11,
+          opacity: loading ? 0.7 : 1,
+          transform: [{ translateY: pressed && !loading ? 1 : 0 }],
+        },
+        style,
+      ])}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${tone}18`,
+          borderWidth: 1,
+          borderColor: `${tone}40`,
+        }}
+      >
+        {loading ? <ActivityIndicator color={tone} /> : <Ionicons name={icon} size={18} color={tone} />}
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{label}</Text>
+        <Text numberOfLines={1} style={{ marginTop: 3, color: MUTED, fontWeight: "800", fontSize: 11 }}>{detail}</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -599,7 +658,7 @@ export default function SellTab() {
   const stickyPublishBottom = isWebDesktop ? Math.max(insets.bottom, 18) : floatingTabBarHeight + 22;
   const scrollBottomPadding = stickyPublishBottom + 132;
   const pagePadding = isWebDesktop ? 28 : 16;
-  const contentMaxWidth = isWebDesktop ? 1040 : undefined;
+  const contentMaxWidth = isWebDesktop ? 1260 : undefined;
 
   // LocalStorage key for draft
   const DRAFT_KEY = "sell_listing_draft_v1";
@@ -1846,6 +1905,119 @@ export default function SellTab() {
     );
   }
 
+  function renderBuilderDock(placement: "top" | "rail" = "top") {
+    const isRail = placement === "rail";
+    const actions = [
+      {
+        key: "product",
+        icon: "cube-outline" as const,
+        label: "Product",
+        detail: category === "product" ? "Current mode" : "Physical inventory",
+        tone: BLUE,
+        active: category === "product",
+        onPress: () => setCategory("product"),
+      },
+      {
+        key: "service",
+        icon: "sparkles-outline" as const,
+        label: "Service",
+        detail: category === "service" ? "Current mode" : "Digital or in-person",
+        tone: TEAL,
+        active: category === "service",
+        onPress: () => setCategory("service"),
+      },
+      {
+        key: "location",
+        icon: "locate-outline" as const,
+        label: "Use location",
+        detail: availabilityScope === "global" ? "Set local reach" : formatAvailabilitySummary(buildAvailability()),
+        tone: AMBER,
+        active: availabilityScope !== "global",
+        loading: locatingAvailability,
+        onPress: () => void fillAvailabilityFromLocation(),
+      },
+      {
+        key: "media",
+        icon: "images-outline" as const,
+        label: mediaAssets.length ? "Add media" : "Pick media",
+        detail: mediaAssets.length ? `${mediaAssets.length}/8 attached` : "Image or video",
+        tone: TEAL,
+        active: mediaRequirementMet,
+        onPress: () => void pickMedia(),
+      },
+      {
+        key: "ai",
+        icon: "sparkles-outline" as const,
+        label: "AI polish",
+        detail: aiDraft ? "Suggestions ready" : "Improve copy",
+        tone: PURPLE,
+        active: Boolean(aiDraft),
+        loading: aiBusy,
+        onPress: () => void runAiListingAssistant(),
+      },
+      {
+        key: "payment",
+        icon: "card-outline" as const,
+        label: "Payment",
+        detail: hasActivePaymentNetwork ? `${paymentNetworks.length} network${paymentNetworks.length === 1 ? "" : "s"}` : "Needs config",
+        tone: hasActivePaymentNetwork ? BLUE : ROSE,
+        active: hasActivePaymentNetwork,
+        onPress: () => setCryptoNetworkMode(hasActivePaymentNetwork ? cryptoNetworkMode : "all"),
+      },
+    ];
+
+    const body = actions.map((action) => (
+      <BuilderActionButton
+        key={action.key}
+        icon={action.icon}
+        label={action.label}
+        detail={action.detail}
+        tone={action.tone}
+        active={action.active}
+        loading={action.loading}
+        onPress={action.onPress}
+        style={{
+          width: isRail ? "100%" : isWebDesktop ? 188 : 172,
+        }}
+      />
+    ));
+
+    if (isRail) {
+      return (
+        <View
+          style={{
+            marginTop: 10,
+            borderRadius: 10,
+            padding: 12,
+            backgroundColor: "rgba(9,13,11,0.58)",
+            borderWidth: 1,
+            borderColor: BORDER,
+            gap: 9,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <Ionicons name="navigate-circle-outline" size={18} color={TEAL} />
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>Builder controls</Text>
+          </View>
+          {body}
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ marginTop: 10 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginHorizontal: -pagePadding }}
+          contentContainerStyle={{ paddingHorizontal: pagePadding, gap: 9 }}
+        >
+          {body}
+        </ScrollView>
+      </View>
+    );
+  }
+
   function renderDesktopPublishSummary() {
     if (!isWebDesktop) return null;
     return (
@@ -1978,9 +2150,10 @@ export default function SellTab() {
         contentContainerStyle={{ paddingBottom: scrollBottomPadding, alignSelf: "center", width: "100%", maxWidth: contentMaxWidth }}
       >
         {renderSellHero()}
+        {!isWebDesktop ? renderBuilderDock("top") : null}
 
-        <View style={{ flexDirection: isWebDesktop ? "row" : "column", alignItems: "flex-start", gap: isWebDesktop ? 12 : 0 }}>
-          <View style={{ flex: 1, minWidth: 0, width: isWebDesktop ? undefined : "100%" }}>
+        <View style={{ flexDirection: isWebDesktop ? "row" : "column", alignItems: "flex-start", gap: isWebDesktop ? 18 : 0 }}>
+          <View style={{ flex: isWebDesktop ? 1.55 : 1, minWidth: 0, width: isWebDesktop ? undefined : "100%" }}>
 
         {category === "service" && deliveryType === "digital" ? (
           <CardBox>
@@ -2641,8 +2814,9 @@ export default function SellTab() {
 
           </View>
           {isWebDesktop ? (
-            <View style={{ width: 314 }}>
+            <View style={{ width: 356 }}>
               {renderDesktopPublishSummary()}
+              {renderBuilderDock("rail")}
               <CardBox style={{ backgroundColor: "rgba(255,253,247,0.045)" }}>
                 <SectionTitle title="Quick mode" subtitle="Change product/service and delivery without stretching the main form." icon="options-outline" tone={category === "product" ? BLUE : TEAL} />
                 <Row>
