@@ -2,16 +2,29 @@ type CircleApprovalInput = {
   userToken: string;
   encryptionKey: string;
   challengeId: string;
+  env?: string | null;
 };
 
-function circleAppId() {
-  return String(process.env.EXPO_PUBLIC_CIRCLE_APP_ID || "").trim();
+function circleEnv(value?: string | null) {
+  const env = String(value || "").trim().toLowerCase();
+  return env === "testnet" || env === "mainnet" ? env : "";
 }
 
-async function createSdk(userToken?: string, encryptionKey?: string) {
-  const appId = circleAppId();
+function circleAppId(env?: string | null) {
+  const normalized = circleEnv(env);
+  const appId =
+    normalized === "testnet"
+      ? process.env.EXPO_PUBLIC_CIRCLE_TESTNET_APP_ID || process.env.EXPO_PUBLIC_CIRCLE_APP_ID
+      : normalized === "mainnet"
+        ? process.env.EXPO_PUBLIC_CIRCLE_MAINNET_APP_ID || process.env.EXPO_PUBLIC_CIRCLE_APP_ID
+        : process.env.EXPO_PUBLIC_CIRCLE_APP_ID;
+  return String(appId || "").trim();
+}
+
+async function createSdk(userToken?: string, encryptionKey?: string, env?: string | null) {
+  const appId = circleAppId(env);
   if (!appId) {
-    throw new Error("Circle wallet app id is missing. Set EXPO_PUBLIC_CIRCLE_APP_ID.");
+    throw new Error("Circle wallet app id is missing. Set EXPO_PUBLIC_CIRCLE_APP_ID or the matching environment app id.");
   }
 
   const mod = await import("@circle-fin/w3s-pw-web-sdk");
@@ -43,7 +56,7 @@ export async function approveCircleChallenge(input: CircleApprovalInput) {
     throw new Error("Circle approval is missing required session data.");
   }
 
-  const { sdk } = await createSdk(userToken, encryptionKey);
+  const { sdk } = await createSdk(userToken, encryptionKey, input.env);
 
   return await new Promise<any>((resolve, reject) => {
     sdk.execute(challengeId, (error: any, result: any) => {

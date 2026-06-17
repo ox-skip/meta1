@@ -41,6 +41,12 @@ type CircleSessionChallenge = {
   challengeId?: string | null;
   userToken?: string | null;
   encryptionKey?: string | null;
+  challenges?: Array<{
+    env?: string | null;
+    challengeId?: string | null;
+    userToken?: string | null;
+    encryptionKey?: string | null;
+  }>;
   wallets?: CircleMarketWallet[];
   message?: string | null;
 };
@@ -126,6 +132,31 @@ async function circleAction<T>(action: string, body: Record<string, unknown> = {
   return await callFn<T>("circle-wallet", { action, ...body }, timeoutMs);
 }
 
+async function approveCircleChallenges(input: CircleSessionChallenge) {
+  const challenges = Array.isArray(input.challenges) && input.challenges.length
+    ? input.challenges
+    : input.challengeId
+      ? [
+          {
+            challengeId: input.challengeId,
+            userToken: input.userToken,
+            encryptionKey: input.encryptionKey,
+          },
+        ]
+      : [];
+
+  for (const challenge of challenges) {
+    const challengeId = String(challenge.challengeId || "").trim();
+    if (!challengeId) continue;
+    await approveCircleChallenge({
+      userToken: String(challenge.userToken || ""),
+      encryptionKey: String(challenge.encryptionKey || ""),
+      challengeId,
+      env: challenge.env,
+    });
+  }
+}
+
 export async function getCircleWalletStatus(chains?: MarketChainConfig[]) {
   return await circleAction<{
     configured: boolean;
@@ -153,12 +184,8 @@ export async function createMarketCircleWallets(chains: MarketChainConfig[]) {
     throw new Error(challenge.message || "Circle wallet is not configured.");
   }
 
-  if (challenge.requiresApproval && challenge.challengeId) {
-    await approveCircleChallenge({
-      userToken: String(challenge.userToken || ""),
-      encryptionKey: String(challenge.encryptionKey || ""),
-      challengeId: String(challenge.challengeId),
-    });
+  if (challenge.requiresApproval) {
+    await approveCircleChallenges(challenge);
   }
 
   for (let i = 0; i < 8; i++) {
@@ -258,12 +285,8 @@ export async function sendCircleContractExecution(input: {
   if (!challenge.configured) {
     throw new Error(challenge.message || "Circle wallet is not configured.");
   }
-  if (challenge.requiresApproval && challenge.challengeId) {
-    await approveCircleChallenge({
-      userToken: String(challenge.userToken || ""),
-      encryptionKey: String(challenge.encryptionKey || ""),
-      challengeId: String(challenge.challengeId),
-    });
+  if (challenge.requiresApproval) {
+    await approveCircleChallenges(challenge);
   }
 
   const settled = await waitForCircleTransaction({ refId, walletId: wallet.id, chain: input.chain.chain });
@@ -296,12 +319,8 @@ export async function sendCircleTokenTransfer(input: {
   if (!challenge.configured) {
     throw new Error(challenge.message || "Circle wallet is not configured.");
   }
-  if (challenge.requiresApproval && challenge.challengeId) {
-    await approveCircleChallenge({
-      userToken: String(challenge.userToken || ""),
-      encryptionKey: String(challenge.encryptionKey || ""),
-      challengeId: String(challenge.challengeId),
-    });
+  if (challenge.requiresApproval) {
+    await approveCircleChallenges(challenge);
   }
 
   const settled = await waitForCircleTransaction({ refId, walletId: wallet.id, chain: input.chain.chain });

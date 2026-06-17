@@ -19,8 +19,77 @@ type UserContext = {
   circleUserId: string;
 };
 
-const CIRCLE_BASE_URL = String(Deno.env.get("CIRCLE_API_BASE_URL") || "https://api.circle.com").replace(/\/$/, "");
-const CIRCLE_API_KEY = String(Deno.env.get("CIRCLE_API_KEY") || Deno.env.get("CIRCLE_WALLET_API_KEY") || "").trim();
+type CircleEnvName = "testnet" | "mainnet";
+
+type CircleEnvConfig = {
+  env: CircleEnvName;
+  apiKey: string;
+  baseUrl: string;
+};
+
+type CircleSession = {
+  env: CircleEnvName;
+  userToken: string;
+  encryptionKey: string;
+};
+
+type CircleApprovalChallenge = CircleSession & {
+  challengeId: string | null;
+};
+
+type CircleChainRequest = {
+  chain: string;
+  blockchain: string;
+  env: CircleEnvName;
+};
+
+function envAny(keys: string[]) {
+  return keys.map((key) => String(Deno.env.get(key) || "").trim()).find(Boolean) || "";
+}
+
+const LEGACY_CIRCLE_API_KEY = envAny(["CIRCLE_API_KEY", "CIRCLE_WALLET_API_KEY"]);
+const LEGACY_CIRCLE_API_BASE_URL = String(Deno.env.get("CIRCLE_API_BASE_URL") || "").trim();
+
+function legacyKeyForEnv(env: CircleEnvName) {
+  if (!LEGACY_CIRCLE_API_KEY) return "";
+  const upper = LEGACY_CIRCLE_API_KEY.toUpperCase();
+  if (upper.startsWith("TEST_API_KEY")) return env === "testnet" ? LEGACY_CIRCLE_API_KEY : "";
+  if (upper.startsWith("LIVE_API_KEY")) return env === "mainnet" ? LEGACY_CIRCLE_API_KEY : "";
+  if (LEGACY_CIRCLE_API_BASE_URL.toLowerCase().includes("sandbox")) return env === "testnet" ? LEGACY_CIRCLE_API_KEY : "";
+  return env === "mainnet" ? LEGACY_CIRCLE_API_KEY : "";
+}
+
+function baseUrlForEnv(env: CircleEnvName, usingLegacyKey: boolean) {
+  const explicit =
+    env === "testnet"
+      ? envAny(["CIRCLE_TESTNET_API_BASE_URL", "CIRCLE_SANDBOX_API_BASE_URL", "CIRCLE_TEST_API_BASE_URL"])
+      : envAny(["CIRCLE_MAINNET_API_BASE_URL", "CIRCLE_LIVE_API_BASE_URL"]);
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (usingLegacyKey && LEGACY_CIRCLE_API_BASE_URL) return LEGACY_CIRCLE_API_BASE_URL.replace(/\/$/, "");
+  return env === "testnet" ? "https://api-sandbox.circle.com" : "https://api.circle.com";
+}
+
+function circleEnvConfig(env: CircleEnvName): CircleEnvConfig | null {
+  const explicit =
+    env === "testnet"
+      ? envAny([
+          "CIRCLE_TESTNET_API_KEY",
+          "CIRCLE_SANDBOX_API_KEY",
+          "CIRCLE_TEST_API_KEY",
+          "CIRCLE_WALLET_TESTNET_API_KEY",
+          "CIRCLE_WALLET_SANDBOX_API_KEY",
+        ])
+      : envAny(["CIRCLE_MAINNET_API_KEY", "CIRCLE_LIVE_API_KEY", "CIRCLE_WALLET_MAINNET_API_KEY", "CIRCLE_WALLET_LIVE_API_KEY"]);
+  const legacy = legacyKeyForEnv(env);
+  const apiKey = explicit || legacy;
+  if (!apiKey) return null;
+  return { env, apiKey, baseUrl: baseUrlForEnv(env, !explicit && Boolean(legacy)) };
+}
+
+const CIRCLE_ENVS: Record<CircleEnvName, CircleEnvConfig | null> = {
+  testnet: circleEnvConfig("testnet"),
+  mainnet: circleEnvConfig("mainnet"),
+};
 
 const CHAIN_TO_CIRCLE: Record<string, string> = {
   ethereum: "ETH",
@@ -42,6 +111,29 @@ const CHAIN_TO_CIRCLE: Record<string, string> = {
   monad: "MONAD",
   monad_testnet: "MONAD-TESTNET",
   unichain: "UNI",
+  unichain_sepolia: "UNI-SEPOLIA",
+};
+
+const TESTNET_CHAIN_TO_CIRCLE: Record<string, string> = {
+  ethereum: "ETH-SEPOLIA",
+  eth: "ETH-SEPOLIA",
+  sepolia: "ETH-SEPOLIA",
+  base: "BASE-SEPOLIA",
+  base_sepolia: "BASE-SEPOLIA",
+  arbitrum: "ARB-SEPOLIA",
+  arbitrum_sepolia: "ARB-SEPOLIA",
+  optimism: "OP-SEPOLIA",
+  optimism_sepolia: "OP-SEPOLIA",
+  polygon: "MATIC-AMOY",
+  polygon_amoy: "MATIC-AMOY",
+  avalanche: "AVAX-FUJI",
+  avax: "AVAX-FUJI",
+  avalanche_fuji: "AVAX-FUJI",
+  arc: "ARC-TESTNET",
+  arc_testnet: "ARC-TESTNET",
+  monad: "MONAD-TESTNET",
+  monad_testnet: "MONAD-TESTNET",
+  unichain: "UNI-SEPOLIA",
   unichain_sepolia: "UNI-SEPOLIA",
 };
 
@@ -67,16 +159,26 @@ const CIRCLE_TO_CHAIN: Record<string, string> = {
 };
 
 function isConfigured() {
-  return Boolean(CIRCLE_API_KEY);
+  return Boolean(CIRCLE_ENVS.testnet || CIRCLE_ENVS.mainnet);
 }
 
-function configuredOrResponse() {
-  if (isConfigured()) return null;
+function configuredOrResponse(chains: CircleChainRequest[] = []) {
+  const hasMatchingEnv = chains.length
+    ? chains.some((chain) => Boolean(circleConfigForChainRequest(chain)))
+    : isConfigured();
+  if (hasMatchingEnv) return null;
+  const wanted = Array.from(new Set(chains.map((chain) => chain.env))).filter(Boolean);
+  const keyHint =
+    wanted.length === 1 && wanted[0] === "testnet"
+      ? "Set CIRCLE_TESTNET_API_KEY in Supabase function secrets."
+      : wanted.length === 1 && wanted[0] === "mainnet"
+        ? "Set CIRCLE_MAINNET_API_KEY in Supabase function secrets."
+        : "Set CIRCLE_TESTNET_API_KEY and/or CIRCLE_MAINNET_API_KEY in Supabase function secrets.";
   return ok({
     configured: false,
     wallets: [],
     balances: [],
-    message: "Circle wallet API key is missing. Set CIRCLE_API_KEY in Supabase function secrets.",
+    message: `Circle wallet API key is missing for the requested chain environment. ${keyHint}`,
   });
 }
 
@@ -92,10 +194,43 @@ function circleBlockchainForChain(value: unknown) {
   return CHAIN_TO_CIRCLE[normalizeChain(value)] || "";
 }
 
-function chainForCircleBlockchain(blockchain: unknown, requestedChains: string[]) {
+function circleRequestForChain(value: unknown, isTestnet?: boolean | null): CircleChainRequest | null {
+  const chain = normalizeChain(value);
+  const defaultBlockchain = circleBlockchainForChain(chain);
+  const blockchain = isTestnet
+    ? TESTNET_CHAIN_TO_CIRCLE[chain] || (circleEnvForBlockchain(defaultBlockchain) === "testnet" ? defaultBlockchain : "")
+    : defaultBlockchain;
+  if (!chain || !blockchain) return null;
+  return {
+    chain,
+    blockchain,
+    env: isTestnet ? "testnet" : circleEnvForBlockchain(blockchain),
+  };
+}
+
+function circleEnvForBlockchain(blockchain: unknown): CircleEnvName {
   const code = String(blockchain || "").trim().toUpperCase();
-  const requestedMatch = requestedChains.find((chain) => circleBlockchainForChain(chain) === code);
-  return requestedMatch || CIRCLE_TO_CHAIN[code] || code.toLowerCase().replace(/-/g, "_");
+  return /-(SEPOLIA|AMOY|FUJI|TESTNET|DEVNET)$/.test(code) ? "testnet" : "mainnet";
+}
+
+function circleConfigForChainRequest(chain: CircleChainRequest) {
+  return CIRCLE_ENVS[chain.env];
+}
+
+function groupConfiguredChainsByEnv(chains: CircleChainRequest[]) {
+  const groups: Record<CircleEnvName, CircleChainRequest[]> = { testnet: [], mainnet: [] };
+  for (const chain of chains) {
+    if (CIRCLE_ENVS[chain.env]) groups[chain.env].push(chain);
+  }
+  return (["testnet", "mainnet"] as CircleEnvName[])
+    .map((env) => ({ env, config: CIRCLE_ENVS[env], chains: groups[env] }))
+    .filter((group): group is { env: CircleEnvName; config: CircleEnvConfig; chains: CircleChainRequest[] } => Boolean(group.config && group.chains.length));
+}
+
+function chainForCircleBlockchain(blockchain: unknown, requestedChains: CircleChainRequest[]) {
+  const code = String(blockchain || "").trim().toUpperCase();
+  const requestedMatch = requestedChains.find((chain) => chain.blockchain === code);
+  return requestedMatch?.chain || CIRCLE_TO_CHAIN[code] || code.toLowerCase().replace(/-/g, "_");
 }
 
 function isEvmAddress(value: unknown) {
@@ -122,6 +257,7 @@ function shortCircleError(json: any, text: string) {
 }
 
 async function circleRequest<T>(
+  config: CircleEnvConfig,
   path: string,
   input: {
     method?: string;
@@ -136,9 +272,9 @@ async function circleRequest<T>(
     query.set(key, String(value));
   });
 
-  const url = `${CIRCLE_BASE_URL}${path}${query.toString() ? `?${query.toString()}` : ""}`;
+  const url = `${config.baseUrl}${path}${query.toString() ? `?${query.toString()}` : ""}`;
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${CIRCLE_API_KEY}`,
+    Authorization: `Bearer ${config.apiKey}`,
     "Content-Type": "application/json",
     "X-Request-Id": crypto.randomUUID(),
   };
@@ -168,9 +304,9 @@ async function circleRequest<T>(
   return json as T;
 }
 
-async function createCircleUserIfNeeded(circleUserId: string) {
+async function createCircleUserIfNeeded(config: CircleEnvConfig, circleUserId: string) {
   try {
-    await circleRequest("/v1/w3s/users", {
+    await circleRequest(config, "/v1/w3s/users", {
       method: "POST",
       body: { userId: circleUserId },
     });
@@ -181,11 +317,11 @@ async function createCircleUserIfNeeded(circleUserId: string) {
   }
 }
 
-async function getCircleSession(ctx: UserContext) {
-  await createCircleUserIfNeeded(ctx.circleUserId);
+async function getCircleSession(ctx: UserContext, config: CircleEnvConfig): Promise<CircleSession> {
+  await createCircleUserIfNeeded(config, ctx.circleUserId);
   const token = await circleRequest<{
     data?: { userToken?: string; encryptionKey?: string };
-  }>("/v1/w3s/users/token", {
+  }>(config, "/v1/w3s/users/token", {
     method: "POST",
     body: { userId: ctx.circleUserId },
   });
@@ -195,17 +331,17 @@ async function getCircleSession(ctx: UserContext) {
   if (!userToken || !encryptionKey) {
     throw new Error("Circle did not return a user token.");
   }
-  return { userToken, encryptionKey };
+  return { env: config.env, userToken, encryptionKey };
 }
 
-async function getCircleUserByToken(userToken: string) {
-  return await circleRequest<{ data?: { pinStatus?: string; status?: string } }>("/v1/w3s/user", {
+async function getCircleUserByToken(config: CircleEnvConfig, userToken: string) {
+  return await circleRequest<{ data?: { pinStatus?: string; status?: string } }>(config, "/v1/w3s/user", {
     userToken,
   });
 }
 
-async function listCircleWallets(userToken: string, blockchain?: string | null) {
-  const out = await circleRequest<{ data?: { wallets?: CircleWallet[] } }>("/v1/w3s/wallets", {
+async function listCircleWallets(config: CircleEnvConfig, userToken: string, blockchain?: string | null) {
+  const out = await circleRequest<{ data?: { wallets?: CircleWallet[] } }>(config, "/v1/w3s/wallets", {
     userToken,
     query: {
       blockchain: blockchain || undefined,
@@ -217,21 +353,32 @@ async function listCircleWallets(userToken: string, blockchain?: string | null) 
 
 async function readRequestedChains(admin: ReturnType<typeof supabaseAdminClient>, body: any) {
   const fromBody = Array.isArray(body?.chains)
-    ? body.chains.map((chain: unknown) => normalizeChain(chain)).filter((chain: string) => circleBlockchainForChain(chain))
+    ? body.chains
+        .map((chain: unknown) => normalizeChain(typeof chain === "object" && chain !== null ? (chain as any).chain : chain))
+        .filter((chain: string) => circleBlockchainForChain(chain))
     : [];
-  if (fromBody.length) return Array.from(new Set(fromBody));
 
-  const { data } = await admin
+  let query = admin
     .from("market_chain_config")
-    .select("chain")
+    .select("chain,is_testnet")
     .eq("active", true);
+  if (fromBody.length) query = query.in("chain", Array.from(new Set(fromBody)));
+
+  const { data, error } = await query;
+  if (error) throw error;
   return Array.from(
-    new Set(
+    new Map(
       (data ?? [])
-        .map((row: any) => normalizeChain(row?.chain))
-        .filter((chain: string) => circleBlockchainForChain(chain)),
-    ),
+        .map((row: any) => circleRequestForChain(row?.chain, Boolean(row?.is_testnet)))
+        .filter((chain: CircleChainRequest | null): chain is CircleChainRequest => Boolean(chain))
+        .map((chain: CircleChainRequest) => [chain.chain, chain]),
+    ).values(),
   );
+}
+
+async function readRequestedChain(admin: ReturnType<typeof supabaseAdminClient>, chain: unknown) {
+  const chains = await readRequestedChains(admin, { chains: [chain] });
+  return chains[0] ?? null;
 }
 
 function walletToResponse(wallet: any): CircleWallet {
@@ -292,12 +439,12 @@ async function upsertLocalWallet(admin: ReturnType<typeof supabaseAdminClient>, 
   if (minimal.error) throw minimal.error;
 }
 
-async function readLocalCircleWallets(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, requestedChains: string[]) {
+async function readLocalCircleWallets(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, requestedChains: CircleChainRequest[]) {
   let query = admin
     .from("crypto_wallets")
     .select("*")
     .eq("user_id", ctx.supabaseUserId);
-  if (requestedChains.length) query = query.in("chain", requestedChains);
+  if (requestedChains.length) query = query.in("chain", requestedChains.map((chain) => chain.chain));
 
   const { data, error } = await query;
   if (error) throw error;
@@ -315,17 +462,19 @@ async function readLocalCircleWallets(admin: ReturnType<typeof supabaseAdminClie
 async function syncCircleWallets(
   admin: ReturnType<typeof supabaseAdminClient>,
   ctx: UserContext,
+  config: CircleEnvConfig,
   userToken: string,
-  requestedChains: string[],
+  requestedChains: CircleChainRequest[],
 ) {
-  const circleWallets = await listCircleWallets(userToken);
+  const circleWallets = await listCircleWallets(config, userToken);
   const synced: CircleWallet[] = [];
 
   for (const wallet of circleWallets) {
     if (!wallet?.id || !isEvmAddress(wallet.address)) continue;
     const blockchain = String(wallet.blockchain || "").toUpperCase();
-    const chain = chainForCircleBlockchain(blockchain, requestedChains);
-    if (requestedChains.length && !requestedChains.includes(chain)) continue;
+    const requested = requestedChains.find((chain) => chain.blockchain === blockchain);
+    if (requestedChains.length && !requested) continue;
+    const chain = requested?.chain || chainForCircleBlockchain(blockchain, requestedChains);
 
     const mapped: CircleWallet = {
       id: String(wallet.id),
@@ -346,10 +495,10 @@ async function syncCircleWallets(
   return synced;
 }
 
-function missingBlockchains(existing: CircleWallet[], requestedChains: string[]) {
+function missingBlockchains(existing: CircleWallet[], requestedChains: CircleChainRequest[]) {
   const have = new Set(existing.map((wallet) => String(wallet.blockchain || "").toUpperCase()));
   return requestedChains
-    .map((chain) => circleBlockchainForChain(chain))
+    .map((chain) => chain.blockchain)
     .filter(Boolean)
     .filter((blockchain) => !have.has(blockchain));
 }
@@ -357,22 +506,23 @@ function missingBlockchains(existing: CircleWallet[], requestedChains: string[])
 async function walletForRequest(
   admin: ReturnType<typeof supabaseAdminClient>,
   ctx: UserContext,
+  config: CircleEnvConfig,
   userToken: string,
-  chain: string,
+  chain: CircleChainRequest,
   walletId?: string | null,
 ) {
   let wallets = await readLocalCircleWallets(admin, ctx, [chain]);
   if (!wallets.length) {
-    wallets = await syncCircleWallets(admin, ctx, userToken, [chain]);
+    wallets = await syncCircleWallets(admin, ctx, config, userToken, [chain]);
   }
 
   const targetWalletId = String(walletId || "").trim();
   const wallet = targetWalletId
     ? wallets.find((row) => row.id === targetWalletId)
-    : wallets.find((row) => row.chain === chain);
+    : wallets.find((row) => row.chain === chain.chain);
 
   if (!wallet?.id || !isEvmAddress(wallet.address)) {
-    throw new Error(`No Circle wallet found for ${chain}. Create your Market wallet first.`);
+    throw new Error(`No Circle wallet found for ${chain.chain}. Create your Market wallet first.`);
   }
   return wallet;
 }
@@ -398,76 +548,112 @@ function tokenFromBalance(balance: any) {
 async function handleStatus(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
   const requestedChains = await readRequestedChains(admin, body);
   const wallets = await readLocalCircleWallets(admin, ctx, requestedChains);
-  return ok({ configured: isConfigured(), wallets });
+  return ok({ configured: requestedChains.length ? requestedChains.some((chain) => Boolean(circleConfigForChainRequest(chain))) : isConfigured(), wallets });
 }
 
 async function handleSync(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
+  const requestedChains = await readRequestedChains(admin, body);
+  const configured = configuredOrResponse(requestedChains);
   if (configured) return configured;
 
-  const requestedChains = await readRequestedChains(admin, body);
-  const session = await getCircleSession(ctx);
-  const wallets = await syncCircleWallets(admin, ctx, session.userToken, requestedChains);
+  const wallets: CircleWallet[] = [];
+  for (const group of groupConfiguredChainsByEnv(requestedChains)) {
+    const session = await getCircleSession(ctx, group.config);
+    wallets.push(...(await syncCircleWallets(admin, ctx, group.config, session.userToken, group.chains)));
+  }
   return ok({ configured: true, wallets });
 }
 
 async function handleCreateWallets(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
-  if (configured) return configured;
-
   const requestedChains = await readRequestedChains(admin, body);
   if (!requestedChains.length) return bad("No Circle-supported market chains are active.");
+  const configured = configuredOrResponse(requestedChains);
+  if (configured) return configured;
 
-  const session = await getCircleSession(ctx);
-  const existing = await listCircleWallets(session.userToken);
-  const missing = missingBlockchains(existing, requestedChains);
-  if (!missing.length) {
-    const wallets = await syncCircleWallets(admin, ctx, session.userToken, requestedChains);
+  const wallets: CircleWallet[] = [];
+  const challenges: CircleApprovalChallenge[] = [];
+
+  for (const group of groupConfiguredChainsByEnv(requestedChains)) {
+    const session = await getCircleSession(ctx, group.config);
+    const existing = await listCircleWallets(group.config, session.userToken);
+    const missing = missingBlockchains(existing, group.chains);
+    if (!missing.length) {
+      wallets.push(...(await syncCircleWallets(admin, ctx, group.config, session.userToken, group.chains)));
+      continue;
+    }
+
+    const user = await getCircleUserByToken(group.config, session.userToken);
+    const pinStatus = String(user?.data?.pinStatus || "").toUpperCase();
+    const initializing = pinStatus !== "ENABLED";
+    const path = initializing ? "/v1/w3s/user/initialize" : "/v1/w3s/user/wallets";
+
+    const bodyOut = await circleRequest<{ data?: { challengeId?: string } }>(group.config, path, {
+      method: "POST",
+      userToken: session.userToken,
+      body: {
+        idempotencyKey: randomIdempotencyKey(),
+        accountType: "SCA",
+        blockchains: missing,
+        metadata: missing.map((blockchain) => ({
+          name: `Best City ${blockchain}`,
+          refId: `market_${ctx.circleUserId}_${blockchain}`.slice(0, 120),
+        })),
+      },
+    });
+
+    challenges.push({
+      env: group.env,
+      challengeId: bodyOut?.data?.challengeId ?? null,
+      userToken: session.userToken,
+      encryptionKey: session.encryptionKey,
+    });
+  }
+
+  if (!challenges.length) {
     return ok({ configured: true, requiresApproval: false, wallets });
   }
 
-  const user = await getCircleUserByToken(session.userToken);
-  const pinStatus = String(user?.data?.pinStatus || "").toUpperCase();
-  const initializing = pinStatus !== "ENABLED";
-  const path = initializing ? "/v1/w3s/user/initialize" : "/v1/w3s/user/wallets";
-
-  const bodyOut = await circleRequest<{ data?: { challengeId?: string } }>(path, {
-    method: "POST",
-    userToken: session.userToken,
-    body: {
-      idempotencyKey: randomIdempotencyKey(),
-      accountType: "SCA",
-      blockchains: missing,
-      metadata: missing.map((blockchain) => ({
-        name: `Best City ${blockchain}`,
-        refId: `market_${ctx.circleUserId}_${blockchain}`.slice(0, 120),
-      })),
-    },
-  });
+  const first = challenges[0];
 
   return ok({
     configured: true,
     requiresApproval: true,
-    challengeId: bodyOut?.data?.challengeId ?? null,
-    userToken: session.userToken,
-    encryptionKey: session.encryptionKey,
+    challengeId: first.challengeId,
+    userToken: first.userToken,
+    encryptionKey: first.encryptionKey,
+    challenges,
   });
 }
 
 async function handleBalances(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
+  const requestedChains = await readRequestedChains(admin, body);
+  const configured = configuredOrResponse(requestedChains);
   if (configured) return configured;
 
-  const requestedChains = await readRequestedChains(admin, body);
-  const session = await getCircleSession(ctx);
   let wallets = await readLocalCircleWallets(admin, ctx, requestedChains);
   if (!wallets.length) {
-    wallets = await syncCircleWallets(admin, ctx, session.userToken, requestedChains);
+    wallets = [];
+    for (const group of groupConfiguredChainsByEnv(requestedChains)) {
+      const session = await getCircleSession(ctx, group.config);
+      wallets.push(...(await syncCircleWallets(admin, ctx, group.config, session.userToken, group.chains)));
+    }
   }
 
+  const sessions = new Map<CircleEnvName, CircleSession>();
+  const requestsByChain = new Map(requestedChains.map((chain) => [chain.chain, chain]));
   const balances = [];
   for (const wallet of wallets) {
-    const out = await circleRequest<{ data?: { tokenBalances?: any[] } }>(`/v1/w3s/wallets/${encodeURIComponent(wallet.id)}/balances`, {
+    const walletChain = normalizeChain(wallet.chain);
+    const request = requestsByChain.get(walletChain) || circleRequestForChain(walletChain, circleEnvForBlockchain(wallet.blockchain) === "testnet");
+    if (!request) continue;
+    const config = circleConfigForChainRequest(request);
+    if (!config) continue;
+    let session = sessions.get(config.env);
+    if (!session) {
+      session = await getCircleSession(ctx, config);
+      sessions.set(config.env, session);
+    }
+    const out = await circleRequest<{ data?: { tokenBalances?: any[] } }>(config, `/v1/w3s/wallets/${encodeURIComponent(wallet.id)}/balances`, {
       userToken: session.userToken,
       query: {
         includeAll: true,
@@ -494,20 +680,23 @@ async function handleBalances(admin: ReturnType<typeof supabaseAdminClient>, ctx
 }
 
 async function handleContractExecution(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
+  const chain = await readRequestedChain(admin, body?.chain);
+  if (!chain) return bad("Unsupported or inactive Circle chain.");
+  const configured = configuredOrResponse([chain]);
   if (configured) return configured;
 
-  const chain = normalizeChain(body?.chain);
-  const blockchain = circleBlockchainForChain(chain);
+  const blockchain = chain.blockchain;
   if (!blockchain) return bad("Unsupported Circle chain.");
+  const config = circleConfigForChainRequest(chain);
+  if (!config) return configuredOrResponse([chain]) ?? bad("Circle wallet API key is missing for this chain environment.");
 
   const contractAddress = String(body?.contractAddress || "").trim();
   const callData = String(body?.callData || "").trim();
   if (!isEvmAddress(contractAddress)) return bad("contractAddress must be a valid EVM address.");
   if (!isHexData(callData)) return bad("callData must be even-length hex.");
 
-  const session = await getCircleSession(ctx);
-  const wallet = await walletForRequest(admin, ctx, session.userToken, chain, body?.walletId);
+  const session = await getCircleSession(ctx, config);
+  const wallet = await walletForRequest(admin, ctx, config, session.userToken, chain, body?.walletId);
   const refId = String(body?.refId || crypto.randomUUID()).slice(0, 120);
   const requestBody: Record<string, unknown> = {
     idempotencyKey: randomIdempotencyKey(),
@@ -519,7 +708,7 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
   };
   if (body?.amount) requestBody.amount = String(body.amount);
 
-  const out = await circleRequest<{ data?: { challengeId?: string } }>("/v1/w3s/user/transactions/contractExecution", {
+  const out = await circleRequest<{ data?: { challengeId?: string } }>(config, "/v1/w3s/user/transactions/contractExecution", {
     method: "POST",
     userToken: session.userToken,
     body: requestBody,
@@ -537,12 +726,15 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
 }
 
 async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
+  const chain = await readRequestedChain(admin, body?.chain);
+  if (!chain) return bad("Unsupported or inactive Circle chain.");
+  const configured = configuredOrResponse([chain]);
   if (configured) return configured;
 
-  const chain = normalizeChain(body?.chain);
-  const blockchain = circleBlockchainForChain(chain);
+  const blockchain = chain.blockchain;
   if (!blockchain) return bad("Unsupported Circle chain.");
+  const config = circleConfigForChainRequest(chain);
+  if (!config) return configuredOrResponse([chain]) ?? bad("Circle wallet API key is missing for this chain environment.");
 
   const tokenAddress = String(body?.tokenAddress || "").trim();
   const destinationAddress = String(body?.destinationAddress || "").trim();
@@ -550,11 +742,11 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
   if (!isEvmAddress(destinationAddress)) return bad("destinationAddress must be a valid EVM address.");
   const amount = normalizeTokenAmount(body?.amount);
 
-  const session = await getCircleSession(ctx);
-  const wallet = await walletForRequest(admin, ctx, session.userToken, chain, body?.walletId);
+  const session = await getCircleSession(ctx, config);
+  const wallet = await walletForRequest(admin, ctx, config, session.userToken, chain, body?.walletId);
   const refId = String(body?.refId || crypto.randomUUID()).slice(0, 120);
 
-  const out = await circleRequest<{ data?: { challengeId?: string } }>("/v1/w3s/user/transactions/transfer", {
+  const out = await circleRequest<{ data?: { challengeId?: string } }>(config, "/v1/w3s/user/transactions/transfer", {
     method: "POST",
     userToken: session.userToken,
     body: {
@@ -581,23 +773,26 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
 }
 
 async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClient>, ctx: UserContext, body: any) {
-  const configured = configuredOrResponse();
+  const chain = await readRequestedChain(admin, body?.chain);
+  if (!chain) return bad("Unsupported or inactive Circle chain.");
+  const configured = configuredOrResponse([chain]);
   if (configured) return configured;
+  const config = circleConfigForChainRequest(chain);
+  if (!config) return configuredOrResponse([chain]) ?? bad("Circle wallet API key is missing for this chain environment.");
 
-  const chain = normalizeChain(body?.chain);
   const refId = String(body?.refId || "").trim();
   const walletId = String(body?.walletId || "").trim();
   if (!refId) return bad("refId required.");
   if (!walletId) return bad("walletId required.");
 
-  const session = await getCircleSession(ctx);
-  await walletForRequest(admin, ctx, session.userToken, chain, walletId);
+  const session = await getCircleSession(ctx, config);
+  await walletForRequest(admin, ctx, config, session.userToken, chain, walletId);
 
-  const out = await circleRequest<{ data?: { transactions?: any[] } }>("/v1/w3s/transactions", {
+  const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
     userToken: session.userToken,
     query: {
       walletIds: walletId,
-      blockchain: circleBlockchainForChain(chain),
+      blockchain: chain.blockchain,
       txType: "OUTBOUND",
       pageSize: 50,
     },
