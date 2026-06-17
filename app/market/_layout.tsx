@@ -21,6 +21,7 @@ export default function MarketLayout() {
           <Stack.Screen name="notification/index" />
           <Stack.Screen name="notification/[id]" />
           <Stack.Screen name="menu/index" />
+          <Stack.Screen name="wallet-setup" />
           <Stack.Screen name="history/index" />
           <Stack.Screen name="history/[entryId]" />
           <Stack.Screen name="support/index" />

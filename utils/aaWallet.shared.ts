@@ -2,6 +2,11 @@ import { createPublicClient, createWalletClient, custom, http } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession } from "@/services/wallet/activeWalletSession";
+import {
+  getCircleMarketSmartAccount,
+  isCircleMarketWalletEnabled,
+  isCircleSupportedChain,
+} from "@/services/wallet/circleMarketWallet";
 
 export type MarketChainConfig = {
   chain: string;
@@ -505,6 +510,10 @@ async function ensureConnectedProviderAndAddress(chainConfig: MarketChainConfig)
 }
 
 export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: string | null) {
+  if (isCircleMarketWalletEnabled() && isCircleSupportedChain((chainConfig as any).chain)) {
+    return await getCircleMarketSmartAccount(chainConfig as any);
+  }
+
   const { provider, chain, address, rpcUrl } = await ensureConnectedProviderAndAddress(chainConfig);
   const chainId = normalizeChainId((chainConfig as any).chain_id);
   const activeSession = getActiveWalletSession();

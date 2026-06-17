@@ -62,6 +62,7 @@ export function isPersistableSessionRoute(segments: readonly string[], pathname?
   if (!group) return false;
   if (group === "(auth)" || group === "(onboarding)" || group === "pi") return false;
   if (path.includes("/reset") || path.includes("/login") || path.includes("/register")) return false;
+  if (path.includes("/wallet-setup")) return false;
 
   return true;
 }

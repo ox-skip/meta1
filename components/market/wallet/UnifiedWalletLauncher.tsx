@@ -10,7 +10,8 @@ import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibi
 import UnifiedWalletSheet from "@/components/market/wallet/UnifiedWalletSheet";
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
-function walletModeLabel(mode?: "base_smart" | "walletconnect" | null) {
+function walletModeLabel(mode?: "circle_market" | "base_smart" | "walletconnect" | null) {
+  if (mode === "circle_market") return "Market Wallet";
   if (mode === "base_smart") return "Coinbase";
   if (mode === "walletconnect") return "WalletConnect";
   return "Wallet";
@@ -60,8 +61,8 @@ export default function UnifiedWalletLauncher() {
 
   const chipWidth = compact ? 172 : 194;
   const chipHeight = compact ? 60 : 68;
-  const connected = Boolean(wallet.connectedAddress);
-  const activeMode = wallet.connectedMode ?? wallet.walletMode;
+  const connected = Boolean(wallet.connectedAddress || wallet.hasMarketWallet);
+  const activeMode = wallet.circleEnabled ? "circle_market" : wallet.connectedMode ?? wallet.walletMode;
   const activeModeLabel = walletModeLabel(activeMode);
 
   const clampDrag = useCallback(
@@ -186,7 +187,7 @@ export default function UnifiedWalletLauncher() {
                   borderColor: connected ? "rgba(255,255,255,0.22)" : "rgba(45,212,191,0.28)",
                 }}
               >
-                <Ionicons name={activeMode === "base_smart" ? "ellipse" : activeMode === "walletconnect" ? "link-outline" : "wallet-outline"} size={compact ? 17 : 18} color="#F8FAFC" />
+                <Ionicons name={activeMode === "circle_market" ? "shield-checkmark-outline" : activeMode === "base_smart" ? "ellipse" : activeMode === "walletconnect" ? "link-outline" : "wallet-outline"} size={compact ? 17 : 18} color="#F8FAFC" />
               </View>
 
               <View style={{ flex: 1 }}>
@@ -214,14 +215,14 @@ export default function UnifiedWalletLauncher() {
                     : `$${wallet.overallUsdApprox.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </Text>
                 <Text style={{ marginTop: 3, color: "rgba(255,255,255,0.72)", fontWeight: "700", fontSize: compact ? 9 : 10 }}>
-                  {connected ? `${activeModeLabel} active` : "Open wallet"}
+                  {wallet.hasMarketWallet ? `${activeModeLabel} ready` : connected ? `${activeModeLabel} active` : "Create wallet"}
                 </Text>
               </View>
 
               <Ionicons name="chevron-up" size={compact ? 15 : 16} color="#fff" />
             </Pressable>
 
-            {connected ? (
+            {connected && !wallet.circleEnabled ? (
               <Pressable
                 onPress={async () => {
                   await wallet.disconnectWallet();

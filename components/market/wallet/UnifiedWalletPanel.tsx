@@ -9,11 +9,12 @@ import { maskBalanceValue, useBalanceVisibility } from "@/hooks/useBalanceVisibi
 import { useUnifiedWallet } from "@/components/market/wallet/useUnifiedWallet";
 
 type UnifiedWalletData = ReturnType<typeof useUnifiedWallet>;
-type WalletMode = "base_smart" | "walletconnect";
+type WalletMode = "circle_market" | "base_smart" | "walletconnect";
 
 type Props = {
   wallet: UnifiedWalletData;
   compact?: boolean;
+  presentation?: "mobile" | "desktop";
   onOpenNgnWallet?: () => void;
   onOpenCryptoWallet?: () => void;
   onOpenHistory?: () => void;
@@ -54,6 +55,7 @@ function chainLabel(v?: string | null) {
 }
 
 function walletModeLabel(mode?: WalletMode | null) {
+  if (mode === "circle_market") return "Market Wallet";
   if (mode === "base_smart") return "Coinbase Smart Wallet";
   if (mode === "walletconnect") return "WalletConnect";
   return "Wallet";
@@ -67,6 +69,25 @@ function firstValidAddress(...values: Array<string | null | undefined>) {
 }
 
 function BrandMark({ mode, size = 44 }: { mode: WalletMode; size?: number }) {
+  if (mode === "circle_market") {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "rgba(45,212,191,0.18)",
+          borderWidth: 1,
+          borderColor: "rgba(45,212,191,0.55)",
+        }}
+      >
+        <Ionicons name="shield-checkmark-outline" size={Math.max(18, size * 0.46)} color={TEAL} />
+      </View>
+    );
+  }
+
   const base = mode === "base_smart";
   return (
     <View
@@ -219,9 +240,38 @@ function AddressRow({
   );
 }
 
+function ChainBalanceRow({ item, hidden }: { item: UnifiedWalletData["chainBalances"][number]; hidden: boolean }) {
+  const nativeSymbol = item.native?.symbol || (item.chain === "arc_testnet" ? "USDC" : "ETH");
+  const nativeAmount = Number(item.native?.amount || 0);
+  const usdcAmount = Number(item.usdc?.amount || 0);
+  const usdtAmount = Number(item.usdt?.amount || 0);
+
+  return (
+    <View style={styles.chainBalanceRow}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={styles.chainBalanceTitle}>
+          {chainLabel(item.chain)}
+        </Text>
+        <Text numberOfLines={1} style={styles.chainBalanceAddress}>
+          {shortAddress(item.address)}
+        </Text>
+      </View>
+      <View style={styles.chainBalanceValues}>
+        <Text numberOfLines={1} style={styles.chainBalanceValue}>
+          {hidden ? "******" : `${fmt(nativeAmount, 6)} ${nativeSymbol}`}
+        </Text>
+        <Text numberOfLines={1} style={styles.chainBalanceMeta}>
+          {hidden ? "******" : `USDC ${fmt(usdcAmount, 6)} / USDT ${fmt(usdtAmount, 6)}`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function UnifiedWalletPanel({
   wallet,
   compact = false,
+  presentation = "mobile",
   onOpenNgnWallet,
   onOpenCryptoWallet,
   onOpenHistory,
@@ -232,12 +282,13 @@ export default function UnifiedWalletPanel({
   const [sendToken, setSendToken] = useState<"USDC" | "USDT">("USDC");
 
   const connected = Boolean(wallet.connectedAddress);
-  const activeWalletMode = wallet.connectedMode ?? wallet.walletMode;
+  const activeWalletMode = wallet.circleEnabled ? "circle_market" : wallet.connectedMode ?? wallet.walletMode;
   const activeWalletModeLabel = walletModeLabel(activeWalletMode);
   const copyAddress = firstValidAddress(wallet.connectedAddress, wallet.savedAddress);
   const portfolio = wallet.portfolioPositions.slice(0, compact ? 3 : 5);
   const walletConnectBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "walletconnect");
   const baseSmartBlocked = Boolean(wallet.connectedMode && wallet.connectedMode !== "base_smart");
+  const desktop = presentation === "desktop";
   const canSendUsdc = isAddress(wallet.chain?.usdc_address || "");
   const canSendUsdt = isAddress(wallet.chain?.usdt_address || "");
   const sendDisabled =
@@ -247,7 +298,13 @@ export default function UnifiedWalletPanel({
     !sendAmount.trim() ||
     (sendToken === "USDC" ? !canSendUsdc : !canSendUsdt);
 
-  const primaryCtaIcon = connected ? "power-outline" : activeWalletMode === "base_smart" ? "ellipse" : "link-outline";
+  const primaryCtaIcon = wallet.circleEnabled
+    ? "shield-checkmark-outline"
+    : connected
+      ? "power-outline"
+      : activeWalletMode === "base_smart"
+        ? "ellipse"
+        : "link-outline";
 
   async function copyText(value: string, successMessage: string) {
     if (!value) return;
@@ -260,6 +317,11 @@ export default function UnifiedWalletPanel({
   }
 
   async function handleProviderPress(mode: WalletMode) {
+    if (mode === "circle_market") {
+      await wallet.setWalletMode("circle_market");
+      if (!wallet.hasMarketWallet) await wallet.createMarketWallet();
+      return;
+    }
     if (mode === "base_smart" && !wallet.baseSmartSupported) return;
     if (mode === "walletconnect" && walletConnectBlocked) return;
     if (mode === "base_smart" && baseSmartBlocked) return;
@@ -285,7 +347,7 @@ export default function UnifiedWalletPanel({
   }
 
   return (
-    <View style={[styles.shell, compact ? styles.shellCompact : undefined]}>
+    <View style={[styles.shell, compact ? styles.shellCompact : undefined, desktop ? styles.shellDesktop : undefined]}>
       <LinearGradient
         colors={["rgba(45,212,191,0.18)", "rgba(56,189,248,0.10)", "rgba(244,183,93,0.12)"]}
         start={{ x: 0.05, y: 0 }}
@@ -294,9 +356,9 @@ export default function UnifiedWalletPanel({
       >
         <View style={styles.heroTop}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-            <BrandMark mode={activeWalletMode ?? "walletconnect"} size={52} />
+            <BrandMark mode={activeWalletMode ?? "circle_market"} size={52} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.heroKicker}>{connected ? "Connected" : "Wallet"}</Text>
+              <Text style={styles.heroKicker}>{wallet.hasMarketWallet ? "Account wallet" : "Wallet setup"}</Text>
               <Text numberOfLines={1} style={styles.heroTitle}>{activeWalletModeLabel}</Text>
             </View>
           </View>
@@ -324,61 +386,79 @@ export default function UnifiedWalletPanel({
 
         <View style={styles.statusRow}>
           <Pill label={wallet.chain ? chainLabel(wallet.chain.chain) : "No network"} tone={wallet.chain?.active ? TEAL : ROSE} />
-          <Pill label={connected ? shortAddress(wallet.connectedAddress) : "No session"} tone={connected ? TEAL : AMBER} />
+          <Pill label={wallet.hasMarketWallet ? shortAddress(wallet.connectedAddress || wallet.savedAddress) : "Not created"} tone={wallet.hasMarketWallet ? TEAL : AMBER} />
         </View>
       </LinearGradient>
 
-      <View style={styles.section}>
+      <View style={desktop ? styles.desktopGrid : styles.mobileStack}>
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
         <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Wallets</Text>
-          {connected ? (
+          <Text style={styles.sectionTitle}>{wallet.circleEnabled ? "Market wallet" : "Wallets"}</Text>
+          {!wallet.circleEnabled && connected ? (
             <Pressable onPress={wallet.disconnectWallet} disabled={wallet.busy} style={[styles.inlineAction, wallet.busy ? styles.dimmed : undefined]}>
               <Ionicons name="power-outline" size={15} color={ROSE} />
             </Pressable>
           ) : null}
         </View>
-        <View style={styles.providerGrid}>
-          <ProviderCard
-            mode="walletconnect"
-            active={activeWalletMode === "walletconnect"}
-            connected={wallet.connectedMode === "walletconnect"}
-            disabled={walletConnectBlocked}
-            supported
-            busy={wallet.busy && activeWalletMode === "walletconnect"}
-            onPress={() => {
-              void handleProviderPress("walletconnect");
-            }}
-          />
-          <ProviderCard
-            mode="base_smart"
-            active={activeWalletMode === "base_smart"}
-            connected={wallet.connectedMode === "base_smart"}
-            disabled={!wallet.baseSmartSupported || baseSmartBlocked}
-            supported={wallet.baseSmartSupported}
-            busy={wallet.busy && activeWalletMode === "base_smart"}
-            onPress={() => {
-              void handleProviderPress("base_smart");
-            }}
-          />
-        </View>
+        {wallet.circleEnabled ? (
+          <View style={styles.marketWalletCard}>
+            <View style={styles.marketWalletIcon}>
+              <Ionicons name={wallet.hasMarketWallet ? "shield-checkmark-outline" : "shield-outline"} size={22} color={TEAL} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.marketWalletTitle}>{wallet.hasMarketWallet ? "Main marketplace wallet" : "Create your marketplace wallet"}</Text>
+              <Text style={styles.marketWalletText}>
+                {wallet.hasMarketWallet
+                  ? "This account-bound Circle wallet is used for market escrow, stocks, and stable transfers."
+                  : "Create one Circle smart wallet for Arc and supported EVM chains, then use it as your Market wallet."}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.providerGrid}>
+            <ProviderCard
+              mode="walletconnect"
+              active={activeWalletMode === "walletconnect"}
+              connected={wallet.connectedMode === "walletconnect"}
+              disabled={walletConnectBlocked}
+              supported
+              busy={wallet.busy && activeWalletMode === "walletconnect"}
+              onPress={() => {
+                void handleProviderPress("walletconnect");
+              }}
+            />
+            <ProviderCard
+              mode="base_smart"
+              active={activeWalletMode === "base_smart"}
+              connected={wallet.connectedMode === "base_smart"}
+              disabled={!wallet.baseSmartSupported || baseSmartBlocked}
+              supported={wallet.baseSmartSupported}
+              busy={wallet.busy && activeWalletMode === "base_smart"}
+              onPress={() => {
+                void handleProviderPress("base_smart");
+              }}
+            />
+          </View>
+        )}
 
         <Pressable
-          onPress={connected ? wallet.disconnectWallet : wallet.connectWallet}
-          disabled={wallet.busy || !wallet.chain?.active}
-          style={[styles.primaryAction, wallet.busy || !wallet.chain?.active ? styles.dimmed : undefined]}
+          onPress={wallet.circleEnabled ? (wallet.hasMarketWallet ? wallet.refreshAll : wallet.createMarketWallet) : connected ? wallet.disconnectWallet : wallet.connectWallet}
+          disabled={wallet.busy || !wallet.chain?.active || (wallet.circleEnabled && !wallet.circleConfigured)}
+          style={[styles.primaryAction, wallet.busy || !wallet.chain?.active || (wallet.circleEnabled && !wallet.circleConfigured) ? styles.dimmed : undefined]}
         >
           {wallet.busy ? (
-            <ActivityIndicator color={connected ? ROSE : INK} />
+            <ActivityIndicator color={wallet.circleEnabled || !connected ? INK : ROSE} />
           ) : (
-            <Ionicons name={primaryCtaIcon as keyof typeof Ionicons.glyphMap} size={18} color={connected ? ROSE : INK} />
+            <Ionicons name={primaryCtaIcon as keyof typeof Ionicons.glyphMap} size={18} color={wallet.circleEnabled || !connected ? INK : ROSE} />
           )}
-          <Text style={[styles.primaryActionText, connected ? { color: ROSE } : undefined]}>
-            {connected ? "Disconnect" : activeWalletMode === "base_smart" ? "Coinbase" : "WalletConnect"}
+          <Text style={[styles.primaryActionText, !wallet.circleEnabled && connected ? { color: ROSE } : undefined]}>
+            {wallet.circleEnabled ? (wallet.hasMarketWallet ? "Refresh Market Wallet" : "Create Market Wallet") : connected ? "Disconnect" : activeWalletMode === "base_smart" ? "Coinbase" : "WalletConnect"}
           </Text>
         </Pressable>
+        {wallet.circleEnabled && !wallet.circleConfigured ? <Text style={styles.warningText}>Circle wallet is not configured on the server.</Text> : null}
       </View>
 
-      <View style={styles.statGrid}>
+        <View style={[styles.statGrid, desktop ? styles.desktopPane : undefined]}>
         <StatTile label="USDC" value={balancesHidden ? "******" : fmt(wallet.usdcBalance, 6)} tone={TEAL} />
         <StatTile label="USDT" value={balancesHidden ? "******" : fmt(wallet.usdtBalance, 6)} tone={AMBER} />
         <StatTile
@@ -388,7 +468,7 @@ export default function UnifiedWalletPanel({
         />
       </View>
 
-      <View style={styles.section}>
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Network</Text>
           <Text style={styles.sectionMeta}>{wallet.chains.length} available</Text>
@@ -411,7 +491,7 @@ export default function UnifiedWalletPanel({
         </ScrollView>
       </View>
 
-      <View style={styles.section}>
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
         <Text style={styles.sectionTitle}>Identity</Text>
         <View style={styles.stack}>
           <AddressRow
@@ -421,22 +501,32 @@ export default function UnifiedWalletPanel({
             onCopy={wallet.savedAddress ? () => copyText(wallet.savedAddress, "Wallet address copied.") : undefined}
           />
           <AddressRow
-            icon="phone-portrait-outline"
-            label="Device session"
+            icon={wallet.circleEnabled ? "shield-checkmark-outline" : "phone-portrait-outline"}
+            label={wallet.circleEnabled ? "Approval wallet" : "Device session"}
             value={shortAddress(wallet.connectedAddress)}
             onCopy={wallet.connectedAddress ? () => copyText(wallet.connectedAddress, "Connected wallet copied.") : undefined}
           />
         </View>
 
         <View style={styles.buttonRow}>
-          <Pressable
-            onPress={wallet.useConnectedWallet}
-            disabled={wallet.busy || !wallet.chain?.active || !wallet.connectedAddress}
-            style={[styles.secondaryAction, wallet.busy || !wallet.chain?.active || !wallet.connectedAddress ? styles.dimmed : undefined]}
-          >
-            <Ionicons name="swap-horizontal-outline" size={15} color={TEXT} />
-            <Text style={styles.secondaryActionText}>Use session</Text>
-          </Pressable>
+          {wallet.circleEnabled ? (
+            <Pressable
+              onPress={() => Alert.alert("Recovery", "Your Market wallet uses Circle user-controlled recovery with PIN and device approval. Seed phrase export is not available for Circle MPC wallets.")}
+              style={styles.secondaryAction}
+            >
+              <Ionicons name="key-outline" size={15} color={TEXT} />
+              <Text style={styles.secondaryActionText}>Recovery</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={wallet.useConnectedWallet}
+              disabled={wallet.busy || !wallet.chain?.active || !wallet.connectedAddress}
+              style={[styles.secondaryAction, wallet.busy || !wallet.chain?.active || !wallet.connectedAddress ? styles.dimmed : undefined]}
+            >
+              <Ionicons name="swap-horizontal-outline" size={15} color={TEXT} />
+              <Text style={styles.secondaryActionText}>Use session</Text>
+            </Pressable>
+          )}
           <Pressable
             onPress={() => {
               if (copyAddress) void copyText(copyAddress, "Wallet address copied.");
@@ -450,7 +540,28 @@ export default function UnifiedWalletPanel({
         </View>
       </View>
 
-      <View style={styles.section}>
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Chain balances</Text>
+          <Text style={styles.sectionMeta}>{wallet.chainBalances.length} chains</Text>
+        </View>
+        {wallet.chainBalances.length ? (
+          <View style={styles.stack}>
+            {wallet.chainBalances.map((item) => (
+              <ChainBalanceRow key={`${item.chain}-${item.walletId}`} item={item} hidden={balancesHidden} />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyRow}>
+            <Ionicons name="layers-outline" size={17} color={FAINT} />
+            <Text style={styles.emptyText}>
+              {wallet.hasMarketWallet ? "Balances will appear after the next refresh." : "Create a Market wallet to see balances by chain."}
+            </Text>
+          </View>
+        )}
+      </View>
+
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
         <Text style={styles.sectionTitle}>Transfer</Text>
         <View style={styles.tokenRow}>
           <TokenButton active={sendToken === "USDC"} label="USDC" disabled={!canSendUsdc} onPress={() => setSendToken("USDC")} />
@@ -479,7 +590,7 @@ export default function UnifiedWalletPanel({
         </Pressable>
       </View>
 
-      <View style={styles.section}>
+        <View style={[styles.section, desktop ? styles.desktopPane : undefined]}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Portfolio</Text>
           <Pill label={`$${fmt(wallet.portfolioTotalUsdc)}`} tone={AMBER} />
@@ -504,7 +615,7 @@ export default function UnifiedWalletPanel({
         )}
       </View>
 
-      <View style={styles.footerActions}>
+        <View style={[styles.footerActions, desktop ? styles.desktopFull : undefined]}>
         {wallet.isNigeria && onOpenNgnWallet ? (
           <Pressable onPress={onOpenNgnWallet} style={styles.footerButton}>
             <Ionicons name="cash-outline" size={15} color={TEXT} />
@@ -525,6 +636,8 @@ export default function UnifiedWalletPanel({
         ) : null}
       </View>
 
+      </View>
+
       {!!wallet.error ? <Text style={styles.errorText}>{wallet.error}</Text> : null}
     </View>
   );
@@ -541,6 +654,10 @@ const styles = StyleSheet.create({
   },
   shellCompact: {
     padding: 10,
+  },
+  shellDesktop: {
+    padding: 14,
+    gap: 12,
   },
   hero: {
     borderRadius: 8,
@@ -610,6 +727,25 @@ const styles = StyleSheet.create({
     backgroundColor: PANEL,
     borderWidth: 1,
     borderColor: BORDER,
+  },
+  mobileStack: {
+    gap: 10,
+  },
+  desktopGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  desktopPane: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "46%",
+    minWidth: 320,
+  },
+  desktopFull: {
+    flexBasis: "100%",
+    width: "100%",
   },
   section: {
     borderRadius: 8,
@@ -687,6 +823,39 @@ const styles = StyleSheet.create({
     color: AMBER,
     fontSize: 10,
     fontWeight: "900",
+  },
+  marketWalletCard: {
+    minHeight: 86,
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(45,212,191,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.30)",
+  },
+  marketWalletIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(45,212,191,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.28)",
+  },
+  marketWalletTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  marketWalletText: {
+    marginTop: 4,
+    color: MUTED,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: "700",
   },
   primaryAction: {
     minHeight: 48,
@@ -787,6 +956,44 @@ const styles = StyleSheet.create({
     color: TEXT,
     fontSize: 13,
     fontWeight: "900",
+  },
+  chainBalanceRow: {
+    minHeight: 66,
+    borderRadius: 8,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: PANEL_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  chainBalanceTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  chainBalanceAddress: {
+    marginTop: 4,
+    color: FAINT,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  chainBalanceValues: {
+    minWidth: 132,
+    maxWidth: "52%",
+    alignItems: "flex-end",
+  },
+  chainBalanceValue: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  chainBalanceMeta: {
+    marginTop: 4,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "800",
   },
   buttonRow: {
     flexDirection: "row",
@@ -921,6 +1128,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: "#FDA4AF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  warningText: {
+    color: "#FCD34D",
     fontSize: 12,
     fontWeight: "900",
   },

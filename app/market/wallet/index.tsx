@@ -30,6 +30,7 @@ export default function MarketWallet() {
           <AppHeader title="Wallet" subtitle="Dapp wallet, stable balances, and market portfolio" />
           <UnifiedWalletPanel
             wallet={wallet}
+            presentation={wide ? "desktop" : "mobile"}
             onOpenNgnWallet={wallet.isNigeria ? () => router.push("/fintech/(tabs)/wallet?action=fund" as any) : undefined}
             onOpenHistory={() => router.push("/market/history" as any)}
           />
@@ -52,6 +53,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   innerWide: {
-    maxWidth: 720,
+    maxWidth: 1040,
   },
 });

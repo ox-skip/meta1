@@ -2,11 +2,20 @@ import { Platform } from "react-native";
 
 import * as SecureStore from "@/utils/secureStore";
 
-export type WalletMode = "walletconnect" | "base_smart";
+export type WalletMode = "circle_market" | "walletconnect" | "base_smart";
 
 const KEY_WALLET_MODE = "bc_wallet_mode_v1";
 
-let modeState: WalletMode = "walletconnect";
+function isCircleWalletModeEnabled() {
+  const raw = String(process.env.EXPO_PUBLIC_MARKET_WALLET_PROVIDER || process.env.EXPO_PUBLIC_CIRCLE_WALLET_ENABLED || "").trim().toLowerCase();
+  return raw !== "external" && raw !== "walletconnect" && raw !== "0" && raw !== "false";
+}
+
+function defaultWalletMode(): WalletMode {
+  return isCircleWalletModeEnabled() ? "circle_market" : "walletconnect";
+}
+
+let modeState: WalletMode = defaultWalletMode();
 let hydrated = false;
 
 const listeners = new Set<(mode: WalletMode) => void>();
@@ -24,8 +33,10 @@ function emit() {
 
 function normalizeMode(value: unknown): WalletMode {
   const raw = String(value || "").trim().toLowerCase();
+  if (raw === "circle_market") return isCircleWalletModeEnabled() ? "circle_market" : "walletconnect";
   if (raw === "base_smart") return "base_smart";
-  return "walletconnect";
+  if (raw === "walletconnect") return "walletconnect";
+  return defaultWalletMode();
 }
 
 export function isBaseSmartSupported() {
@@ -39,7 +50,7 @@ async function hydrateMode() {
     const stored = await SecureStore.getItemAsync(KEY_WALLET_MODE);
     modeState = normalizeMode(stored);
   } catch {
-    modeState = "walletconnect";
+    modeState = defaultWalletMode();
   }
   emit();
   return modeState;

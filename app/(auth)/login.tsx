@@ -147,7 +147,7 @@ export default function Login() {
         await SecureStore.deleteItemAsync(KEY_PASS);
       }
 
-      router.replace("/market/(tabs)");
+      router.replace("/market/wallet-setup" as any);
     } catch (err: any) {
       const message = err?.message ?? "Login failed";
       if (isEmailConfirmationError(message)) {
@@ -212,7 +212,7 @@ export default function Login() {
       });
       if (error) throw error;
 
-      router.replace("/market/(tabs)");
+      router.replace("/market/wallet-setup" as any);
     } catch (err: any) {
       const message = err?.message ?? "Quick unlock failed";
       if (isEmailConfirmationError(message)) {

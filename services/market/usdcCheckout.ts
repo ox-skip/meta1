@@ -584,7 +584,7 @@ export async function registerWallet(chain: string, address: string) {
 
   const existing = await supabase
     .from("crypto_wallets")
-    .select("id,user_id,chain,address,created_at")
+    .select("id,user_id,chain,address,created_at,wallet_type")
     .eq("user_id", user.id)
     .eq("chain", chain)
     .order("created_at", { ascending: true });
@@ -604,9 +604,11 @@ export async function registerWallet(chain: string, address: string) {
     }
 
     if (String(keeper.address || "").toLowerCase() !== normalizedTarget) {
+      const keeperType = String((keeper as any).wallet_type || "").toLowerCase();
+      const update = keeperType.startsWith("circle") ? { address } : { address, wallet_type: "aa" };
       const { data, error } = await supabase
         .from("crypto_wallets")
-        .update({ address, wallet_type: "aa" })
+        .update(update)
         .eq("id", keeper.id)
         .select("user_id,chain,address")
         .single();

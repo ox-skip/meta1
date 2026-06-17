@@ -76,6 +76,16 @@
       "expo-font",
       "expo-web-browser",
       "expo-build-properties",
+      "./plugins/withCircleWalletMaven.js",
+      [
+        "@circle-fin/w3s-pw-react-native-sdk/plugins/withCopyFiles",
+        {
+          "sourceDir": "prebuild-sync-src",
+          "targetDir": ".",
+          "overwrite": true
+        }
+      ],
+      "@circle-fin/w3s-pw-react-native-sdk/plugins/podfile-modifier",
       "./plugins/withAdmobAppId.js",
       "expo-secure-store"
     ],

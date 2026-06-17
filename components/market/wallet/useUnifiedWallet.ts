@@ -15,6 +15,15 @@ import {
 } from "@/services/market/usdcCheckout";
 import { connectActiveWalletEvm, disconnectWalletMode } from "@/services/wallet/activeWalletSession";
 import { getBaseSmartSession, subscribeBaseSmartSession } from "@/services/wallet/baseSmartSession";
+import {
+  createMarketCircleWallets,
+  fetchCircleChainBalances,
+  getCircleWalletStatus,
+  isCircleMarketWalletEnabled,
+  syncCircleWallets,
+  type CircleChainBalance,
+  type CircleMarketWallet,
+} from "@/services/wallet/circleMarketWallet";
 import { getWalletConnectSession, subscribeWalletConnectSession } from "@/services/wallet/walletConnectSession";
 import { getWalletModeSync, isBaseSmartSupported, setWalletMode, subscribeWalletMode, type WalletMode } from "@/services/wallet/walletMode";
 import { getRpcUrlForChain, getSmartAccount } from "@/utils/aaWallet";
@@ -50,6 +59,7 @@ function isAddress(value?: string | null) {
 }
 
 function walletModeLabel(mode: WalletMode) {
+  if (mode === "circle_market") return "Market Wallet";
   return mode === "base_smart" ? "Coinbase Smart Wallet" : "WalletConnect";
 }
 
@@ -75,6 +85,9 @@ export function useUnifiedWallet() {
   const [walletMode, setWalletModeState] = useState<WalletMode>(getWalletModeSync());
   const [baseSmartSession, setBaseSmartSessionState] = useState(() => getBaseSmartSession());
   const [walletConnectSession, setWalletConnectSessionState] = useState(() => getWalletConnectSession());
+  const [circleConfigured, setCircleConfigured] = useState(true);
+  const [circleWallets, setCircleWallets] = useState<CircleMarketWallet[]>([]);
+  const [chainBalances, setChainBalances] = useState<CircleChainBalance[]>([]);
   const [usdcBalance, setUsdcBalance] = useState("0");
   const [usdtBalance, setUsdtBalance] = useState("0");
   const [portfolioTotalUsdc, setPortfolioTotalUsdc] = useState(0);
@@ -86,20 +99,25 @@ export function useUnifiedWallet() {
   const [error, setError] = useState<string | null>(null);
 
   const isNigeria = isNigeriaCountry(country?.code || country?.name);
+  const circleEnabled = isCircleMarketWalletEnabled();
   const baseSmartConnected = Boolean(baseSmartSession.connected && isAddress(baseSmartSession.address));
   const walletConnectConnected = Boolean(walletConnectSession.connected && isAddress(walletConnectSession.address));
   const connectedMode = useMemo<WalletMode | null>(() => {
+    if (circleEnabled && walletMode === "circle_market" && isAddress(savedAddress)) return "circle_market";
     if (walletMode === "base_smart" && baseSmartConnected) return "base_smart";
     if (walletMode === "walletconnect" && walletConnectConnected) return "walletconnect";
+    if (circleEnabled && isAddress(savedAddress)) return "circle_market";
     if (baseSmartConnected) return "base_smart";
     if (walletConnectConnected) return "walletconnect";
     return null;
-  }, [baseSmartConnected, walletConnectConnected, walletMode]);
+  }, [baseSmartConnected, circleEnabled, savedAddress, walletConnectConnected, walletMode]);
   const connectedAddress = useMemo(() => {
+    if (connectedMode === "circle_market") return String(savedAddress || "");
     if (connectedMode === "base_smart") return String(baseSmartSession.address || "");
     if (connectedMode === "walletconnect") return String(walletConnectSession.address || "");
     return "";
-  }, [baseSmartSession.address, connectedMode, walletConnectSession.address]);
+  }, [baseSmartSession.address, connectedMode, savedAddress, walletConnectSession.address]);
+  const hasMarketWallet = useMemo(() => circleWallets.some((wallet) => isAddress(wallet.address)) || isAddress(savedAddress), [circleWallets, savedAddress]);
   const stableTotalUsd = useMemo(() => Number(usdcBalance || 0) + Number(usdtBalance || 0), [usdcBalance, usdtBalance]);
   const overallUsdApprox = useMemo(() => stableTotalUsd + Number(portfolioTotalUsdc || 0), [stableTotalUsd, portfolioTotalUsdc]);
   const loading = ngnLoading || portfolioLoading || busy || sendBusy || piSaving || country === undefined;
@@ -152,6 +170,38 @@ export function useUnifiedWallet() {
       return "";
     }
   }, []);
+
+  const refreshMarketWalletState = useCallback(async (chainList: MarketChainConfig[] = [], syncRemote = false) => {
+    if (!circleEnabled) {
+      setCircleWallets([]);
+      setChainBalances([]);
+      setCircleConfigured(false);
+      return { wallets: [] as CircleMarketWallet[] };
+    }
+
+    const targetChains = chainList;
+    try {
+      const status = syncRemote ? await syncCircleWallets(targetChains) : await getCircleWalletStatus(targetChains);
+      setCircleConfigured(Boolean(status.configured));
+      setCircleWallets(status.wallets || []);
+      if (status.configured && (status.wallets || []).length) {
+        try {
+          const balances = await fetchCircleChainBalances(targetChains);
+          setChainBalances(balances);
+        } catch {
+          setChainBalances([]);
+        }
+      } else {
+        setChainBalances([]);
+      }
+      return { wallets: status.wallets || [] };
+    } catch {
+      setCircleConfigured(false);
+      setCircleWallets([]);
+      setChainBalances([]);
+      return { wallets: [] as CircleMarketWallet[] };
+    }
+  }, [circleEnabled]);
 
   const refreshChainBalances = useCallback(
     async (selected?: MarketChainConfig | null, forcedAddress?: string) => {
@@ -226,6 +276,7 @@ export function useUnifiedWallet() {
       const all = await fetchMarketChains();
       const visibleChains = all.filter((c) => !isPiChain(c.chain));
       setChains(visibleChains);
+      await refreshMarketWalletState(visibleChains);
       const savedPreferred = await getPreferredMarketChain();
       const preferred =
         (savedPreferred && !isPiChain(savedPreferred.chain) ? savedPreferred : null) ??
@@ -242,7 +293,7 @@ export function useUnifiedWallet() {
       setUsdcBalance("0");
       setUsdtBalance("0");
     }
-  }, [refreshChainBalances]);
+  }, [refreshChainBalances, refreshMarketWalletState]);
 
   const selectChain = useCallback(
     async (next: MarketChainConfig) => {
@@ -260,6 +311,7 @@ export function useUnifiedWallet() {
 
   const ensureWalletModeAvailable = useCallback(
     (targetMode: WalletMode) => {
+      if (targetMode === "circle_market") return;
       if (targetMode === "base_smart" && !isBaseSmartSupported()) {
         throw new Error("Coinbase Smart Wallet is available on web.");
       }
@@ -275,6 +327,14 @@ export function useUnifiedWallet() {
     setBusy(true);
     setError(null);
     try {
+      if (circleEnabled && walletMode === "circle_market") {
+        const out = await createMarketCircleWallets(chains.length ? chains : [chain]);
+        setCircleConfigured(Boolean(out.configured));
+        setCircleWallets(out.wallets || []);
+        await refreshMarketWalletState(chains.length ? chains : [chain], true);
+        await refreshChainBalances(chain);
+        return;
+      }
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
         throw new Error("This network uses a saved payout address.");
@@ -287,13 +347,21 @@ export function useUnifiedWallet() {
     } finally {
       setBusy(false);
     }
-  }, [chain, ensureWalletModeAvailable, refreshChainBalances, walletMode]);
+  }, [chain, chains, circleEnabled, ensureWalletModeAvailable, refreshChainBalances, refreshMarketWalletState, walletMode]);
 
   const useConnectedWallet = useCallback(async () => {
     if (!chain) return;
     setBusy(true);
     setError(null);
     try {
+      if (circleEnabled && walletMode === "circle_market") {
+        const out = await createMarketCircleWallets(chains.length ? chains : [chain]);
+        setCircleConfigured(Boolean(out.configured));
+        setCircleWallets(out.wallets || []);
+        await refreshMarketWalletState(chains.length ? chains : [chain], true);
+        await refreshChainBalances(chain);
+        return;
+      }
       ensureWalletModeAvailable(walletMode);
       if (isPiChain(chain.chain)) {
         throw new Error("This network uses a saved payout address.");
@@ -306,12 +374,17 @@ export function useUnifiedWallet() {
     } finally {
       setBusy(false);
     }
-  }, [chain, ensureWalletModeAvailable, refreshChainBalances, walletMode]);
+  }, [chain, chains, circleEnabled, ensureWalletModeAvailable, refreshChainBalances, refreshMarketWalletState, walletMode]);
 
   const disconnectWallet = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
+      if (circleEnabled && connectedMode === "circle_market") {
+        await refreshMarketWalletState(chains);
+        await refreshChainBalances(chain);
+        return;
+      }
       await disconnectWalletMode(connectedMode ?? walletMode);
       await refreshChainBalances(chain);
     } catch (e: any) {
@@ -319,17 +392,17 @@ export function useUnifiedWallet() {
     } finally {
       setBusy(false);
     }
-  }, [chain, connectedMode, refreshChainBalances, walletMode]);
+  }, [chain, chains, circleEnabled, connectedMode, refreshChainBalances, refreshMarketWalletState, walletMode]);
 
   const refreshAll = useCallback(async () => {
     try {
       setError(null);
-      await Promise.allSettled([reloadNgn(), refreshPortfolio(), refreshCountry(), refreshPiWallet()]);
+      await Promise.allSettled([reloadNgn(), refreshPortfolio(), refreshCountry(), refreshPiWallet(), refreshMarketWalletState(chains, true)]);
       await refreshChainBalances();
     } catch (e: any) {
       setError(friendlyMarketError(e, "Unable to refresh wallet data."));
     }
-  }, [refreshChainBalances, refreshCountry, refreshPiWallet, refreshPortfolio, reloadNgn]);
+  }, [chains, refreshChainBalances, refreshCountry, refreshMarketWalletState, refreshPiWallet, refreshPortfolio, reloadNgn]);
 
   const savePiAddress = useCallback(async (addressInput: string) => {
     const normalized = String(addressInput || "").trim();
@@ -507,6 +580,32 @@ export function useUnifiedWallet() {
     }
   }, [ensureWalletModeAvailable, refreshChainBalances]);
 
+  const createMarketWallet = useCallback(async () => {
+    const targetChains = chains.length ? chains : chain ? [chain] : [];
+    if (!targetChains.length) {
+      setError("No active EVM chain is configured.");
+      return false;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await setWalletMode("circle_market");
+      setWalletModeState("circle_market");
+      const out = await createMarketCircleWallets(targetChains);
+      setCircleConfigured(Boolean(out.configured));
+      setCircleWallets(out.wallets || []);
+      await refreshMarketWalletState(targetChains, true);
+      await refreshChainBalances(chain);
+      return true;
+    } catch (e: any) {
+      setError(friendlyMarketError(e, "Unable to create Market wallet."));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [chain, chains, refreshChainBalances, refreshMarketWalletState]);
+
   useEffect(() => {
     loadChains();
     refreshPortfolio();
@@ -524,11 +623,16 @@ export function useUnifiedWallet() {
     isNigeria,
     walletMode,
     connectedMode,
+    circleEnabled,
+    circleConfigured,
+    hasMarketWallet,
     baseSmartSupported: isBaseSmartSupported(),
     baseSmartConnected,
     walletConnectConnected,
     chains,
     chain,
+    chainBalances,
+    circleWallets,
     savedAddress,
     savedPiAddress,
     connectedAddress,
@@ -539,6 +643,7 @@ export function useUnifiedWallet() {
     portfolioPositions,
     overallUsdApprox,
     connectWallet,
+    createMarketWallet,
     disconnectWallet,
     useConnectedWallet,
     setWalletMode: changeWalletMode,

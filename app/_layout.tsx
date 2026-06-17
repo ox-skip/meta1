@@ -487,7 +487,7 @@ export default function RootLayout() {
   }
 
   if (user && !isPasswordRecovery && (group === "(auth)" || group === "(onboarding)")) {
-    return <Redirect href="/market/(tabs)" />;
+    return <Redirect href="/market/wallet-setup" />;
   }
 
   if (user && !group) {

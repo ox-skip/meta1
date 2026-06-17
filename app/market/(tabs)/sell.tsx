@@ -2625,7 +2625,7 @@ export default function SellTab() {
             </Text>
           ) : null}
           <Text style={{ marginTop: 12, color: MUTED, fontSize: 12 }}>
-            Listings settle in stablecoins. Buyers only see active networks from chain config.
+            Listings settle in stablecoins
           </Text>
         </CardBox>
 
