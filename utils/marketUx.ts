@@ -57,6 +57,12 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   if (msg.includes("network request failed") || msg.includes("failed to fetch")) {
     return "Marketplace server request failed. Please retry in a moment.";
   }
+  if (msg.includes("circle") && msg.includes("credential")) {
+    return compact(raw);
+  }
+  if (msg === "invalid credentials." || msg === "invalid credentials") {
+    return "Circle wallet credentials were rejected. Check the Circle API key/endpoint pair in Supabase secrets and redeploy the function.";
+  }
   if (msg.includes("market_listings_price_amount_check") || msg.includes("price_amount must be > 0")) {
     return "Enter a listing price above zero.";
   }

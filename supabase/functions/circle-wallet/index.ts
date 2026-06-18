@@ -245,6 +245,31 @@ function randomIdempotencyKey() {
   return crypto.randomUUID();
 }
 
+function circleCredentialHint(config: CircleEnvConfig) {
+  const host = (() => {
+    try {
+      return new URL(config.baseUrl).host;
+    } catch {
+      return config.baseUrl;
+    }
+  })();
+  return config.env === "testnet"
+    ? `Circle testnet credentials were rejected by ${host}. Use a TEST_API_KEY with https://api-sandbox.circle.com.`
+    : `Circle mainnet credentials were rejected by ${host}. Use a LIVE_API_KEY with https://api.circle.com.`;
+}
+
+function validateCircleCredentialPair(config: CircleEnvConfig) {
+  const key = config.apiKey.toUpperCase();
+  const base = config.baseUrl.toLowerCase();
+  if (config.env === "testnet") {
+    if (key.startsWith("LIVE_API_KEY")) throw new Error(circleCredentialHint(config));
+    if (!base.includes("sandbox")) throw new Error(circleCredentialHint(config));
+  } else {
+    if (key.startsWith("TEST_API_KEY")) throw new Error(circleCredentialHint(config));
+    if (base.includes("sandbox")) throw new Error(circleCredentialHint(config));
+  }
+}
+
 function shortCircleError(json: any, text: string) {
   const candidates = [
     json?.message,
@@ -266,6 +291,8 @@ async function circleRequest<T>(
     query?: Record<string, unknown>;
   } = {},
 ) {
+  validateCircleCredentialPair(config);
+
   const query = new URLSearchParams();
   Object.entries(input.query || {}).forEach(([key, value]) => {
     if (value === undefined || value === null || value === "") return;
@@ -295,7 +322,8 @@ async function circleRequest<T>(
   }
 
   if (!res.ok) {
-    const err = new Error(shortCircleError(json, text));
+    const rawMessage = shortCircleError(json, text);
+    const err = new Error(res.status === 401 || res.status === 403 ? circleCredentialHint(config) : rawMessage);
     (err as any).status = res.status;
     (err as any).body = json ?? text;
     throw err;
