@@ -780,7 +780,6 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
       idempotencyKey: randomIdempotencyKey(),
       walletId: wallet.id,
       tokenAddress,
-      blockchain,
       destinationAddress,
       amounts: [amount],
       refId,
