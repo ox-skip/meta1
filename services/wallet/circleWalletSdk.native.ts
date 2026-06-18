@@ -25,7 +25,7 @@ function circleSdkEndpoint(env?: string | null) {
   const normalized = circleEnv(env);
   const endpoint =
     normalized === "testnet"
-      ? process.env.EXPO_PUBLIC_CIRCLE_TESTNET_SDK_ENDPOINT || process.env.EXPO_PUBLIC_CIRCLE_SDK_ENDPOINT || "https://api-sandbox.circle.com/v1/w3s"
+      ? process.env.EXPO_PUBLIC_CIRCLE_TESTNET_SDK_ENDPOINT || process.env.EXPO_PUBLIC_CIRCLE_SDK_ENDPOINT || "https://api.circle.com/v1/w3s"
       : normalized === "mainnet"
         ? process.env.EXPO_PUBLIC_CIRCLE_MAINNET_SDK_ENDPOINT || process.env.EXPO_PUBLIC_CIRCLE_SDK_ENDPOINT || "https://api.circle.com/v1/w3s"
         : process.env.EXPO_PUBLIC_CIRCLE_SDK_ENDPOINT || "https://api.circle.com/v1/w3s";

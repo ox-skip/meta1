@@ -66,7 +66,7 @@ function baseUrlForEnv(env: CircleEnvName, usingLegacyKey: boolean) {
       : envAny(["CIRCLE_MAINNET_API_BASE_URL", "CIRCLE_LIVE_API_BASE_URL"]);
   if (explicit) return explicit.replace(/\/$/, "");
   if (usingLegacyKey && LEGACY_CIRCLE_API_BASE_URL) return LEGACY_CIRCLE_API_BASE_URL.replace(/\/$/, "");
-  return env === "testnet" ? "https://api-sandbox.circle.com" : "https://api.circle.com";
+  return "https://api.circle.com";
 }
 
 function circleEnvConfig(env: CircleEnvName): CircleEnvConfig | null {
@@ -254,7 +254,7 @@ function circleCredentialHint(config: CircleEnvConfig) {
     }
   })();
   return config.env === "testnet"
-    ? `Circle testnet credentials were rejected by ${host}. Use a TEST_API_KEY with https://api-sandbox.circle.com.`
+    ? `Circle testnet credentials were rejected by ${host}. Use a TEST_API_KEY with https://api.circle.com for Circle Wallets.`
     : `Circle mainnet credentials were rejected by ${host}. Use a LIVE_API_KEY with https://api.circle.com.`;
 }
 
@@ -263,7 +263,6 @@ function validateCircleCredentialPair(config: CircleEnvConfig) {
   const base = config.baseUrl.toLowerCase();
   if (config.env === "testnet") {
     if (key.startsWith("LIVE_API_KEY")) throw new Error(circleCredentialHint(config));
-    if (!base.includes("sandbox")) throw new Error(circleCredentialHint(config));
   } else {
     if (key.startsWith("TEST_API_KEY")) throw new Error(circleCredentialHint(config));
     if (base.includes("sandbox")) throw new Error(circleCredentialHint(config));
