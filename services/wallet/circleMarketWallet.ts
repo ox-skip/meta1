@@ -235,7 +235,7 @@ export async function waitForCircleTransaction(input: {
   chain: string;
   timeoutMs?: number;
 }) {
-  const timeoutMs = Number(input.timeoutMs || 90000);
+  const timeoutMs = Number(input.timeoutMs || 120000);
   const started = Date.now();
   let lastState = "";
 

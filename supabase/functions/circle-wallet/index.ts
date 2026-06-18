@@ -728,6 +728,7 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
   const requestBody: Record<string, unknown> = {
     idempotencyKey: randomIdempotencyKey(),
     walletId: wallet.id,
+    blockchain,
     contractAddress,
     callData,
     refId,
@@ -778,8 +779,10 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
     userToken: session.userToken,
     body: {
       idempotencyKey: randomIdempotencyKey(),
+      userId: ctx.circleUserId,
       walletId: wallet.id,
       tokenAddress,
+      blockchain,
       destinationAddress,
       amounts: [amount],
       refId,
@@ -812,23 +815,27 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
   if (!walletId) return bad("walletId required.");
 
   const session = await getCircleSession(ctx, config);
-  await walletForRequest(admin, ctx, config, session.userToken, chain, walletId);
 
+  // We use a broad search to ensure we find the transaction even if specific filters act up.
+  // Using userToken ensures we only see this user's transactions.
   const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
     userToken: session.userToken,
     query: {
-      walletIds: walletId,
-      blockchain: chain.blockchain,
-      txType: "OUTBOUND",
       pageSize: 50,
     },
   });
 
   const transactions = out?.data?.transactions ?? [];
+  const targetRef = refId.toLowerCase();
+  
   const transaction =
-    transactions.find((tx: any) => String(tx?.refId || "") === refId) ||
-    transactions.find((tx: any) => String(tx?.refId || "").includes(refId)) ||
+    transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef) ||
+    transactions.find((tx: any) => {
+      const txRef = String(tx?.refId || "").toLowerCase();
+      return txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
+    }) ||
     null;
+
   return ok({ configured: true, transaction });
 }
 
