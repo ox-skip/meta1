@@ -2,14 +2,15 @@ import "react-native-get-random-values";
 import "react-native-url-polyfill/auto";
 import { Buffer } from "buffer";
 
-if (typeof global.Buffer === "undefined") {
-  global.Buffer = Buffer;
+// Standard polyfills for Web3/Circle compatibility
+if (typeof globalThis.Buffer === "undefined") {
+  (globalThis as any).Buffer = Buffer;
 }
 
-if (typeof global.process === "undefined") {
-  global.process = { env: {} } as any;
-} else if (typeof global.process.env === "undefined") {
-  global.process.env = {};
+if (typeof globalThis.process === "undefined") {
+  (globalThis as any).process = { env: {} };
+} else if (typeof globalThis.process.env === "undefined") {
+  (globalThis as any).process.env = {};
 }
 
 // app/_layout.tsx

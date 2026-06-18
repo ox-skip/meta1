@@ -29,13 +29,28 @@ async function createSdk(userToken?: string, encryptionKey?: string, env?: strin
 
   const mod = await import("@circle-fin/w3s-pw-web-sdk");
   const sdk = new mod.W3SSdk({ appSettings: { appId } });
-  let deviceId = "";
-  if (typeof (sdk as any).getDeviceId === "function") {
-    deviceId = String(await Promise.resolve((sdk as any).getDeviceId()));
-  }
+
   if (userToken && encryptionKey) {
     sdk.setAuthentication({ userToken, encryptionKey });
   }
+
+  let deviceId = "";
+  if (typeof (sdk as any).getDeviceId === "function") {
+    // Retry getDeviceId a few times as it can be flaky during iframe initialization
+    for (let i = 0; i < 3; i++) {
+      try {
+        deviceId = String(await Promise.resolve((sdk as any).getDeviceId()));
+        if (deviceId) break;
+      } catch (e: any) {
+        if (i === 2) {
+          console.warn("Circle SDK getDeviceId failed after 3 attempts:", e?.message || e);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+    }
+  }
+
   return { sdk, deviceId };
 }
 
