@@ -1,4 +1,17 @@
 import "react-native-get-random-values";
+import "react-native-url-polyfill/auto";
+import { Buffer } from "buffer";
+
+if (typeof global.Buffer === "undefined") {
+  global.Buffer = Buffer;
+}
+
+if (typeof global.process === "undefined") {
+  global.process = { env: {} } as any;
+} else if (typeof global.process.env === "undefined") {
+  global.process.env = {};
+}
+
 // app/_layout.tsx
 // app/_layout.tsx
 import { supabase } from "@/services/supabase";
