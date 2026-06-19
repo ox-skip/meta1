@@ -833,17 +833,32 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
   console.log(`[handleTransactionByRef] Searching for refId: ${refId}`);
 
   // Try to query transactions using refId and walletId when possible to find the matching transaction faster.
-  // Increase pageSize to cover more results in a single call.
-  const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
-    userToken: session.userToken,
-    query: {
-      pageSize: 200,
-      refId: refId || undefined,
-      walletId: walletId || undefined,
-    },
-  });
+  // If the Circle API rejects one of these query parameters, retry using the generic transactions list.
+  let transactions: any[] = [];
+  try {
+    const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
+      userToken: session.userToken,
+      query: {
+        pageSize: 200,
+        refId: refId || undefined,
+        walletId: walletId || undefined,
+      },
+    });
+    transactions = out?.data?.transactions ?? [];
+  } catch (e: any) {
+    const message = String(e?.message || "").toLowerCase();
+    const invalidParamError = message.includes("parameter") || message.includes("invalid") || message.includes("refid") || message.includes("walletid");
+    if (!invalidParamError) throw e;
+    console.log(`[handleTransactionByRef] Circle query parameters rejected, retrying without refId/walletId filters: ${message}`);
+    const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
+      userToken: session.userToken,
+      query: {
+        pageSize: 200,
+      },
+    });
+    transactions = out?.data?.transactions ?? [];
+  }
 
-  const transactions = out?.data?.transactions ?? [];
   const targetRef = refId.toLowerCase();
   
   const transaction =
