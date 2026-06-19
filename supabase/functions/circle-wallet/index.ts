@@ -306,6 +306,9 @@ async function circleRequest<T>(
   };
   if (input.userToken) headers["X-User-Token"] = input.userToken;
 
+  console.log(`[Circle Request] ${input.method || "GET"} ${url}`);
+  if (input.body) console.log(`[Circle Request Body]`, JSON.stringify(input.body));
+
   const res = await fetch(url, {
     method: input.method || "GET",
     headers,
@@ -321,6 +324,7 @@ async function circleRequest<T>(
   }
 
   if (!res.ok) {
+    console.error(`[Circle Error] Status: ${res.status}`, json || text);
     const rawMessage = shortCircleError(json, text);
     const err = new Error(res.status === 401 || res.status === 403 ? circleCredentialHint(config) : rawMessage);
     (err as any).status = res.status;
@@ -339,7 +343,15 @@ async function createCircleUserIfNeeded(config: CircleEnvConfig, circleUserId: s
     });
   } catch (e: any) {
     const msg = String(e?.message || e || "").toLowerCase();
-    if (msg.includes("already") || msg.includes("exist") || msg.includes("duplicate")) return;
+    const status = Number(e?.status || 0);
+    const body = e?.body;
+    const code = typeof body === "object" && body !== null ? Number(body.code) : 0;
+    
+    // 155101/155102 are Circle error codes for "Existing user already created"
+    if (status === 409 || code === 155101 || code === 155102 || msg.includes("already") || msg.includes("exist")) {
+      console.log(`[Circle] User ${circleUserId} already exists (Status: ${status}, Code: ${code}). Continuing...`);
+      return;
+    }
     throw e;
   }
 }
@@ -724,17 +736,18 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
 
   const session = await getCircleSession(ctx, config);
   const wallet = await walletForRequest(admin, ctx, config, session.userToken, chain, body?.walletId);
-  const refId = String(body?.refId || crypto.randomUUID()).slice(0, 120);
+  const rawRef = String(body?.refId || crypto.randomUUID());
+  const refId = rawRef.length > 64 ? rawRef.slice(-64) : rawRef;
+
   const requestBody: Record<string, unknown> = {
     idempotencyKey: randomIdempotencyKey(),
     walletId: wallet.id,
-    blockchain,
     contractAddress,
     callData,
     refId,
     feeLevel: String(body?.feeLevel || "MEDIUM").toUpperCase(),
   };
-  if (body?.amount) requestBody.amount = String(body.amount);
+  if (body?.amount && Number(body.amount) > 0) requestBody.amount = String(body.amount);
 
   const out = await circleRequest<{ data?: { challengeId?: string } }>(config, "/v1/w3s/user/transactions/contractExecution", {
     method: "POST",
@@ -772,7 +785,9 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
 
   const session = await getCircleSession(ctx, config);
   const wallet = await walletForRequest(admin, ctx, config, session.userToken, chain, body?.walletId);
-  const refId = String(body?.refId || crypto.randomUUID()).slice(0, 120);
+
+  const rawRef = String(body?.refId || crypto.randomUUID());
+  const refId = rawRef.length > 64 ? rawRef.slice(-64) : rawRef;
 
   const out = await circleRequest<{ data?: { challengeId?: string } }>(config, "/v1/w3s/user/transactions/transfer", {
     method: "POST",
@@ -782,7 +797,6 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
       userId: ctx.circleUserId,
       walletId: wallet.id,
       tokenAddress,
-      blockchain,
       destinationAddress,
       amounts: [amount],
       refId,
@@ -816,12 +830,16 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
 
   const session = await getCircleSession(ctx, config);
 
-  // We use a broad search to ensure we find the transaction even if specific filters act up.
-  // Using userToken ensures we only see this user's transactions.
+  console.log(`[handleTransactionByRef] Searching for refId: ${refId}`);
+
+  // Try to query transactions using refId and walletId when possible to find the matching transaction faster.
+  // Increase pageSize to cover more results in a single call.
   const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
     userToken: session.userToken,
     query: {
-      pageSize: 50,
+      pageSize: 200,
+      refId: refId || undefined,
+      walletId: walletId || undefined,
     },
   });
 
@@ -835,6 +853,10 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
       return txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
     }) ||
     null;
+
+  if (transaction) {
+    console.log(`[handleTransactionByRef] Found transaction: ${transaction.id} state: ${transaction.state}`);
+  }
 
   return ok({ configured: true, transaction });
 }

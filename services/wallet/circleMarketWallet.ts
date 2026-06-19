@@ -224,9 +224,10 @@ export async function ensureCircleWalletForChain(chain: MarketChainConfig) {
 }
 
 async function transactionByRef(input: { refId: string; walletId: string; chain: string }) {
+  // Use a short per-request timeout so a single slow call doesn't block polling.
   return await circleAction<{
     transaction: any | null;
-  }>("transaction_by_ref", input, 20000);
+  }>("transaction_by_ref", input, 5000);
 }
 
 export async function waitForCircleTransaction(input: {
@@ -235,7 +236,8 @@ export async function waitForCircleTransaction(input: {
   chain: string;
   timeoutMs?: number;
 }) {
-  const timeoutMs = Number(input.timeoutMs || 120000);
+  // Allow a longer overall wait but poll more frequently with short per-request timeouts.
+  const timeoutMs = Number(input.timeoutMs || 180000);
   const started = Date.now();
   let lastState = "";
 
@@ -254,7 +256,7 @@ export async function waitForCircleTransaction(input: {
       throw new Error(`Circle transaction ended without a transaction hash (${state}).`);
     }
 
-    await sleep(2500);
+    await sleep(1500);
   }
 
   throw new Error(lastState ? `Circle transaction is still ${lastState.toLowerCase()}. Try refreshing in a moment.` : "Circle transaction hash was not available yet.");
