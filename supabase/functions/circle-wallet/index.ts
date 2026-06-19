@@ -270,8 +270,23 @@ function validateCircleCredentialPair(config: CircleEnvConfig) {
 }
 
 function shortCircleError(json: any, text: string) {
+  const details = Array.isArray(json?.errors)
+    ? json.errors
+        .map((error: any) => {
+          const location = String(error?.location || "").trim();
+          const message = String(error?.message || error?.error || "").trim();
+          const invalidValue = error?.invalidValue === undefined || error?.invalidValue === null ? "" : String(error.invalidValue).trim();
+          const suffix = invalidValue ? ` (invalid: ${invalidValue})` : "";
+          return [location, message].filter(Boolean).join(": ") + suffix;
+        })
+        .map((value: string) => value.trim())
+        .filter(Boolean)
+        .join("; ")
+    : "";
+  const message = String(json?.message || json?.error?.message || "").trim();
   const candidates = [
-    json?.message,
+    message && details ? `${message}: ${details}` : "",
+    message,
     json?.error?.message,
     json?.errors?.[0]?.message,
     json?.data?.message,
@@ -794,7 +809,6 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
     userToken: session.userToken,
     body: {
       idempotencyKey: randomIdempotencyKey(),
-      userId: ctx.circleUserId,
       walletId: wallet.id,
       tokenAddress,
       destinationAddress,
@@ -832,40 +846,48 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
 
   console.log(`[handleTransactionByRef] Searching for refId: ${refId}`);
 
-  // Try to query transactions using refId and walletId when possible to find the matching transaction faster.
-  // If the Circle API rejects one of these query parameters, retry using the generic transactions list.
+  // Narrow the Circle list query by documented fields, then match our refId locally.
+  // Circle does not support refId as a transaction query parameter, so refId filtering happens locally.
+  // If Circle rejects a narrowing filter, retry using only documented generic parameters.
   let transactions: any[] = [];
   try {
     const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
       userToken: session.userToken,
       query: {
-        pageSize: 200,
-        refId: refId || undefined,
-        walletId: walletId || undefined,
+        blockchain: chain.blockchain,
+        walletIds: walletId,
+        pageSize: 50,
+        order: "DESC",
       },
     });
     transactions = out?.data?.transactions ?? [];
   } catch (e: any) {
     const message = String(e?.message || "").toLowerCase();
-    const invalidParamError = message.includes("parameter") || message.includes("invalid") || message.includes("refid") || message.includes("walletid");
+    const invalidParamError = message.includes("parameter") || message.includes("invalid") || message.includes("walletid") || message.includes("walletids");
     if (!invalidParamError) throw e;
-    console.log(`[handleTransactionByRef] Circle query parameters rejected, retrying without refId/walletId filters: ${message}`);
+    console.log(`[handleTransactionByRef] Circle query parameters rejected, retrying without walletIds filter: ${message}`);
     const out = await circleRequest<{ data?: { transactions?: any[] } }>(config, "/v1/w3s/transactions", {
       userToken: session.userToken,
       query: {
-        pageSize: 200,
+        blockchain: chain.blockchain,
+        pageSize: 50,
+        order: "DESC",
       },
     });
     transactions = out?.data?.transactions ?? [];
   }
 
   const targetRef = refId.toLowerCase();
+  const targetWallet = walletId.toLowerCase();
   
   const transaction =
+    transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef && String(tx?.walletId || "").toLowerCase() === targetWallet) ||
     transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef) ||
     transactions.find((tx: any) => {
       const txRef = String(tx?.refId || "").toLowerCase();
-      return txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
+      const txWallet = String(tx?.walletId || "").toLowerCase();
+      const walletMatches = !txWallet || txWallet === targetWallet;
+      return walletMatches && txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
     }) ||
     null;
 
