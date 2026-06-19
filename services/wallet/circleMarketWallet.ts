@@ -54,6 +54,7 @@ type CircleSessionChallenge = {
 type CircleTxChallenge = CircleSessionChallenge & {
   refId: string;
   walletId: string;
+  submittedAt?: string | null;
 };
 
 const WAIT_STATES = new Set(["INITIATED", "QUEUED", "SENT", "STUCK", "PENDING"]);
@@ -104,6 +105,11 @@ function normalizeHash(value?: string | null) {
   return /^0x[a-fA-F0-9]{64}$/.test(raw) ? raw : "";
 }
 
+function normalizeUuid(value?: string | null) {
+  const raw = String(value || "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw) ? raw : "";
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -145,16 +151,19 @@ async function approveCircleChallenges(input: CircleSessionChallenge) {
         ]
       : [];
 
+  const results: any[] = [];
   for (const challenge of challenges) {
     const challengeId = String(challenge.challengeId || "").trim();
     if (!challengeId) continue;
-    await approveCircleChallenge({
+    const result = await approveCircleChallenge({
       userToken: String(challenge.userToken || ""),
       encryptionKey: String(challenge.encryptionKey || ""),
       challengeId,
       env: challenge.env,
     });
+    results.push(result);
   }
+  return results;
 }
 
 export async function getCircleWalletStatus(chains?: MarketChainConfig[]) {
@@ -223,17 +232,55 @@ export async function ensureCircleWalletForChain(chain: MarketChainConfig) {
   return wallet;
 }
 
-async function transactionByRef(input: { refId: string; walletId: string; chain: string }) {
+async function transactionByRef(input: { refId: string; walletId: string; chain: string; transactionId?: string; from?: string; operation?: string }) {
   // Use a short per-request timeout so a single slow call doesn't block polling.
   return await circleAction<{
     transaction: any | null;
   }>("transaction_by_ref", input, 5000);
 }
 
+function extractDeep(input: unknown, keys: string[], normalize: (value?: string | null) => string, depth = 0, allowDirect = true): string {
+  const direct = allowDirect ? normalize(typeof input === "string" ? input : "") : "";
+  if (direct || depth > 5 || input === null || input === undefined) return direct;
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      const value = extractDeep(item, keys, normalize, depth + 1, allowDirect);
+      if (value) return value;
+    }
+    return "";
+  }
+
+  if (typeof input !== "object") return "";
+  const record = input as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = normalize(record[key] === undefined || record[key] === null ? "" : String(record[key]));
+    if (value) return value;
+  }
+
+  for (const value of Object.values(record)) {
+    const found = extractDeep(value, keys, normalize, depth + 1, allowDirect);
+    if (found) return found;
+  }
+  return "";
+}
+
+function extractTxHash(input: unknown) {
+  return extractDeep(input, ["txHash", "transactionHash", "hash"], normalizeHash);
+}
+
+function extractTransactionId(input: unknown) {
+  return extractDeep(input, ["transactionId", "transactionID", "transaction_id", "txId", "txID", "tx_id"], normalizeUuid, 0, false);
+}
+
 export async function waitForCircleTransaction(input: {
   refId: string;
   walletId: string;
   chain: string;
+  transactionId?: string;
+  from?: string;
+  operation?: string;
   timeoutMs?: number;
 }) {
   // Allow a longer overall wait but poll more frequently with short per-request timeouts.
@@ -244,7 +291,7 @@ export async function waitForCircleTransaction(input: {
   while (Date.now() - started < timeoutMs) {
     const out = await transactionByRef(input);
     const tx = out.transaction;
-    const txHash = normalizeHash(tx?.txHash || tx?.transactionHash || tx?.hash);
+    const txHash = extractTxHash(tx);
     if (txHash) return { txHash, transaction: tx };
 
     const state = String(tx?.state || "").toUpperCase();
@@ -259,7 +306,11 @@ export async function waitForCircleTransaction(input: {
     await sleep(1500);
   }
 
-  throw new Error(lastState ? `Circle transaction is still ${lastState.toLowerCase()}. Try refreshing in a moment.` : "Circle transaction hash was not available yet.");
+  throw new Error(
+    lastState
+      ? `Circle transaction is still ${lastState.toLowerCase()}. Try refreshing in a moment.`
+      : "Circle transaction was submitted, but the on-chain hash is not available yet. Try refreshing in a moment.",
+  );
 }
 
 export async function sendCircleContractExecution(input: {
@@ -287,12 +338,21 @@ export async function sendCircleContractExecution(input: {
   if (!challenge.configured) {
     throw new Error(challenge.message || "Circle wallet is not configured.");
   }
-  if (challenge.requiresApproval) {
-    await approveCircleChallenges(challenge);
-  }
+  const approvalResults = challenge.requiresApproval ? await approveCircleChallenges(challenge) : [];
+  const approvalHash = extractTxHash(approvalResults);
+  const pollRefId = String(challenge.refId || refId);
+  const pollWalletId = String(challenge.walletId || wallet.id);
+  if (approvalHash) return { hash: approvalHash, txHash: approvalHash, refId: pollRefId, wallet };
 
-  const settled = await waitForCircleTransaction({ refId, walletId: wallet.id, chain: input.chain.chain });
-  return { hash: settled.txHash, txHash: settled.txHash, refId, wallet };
+  const settled = await waitForCircleTransaction({
+    refId: pollRefId,
+    walletId: pollWalletId,
+    chain: input.chain.chain,
+    transactionId: extractTransactionId(approvalResults),
+    from: String(challenge.submittedAt || ""),
+    operation: "CONTRACT_EXECUTION",
+  });
+  return { hash: settled.txHash, txHash: settled.txHash, refId: pollRefId, wallet };
 }
 
 export async function sendCircleTokenTransfer(input: {
@@ -321,12 +381,21 @@ export async function sendCircleTokenTransfer(input: {
   if (!challenge.configured) {
     throw new Error(challenge.message || "Circle wallet is not configured.");
   }
-  if (challenge.requiresApproval) {
-    await approveCircleChallenges(challenge);
-  }
+  const approvalResults = challenge.requiresApproval ? await approveCircleChallenges(challenge) : [];
+  const approvalHash = extractTxHash(approvalResults);
+  const pollRefId = String(challenge.refId || refId);
+  const pollWalletId = String(challenge.walletId || wallet.id);
+  if (approvalHash) return { hash: approvalHash, txHash: approvalHash, refId: pollRefId, wallet };
 
-  const settled = await waitForCircleTransaction({ refId, walletId: wallet.id, chain: input.chain.chain });
-  return { hash: settled.txHash, txHash: settled.txHash, refId, wallet };
+  const settled = await waitForCircleTransaction({
+    refId: pollRefId,
+    walletId: pollWalletId,
+    chain: input.chain.chain,
+    transactionId: extractTransactionId(approvalResults),
+    from: String(challenge.submittedAt || ""),
+    operation: "TRANSFER",
+  });
+  return { hash: settled.txHash, txHash: settled.txHash, refId: pollRefId, wallet };
 }
 
 export async function fetchCircleChainBalances(chains: MarketChainConfig[]) {

@@ -241,6 +241,10 @@ function isHexData(value: unknown) {
   return /^0x([a-fA-F0-9]{2})*$/.test(String(value || "").trim());
 }
 
+function isUuid(value: unknown) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || "").trim());
+}
+
 function randomIdempotencyKey() {
   return crypto.randomUUID();
 }
@@ -403,6 +407,13 @@ async function listCircleWallets(config: CircleEnvConfig, userToken: string, blo
     },
   });
   return out?.data?.wallets ?? [];
+}
+
+async function getCircleTransaction(config: CircleEnvConfig, userToken: string, transactionId: string) {
+  const out = await circleRequest<{ data?: { transaction?: any } }>(config, `/v1/w3s/transactions/${encodeURIComponent(transactionId)}`, {
+    userToken,
+  });
+  return out?.data?.transaction ?? null;
 }
 
 async function readRequestedChains(admin: ReturnType<typeof supabaseAdminClient>, body: any) {
@@ -753,6 +764,7 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
   const wallet = await walletForRequest(admin, ctx, config, session.userToken, chain, body?.walletId);
   const rawRef = String(body?.refId || crypto.randomUUID());
   const refId = rawRef.length > 64 ? rawRef.slice(-64) : rawRef;
+  const submittedAt = new Date().toISOString();
 
   const requestBody: Record<string, unknown> = {
     idempotencyKey: randomIdempotencyKey(),
@@ -778,6 +790,7 @@ async function handleContractExecution(admin: ReturnType<typeof supabaseAdminCli
     encryptionKey: session.encryptionKey,
     refId,
     walletId: wallet.id,
+    submittedAt,
   });
 }
 
@@ -803,6 +816,7 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
 
   const rawRef = String(body?.refId || crypto.randomUUID());
   const refId = rawRef.length > 64 ? rawRef.slice(-64) : rawRef;
+  const submittedAt = new Date().toISOString();
 
   const out = await circleRequest<{ data?: { challengeId?: string } }>(config, "/v1/w3s/user/transactions/transfer", {
     method: "POST",
@@ -826,6 +840,7 @@ async function handleTransfer(admin: ReturnType<typeof supabaseAdminClient>, ctx
     encryptionKey: session.encryptionKey,
     refId,
     walletId: wallet.id,
+    submittedAt,
   });
 }
 
@@ -839,12 +854,28 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
 
   const refId = String(body?.refId || "").trim();
   const walletId = String(body?.walletId || "").trim();
+  const transactionId = String(body?.transactionId || body?.txId || "").trim();
+  const operation = String(body?.operation || "").trim().toUpperCase();
   if (!refId) return bad("refId required.");
   if (!walletId) return bad("walletId required.");
 
   const session = await getCircleSession(ctx, config);
 
   console.log(`[handleTransactionByRef] Searching for refId: ${refId}`);
+
+  if (isUuid(transactionId)) {
+    try {
+      const transaction = await getCircleTransaction(config, session.userToken, transactionId);
+      const txWallet = String(transaction?.walletId || "").toLowerCase();
+      if (transaction && (!txWallet || txWallet === walletId.toLowerCase())) {
+        return ok({ configured: true, transaction });
+      }
+    } catch (e: any) {
+      const message = String(e?.message || e || "").toLowerCase();
+      if (!message.includes("not found") && !message.includes("transaction")) throw e;
+      console.log(`[handleTransactionByRef] Circle transaction id lookup missed: ${message}`);
+    }
+  }
 
   // Narrow the Circle list query by documented fields, then match our refId locally.
   // Circle does not support refId as a transaction query parameter, so refId filtering happens locally.
@@ -856,6 +887,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
       query: {
         blockchain: chain.blockchain,
         walletIds: walletId,
+        operation: operation || undefined,
         pageSize: 50,
         order: "DESC",
       },
@@ -870,6 +902,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
       userToken: session.userToken,
       query: {
         blockchain: chain.blockchain,
+        operation: operation || undefined,
         pageSize: 50,
         order: "DESC",
       },
@@ -879,6 +912,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
 
   const targetRef = refId.toLowerCase();
   const targetWallet = walletId.toLowerCase();
+  const fromMs = Date.parse(String(body?.from || body?.submittedAt || ""));
   
   const transaction =
     transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef && String(tx?.walletId || "").toLowerCase() === targetWallet) ||
@@ -889,6 +923,19 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
       const walletMatches = !txWallet || txWallet === targetWallet;
       return walletMatches && txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
     }) ||
+    (Number.isFinite(fromMs)
+      ? (() => {
+          const recent = transactions.filter((tx: any) => {
+            const txWallet = String(tx?.walletId || "").toLowerCase();
+            const txOperation = String(tx?.operation || "").toUpperCase();
+            const txTime = Date.parse(String(tx?.createDate || tx?.createdAt || ""));
+            const walletMatches = !txWallet || txWallet === targetWallet;
+            const operationMatches = !operation || !txOperation || txOperation === operation;
+            return walletMatches && operationMatches && Number.isFinite(txTime) && txTime >= fromMs - 120000;
+          });
+          return recent.length === 1 ? recent[0] : null;
+        })()
+      : null) ||
     null;
 
   if (transaction) {
