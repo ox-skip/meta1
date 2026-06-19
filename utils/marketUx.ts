@@ -60,6 +60,14 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
   if (msg.includes("circle") && msg.includes("credential")) {
     return compact(raw);
   }
+  if (
+    msg.includes("circle transaction was submitted") ||
+    (msg.includes("circle") && msg.includes("submitted")) ||
+    msg.includes("network has is not aviable") ||
+    msg.includes("refershing in a momnt")
+  ) {
+    return "Circle transaction was submitted, but the network transaction hash is not available yet. Try refreshing in a moment.";
+  }
   if (msg === "invalid credentials." || msg === "invalid credentials") {
     return "Circle wallet credentials were rejected. Check the Circle API key/endpoint pair in Supabase secrets and redeploy the function.";
   }
