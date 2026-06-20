@@ -316,14 +316,11 @@ export async function waitForCircleTransaction(input: {
     await sleep(1000);
   }
 
-  if (lastError) {
-    throw new Error(lastError);
-  }
-  throw new Error(
-    lastState
-      ? `Circle transaction is still ${lastState.toLowerCase()}. Try refreshing in a moment.`
-      : "Circle transaction was submitted, but the on-chain hash is not available yet. Try refreshing in a moment.",
-  );
+  // Return refId on timeout instead of throwing - allows settlement to continue polling
+  return {
+    txHash: "",
+    transaction: { refId: input.refId, walletId: input.walletId, state: lastState || "INITIATED" },
+  };
 }
 
 export async function sendCircleContractExecution(input: {

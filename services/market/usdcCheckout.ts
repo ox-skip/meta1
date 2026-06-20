@@ -306,7 +306,7 @@ async function readLatestDepositIntent(orderId: string, chainName?: string | nul
 async function readLatestIntent(orderId: string, intentType: ChainFinalizeEvent, chainName?: string | null) {
   let query = supabase
     .from("market_crypto_intents")
-    .select("tx_hash,client_reference,chain,status,created_at")
+    .select("tx_hash,client_reference,chain,status,created_at,provider_ref_id")
     .eq("order_id", orderId)
     .eq("intent_type", intentType);
   if (chainName) query = query.eq("chain", chainName);
@@ -317,13 +317,15 @@ async function readLatestIntent(orderId: string, intentType: ChainFinalizeEvent,
     .maybeSingle();
   if (error) return null;
 
-  const txHash = String((data as any)?.tx_hash || "").trim();
+const txHash = String((data as any)?.tx_hash || "").trim();
   const userOpHash = String((data as any)?.client_reference || "").trim();
+  const refId = String((data as any)?.provider_ref_id || "").trim();
   return {
     txHash: normalizeHexHash(txHash),
     userOpHash: normalizeHexHash(userOpHash),
     chain: String((data as any)?.chain || "").trim(),
     status: String((data as any)?.status || "").trim(),
+    refId: refId || null,
   };
 }
 
@@ -332,6 +334,7 @@ async function ensureDepositSettled(
   chain: MarketChainConfig,
   txHash: string,
   userOpHash: string,
+  refId?: string | null,
 ) {
   let resolvedTxHash = normalizeHexHash(txHash);
   let resolvedUserOpHash = normalizeHexHash(userOpHash);
@@ -349,12 +352,35 @@ async function ensureDepositSettled(
     resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 20, 2000);
   }
 
-  if (resolvedTxHash) {
+if (resolvedTxHash) {
     const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 12, 3000);
     if (settled) return { settled: true, txHash: resolvedTxHash };
   }
 
   for (let i = 0; i < 6; i++) {
+    // Poll Circle for transaction status if we have a refId but no txHash yet
+    if (!resolvedTxHash) {
+      const latestIntent = await readLatestDepositIntent(orderId, chain.chain);
+      const activeRefId = refId || latestIntent?.refId;
+      if (activeRefId) {
+        try {
+          const circleTx = await callFn("circle-wallet", {
+            action: "transaction_by_ref",
+            chain: chain.chain,
+            refId: activeRefId,
+          }, 5000);
+          const circleHash = String(circleTx?.transaction?.txHash ?? circleTx?.transaction?.transactionHash ?? "").trim();
+          if (isHexHash(circleHash)) {
+            resolvedTxHash = circleHash;
+            const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 4, 2000);
+            if (settled) return { settled: true, txHash: resolvedTxHash };
+          }
+        } catch {
+          // Circle polling failed, continue with reindex fallback
+        }
+      }
+    }
+
     await runReindexFallback(orderId, resolvedTxHash || null);
 
     const status = await readOrderStatus(orderId);
@@ -389,6 +415,7 @@ async function ensureReleaseSettled(
   chain: MarketChainConfig,
   txHash: string,
   userOpHash: string,
+  refId?: string | null,
 ) {
   let resolvedTxHash = normalizeHexHash(txHash);
   let resolvedUserOpHash = normalizeHexHash(userOpHash);
@@ -412,6 +439,29 @@ async function ensureReleaseSettled(
   }
 
   for (let i = 0; i < 6; i++) {
+    // Poll Circle for transaction status if we have a refId but no txHash yet
+    if (!resolvedTxHash) {
+      const latestIntent = await readLatestIntent(orderId, "RELEASE", chain.chain);
+      const activeRefId = refId || latestIntent?.refId;
+      if (activeRefId) {
+        try {
+          const circleTx = await callFn("circle-wallet", {
+            action: "transaction_by_ref",
+            chain: chain.chain,
+            refId: activeRefId,
+          }, 5000);
+          const circleHash = String(circleTx?.transaction?.txHash ?? circleTx?.transaction?.transactionHash ?? "").trim();
+          if (isHexHash(circleHash)) {
+            resolvedTxHash = circleHash;
+            const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 4, 2000);
+            if (settled) return { settled: true, txHash: resolvedTxHash };
+          }
+        } catch {
+          // Circle polling failed, continue with reindex fallback
+        }
+      }
+    }
+
     await runReindexFallback(orderId, resolvedTxHash || null);
 
     const status = await readOrderStatus(orderId);
@@ -943,6 +993,8 @@ export async function payStableForOrder(
   const intentUpdate: any = { status: "SUBMITTED" };
   if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
   if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
+  const intentRefId = String(sendResult?.refId || (sendResult as any)?.tx_hash || "");
+  if (intentRefId && !intentUpdate.tx_hash) intentUpdate.provider_ref_id = intentRefId;
   const { error: intentUpdErr } = await supabase
     .from("market_crypto_intents")
     .update(intentUpdate)
@@ -954,7 +1006,7 @@ export async function payStableForOrder(
     console.log("[Checkout] deposit intent update blocked", intentUpdErr.message);
   }
 
-  const settle = await ensureDepositSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash);
+  const settle = await ensureDepositSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, intentRefId);
   if (settle.txHash && !resolvedTxHash) {
     resolvedTxHash = settle.txHash;
   }
@@ -1044,9 +1096,12 @@ export async function releaseUsdcForOrder(orderId: string) {
   } catch (e: any) {
     console.log("[Checkout] release submit function failed", String(e?.message || e));
   }
-  const intentUpdate: any = { status: "SUBMITTED" };
+const intentUpdate: any = { status: "SUBMITTED" };
   if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
   if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
+  // Store refId for Circle transactions that may need later polling
+  const intentRefId = String(sendResult?.refId || (sendResult as any)?.tx_hash || "");
+  if (intentRefId && !intentUpdate.tx_hash) intentUpdate.provider_ref_id = intentRefId;
   const { error: intentUpdErr } = await supabase
     .from("market_crypto_intents")
     .update(intentUpdate)
@@ -1057,7 +1112,7 @@ export async function releaseUsdcForOrder(orderId: string) {
     console.log("[Checkout] release intent update blocked", intentUpdErr.message);
   }
 
-  const settle = await ensureReleaseSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash);
+  const settle = await ensureReleaseSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, intentRefId);
   if (settle.txHash && !resolvedTxHash) {
     resolvedTxHash = settle.txHash;
   }
