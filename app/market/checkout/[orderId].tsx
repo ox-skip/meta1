@@ -803,6 +803,19 @@ export default function Checkout() {
       );
       return;
     }
+    if (!txHash && !userOpHash && res?.pending_index) {
+      Alert.alert(
+        "Transaction pending",
+        `Your ${symbol} deposit was submitted but the transaction reference is still processing. The order will sync when the on-chain transaction is detected.\n\nCheck your wallet activity and wait a few minutes before refreshing.`,
+        [
+          {
+            text: "Continue",
+            onPress: () => router.replace(`/market/order/${oid}` as any),
+          },
+        ],
+      );
+      return;
+    }
     router.replace(`/market/order/${oid}` as any);
   }
 

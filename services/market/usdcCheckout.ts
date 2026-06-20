@@ -118,16 +118,16 @@ async function resolveSubmittedHashes(chain: MarketChainConfig, sendResult: any)
     } else {
       // `hash` from AA providers may be either tx hash or userOp hash.
       // Keep both paths available; later settling logic will resolve correctly.
-      txHash = hashCandidate;
-      if (!userOpHash) userOpHash = hashCandidate;
+      userOpHash = hashCandidate;
     }
   }
 
   if (!txHash && userOpHash) {
     txHash = await resolveUserOpToTxHash(chain, userOpHash, 30, 3000);
   }
+  // If we still don't have txHash but have userOpHash, keep userOpHash for reindex fallback
   if (!txHash && userOpHash) {
-    txHash = await resolveUserOpToTxHash(chain, userOpHash, 20, 5000);
+    // Don't try to resolve again - userOpHash is already set above
   }
 
   return { txHash: normalizeHexHash(txHash), userOpHash: normalizeHexHash(userOpHash) };
@@ -915,7 +915,7 @@ export async function payStableForOrder(
     chain: chain.chain,
   });
 
-  // Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
+// Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
   const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
   let resolvedTxHash = resolvedHashes.txHash;
   const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || (resolvedTxHash ? "" : rawHash);
@@ -923,6 +923,11 @@ export async function payStableForOrder(
     resolved_tx_hash: resolvedTxHash || null,
     user_op_hash: resolvedUserOpHash || null,
   });
+
+  // If no txHash but we have userOpHash, still proceed - reindex fallback will recover.
+  if (!resolvedTxHash && !resolvedUserOpHash && !rawHash) {
+    console.log("[Checkout] no hash available, payment may have failed");
+  }
 
   try {
     await callFn("market-usdc-deposit-submit", {
@@ -961,7 +966,7 @@ export async function payStableForOrder(
     });
   }
 
-  return { ...intent, token_symbol: symbol, token_address: tokenAddress, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null };
+return { ...intent, token_symbol: symbol, token_address: tokenAddress, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null, pending_index: !resolvedTxHash && !resolvedUserOpHash };
 }
 
 export async function payUsdcForOrder(orderId: string, chainOverride?: MarketChainConfig | null) {
