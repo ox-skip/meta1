@@ -283,8 +283,9 @@ export async function waitForCircleTransaction(input: {
   operation?: string;
   timeoutMs?: number;
 }) {
-  // Allow a longer overall wait but poll more frequently with short per-request timeouts.
-  const timeoutMs = Number(input.timeoutMs || 180000);
+  // Reduced timeout: fail fast and let background processes (escrow poller/reindex) finalize.
+  // Circle transaction hash can take time; client should not wait excessively.
+  const timeoutMs = Number(input.timeoutMs || 60000);
   const started = Date.now();
   let lastState = "";
   let lastError = "";
@@ -312,7 +313,7 @@ export async function waitForCircleTransaction(input: {
       }
     }
 
-    await sleep(1500);
+    await sleep(1000);
   }
 
   if (lastError) {

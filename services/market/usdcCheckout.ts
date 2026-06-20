@@ -145,8 +145,8 @@ function expectedOrderStatusForEvent(eventType: ChainFinalizeEvent) {
 async function resolveUserOpToTxHash(
   chain: MarketChainConfig,
   userOpHash: string,
-  attempts = 40,
-  intervalMs = 3000,
+  attempts = 20,
+  intervalMs = 2000,
 ) {
   const op = String(userOpHash || "").trim();
   if (!isHexHash(op)) return "";
@@ -254,8 +254,8 @@ async function settleOrderFromTx(
   chainName: string,
   txHash: string,
   eventType: ChainFinalizeEvent,
-  maxAttempts = 36,
-  intervalMs = 5000,
+  maxAttempts = 12,
+  intervalMs = 3000,
 ) {
   const want = expectedOrderStatusForEvent(eventType);
   if (!isHexHash(txHash)) return false;
@@ -346,15 +346,15 @@ async function ensureDepositSettled(
   }
 
   if (!resolvedTxHash && resolvedUserOpHash) {
-    resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 50, 3000);
+    resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 20, 2000);
   }
 
   if (resolvedTxHash) {
-    const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 24, 4000);
+    const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 12, 3000);
     if (settled) return { settled: true, txHash: resolvedTxHash };
   }
 
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 6; i++) {
     await runReindexFallback(orderId, resolvedTxHash || null);
 
     const status = await readOrderStatus(orderId);
@@ -368,17 +368,17 @@ async function ensureDepositSettled(
         resolvedTxHash = latest.txHash;
       } else if (latest?.userOpHash) {
         resolvedUserOpHash = latest.userOpHash;
-        resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 6, 4000);
+        resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 4, 2000);
       }
 
       if (resolvedTxHash && !recoveredFinalizeAttempted) {
         recoveredFinalizeAttempted = true;
-        const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 6, 3000);
+        const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 4, 2000);
         if (settled) return { settled: true, txHash: resolvedTxHash };
       }
     }
 
-    await sleep(5000);
+    await sleep(3000);
   }
 
   return { settled: false, txHash: resolvedTxHash || "" };
@@ -403,15 +403,15 @@ async function ensureReleaseSettled(
   }
 
   if (!resolvedTxHash && resolvedUserOpHash) {
-    resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 40, 3000);
+    resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 20, 2000);
   }
 
   if (resolvedTxHash) {
-    const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 24, 4000);
+    const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 12, 3000);
     if (settled) return { settled: true, txHash: resolvedTxHash };
   }
 
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 6; i++) {
     await runReindexFallback(orderId, resolvedTxHash || null);
 
     const status = await readOrderStatus(orderId);
@@ -428,16 +428,16 @@ async function ensureReleaseSettled(
     }
 
     if (!resolvedTxHash && resolvedUserOpHash) {
-      resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 6, 4000);
+      resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 4, 2000);
     }
 
     if (resolvedTxHash && !recoveredFinalizeAttempted) {
       recoveredFinalizeAttempted = true;
-      const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 8, 3000);
+      const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 4, 2000);
       if (settled) return { settled: true, txHash: resolvedTxHash };
     }
 
-    await sleep(5000);
+    await sleep(3000);
   }
 
   return { settled: false, txHash: resolvedTxHash || "" };
@@ -892,7 +892,7 @@ export async function payStableForOrder(
     args: [intent.order_key as `0x${string}`, intent.seller_wallet as `0x${string}`, tokenAddress as `0x${string}`, BigInt(intent.amount_raw)],
   });
 
-  // Send sequentially to get clearer errors.
+// Send sequentially to get clearer errors.
   const approveTx = await (client as any).sendTransaction({
     account,
     to: tokenAddress as `0x${string}`,
@@ -915,7 +915,7 @@ export async function payStableForOrder(
     chain: chain.chain,
   });
 
-// Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
+  // Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
   const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
   let resolvedTxHash = resolvedHashes.txHash;
   const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || (resolvedTxHash ? "" : rawHash);
@@ -966,7 +966,7 @@ export async function payStableForOrder(
     });
   }
 
-return { ...intent, token_symbol: symbol, token_address: tokenAddress, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null, pending_index: !resolvedTxHash && !resolvedUserOpHash };
+  return { ...intent, token_symbol: symbol, token_address: tokenAddress, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null, pending_index: !resolvedTxHash && !resolvedUserOpHash };
 }
 
 export async function payUsdcForOrder(orderId: string, chainOverride?: MarketChainConfig | null) {
