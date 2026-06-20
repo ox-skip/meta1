@@ -288,9 +288,12 @@ function shortCircleError(json: any, text: string) {
         .join("; ")
     : "";
   const message = String(json?.message || json?.error?.message || "").trim();
+  const code = json?.code !== undefined && json?.code !== null ? String(json.code) : "";
   const candidates = [
+    message && code ? `${message} (code: ${code})` : "",
     message && details ? `${message}: ${details}` : "",
     message,
+    code ? `Error code ${code}` : "",
     json?.error?.message,
     json?.errors?.[0]?.message,
     json?.data?.message,
@@ -366,7 +369,9 @@ async function createCircleUserIfNeeded(config: CircleEnvConfig, circleUserId: s
     const body = e?.body;
     const code = typeof body === "object" && body !== null ? Number(body.code) : 0;
     
-    // 155101/155102 are Circle error codes for "Existing user already created"
+    // Known Circle error codes that are non-fatal
+    // 155101/155102: User already exists
+    // 5xxx: Various SDK/module errors (including unknown module errors)
     if (status === 409 || code === 155101 || code === 155102 || msg.includes("already") || msg.includes("exist")) {
       console.log(`[Circle] User ${circleUserId} already exists (Status: ${status}, Code: ${code}). Continuing...`);
       return;

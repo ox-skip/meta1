@@ -84,7 +84,11 @@ export async function approveCircleChallenge(input: CircleApprovalInput) {
       encryptionKey,
       [challengeId],
       (result: any) => resolve(result),
-      (error: any) => reject(new Error(String(error?.message || error || "Circle approval failed."))),
+      (error: any) => {
+        const code = error?.code ? ` (code: ${error.code})` : "";
+        const msg = String(error?.message || error || "Circle approval failed.");
+        reject(new Error(`${msg}${code}`));
+      },
     );
   });
 }

@@ -287,25 +287,37 @@ export async function waitForCircleTransaction(input: {
   const timeoutMs = Number(input.timeoutMs || 180000);
   const started = Date.now();
   let lastState = "";
+  let lastError = "";
 
   while (Date.now() - started < timeoutMs) {
-    const out = await transactionByRef(input);
-    const tx = out.transaction;
-    const txHash = extractTxHash(tx);
-    if (txHash) return { txHash, transaction: tx };
+    try {
+      const out = await transactionByRef(input);
+      const tx = out.transaction;
+      const txHash = extractTxHash(tx);
+      if (txHash) return { txHash, transaction: tx };
 
-    const state = String(tx?.state || "").toUpperCase();
-    if (state) lastState = state;
-    if (FAIL_STATES.has(state)) {
-      throw new Error(String(tx?.errorReason || tx?.errorDetails || `Circle transaction ${state.toLowerCase()}.`));
-    }
-    if (state && !WAIT_STATES.has(state)) {
-      throw new Error(`Circle transaction ended without a transaction hash (${state}).`);
+      const state = String(tx?.state || "").toUpperCase();
+      if (state) lastState = state;
+      if (FAIL_STATES.has(state)) {
+        throw new Error(String(tx?.errorReason || tx?.errorDetails || `Circle transaction ${state.toLowerCase()}.`));
+      }
+      if (state && !WAIT_STATES.has(state)) {
+        throw new Error(`Circle transaction ended without a transaction hash (${state}).`);
+      }
+    } catch (e: any) {
+      lastError = String(e?.message || e);
+      // Surface module errors immediately - these are SDK-level issues
+      if (/unknown module|requiring/i.test(lastError)) {
+        throw e;
+      }
     }
 
     await sleep(1500);
   }
 
+  if (lastError) {
+    throw new Error(lastError);
+  }
   throw new Error(
     lastState
       ? `Circle transaction is still ${lastState.toLowerCase()}. Try refreshing in a moment.`

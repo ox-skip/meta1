@@ -64,7 +64,8 @@ export function friendlyMarketError(error: unknown, fallback = "Something went w
     msg.includes("circle transaction was submitted") ||
     (msg.includes("circle") && msg.includes("submitted")) ||
     msg.includes("network has is not aviable") ||
-    msg.includes("refershing in a momnt")
+    msg.includes("refershing in a momnt") ||
+    msg.includes("unknown module")
   ) {
     return "Circle transaction was submitted, but the network transaction hash is not available yet. Try refreshing in a moment.";
   }

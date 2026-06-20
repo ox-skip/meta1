@@ -76,7 +76,9 @@ export async function approveCircleChallenge(input: CircleApprovalInput) {
   return await new Promise<any>((resolve, reject) => {
     sdk.execute(challengeId, (error: any, result: any) => {
       if (error) {
-        reject(new Error(String(error?.message || error || "Circle approval failed.")));
+        const code = error?.code ? ` (code: ${error.code})` : "";
+        const msg = String(error?.message || error || "Circle approval failed.");
+        reject(new Error(`${msg}${code}`));
         return;
       }
       resolve(result);
