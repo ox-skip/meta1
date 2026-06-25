@@ -246,10 +246,12 @@ serve(async (req) => {
       hitBlock = toNum(hit.blockNumber as any) || receiptBlock;
       confirmations = latest - hitBlock + 1;
       if (confirmations < required) {
+        const pendingTxHash = String(hit.transactionHash ?? txHashInput).toLowerCase();
         return json(200, {
           ok: true,
           applied: false,
           pending: "confirmations",
+          tx_hash: pendingTxHash,
           required,
           confirmations,
           remaining: Math.max(0, required - confirmations),
@@ -265,10 +267,12 @@ serve(async (req) => {
       hitBlock = toNum(hit?.blockNumber as any);
       confirmations = latest - hitBlock + 1;
       if (confirmations < required) {
+        const pendingTxHash = String(hit?.transactionHash ?? "").toLowerCase();
         return json(200, {
           ok: true,
           applied: false,
           pending: "confirmations",
+          tx_hash: pendingTxHash,
           required,
           confirmations,
           remaining: Math.max(0, required - confirmations),

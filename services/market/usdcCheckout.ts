@@ -282,6 +282,19 @@ async function settleOrderFromTx(
   return false;
 }
 
+function txHashFromReindexResult(data: any) {
+  return normalizeHexHash(
+    String(
+      data?.tx_hash ??
+        data?.transaction_hash ??
+        data?.transactionHash ??
+        data?.deposit_tx_hash ??
+        data?.depositTxHash ??
+        "",
+    ),
+  );
+}
+
 async function runReindexFallback(orderId: string, txHash?: string | null) {
   try {
     const body: Record<string, unknown> = { order_id: orderId };
@@ -291,11 +304,17 @@ async function runReindexFallback(orderId: string, txHash?: string | null) {
     });
     if (error) {
       console.log("[Checkout] escrow reindex fallback failed", error.message);
-      return;
+      return { txHash: "", applied: false, data: null as any };
     }
     console.log("[Checkout] escrow reindex fallback result", data ?? null);
+    return {
+      txHash: txHashFromReindexResult(data),
+      applied: (data as any)?.applied === true,
+      data,
+    };
   } catch (e: any) {
     console.log("[Checkout] escrow reindex fallback error", String(e?.message || e));
+    return { txHash: "", applied: false, data: null as any };
   }
 }
 
@@ -373,7 +392,7 @@ if (resolvedTxHash) {
       // Only poll Circle if refId is not a raw tx hash (Circle refIds are typically non-hex or short IDs)
       if (activeRefId && !isHexHash(activeRefId)) {
         try {
-          const circleTx = await callFn("circle-wallet", {
+          const circleTx = await callFn<{ transaction?: any }>("circle-wallet", {
             action: "transaction_by_ref",
             chain: chain.chain,
             refId: activeRefId,
@@ -390,7 +409,10 @@ if (resolvedTxHash) {
       }
     }
 
-    await runReindexFallback(orderId, resolvedTxHash || null);
+    const reindex = await runReindexFallback(orderId, resolvedTxHash || null);
+    if (reindex.txHash && !resolvedTxHash) {
+      resolvedTxHash = reindex.txHash;
+    }
 
     const status = await readOrderStatus(orderId);
     if (status === "IN_ESCROW") {
@@ -466,7 +488,7 @@ async function ensureReleaseSettled(
       // Only poll Circle if refId is not a raw tx hash (Circle refIds are typically non-hex or short IDs)
       if (activeRefId && !isHexHash(activeRefId)) {
         try {
-          const circleTx = await callFn("circle-wallet", {
+          const circleTx = await callFn<{ transaction?: any }>("circle-wallet", {
             action: "transaction_by_ref",
             chain: chain.chain,
             refId: activeRefId,
@@ -1043,6 +1065,18 @@ const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? "
   const settle = await ensureDepositSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, persistentRefId);
   if (settle.txHash && !resolvedTxHash) {
     resolvedTxHash = settle.txHash;
+    if (!settle.settled) {
+      try {
+        await callFn("market-usdc-deposit-submit", {
+          order_id: orderId,
+          chain: chain.chain,
+          token: symbol,
+          tx_hash: resolvedTxHash,
+        });
+      } catch (e: any) {
+        console.log("[Checkout] recovered deposit hash submit failed", String(e?.message || e));
+      }
+    }
   }
   if (!settle.settled) {
     console.log("[Checkout] deposit not settled within wait window", {

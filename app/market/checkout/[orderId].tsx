@@ -285,6 +285,7 @@ export default function Checkout() {
   const [riskBusy, setRiskBusy] = useState(false);
   const [riskResult, setRiskResult] = useState<MarketOrderAiRiskResult | null>(null);
   const autoRoutedRef = useRef(false);
+  const paymentResultShownRef = useRef(false);
   const listingCurrency = String((listing as any)?.currency ?? "").toUpperCase();
   const orderCurrency = String((order as any)?.currency ?? listingCurrency).toUpperCase();
   const orderAmount = Number((order as any)?.amount ?? 0);
@@ -541,10 +542,11 @@ export default function Checkout() {
 
   useEffect(() => {
     if (!oid || autoRoutedRef.current) return;
+    if (busy || paymentResultShownRef.current) return;
     if (!shouldExitCheckoutForStatus(orderStatus)) return;
     autoRoutedRef.current = true;
     router.replace(`/market/order/${oid}` as any);
-  }, [oid, orderStatus]);
+  }, [busy, oid, orderStatus]);
 
   async function saveDeliveryGeo(geo: DeliveryGeo) {
     if (!oid) return;
@@ -768,6 +770,7 @@ export default function Checkout() {
     const txHash = String(res?.tx_hash || "").trim();
     const userOpHash = String(res?.user_op_hash || "").trim();
     if (isHexHash(txHash)) {
+      paymentResultShownRef.current = true;
       Alert.alert(
         "Transaction successful",
         `Your ${symbol} deposit was sent on-chain. We'll move the order into escrow after confirmations.\n\nTransaction hash:\n${txHash}`,
@@ -786,6 +789,7 @@ export default function Checkout() {
       return;
     }
     if (isHexHash(userOpHash)) {
+      paymentResultShownRef.current = true;
       Alert.alert(
         "Transaction submitted",
         `Your ${symbol} deposit was submitted. Confirmation may take a few minutes.\n\nUserOp:\n${userOpHash}\n\nWe'll move the order into escrow after confirmations.`,
@@ -804,6 +808,7 @@ export default function Checkout() {
       return;
     }
     if (!txHash && !userOpHash && res?.pending_index) {
+      paymentResultShownRef.current = true;
       Alert.alert(
         "Transaction pending",
         `Your ${symbol} deposit was submitted but the transaction reference is still processing. The order will sync when the on-chain transaction is detected.\n\nCheck your wallet activity and wait a few minutes before refreshing.`,
@@ -1451,7 +1456,6 @@ export default function Checkout() {
     </LinearGradient>
   );
 }
-
 
 
 

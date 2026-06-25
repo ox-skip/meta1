@@ -862,7 +862,6 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
   const transactionId = String(body?.transactionId || body?.txId || "").trim();
   const operation = String(body?.operation || "").trim().toUpperCase();
   if (!refId) return bad("refId required.");
-  if (!walletId) return bad("walletId required.");
 
   const session = await getCircleSession(ctx, config);
 
@@ -872,7 +871,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
     try {
       const transaction = await getCircleTransaction(config, session.userToken, transactionId);
       const txWallet = String(transaction?.walletId || "").toLowerCase();
-      if (transaction && (!txWallet || txWallet === walletId.toLowerCase())) {
+      if (transaction && (!walletId || !txWallet || txWallet === walletId.toLowerCase())) {
         return ok({ configured: true, transaction });
       }
     } catch (e: any) {
@@ -891,7 +890,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
       userToken: session.userToken,
       query: {
         blockchain: chain.blockchain,
-        walletIds: walletId,
+        ...(walletId ? { walletIds: walletId } : {}),
         operation: operation || undefined,
         pageSize: 50,
         order: "DESC",
@@ -920,12 +919,15 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
   const fromMs = Date.parse(String(body?.from || body?.submittedAt || ""));
   
   const transaction =
-    transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef && String(tx?.walletId || "").toLowerCase() === targetWallet) ||
+    transactions.find((tx: any) => {
+      const txWallet = String(tx?.walletId || "").toLowerCase();
+      return String(tx?.refId || "").toLowerCase() === targetRef && (!targetWallet || !txWallet || txWallet === targetWallet);
+    }) ||
     transactions.find((tx: any) => String(tx?.refId || "").toLowerCase() === targetRef) ||
     transactions.find((tx: any) => {
       const txRef = String(tx?.refId || "").toLowerCase();
       const txWallet = String(tx?.walletId || "").toLowerCase();
-      const walletMatches = !txWallet || txWallet === targetWallet;
+      const walletMatches = !targetWallet || !txWallet || txWallet === targetWallet;
       return walletMatches && txRef && targetRef && (txRef.includes(targetRef) || targetRef.includes(txRef));
     }) ||
     (Number.isFinite(fromMs)
@@ -934,7 +936,7 @@ async function handleTransactionByRef(admin: ReturnType<typeof supabaseAdminClie
             const txWallet = String(tx?.walletId || "").toLowerCase();
             const txOperation = String(tx?.operation || "").toUpperCase();
             const txTime = Date.parse(String(tx?.createDate || tx?.createdAt || ""));
-            const walletMatches = !txWallet || txWallet === targetWallet;
+            const walletMatches = !targetWallet || !txWallet || txWallet === targetWallet;
             const operationMatches = !operation || !txOperation || txOperation === operation;
             return walletMatches && operationMatches && Number.isFinite(txTime) && txTime >= fromMs - 120000;
           });

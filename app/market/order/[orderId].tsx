@@ -1010,8 +1010,7 @@ async function releaseFunds() {
     setErr(null);
     try {
       const txHash = (reindexTx || defaultDepositHash || "").trim();
-      if (!txHash) throw new Error("Enter a transaction hash or UserOp hash.");
-      if (!isHexHash(txHash)) throw new Error("Enter a valid transaction hash or UserOp hash.");
+      if (txHash && !isHexHash(txHash)) throw new Error("Enter a valid transaction hash or UserOp hash.");
 
       const { data: esc } = await supabase
         .from("market_crypto_escrows")
@@ -1022,7 +1021,7 @@ async function releaseFunds() {
       const chainName = String((esc as any)?.chain || latestDepositIntent?.chain || "").trim();
       let finalizeData: any = null;
 
-      if (chainName) {
+      if (chainName && txHash) {
         const { data, error } = await supabase.functions.invoke("market-chain-tx-finalize", {
           body: {
             order_id: order.id,
@@ -1056,7 +1055,7 @@ async function releaseFunds() {
       let { data: reindexData, error: reindexErr } = await supabase.functions.invoke("market-escrow-reindex", {
         body: {
           order_id: order.id,
-          tx_hash: txHash,
+          ...(txHash ? { tx_hash: txHash } : {}),
         },
       });
       if (reindexErr) throw new Error(reindexErr.message || "Deposit resync failed.");
@@ -2477,12 +2476,12 @@ async function pickAndUpload(access: "preview" | "final") {
           <View style={{ width: "100%", maxWidth: 520, alignSelf: "center", borderRadius: 20, padding: 16, backgroundColor: BG0, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
             <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Resync deposit</Text>
             <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-              Paste the deposit transaction hash (or UserOp hash) to force a resync.
+              Paste the deposit transaction hash or leave it blank to scan this order on-chain.
             </Text>
             <TextInput
               value={reindexTx}
               onChangeText={setReindexTx}
-              placeholder="0x..."
+              placeholder="0x... optional"
               placeholderTextColor="rgba(255,255,255,0.45)"
               autoCapitalize="none"
               style={{
