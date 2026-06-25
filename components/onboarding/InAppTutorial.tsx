@@ -1,38 +1,97 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import {
-    ActivityIndicator,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    useWindowDimensions,
-    View,
-    type ViewStyle,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
 } from "react-native";
 
 import { explainOnboardingStep, type OnboardingAiMode } from "@/services/onboarding/ai";
 import type {
-    TutorialFlowDefinition,
-    TutorialTargetPosition,
+  TutorialFlowDefinition,
+  TutorialTargetPosition,
 } from "@/services/onboarding/definitions";
 import { recordOnboardingEvent } from "@/services/onboarding/events";
 
+// Haptics is entirely optional. We deliberately avoid any static `import` (type or value) of
+// "expo-haptics" so TypeScript never needs to resolve that module on disk — this keeps the file
+// compiling cleanly whether or not the package happens to be installed in this project.
+// At runtime, we only ever reach for it through a guarded dynamic require with a loose shape.
+type LooseHapticsModule = {
+  impactAsync?: (style?: unknown) => Promise<void>;
+  notificationAsync?: (type?: unknown) => Promise<void>;
+  ImpactFeedbackStyle?: { Light?: unknown; Medium?: unknown; Heavy?: unknown };
+  NotificationFeedbackType?: { Success?: unknown; Warning?: unknown; Error?: unknown };
+};
+
+let Haptics: LooseHapticsModule | null = null;
+let hapticsLoadAttempted = false;
+
+function loadHapticsOnce(): LooseHapticsModule | null {
+  if (hapticsLoadAttempted) return Haptics;
+  hapticsLoadAttempted = true;
+  if (Platform.OS === "web") return null;
+  try {
+    // require() is resolved at runtime only; since there's no static `import` anywhere in this
+    // file, TypeScript has nothing to type-check here even if the package isn't installed.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+    Haptics = require("expo-haptics") as LooseHapticsModule;
+  } catch {
+    Haptics = null;
+  }
+  return Haptics;
+}
+
+function tapHaptic(style: "light" | "medium" | "success" = "light") {
+  if (Platform.OS === "web") return;
+  const mod = loadHapticsOnce();
+  if (!mod) return;
+  try {
+    if (style === "success" && mod.notificationAsync && mod.NotificationFeedbackType?.Success) {
+      void mod.notificationAsync(mod.NotificationFeedbackType.Success);
+    } else if (style === "medium" && mod.impactAsync && mod.ImpactFeedbackStyle?.Medium) {
+      void mod.impactAsync(mod.ImpactFeedbackStyle.Medium);
+    } else if (mod.impactAsync && mod.ImpactFeedbackStyle?.Light) {
+      void mod.impactAsync(mod.ImpactFeedbackStyle.Light);
+    }
+  } catch {
+    // no-op — never let haptics break the tour
+  }
+}
+
 const STORAGE_PREFIX = "meta:onboarding/v2/";
+
+// ─── Brand Tokens ──────────────────────────────────────────────────────────────
 const BRAND = "#2DD4BF";
+const BRAND_DEEP = "#0F9C8C";
 const GOLD = "#F4B75D";
+const ROSE = "#FB7185";
 const INK = "#FFF7ED";
 const MUTED = "rgba(255,247,237,0.68)";
+const FAINT = "rgba(255,247,237,0.42)";
+const SHEET_BG = "#0A0F14";
+const SHEET_BG_RAISED = "#0E1620";
+const HAIRLINE = "rgba(255,255,255,0.10)";
+const HAIRLINE_BRIGHT = "rgba(255,255,255,0.16)";
 
 type LayoutBox = {
   top: number;
@@ -84,6 +143,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+// ─── Device class ──────────────────────────────────────────────────────────────
+type DeviceClass = "phone" | "tablet" | "desktop";
+
+function getDeviceClass(width: number): DeviceClass {
+  if (width >= 1024) return "desktop";
+  if (width >= 700) return "tablet";
+  return "phone";
+}
+
+// ─── Fallback target box (used when nothing is measured yet, e.g. very first frame) ──
 function getTargetBox(position: TutorialTargetPosition, width: number, height: number): LayoutBox {
   const inset = clamp(width * 0.04, 12, 32);
   const topWidth = width >= 900 ? clamp(width * 0.32, 300, 400) : width - inset * 2;
@@ -93,23 +162,11 @@ function getTargetBox(position: TutorialTargetPosition, width: number, height: n
   const middleBase = clamp(height * 0.3, 140, height * 0.45);
 
   if (position === "left") {
-    return {
-      top: middleBase,
-      left: inset,
-      width: sideWidth,
-      height: 120,
-    };
+    return { top: middleBase, left: inset, width: sideWidth, height: 120 };
   }
-
   if (position === "right") {
-    return {
-      top: middleBase,
-      left: width - inset - sideWidth,
-      width: sideWidth,
-      height: 120,
-    };
+    return { top: middleBase, left: width - inset - sideWidth, width: sideWidth, height: 120 };
   }
-
   if (position === "bottom") {
     return {
       top: height - clamp(height * 0.22, 140, 220),
@@ -118,22 +175,10 @@ function getTargetBox(position: TutorialTargetPosition, width: number, height: n
       height: 88,
     };
   }
-
   if (position === "middle") {
-    return {
-      top: middleBase,
-      left: (width - centeredWidth) / 2,
-      width: centeredWidth,
-      height: 92,
-    };
+    return { top: middleBase, left: (width - centeredWidth) / 2, width: centeredWidth, height: 92 };
   }
-
-  return {
-    top: topBase,
-    left: (width - topWidth) / 2,
-    width: topWidth,
-    height: 70,
-  };
+  return { top: topBase, left: (width - topWidth) / 2, width: topWidth, height: 70 };
 }
 
 function normalizeMeasuredBox(box: LayoutBox, width: number, height: number): LayoutBox {
@@ -159,13 +204,21 @@ function measuredBoxIsVisible(box: LayoutBox, width: number, height: number) {
   return box.width > 2 && box.height > 2 && right > 8 && bottom > 8 && box.left < width - 8 && box.top < height - 8;
 }
 
-type GuidePlacement = "left" | "right" | "top" | "bottom";
+// ─── Panel geometry ────────────────────────────────────────────────────────────
+// Three distinct strategies depending on device class + available space:
+//  - desktop: floating side panel (left/right of target), connected by a line + marker
+//  - tablet: same idea but narrower margins, panel can also go above/below
+//  - phone: anchored bottom sheet that rises from the bottom edge — connector becomes
+//           a short vertical "pointer" line from the target down toward the sheet's top edge
+type GuidePlacement = "left" | "right" | "top" | "bottom" | "sheet";
 
 type GuideGeometry = {
-  connectorStyle: ViewStyle;
+  placement: GuidePlacement;
+  connectorStyle: ViewStyle | null;
   markerIcon: keyof typeof Ionicons.glyphMap;
   markerStyle: ViewStyle;
   panelStyle: ViewStyle;
+  isSheet: boolean;
 };
 
 function getMarkerIcon(placement: GuidePlacement): keyof typeof Ionicons.glyphMap {
@@ -175,20 +228,27 @@ function getMarkerIcon(placement: GuidePlacement): keyof typeof Ionicons.glyphMa
   return "arrow-down";
 }
 
-function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): GuideGeometry {
-  const inset = clamp(width * 0.03, 12, 32);
-  const gap = clamp(Math.min(width, height) * 0.035, 18, 40);
-  const markerSize = 36;
+function getGuideGeometry(
+  width: number,
+  height: number,
+  targetBox: LayoutBox,
+  deviceClass: DeviceClass,
+): GuideGeometry {
+  const inset = clamp(width * 0.03, 12, 28);
+  const gap = clamp(Math.min(width, height) * 0.035, 16, 36);
+  const markerSize = deviceClass === "phone" ? 32 : 36;
   const lineOffset = 8;
   const targetCenterX = targetBox.left + targetBox.width / 2;
   const targetCenterY = targetBox.top + targetBox.height / 2;
   const targetRight = targetBox.left + targetBox.width;
   const targetBottom = targetBox.top + targetBox.height;
 
-  if (width >= 900) {
-    const panelWidth = clamp(width * 0.32, 360, 480);
-    const availableHeight = Math.max(300, height - inset * 2);
-    const panelHeight = Math.min(availableHeight, clamp(height * 0.65, 360, 540));
+  // ── DESKTOP & TABLET-WIDE: try side panel first ──────────────────────────────
+  if (deviceClass !== "phone") {
+    const panelWidth =
+      deviceClass === "desktop" ? clamp(width * 0.28, 360, 440) : clamp(width * 0.42, 320, 400);
+    const availableHeight = Math.max(280, height - inset * 2);
+    const panelHeight = Math.min(availableHeight, clamp(height * 0.62, 380, 560));
     const panelTop = clamp(targetCenterY - panelHeight / 2, inset, Math.max(inset, height - panelHeight - inset));
     const rightSpace = width - targetRight - inset;
     const leftSpace = targetBox.left - inset;
@@ -200,12 +260,13 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
       const panelLeft = width - inset - panelWidth;
       const connectorLeft = targetRight + lineOffset;
       const connectorWidth = Math.max(16, panelLeft - connectorLeft - 12);
-
       return {
+        placement: "right",
+        isSheet: false,
         connectorStyle: {
-          height: 3,
+          height: 2,
           left: connectorLeft,
-          top: clamp(targetCenterY - 1.5, inset, height - inset),
+          top: clamp(targetCenterY - 1, inset, height - inset),
           width: connectorWidth,
         },
         markerIcon: getMarkerIcon("right"),
@@ -213,12 +274,7 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
           left: clamp(targetRight - markerSize / 2, 8, width - markerSize - 8),
           top: clamp(targetCenterY - markerSize / 2, 8, height - markerSize - 8),
         },
-        panelStyle: {
-          height: panelHeight,
-          left: panelLeft,
-          top: panelTop,
-          width: panelWidth,
-        },
+        panelStyle: { height: panelHeight, left: panelLeft, top: panelTop, width: panelWidth },
       };
     }
 
@@ -226,12 +282,13 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
       const panelLeft = inset;
       const connectorLeft = panelLeft + panelWidth + 12;
       const connectorWidth = Math.max(16, targetBox.left - lineOffset - connectorLeft);
-
       return {
+        placement: "left",
+        isSheet: false,
         connectorStyle: {
-          height: 3,
+          height: 2,
           left: connectorLeft,
-          top: clamp(targetCenterY - 1.5, inset, height - inset),
+          top: clamp(targetCenterY - 1, inset, height - inset),
           width: connectorWidth,
         },
         markerIcon: getMarkerIcon("left"),
@@ -239,20 +296,43 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
           left: clamp(targetBox.left - markerSize / 2, 8, width - markerSize - 8),
           top: clamp(targetCenterY - markerSize / 2, 8, height - markerSize - 8),
         },
-        panelStyle: {
-          height: panelHeight,
-          left: panelLeft,
-          top: panelTop,
-          width: panelWidth,
-        },
+        panelStyle: { height: panelHeight, left: panelLeft, top: panelTop, width: panelWidth },
       };
     }
+    // Falls through to stacked top/bottom panel below if no side space (e.g. narrow tablet split-view).
   }
 
-  const availableWidth = Math.max(260, width - inset * 2);
-  const panelWidth = Math.min(availableWidth, availableWidth);
+  // ── PHONE: anchored bottom sheet ─────────────────────────────────────────────
+  if (deviceClass === "phone") {
+    const sheetHeight = clamp(height * 0.46, 320, 440);
+    const sheetTop = height - sheetHeight;
+    const targetAboveSheet = targetBottom < sheetTop - 4;
+
+    return {
+      placement: "sheet",
+      isSheet: true,
+      connectorStyle: targetAboveSheet
+        ? {
+            height: Math.max(0, sheetTop - targetBottom - 6),
+            left: clamp(targetCenterX - 1, inset, width - inset),
+            top: targetBottom + 4,
+            width: 2,
+          }
+        : null,
+      markerIcon: getMarkerIcon("bottom"),
+      markerStyle: {
+        left: clamp(targetCenterX - markerSize / 2, 8, width - markerSize - 8),
+        top: clamp(targetBottom - markerSize / 2, 8, height - markerSize - 8),
+      },
+      panelStyle: { height: sheetHeight, left: 0, top: sheetTop, width },
+    };
+  }
+
+  // ── Stacked fallback (tablet without side space) ─────────────────────────────
+  const availableWidth = Math.max(280, width - inset * 2);
+  const panelWidth = availableWidth;
   const availableHeight = Math.max(280, height - inset * 2);
-  const panelHeight = Math.min(availableHeight, clamp(height * 0.5, 280, 360));
+  const panelHeight = Math.min(availableHeight, clamp(height * 0.52, 300, 380));
   const panelLeft = (width - panelWidth) / 2;
   const placeOnTop = targetCenterY > height * 0.52;
 
@@ -260,52 +340,46 @@ function getGuideGeometry(width: number, height: number, targetBox: LayoutBox): 
     const panelTop = inset;
     const connectorTop = panelTop + panelHeight + 10;
     const connectorHeight = Math.max(0, targetBox.top - connectorTop - 8);
-
     return {
+      placement: "top",
+      isSheet: false,
       connectorStyle: {
         height: connectorHeight,
-        left: clamp(targetCenterX - 1.5, inset, width - inset),
+        left: clamp(targetCenterX - 1, inset, width - inset),
         top: connectorTop,
-        width: 3,
+        width: 2,
       },
       markerIcon: getMarkerIcon("top"),
       markerStyle: {
         left: clamp(targetCenterX - markerSize / 2, 8, width - markerSize - 8),
         top: clamp(targetBox.top - markerSize / 2, 8, height - markerSize - 8),
       },
-      panelStyle: {
-        height: panelHeight,
-        left: panelLeft,
-        top: panelTop,
-        width: panelWidth,
-      },
+      panelStyle: { height: panelHeight, left: panelLeft, top: panelTop, width: panelWidth },
     };
   }
 
   const panelTop = height - inset - panelHeight;
   const connectorTop = targetBottom + 8;
   const connectorHeight = Math.max(0, panelTop - connectorTop - 10);
-
   return {
+    placement: "bottom",
+    isSheet: false,
     connectorStyle: {
       height: connectorHeight,
-      left: clamp(targetCenterX - 1.5, inset, width - inset),
+      left: clamp(targetCenterX - 1, inset, width - inset),
       top: connectorTop,
-      width: 3,
+      width: 2,
     },
     markerIcon: getMarkerIcon("bottom"),
     markerStyle: {
       left: clamp(targetCenterX - markerSize / 2, 8, width - markerSize - 8),
       top: clamp(targetBottom - markerSize / 2, 8, height - markerSize - 8),
     },
-    panelStyle: {
-      height: panelHeight,
-      left: panelLeft,
-      top: panelTop,
-      width: panelWidth,
-    },
+    panelStyle: { height: panelHeight, left: panelLeft, top: panelTop, width: panelWidth },
   };
 }
+
+// ─── Provider (state/storage layer — logic unchanged from the original) ───────
 
 export function OnboardingProvider({
   children,
@@ -500,6 +574,8 @@ export function useOnboardingState() {
   return { activeFlowKey, hydrated };
 }
 
+// ─── TutorialTarget (measuring wrapper — logic unchanged) ─────────────────────
+
 export function TutorialTarget({
   id,
   children,
@@ -561,6 +637,67 @@ export function TutorialTarget({
   );
 }
 
+// ─── Animated pulse ring around the spotlighted target ────────────────────────
+
+function PulseRing({ box, color }: { box: ViewStyle; color: string }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 1600,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.pulseRing,
+        box,
+        { borderColor: color, transform: [{ scale }], opacity },
+      ]}
+    />
+  );
+}
+
+// ─── Step dots ─────────────────────────────────────────────────────────────────
+
+function StepDots({ total, activeIndex }: { total: number; activeIndex: number }) {
+  if (total <= 1 || total > 8) {
+    // For long flows, dots get noisy — fall back silently to the numeric label elsewhere.
+    return null;
+  }
+  return (
+    <View style={styles.dotsRow}>
+      {Array.from({ length: total }).map((_, i) => (
+        <View
+          key={i}
+          style={[
+            styles.dot,
+            i === activeIndex ? styles.dotActive : null,
+            i < activeIndex ? styles.dotDone : null,
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ─── Main tour component ───────────────────────────────────────────────────────
+
 export function InAppTutorial({
   enabled = true,
   flow,
@@ -583,6 +720,7 @@ export function InAppTutorial({
     targetLayouts,
   } = useOnboardingContext();
   const { width, height } = useWindowDimensions();
+  const deviceClass = getDeviceClass(width);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [visible, setVisible] = useState(false);
@@ -591,7 +729,14 @@ export function InAppTutorial({
   const [aiText, setAiText] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSource, setAiSource] = useState<"bestcity_ai" | "local" | null>(null);
+  const [justFinished, setJustFinished] = useState(false);
   const aiRequestRef = useRef(0);
+
+  // ── Animation values ──────────────────────────────────────────────────────
+  const mountAnim = useRef(new Animated.Value(0)).current; // 0 = hidden, 1 = shown
+  const stepFade = useRef(new Animated.Value(1)).current; // content cross-fade per step
+  const pressScalePrimary = useRef(new Animated.Value(1)).current;
+  const celebrateAnim = useRef(new Animated.Value(0)).current;
 
   const totalSteps = flow.steps.length;
   const currentStep = flow.steps[stepIndex];
@@ -655,11 +800,40 @@ export function InAppTutorial({
     };
   }, [currentStep?.targetId, setActiveTargetId, visible]);
 
+  // ── Mount / unmount spring ────────────────────────────────────────────────
+  useEffect(() => {
+    if (visible) {
+      mountAnim.setValue(0);
+      Animated.spring(mountAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 18,
+        stiffness: 180,
+        mass: 0.9,
+      }).start();
+    }
+  }, [visible, mountAnim]);
+
+  // ── Per-step cross-fade ───────────────────────────────────────────────────
+  const prevStepIndexRef = useRef(stepIndex);
+  useEffect(() => {
+    if (prevStepIndexRef.current === stepIndex) return;
+    prevStepIndexRef.current = stepIndex;
+    stepFade.setValue(0);
+    Animated.timing(stepFade, {
+      toValue: 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [stepIndex, stepFade]);
+
   const targetPosition = currentStep?.targetPosition ?? "middle";
   const targetLabel = currentStep?.targetLabel ?? flow.title;
 
   async function handleAiPress(mode: OnboardingAiMode) {
     if (!currentStep || aiLoading) return;
+    tapHaptic("light");
     const requestId = aiRequestRef.current + 1;
     aiRequestRef.current = requestId;
     setAiMode(mode);
@@ -688,50 +862,90 @@ export function InAppTutorial({
     setAiLoading(false);
   }
 
+  function closeWithAnim(after: () => void) {
+    Animated.timing(mountAnim, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => after());
+  }
+
   function handleSkip() {
-    setDismissedLocally(true);
-    setVisible(false);
-    setActiveTargetId(null);
-    dismissFlow({
-      flow,
-      status: "skipped",
-      completedSteps: stepIndex + 1,
+    tapHaptic("light");
+    closeWithAnim(() => {
+      setDismissedLocally(true);
+      setVisible(false);
+      setActiveTargetId(null);
+      dismissFlow({ flow, status: "skipped", completedSteps: stepIndex + 1 });
     });
   }
 
   function handleBack() {
+    if (stepIndex === 0) return;
+    tapHaptic("light");
     setStepIndex((current) => Math.max(0, current - 1));
   }
 
   function handleNext() {
+    tapHaptic(stepIndex >= totalSteps - 1 ? "success" : "light");
+    Animated.sequence([
+      Animated.timing(pressScalePrimary, { toValue: 0.94, duration: 70, useNativeDriver: true }),
+      Animated.timing(pressScalePrimary, { toValue: 1, duration: 90, useNativeDriver: true }),
+    ]).start();
+
     if (stepIndex >= totalSteps - 1) {
-      setDismissedLocally(true);
-      setVisible(false);
-      setActiveTargetId(null);
-      dismissFlow({
-        flow,
-        status: "completed",
-        completedSteps: totalSteps,
+      setJustFinished(true);
+      celebrateAnim.setValue(0);
+      Animated.sequence([
+        Animated.timing(celebrateAnim, {
+          toValue: 1,
+          duration: 460,
+          easing: Easing.out(Easing.back(1.6)),
+          useNativeDriver: true,
+        }),
+        Animated.delay(420),
+      ]).start(() => {
+        closeWithAnim(() => {
+          setJustFinished(false);
+          setDismissedLocally(true);
+          setVisible(false);
+          setActiveTargetId(null);
+          dismissFlow({ flow, status: "completed", completedSteps: totalSteps });
+        });
       });
       return;
     }
     setStepIndex((current) => current + 1);
   }
 
+  // ── Swipe gesture (phone only) — swipe left = next, right = back ─────────
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 && Math.abs(gesture.dy) < 40,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx <= -40) {
+          handleNext();
+        } else if (gesture.dx >= 40) {
+          handleBack();
+        }
+      },
+    }),
+  ).current;
+
   if (!visible || !currentStep) return null;
 
   const rawMeasuredTarget = currentStep.targetId ? targetLayouts[currentStep.targetId] : null;
-  const measuredTarget = rawMeasuredTarget && measuredBoxIsVisible(rawMeasuredTarget, width, height)
-    ? rawMeasuredTarget
-    : null;
+  const measuredTarget =
+    rawMeasuredTarget && measuredBoxIsVisible(rawMeasuredTarget, width, height) ? rawMeasuredTarget : null;
   const targetBox = measuredTarget
     ? normalizeMeasuredBox(measuredTarget, width, height)
     : getTargetBox(targetPosition, width, height);
   const targetStyle = targetBox as ViewStyle;
-  const guideGeometry = getGuideGeometry(width, height, targetBox);
-  const progressFillStyle = {
-    width: `${Math.round(((stepIndex + 1) / totalSteps) * 100)}%`,
-  } as ViewStyle;
+  const guideGeometry = getGuideGeometry(width, height, targetBox, deviceClass);
+  const progressPct = Math.round(((stepIndex + 1) / totalSteps) * 100);
+  const progressFillStyle = { width: `${progressPct}%` } as ViewStyle;
+
   const shadeTop = { top: 0, left: 0, right: 0, height: targetBox.top } as ViewStyle;
   const shadeBottom = { top: targetBox.top + targetBox.height, left: 0, right: 0, bottom: 0 } as ViewStyle;
   const shadeLeft = { top: targetBox.top, left: 0, width: targetBox.left, height: targetBox.height } as ViewStyle;
@@ -742,68 +956,112 @@ export function InAppTutorial({
     height: targetBox.height,
   } as ViewStyle;
 
+  const isSheet = guideGeometry.isSheet;
+  const isFirstStep = stepIndex === 0;
+  const isLastStep = stepIndex === totalSteps - 1;
+
+  const backdropOpacity = mountAnim;
+  const cardTranslateY = mountAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: isSheet ? [60, 0] : [16, 0],
+  });
+  const cardScale = mountAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: isSheet ? [1, 1] : [0.96, 1],
+  });
+  const cardOpacity = mountAnim;
+
   return (
-    <Modal
-      animationType="fade"
-      onRequestClose={handleSkip}
-      transparent
-      visible={visible}
-    >
-      <View style={styles.backdrop}>
+    <Modal animationType="none" onRequestClose={handleSkip} transparent visible={visible}>
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
         <View pointerEvents="none" style={[styles.shade, shadeTop]} />
         <View pointerEvents="none" style={[styles.shade, shadeBottom]} />
         <View pointerEvents="none" style={[styles.shade, shadeLeft]} />
         <View pointerEvents="none" style={[styles.shade, shadeRight]} />
 
+        {/* Tap outside target / on dimmed area also allows skipping via the close button only —
+            shaded zones are pointerEvents="none" so underlying UI never receives stray taps. */}
+
         <View pointerEvents="none" style={[styles.targetFrame, targetStyle]}>
           <View style={styles.targetGlow} />
         </View>
+        <PulseRing box={targetStyle} color={BRAND} />
 
-        <View pointerEvents="none" style={[styles.connectorLine, guideGeometry.connectorStyle]} />
-        <View pointerEvents="none" style={[styles.connectorMarker, guideGeometry.markerStyle]}>
-          <Ionicons name={guideGeometry.markerIcon} size={17} color="#061211" />
-          <Text style={styles.connectorMarkerText}>{stepIndex + 1}</Text>
-        </View>
+        {guideGeometry.connectorStyle ? (
+          <View pointerEvents="none" style={[styles.connectorLine, guideGeometry.connectorStyle]} />
+        ) : null}
+        {!isSheet ? (
+          <View pointerEvents="none" style={[styles.connectorMarker, guideGeometry.markerStyle]}>
+            <Ionicons name={guideGeometry.markerIcon} size={16} color="#061211" />
+            <View style={styles.connectorMarkerBadge}>
+              <Text style={styles.connectorMarkerText}>{stepIndex + 1}</Text>
+            </View>
+          </View>
+        ) : null}
+      </Animated.View>
 
-        <View style={[styles.cardShell, guideGeometry.panelStyle]}>
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderText}>
+      {/* Card / sheet — animated independently from the backdrop so it can spring in. */}
+      <Animated.View
+        style={[
+          styles.cardShell,
+          guideGeometry.panelStyle,
+          isSheet ? styles.cardShellSheet : null,
+          {
+            opacity: cardOpacity,
+            transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
+          },
+        ]}
+        {...(deviceClass === "phone" ? panResponder.panHandlers : {})}
+      >
+        <View style={[styles.card, isSheet ? styles.cardSheet : null]}>
+          {isSheet ? <View style={styles.sheetGrabber} /> : null}
+
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderText}>
+              <View style={styles.flowBadgeRow}>
+                <View style={styles.flowBadgeDot} />
                 <Text style={styles.flowTitle}>{flow.title}</Text>
-                <Text style={styles.stepTitle}>{currentStep.title}</Text>
               </View>
-              <Pressable accessibilityLabel="Close tour" onPress={handleSkip} hitSlop={8} style={styles.closeButton}>
-                <Ionicons name="close" size={18} color={INK} />
-              </Pressable>
-            </View>
-
-            <View style={styles.progressMeta}>
-              <Text style={styles.progressLabel}>
-                Step {stepIndex + 1} of {totalSteps}
+              <Text style={styles.stepTitle} numberOfLines={2}>
+                {currentStep.title}
               </Text>
-              <Text style={styles.progressTarget} numberOfLines={1}>{targetLabel}</Text>
             </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, progressFillStyle]} />
-            </View>
+            <Pressable accessibilityLabel="Close tour" onPress={handleSkip} hitSlop={8} style={styles.closeButton}>
+              <Ionicons name="close" size={18} color={INK} />
+            </Pressable>
+          </View>
 
-            <ScrollView
-              bounces={false}
-              style={styles.stepScroll}
-              contentContainerStyle={styles.cardScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
+          <View style={styles.progressMeta}>
+            <StepDots total={totalSteps} activeIndex={stepIndex} />
+            <Text style={styles.progressLabel}>
+              {stepIndex + 1} / {totalSteps}
+            </Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <Animated.View style={[styles.progressFill, progressFillStyle]} />
+          </View>
+
+          <ScrollView
+            bounces={false}
+            style={styles.stepScroll}
+            contentContainerStyle={styles.cardScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Animated.View style={{ opacity: stepFade }}>
               <View style={styles.focusBox}>
                 <View style={styles.focusIcon}>
                   <Ionicons name="locate-outline" size={18} color={BRAND} />
                 </View>
                 <View style={styles.focusCopy}>
-                  <Text style={styles.focusLabel}>Focus area</Text>
-                  <Text style={styles.focusTitle} numberOfLines={2}>{targetLabel}</Text>
+                  <Text style={styles.focusLabel}>Right now you're looking at</Text>
+                  <Text style={styles.focusTitle} numberOfLines={2}>
+                    {targetLabel}
+                  </Text>
                 </View>
               </View>
 
               <Text style={styles.stepBody}>{currentStep.body}</Text>
+
               {currentStep.actionLabel ? (
                 <View style={styles.tryThisBox}>
                   <Ionicons name="hand-left-outline" size={18} color={GOLD} />
@@ -812,31 +1070,26 @@ export function InAppTutorial({
               ) : null}
 
               <View style={styles.aiPanel}>
+                <Text style={styles.aiPanelLabel}>Want more detail?</Text>
                 <View style={styles.aiActions}>
                   <Pressable
                     disabled={aiLoading}
                     onPress={() => void handleAiPress("summary")}
-                    style={[
-                      styles.aiButton,
-                      aiMode === "summary" ? styles.aiButtonActive : null,
-                    ]}
+                    style={[styles.aiButton, aiMode === "summary" ? styles.aiButtonActive : null]}
                   >
                     <Ionicons name="flash-outline" size={15} color={aiMode === "summary" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "summary" ? styles.aiButtonTextActive : null]}>
-                      Summary
+                      Quick summary
                     </Text>
                   </Pressable>
                   <Pressable
                     disabled={aiLoading}
                     onPress={() => void handleAiPress("full")}
-                    style={[
-                      styles.aiButton,
-                      aiMode === "full" ? styles.aiButtonActive : null,
-                    ]}
+                    style={[styles.aiButton, aiMode === "full" ? styles.aiButtonActive : null]}
                   >
                     <Ionicons name="school-outline" size={15} color={aiMode === "full" ? "#071211" : BRAND} />
                     <Text style={[styles.aiButtonText, aiMode === "full" ? styles.aiButtonTextActive : null]}>
-                      Guide me
+                      Guide me through it
                     </Text>
                   </Pressable>
                 </View>
@@ -844,52 +1097,77 @@ export function InAppTutorial({
                 {aiLoading ? (
                   <View style={styles.aiLoadingRow}>
                     <ActivityIndicator color={BRAND} size="small" />
-                    <Text style={styles.aiLoadingText}>Preparing this guide...</Text>
+                    <Text style={styles.aiLoadingText}>Putting this together…</Text>
                   </View>
                 ) : aiText ? (
                   <View style={styles.aiAnswer}>
                     <Text style={styles.aiAnswerText}>{aiText}</Text>
                     {aiSource === "local" ? (
-                      <Text style={styles.aiFallbackText}>Instant guide shown. Full assistant response is unavailable right now.</Text>
+                      <Text style={styles.aiFallbackText}>
+                        Showing the instant guide — the full assistant reply isn't available right now.
+                      </Text>
                     ) : null}
                   </View>
                 ) : null}
               </View>
-            </ScrollView>
+            </Animated.View>
+          </ScrollView>
 
-            <View style={styles.footerRow}>
-              <Pressable onPress={handleSkip} style={styles.laterButton}>
-                <Text style={styles.laterButtonText}>Later</Text>
-              </Pressable>
+          <View style={styles.footerRow}>
+            <Pressable onPress={handleSkip} style={styles.laterButton} hitSlop={6}>
+              <Text style={styles.laterButtonText}>Skip tour</Text>
+            </Pressable>
+
+            <View style={styles.footerRightGroup}>
               <Pressable
-                disabled={stepIndex === 0}
+                disabled={isFirstStep}
                 onPress={handleBack}
-                style={[
-                  styles.secondaryButton,
-                  stepIndex === 0 ? styles.secondaryButtonDisabled : null,
-                ]}
+                style={[styles.secondaryButton, isFirstStep ? styles.secondaryButtonDisabled : null]}
               >
                 <Ionicons name="chevron-back" size={16} color={INK} />
-                <Text style={styles.secondaryButtonText}>Back</Text>
               </Pressable>
 
-              <Pressable onPress={handleNext} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>
-                  {stepIndex === totalSteps - 1 ? "Finish" : "Next"}
-                </Text>
-                <Ionicons
-                  name={stepIndex === totalSteps - 1 ? "checkmark-circle" : "chevron-forward"}
-                  size={17}
-                  color="#061211"
-                />
-              </Pressable>
+              <Animated.View style={{ transform: [{ scale: pressScalePrimary }], flex: 1 }}>
+                <Pressable onPress={handleNext} style={styles.primaryButton}>
+                  <Text style={styles.primaryButtonText}>{isLastStep ? "Finish tour" : "Next"}</Text>
+                  <Ionicons name={isLastStep ? "checkmark-circle" : "chevron-forward"} size={17} color="#061211" />
+                </Pressable>
+              </Animated.View>
             </View>
           </View>
+
+          {deviceClass === "phone" ? (
+            <Text style={styles.swipeHint}>Swipe to move between steps</Text>
+          ) : null}
         </View>
-      </View>
+      </Animated.View>
+
+      {/* Finish celebration burst */}
+      {justFinished ? (
+        <View pointerEvents="none" style={styles.celebrateLayer}>
+          <Animated.View
+            style={[
+              styles.celebrateBadge,
+              {
+                opacity: celebrateAnim,
+                transform: [
+                  {
+                    scale: celebrateAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={30} color={BRAND} />
+            <Text style={styles.celebrateText}>Tour complete</Text>
+          </Animated.View>
+        </View>
+      ) : null}
     </Modal>
   );
 }
+
+// ─── Styles ─────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   backdrop: {
@@ -898,8 +1176,10 @@ const styles = StyleSheet.create({
   },
   shade: {
     position: "absolute",
-    backgroundColor: "rgba(2,6,23,0.76)",
+    backgroundColor: "rgba(3,7,12,0.82)",
   },
+
+  // Spotlight frame
   targetFrame: {
     position: "absolute",
     zIndex: 30,
@@ -912,18 +1192,26 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
     overflow: "hidden",
-    backgroundColor: "rgba(45,212,191,0.07)",
+    backgroundColor: "rgba(45,212,191,0.06)",
   },
   targetGlow: {
     flex: 1,
     borderRadius: 12,
-    backgroundColor: "rgba(45,212,191,0.08)",
+    backgroundColor: "rgba(45,212,191,0.07)",
   },
+  pulseRing: {
+    position: "absolute",
+    zIndex: 29,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+
+  // Connector
   connectorLine: {
     position: "absolute",
     zIndex: 34,
     borderRadius: 999,
-    backgroundColor: "rgba(244,183,93,0.9)",
+    backgroundColor: "rgba(244,183,93,0.85)",
   },
   connectorMarker: {
     position: "absolute",
@@ -937,12 +1225,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(255,247,237,0.9)",
     shadowColor: GOLD,
-    shadowOpacity: 0.38,
+    shadowOpacity: 0.4,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 0 },
     elevation: 10,
   },
-  connectorMarkerText: {
+  connectorMarkerBadge: {
     position: "absolute",
     right: -4,
     bottom: -5,
@@ -950,31 +1238,57 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     overflow: "hidden",
-    textAlign: "center",
-    color: "#061211",
     backgroundColor: INK,
-    fontSize: 10,
-    lineHeight: 16,
-    fontWeight: "900",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  connectorMarkerText: {
+    color: "#061211",
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+
+  // Card shell (floating panel OR bottom sheet positioning wrapper)
   cardShell: {
     position: "absolute",
     zIndex: 40,
   },
+  cardShellSheet: {
+    // sheet variant pins full width at the bottom; rounded only on top corners via inner card
+  },
+
   card: {
     height: "100%",
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(10,16,28,0.95)",
+    borderColor: HAIRLINE_BRIGHT,
+    backgroundColor: SHEET_BG_RAISED,
     shadowColor: "#000",
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 14,
+    shadowOpacity: 0.3,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 16,
     overflow: "hidden",
   },
+  cardSheet: {
+    borderRadius: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomWidth: 0,
+    paddingTop: 10,
+  },
+  sheetGrabber: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: HAIRLINE_BRIGHT,
+    marginBottom: 10,
+  },
+
   cardHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -984,20 +1298,32 @@ const styles = StyleSheet.create({
   cardHeaderText: {
     flex: 1,
   },
+  flowBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  flowBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: BRAND,
+  },
   flowTitle: {
     color: BRAND,
     fontSize: 11,
     lineHeight: 14,
     fontWeight: "900",
     textTransform: "uppercase",
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
   },
   stepTitle: {
-    marginTop: 4,
+    marginTop: 5,
     color: "#F8FAFC",
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 19,
+    lineHeight: 25,
     fontWeight: "900",
+    letterSpacing: -0.2,
   },
   closeButton: {
     width: 34,
@@ -1007,11 +1333,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: HAIRLINE,
     flexShrink: 0,
   },
+
   progressMeta: {
-    marginTop: 12,
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1019,24 +1346,36 @@ const styles = StyleSheet.create({
   },
   progressLabel: {
     color: MUTED,
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 14,
     fontWeight: "800",
     flexShrink: 0,
   },
-  progressTarget: {
-    flex: 1,
-    color: "rgba(255,247,237,0.58)",
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "800",
-    textAlign: "right",
+
+  dotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
-  progressTrack: {
-    marginTop: 8,
+  dot: {
+    width: 6,
     height: 6,
+    borderRadius: 3,
+    backgroundColor: HAIRLINE_BRIGHT,
+  },
+  dotActive: {
+    width: 16,
+    backgroundColor: BRAND,
+  },
+  dotDone: {
+    backgroundColor: BRAND_DEEP,
+  },
+
+  progressTrack: {
+    marginTop: 9,
+    height: 5,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.10)",
     overflow: "hidden",
   },
   progressFill: {
@@ -1044,19 +1383,21 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: BRAND,
   },
+
   stepScroll: {
     flex: 1,
-    marginTop: 10,
+    marginTop: 12,
   },
   cardScrollContent: {
     paddingBottom: 2,
   },
+
   focusBox: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 13,
+    padding: 11,
     backgroundColor: "rgba(45,212,191,0.09)",
     borderWidth: 1,
     borderColor: "rgba(45,212,191,0.22)",
@@ -1067,7 +1408,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(45,212,191,0.12)",
+    backgroundColor: "rgba(45,212,191,0.13)",
     flexShrink: 0,
   },
   focusCopy: {
@@ -1079,6 +1420,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: "900",
     textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   focusTitle: {
     marginTop: 2,
@@ -1087,19 +1429,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "900",
   },
+
   stepBody: {
-    marginTop: 12,
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 13,
-    lineHeight: 19,
+    marginTop: 13,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13.5,
+    lineHeight: 20,
     fontWeight: "600",
   },
+
   tryThisBox: {
-    marginTop: 12,
+    marginTop: 13,
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
-    borderRadius: 12,
+    borderRadius: 13,
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: "rgba(244,183,93,0.12)",
@@ -1113,11 +1457,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+
   aiPanel: {
-    marginTop: 12,
+    marginTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    paddingTop: 10,
+    borderTopColor: HAIRLINE,
+    paddingTop: 12,
+  },
+  aiPanelLabel: {
+    color: FAINT,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 8,
   },
   aiActions: {
     flexDirection: "row",
@@ -1125,8 +1478,8 @@ const styles = StyleSheet.create({
   },
   aiButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 10,
+    minHeight: 40,
+    borderRadius: 11,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1134,6 +1487,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(45,212,191,0.08)",
     borderWidth: 1,
     borderColor: "rgba(45,212,191,0.2)",
+    paddingHorizontal: 8,
   },
   aiButtonActive: {
     backgroundColor: BRAND,
@@ -1143,6 +1497,7 @@ const styles = StyleSheet.create({
     color: "#CCFBF1",
     fontSize: 11,
     fontWeight: "900",
+    textAlign: "center",
   },
   aiButtonTextActive: {
     color: "#071211",
@@ -1161,34 +1516,43 @@ const styles = StyleSheet.create({
   },
   aiAnswer: {
     marginTop: 10,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 11,
+    padding: 11,
     backgroundColor: "rgba(255,255,255,0.055)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: HAIRLINE,
   },
   aiAnswerText: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: 12,
-    lineHeight: 17,
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12.5,
+    lineHeight: 18,
     fontWeight: "700",
   },
   aiFallbackText: {
-    marginTop: 6,
+    marginTop: 7,
     color: "rgba(244,183,93,0.82)",
     fontSize: 10,
     lineHeight: 14,
     fontWeight: "800",
   },
+
   footerRow: {
-    marginTop: 12,
+    marginTop: 14,
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  footerRightGroup: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 8,
   },
   laterButton: {
-    minWidth: 64,
     minHeight: 40,
-    borderRadius: 10,
+    paddingHorizontal: 4,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
@@ -1199,33 +1563,26 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   secondaryButton: {
-    flex: 1,
+    width: 40,
     minHeight: 40,
-    borderRadius: 10,
-    flexDirection: "row",
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
+    borderColor: HAIRLINE_BRIGHT,
   },
   secondaryButtonDisabled: {
-    opacity: 0.4,
-  },
-  secondaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
+    opacity: 0.35,
   },
   primaryButton: {
-    flex: 1.2,
     minHeight: 40,
-    borderRadius: 10,
+    borderRadius: 11,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 6,
+    paddingHorizontal: 16,
     backgroundColor: BRAND,
     borderWidth: 1,
     borderColor: "rgba(204,251,241,0.58)",
@@ -1233,6 +1590,46 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: "#061211",
     fontSize: 13,
+    fontWeight: "900",
+  },
+
+  swipeHint: {
+    marginTop: 10,
+    textAlign: "center",
+    color: FAINT,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  // Celebration overlay
+  celebrateLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  celebrateBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(10,16,28,0.95)",
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.4)",
+    shadowColor: BRAND,
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
+  },
+  celebrateText: {
+    color: INK,
+    fontSize: 14,
     fontWeight: "900",
   },
 });
