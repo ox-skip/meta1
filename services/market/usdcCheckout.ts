@@ -358,11 +358,20 @@ if (resolvedTxHash) {
   }
 
   for (let i = 0; i < 6; i++) {
+    // If refId looks like a tx hash, try it directly as tx hash first.
+    // This handles cases where Circle SDK failed to resolve but the hash is valid.
+    if (!resolvedTxHash && refId && isHexHash(refId)) {
+      resolvedTxHash = refId;
+      const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "DEPOSIT", 4, 2000);
+      if (settled) return { settled: true, txHash: resolvedTxHash };
+    }
+
     // Poll Circle for transaction status if we have a refId but no txHash yet
     if (!resolvedTxHash) {
       const latestIntent = await readLatestDepositIntent(orderId, chain.chain);
       const activeRefId = refId || latestIntent?.refId;
-      if (activeRefId) {
+      // Only poll Circle if refId is not a raw tx hash (Circle refIds are typically non-hex or short IDs)
+      if (activeRefId && !isHexHash(activeRefId)) {
         try {
           const circleTx = await callFn("circle-wallet", {
             action: "transaction_by_ref",
@@ -395,6 +404,9 @@ if (resolvedTxHash) {
       } else if (latest?.userOpHash) {
         resolvedUserOpHash = latest.userOpHash;
         resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 4, 2000);
+      } else if (latest?.refId && isHexHash(latest.refId)) {
+        // provider_ref_id may contain a raw tx hash that Circle couldn't resolve
+        resolvedTxHash = latest.refId;
       }
 
       if (resolvedTxHash && !recoveredFinalizeAttempted) {
@@ -439,11 +451,20 @@ async function ensureReleaseSettled(
   }
 
   for (let i = 0; i < 6; i++) {
+    // If refId looks like a tx hash, try it directly as tx hash first.
+    // This handles cases where Circle SDK failed to resolve but the hash is valid.
+    if (!resolvedTxHash && refId && isHexHash(refId)) {
+      resolvedTxHash = refId;
+      const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 4, 2000);
+      if (settled) return { settled: true, txHash: resolvedTxHash };
+    }
+
     // Poll Circle for transaction status if we have a refId but no txHash yet
     if (!resolvedTxHash) {
       const latestIntent = await readLatestIntent(orderId, "RELEASE", chain.chain);
       const activeRefId = refId || latestIntent?.refId;
-      if (activeRefId) {
+      // Only poll Circle if refId is not a raw tx hash (Circle refIds are typically non-hex or short IDs)
+      if (activeRefId && !isHexHash(activeRefId)) {
         try {
           const circleTx = await callFn("circle-wallet", {
             action: "transaction_by_ref",
@@ -469,23 +490,27 @@ async function ensureReleaseSettled(
       return { settled: true, txHash: resolvedTxHash || "" };
     }
 
-    const latest = await readLatestIntent(orderId, "RELEASE", chain.chain);
-    if (latest?.txHash && !resolvedTxHash) {
-      resolvedTxHash = latest.txHash;
-    }
-    if (latest?.userOpHash && !resolvedUserOpHash) {
-      resolvedUserOpHash = latest.userOpHash;
-    }
+const latest = await readLatestIntent(orderId, "RELEASE", chain.chain);
+     if (latest?.txHash && !resolvedTxHash) {
+       resolvedTxHash = latest.txHash;
+     }
+     if (latest?.userOpHash && !resolvedUserOpHash) {
+       resolvedUserOpHash = latest.userOpHash;
+     }
+     // Check provider_ref_id for raw tx hash when Circle couldn't resolve
+     if (!resolvedTxHash && latest?.refId && isHexHash(latest.refId)) {
+       resolvedTxHash = latest.refId;
+     }
 
-    if (!resolvedTxHash && resolvedUserOpHash) {
-      resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 4, 2000);
-    }
+     if (!resolvedTxHash && resolvedUserOpHash) {
+       resolvedTxHash = await resolveUserOpToTxHash(chain, resolvedUserOpHash, 4, 2000);
+     }
 
-    if (resolvedTxHash && !recoveredFinalizeAttempted) {
-      recoveredFinalizeAttempted = true;
-      const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 4, 2000);
-      if (settled) return { settled: true, txHash: resolvedTxHash };
-    }
+     if (resolvedTxHash && !recoveredFinalizeAttempted) {
+       recoveredFinalizeAttempted = true;
+       const settled = await settleOrderFromTx(orderId, chain.chain, resolvedTxHash, "RELEASE", 4, 2000);
+       if (settled) return { settled: true, txHash: resolvedTxHash };
+     }
 
     await sleep(3000);
   }
@@ -956,45 +981,54 @@ export async function payStableForOrder(
     data: depositData,
   });
 
-  const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? ""));
-  const userOpHash = normalizeHexHash(String((sendResult as any)?.userOpHash ?? (sendResult as any)?.userOperationHash ?? ""));
-  const rawHash = normalizeHexHash(String((sendResult as any)?.hash ?? ""));
-  console.log("[Checkout] deposit send result", {
-    tx_hash: txHash || rawHash || null,
-    user_op_hash: userOpHash || null,
-    chain: chain.chain,
-  });
+const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? ""));
+   const userOpHash = normalizeHexHash(String((sendResult as any)?.userOpHash ?? (sendResult as any)?.userOperationHash ?? ""));
+   const rawHash = normalizeHexHash(String((sendResult as any)?.hash ?? ""));
+   const sendRefId = String((sendResult as any)?.refId || "").trim();
+   console.log("[Checkout] deposit send result", {
+     tx_hash: txHash || rawHash || null,
+     user_op_hash: userOpHash || null,
+     chain: chain.chain,
+   });
 
-  // Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
-  const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
-  let resolvedTxHash = resolvedHashes.txHash;
-  const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || (resolvedTxHash ? "" : rawHash);
-  console.log("[Checkout] deposit resolved tx", {
-    resolved_tx_hash: resolvedTxHash || null,
-    user_op_hash: resolvedUserOpHash || null,
-  });
+   // Some AA wallets return userOp hash in `hash`. Classify and resolve before persisting.
+   const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
+   let resolvedTxHash = resolvedHashes.txHash;
+   const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || "";
+   // If resolveSubmittedHashes didn't classify rawHash, try it as a potential tx hash.
+   // This handles Circle SDK failing to resolve immediately but hash being valid onchain.
+   if (!resolvedTxHash && rawHash && !resolvedUserOpHash) {
+     const looksOnchain = await hashLooksLikeOnchainTx(chain, rawHash);
+     if (looksOnchain) {
+       resolvedTxHash = rawHash;
+     }
+   }
+   console.log("[Checkout] deposit resolved tx", {
+     resolved_tx_hash: resolvedTxHash || null,
+     user_op_hash: resolvedUserOpHash || null,
+     raw_hash_for_recovery: rawHash || null,
+   });
 
-  // If no txHash but we have userOpHash, still proceed - reindex fallback will recover.
-  if (!resolvedTxHash && !resolvedUserOpHash && !rawHash) {
-    console.log("[Checkout] no hash available, payment may have failed");
-  }
-
-  try {
-    await callFn("market-usdc-deposit-submit", {
-      order_id: orderId,
-      chain: chain.chain,
-      token: symbol,
-      tx_hash: resolvedTxHash || null,
-    });
-  } catch (e: any) {
-    console.log("[Checkout] deposit submit function failed", String(e?.message || e));
-  }
-  // Ensure intent is marked submitted even if we only have a userOp hash.
-  const intentUpdate: any = { status: "SUBMITTED" };
-  if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
-  if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
-  const intentRefId = String(sendResult?.refId || (sendResult as any)?.tx_hash || "");
-  if (intentRefId && !intentUpdate.tx_hash) intentUpdate.provider_ref_id = intentRefId;
+   try {
+     await callFn("market-usdc-deposit-submit", {
+       order_id: orderId,
+       chain: chain.chain,
+       token: symbol,
+       tx_hash: resolvedTxHash || null,
+     });
+   } catch (e: any) {
+     console.log("[Checkout] deposit submit function failed", String(e?.message || e));
+   }
+   // Ensure intent is marked submitted even if we only have a userOp hash.
+   const intentUpdate: any = { status: "SUBMITTED" };
+   if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
+   if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
+   // Persist rawHash as provider_ref_id when we don't have a resolved tx hash.
+   // This enables the poller to recover the tx hash on manual resync.
+   const persistentRefId = sendRefId || (rawHash && !resolvedTxHash ? rawHash : "");
+   if (persistentRefId && !intentUpdate.tx_hash) {
+     intentUpdate.provider_ref_id = persistentRefId;
+   }
   const { error: intentUpdErr } = await supabase
     .from("market_crypto_intents")
     .update(intentUpdate)
@@ -1006,7 +1040,7 @@ export async function payStableForOrder(
     console.log("[Checkout] deposit intent update blocked", intentUpdErr.message);
   }
 
-  const settle = await ensureDepositSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, intentRefId);
+  const settle = await ensureDepositSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, persistentRefId);
   if (settle.txHash && !resolvedTxHash) {
     resolvedTxHash = settle.txHash;
   }
@@ -1070,49 +1104,61 @@ export async function releaseUsdcForOrder(orderId: string) {
     data,
   });
 
-  const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? ""));
-  const userOpHash = normalizeHexHash(String((sendResult as any)?.userOpHash ?? (sendResult as any)?.userOperationHash ?? ""));
-  const rawHash = normalizeHexHash(String((sendResult as any)?.hash ?? ""));
-  console.log("[Checkout] release send result", {
-    tx_hash: txHash || rawHash || null,
-    user_op_hash: userOpHash || null,
-    chain: chain.chain,
-  });
+const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? ""));
+   const userOpHash = normalizeHexHash(String((sendResult as any)?.userOpHash ?? (sendResult as any)?.userOperationHash ?? ""));
+   const rawHash = normalizeHexHash(String((sendResult as any)?.hash ?? ""));
+   console.log("[Checkout] release send result", {
+     tx_hash: txHash || rawHash || null,
+     user_op_hash: userOpHash || null,
+     chain: chain.chain,
+   });
 
-  const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
-  let resolvedTxHash = resolvedHashes.txHash;
-  const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || (resolvedTxHash ? "" : rawHash);
-  console.log("[Checkout] release resolved tx", {
-    resolved_tx_hash: resolvedTxHash || null,
-    user_op_hash: resolvedUserOpHash || null,
-  });
+   const resolvedHashes = await resolveSubmittedHashes(chain, sendResult);
+   let resolvedTxHash = resolvedHashes.txHash;
+   const resolvedUserOpHash = resolvedHashes.userOpHash || userOpHash || "";
+   // If resolveSubmittedHashes didn't classify rawHash, try it as a potential tx hash.
+   // This handles Circle SDK failing to resolve immediately but hash being valid onchain.
+   if (!resolvedTxHash && rawHash && !resolvedUserOpHash) {
+     const looksOnchain = await hashLooksLikeOnchainTx(chain, rawHash);
+     if (looksOnchain) {
+       resolvedTxHash = rawHash;
+     }
+   }
+   console.log("[Checkout] release resolved tx", {
+     resolved_tx_hash: resolvedTxHash || null,
+     user_op_hash: resolvedUserOpHash || null,
+     raw_hash_for_recovery: rawHash || null,
+   });
 
-  try {
-    await callFn("market-usdc-release-submit", {
-      order_id: orderId,
-      chain: chain.chain,
-      tx_hash: resolvedTxHash || null,
-    });
-  } catch (e: any) {
-    console.log("[Checkout] release submit function failed", String(e?.message || e));
-  }
-const intentUpdate: any = { status: "SUBMITTED" };
-  if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
-  if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
-  // Store refId for Circle transactions that may need later polling
-  const intentRefId = String(sendResult?.refId || (sendResult as any)?.tx_hash || "");
-  if (intentRefId && !intentUpdate.tx_hash) intentUpdate.provider_ref_id = intentRefId;
-  const { error: intentUpdErr } = await supabase
-    .from("market_crypto_intents")
-    .update(intentUpdate)
-    .eq("order_id", orderId)
-    .eq("intent_type", "RELEASE")
-    .eq("chain", chain.chain);
-  if (intentUpdErr) {
-    console.log("[Checkout] release intent update blocked", intentUpdErr.message);
-  }
+   try {
+     await callFn("market-usdc-release-submit", {
+       order_id: orderId,
+       chain: chain.chain,
+       tx_hash: resolvedTxHash || null,
+     });
+   } catch (e: any) {
+     console.log("[Checkout] release submit function failed", String(e?.message || e));
+   }
+   const intentUpdate: any = { status: "SUBMITTED" };
+   if (resolvedTxHash) intentUpdate.tx_hash = resolvedTxHash;
+   if (resolvedUserOpHash) intentUpdate.client_reference = resolvedUserOpHash;
+   // Persist rawHash as provider_ref_id when we don't have a resolved tx hash.
+   // This enables the poller to recover the tx hash on manual resync.
+   const persistentRefId = String(sendResult?.refId || "") || (rawHash && !resolvedTxHash ? rawHash : "");
+   if (persistentRefId && !intentUpdate.tx_hash) {
+     intentUpdate.provider_ref_id = persistentRefId;
+   }
+   const { error: intentUpdErr } = await supabase
+     .from("market_crypto_intents")
+     .update(intentUpdate)
+     .eq("order_id", orderId)
+     .eq("intent_type", "RELEASE")
+     .eq("chain", chain.chain);
+   if (intentUpdErr) {
+     console.log("[Checkout] release intent update blocked", intentUpdErr.message);
+   }
 
-  const settle = await ensureReleaseSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, intentRefId);
+   const settle = await ensureReleaseSettled(orderId, chain, resolvedTxHash, resolvedUserOpHash, persistentRefId);
   if (settle.txHash && !resolvedTxHash) {
     resolvedTxHash = settle.txHash;
   }
