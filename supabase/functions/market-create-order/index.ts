@@ -1,6 +1,18 @@
 import { bad, methodNotAllowed, ok, unauth } from "../_shared/market/http.ts";
 import { supabaseAdminClient, supabaseUserClient } from "../_shared/market/supabase.ts";
 
+// market_orders.unit_price and market_orders.amount are both numeric(18,2)
+// in the database (2 decimal places / cents). The amount-guard trigger
+// (trg_market_orders_amount_guard) re-checks that
+// round(amount, 2) = round(unit_price * quantity, 2) using the values that
+// actually land in those columns. If we send a unit_price with more than 2
+// decimal places, Postgres rounds it down when storing it, but our amount
+// was computed from the *un-rounded* price — so the two numbers can drift
+// apart by a cent and the trigger throws "amount must equal unit_price *
+// quantity". Rounding unit_price to the same scale here, before computing
+// amount, guarantees they always agree.
+const ORDER_AMOUNT_SCALE = 2;
+
 function toPositiveDecimalString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const raw = String(value).trim();
@@ -31,6 +43,30 @@ function multiplyDecimalByQuantity(decimalStr: string, quantity: number): string
   const padded = product.toString().padStart(scale + 1, "0");
   const intPart = padded.slice(0, -scale);
   const fracPart = padded.slice(-scale).replace(/0+$/, "");
+  return fracPart ? `${intPart}.${fracPart}` : intPart;
+}
+
+// Rounds a positive decimal string to `scale` decimal places using
+// half-up rounding (matching Postgres's round() for positive numbers),
+// done entirely in BigInt so there is no floating-point drift.
+// Returns "0" if the value rounds down to zero at that scale.
+function roundDecimalToScale(decimalStr: string, scale: number): string {
+  const [wholeRaw, fracRaw = ""] = decimalStr.split(".");
+  const whole = wholeRaw.replace(/^0+(?=\d)/, "") || "0";
+
+  if (fracRaw.length <= scale) {
+    const fracPart = fracRaw.replace(/0+$/, "");
+    return fracPart ? `${whole}.${fracPart}` : whole;
+  }
+
+  const keep = fracRaw.slice(0, scale);
+  const firstDroppedDigit = Number(fracRaw[scale] ?? "0");
+  let combined = BigInt(`${whole}${keep}`.replace(/^0+(?=\d)/, "") || "0");
+  if (firstDroppedDigit >= 5) combined += 1n;
+
+  const combinedStr = combined.toString().padStart(scale + 1, "0");
+  const intPart = combinedStr.slice(0, -scale) || "0";
+  const fracPart = combinedStr.slice(-scale).replace(/0+$/, "");
   return fracPart ? `${intPart}.${fracPart}` : intPart;
 }
 
@@ -111,6 +147,17 @@ Deno.serve(async (req) => {
       unit_price = discounted;
     }
   }
+
+  // Round to the same scale market_orders.unit_price actually stores
+  // (numeric(18,2)) *before* multiplying, so the amount we compute here
+  // matches exactly what the amount-guard trigger will recompute from the
+  // stored unit_price. This is what prevents the
+  // "amount must equal unit_price * quantity" error.
+  unit_price = roundDecimalToScale(unit_price, ORDER_AMOUNT_SCALE);
+  if (!unit_price || unit_price === "0") {
+    return bad("Listing price is too small to process at order time.");
+  }
+
   const amount = multiplyDecimalByQuantity(unit_price, quantity);
 
   let reservedStock:

@@ -2,7 +2,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View, Linking, Alert, Modal } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,10 +23,8 @@ import { requireLocalAuth } from "@/utils/secureAuth";
 import { supabase } from "@/services/supabase";
 import { releaseUsdcForOrder } from "@/services/market/usdcCheckout";
 import { releasePiForOrder } from "@/services/market/piCheckout";
-import { getPreferredMarketChain } from "@/services/market/chainConfig";
 import { generateOrderAiRisk, type MarketOrderAiRiskResult } from "@/services/market/ai";
 import { friendlyMarketError } from "@/utils/marketUx";
-
 import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
 import {
   listOrderDeliverables,
@@ -32,16 +41,18 @@ import {
   type DisputeMessage,
   type MarketDispute,
 } from "@/services/market/disputes";
-
 import { uploadToSupabaseStorage } from "@/services/market/storageUpload";
 
-
+// ─── Brand Color Tokens ────────────────────────────────────────────────────────
 const BG0 = "#060807";
 const BG1 = "#10130E";
 const BG2 = "#171A13";
-const PURPLE = "#8B5CF6";
 const AMBER = "#F4B75D";
+const TEAL = "#2DD4BF";
 const BLUE = "#38BDF8";
+const ROSE = "#FB7185";
+const PURPLE = "#8B5CF6";
+const GREEN = "#10B981";
 const CARD = "rgba(255,253,247,0.065)";
 const CARD_RAISED = "rgba(255,253,247,0.09)";
 const BORDER = "rgba(255,253,247,0.12)";
@@ -50,23 +61,34 @@ const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
 const FAINT = "rgba(255,253,247,0.44)";
 
-// ✅ Real function names in your repo
+const AMBER_GLASS = "rgba(244,183,93,0.13)";
+const AMBER_BORDER = "rgba(244,183,93,0.42)";
+const TEAL_GLASS = "rgba(45,212,191,0.12)";
+const TEAL_BORDER = "rgba(45,212,191,0.35)";
+const GREEN_GLASS = "rgba(16,185,129,0.15)";
+const GREEN_BORDER = "rgba(16,185,129,0.45)";
+const RED_GLASS = "rgba(239,68,68,0.15)";
+const RED_BORDER = "rgba(239,68,68,0.45)";
+const PURPLE_GLASS = "rgba(139,92,246,0.15)";
+const PURPLE_BORDER = "rgba(139,92,246,0.42)";
+const BLUE_GLASS = "rgba(56,189,248,0.12)";
+const BLUE_BORDER = "rgba(56,189,248,0.35)";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 const RPC_SELLER_OUT_FOR_DELIVERY = "market_seller_out_for_delivery_rpc";
 const RPC_OTP_GENERATE = "market_otp_generate_rpc";
 const RPC_OTP_VERIFY = "market_otp_verify_rpc";
-
 const RPC_RELEASE_ESCROW = "market_release_escrow_rpc";
 const RPC_BUYER_CANCEL = "market_buyer_cancel_order_rpc";
 const RPC_CHAIN_TX_FINALIZE = "market_chain_tx_finalize_rpc";
-// Tables
 const ORDERS_TABLE = "market_orders";
 const LISTINGS_TABLE = "market_listings";
 const SELLERS_TABLE = "market_seller_profiles";
 const OTP_TABLE = "market_order_otps";
 const CRYPTO_INTENTS_TABLE = "market_crypto_intents";
-
 const OTP_REQUEST_COOLDOWN_SEC = 30;
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 type OrderRow = {
   id: string;
   buyer_id: string;
@@ -147,6 +169,7 @@ type PiPaymentRow = {
   created_at: string;
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function money(currency: string | null, amt: any) {
   const n = Number(amt ?? 0);
   if (currency?.toUpperCase() === "USDC") return `$${n.toLocaleString()}`;
@@ -163,53 +186,10 @@ function isUuid(v?: string | null) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
-    CREATED: { bg: CARD_RAISED, fg: MUTED, label: "Created" },
-    IN_ESCROW: { bg: "rgba(244,183,93,0.16)", fg: AMBER, label: "In Escrow" },
-    OUT_FOR_DELIVERY: { bg: "rgba(56,189,248,0.14)", fg: BLUE, label: "Out for delivery" },
-    DELIVERED: { bg: "rgba(16,185,129,0.14)", fg: "#6EE7B7", label: "Delivered" },
-    RELEASED: { bg: "rgba(16,185,129,0.14)", fg: "#34D399", label: "Released" },
-    REFUNDED: { bg: "rgba(239,68,68,0.14)", fg: "#FCA5A5", label: "Refunded" },
-    CANCELLED: { bg: "rgba(239,68,68,0.14)", fg: "#FCA5A5", label: "Cancelled" },
-  };
-
-  const s = map[status] ?? { bg: "rgba(255,255,255,0.08)", fg: "#E5E7EB", label: status };
-
-  return (
-    <View
-      style={{
-        alignSelf: "flex-start",
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        backgroundColor: s.bg,
-        borderWidth: 1,
-        borderColor: status === "CREATED" ? BORDER : `${s.fg}55`,
-      }}
-    >
-      <Text style={{ color: s.fg, fontWeight: "900", fontSize: 12 }}>{s.label}</Text>
-    </View>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View
-      style={{
-        marginTop: 12,
-        borderRadius: 24,
-        padding: 16,
-        backgroundColor: CARD,
-        borderWidth: 1,
-        borderColor: BORDER,
-        borderTopColor: BORDER_TOP,
-      }}
-    >
-      <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>{title}</Text>
-      <View style={{ marginTop: 10 }}>{children}</View>
-    </View>
-  );
+function fmtCountdown(totalSec: number) {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 async function safeLoadListing(listingId: string) {
@@ -218,9 +198,7 @@ async function safeLoadListing(listingId: string) {
     .select("id,title,delivery_type,category,sub_category,website_url,stock_qty")
     .eq("id", listingId)
     .maybeSingle();
-
   if (!attempt1.error) return attempt1.data as any;
-
   const msg = String(attempt1.error.message || "").toLowerCase();
   if (msg.includes("website_url") && msg.includes("does not exist")) {
     const attempt2 = await supabase
@@ -231,34 +209,2079 @@ async function safeLoadListing(listingId: string) {
     if (attempt2.error) throw new Error(attempt2.error.message);
     return attempt2.data as any;
   }
-
   throw new Error(attempt1.error.message);
 }
 
+// ─── Reusable UI Atoms ────────────────────────────────────────────────────────
+
+function SectionLabel({ text, color = AMBER }: { text: string; color?: string }) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View style={{ width: 3, height: 14, borderRadius: 2, backgroundColor: color }} />
+      <Text style={{ color, fontWeight: "900", fontSize: 11, letterSpacing: 1.2 }}>
+        {text.toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    CREATED: { bg: CARD_RAISED, fg: MUTED, label: "Created" },
+    IN_ESCROW: { bg: AMBER_GLASS, fg: AMBER, label: "In Escrow" },
+    OUT_FOR_DELIVERY: { bg: BLUE_GLASS, fg: BLUE, label: "Out for Delivery" },
+    DELIVERED: { bg: GREEN_GLASS, fg: TEAL, label: "Delivered" },
+    RELEASED: { bg: GREEN_GLASS, fg: "#34D399", label: "Released" },
+    REFUNDED: { bg: RED_GLASS, fg: ROSE, label: "Refunded" },
+    CANCELLED: { bg: RED_GLASS, fg: ROSE, label: "Cancelled" },
+    DISPUTED: { bg: "rgba(239,68,68,0.12)", fg: ROSE, label: "Disputed" },
+    DELIVERABLE_UPLOADED: { bg: TEAL_GLASS, fg: TEAL, label: "Files Uploaded" },
+  };
+  const s = map[status] ?? { bg: CARD_RAISED, fg: MUTED, label: status };
+  return (
+    <View
+      style={{
+        alignSelf: "flex-start",
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 999,
+        backgroundColor: s.bg,
+        borderWidth: 1,
+        borderColor: `${s.fg}55`,
+      }}
+    >
+      <Text style={{ color: s.fg, fontWeight: "900", fontSize: 11, letterSpacing: 0.4 }}>
+        {s.label}
+      </Text>
+    </View>
+  );
+}
+
+function PanelCard({
+  children,
+  accent,
+  style,
+}: {
+  children: React.ReactNode;
+  accent?: "amber" | "teal" | "green" | "red" | "purple" | "blue";
+  style?: any;
+}) {
+  const borderColors: Record<string, string> = {
+    amber: AMBER_BORDER,
+    teal: TEAL_BORDER,
+    green: GREEN_BORDER,
+    red: RED_BORDER,
+    purple: PURPLE_BORDER,
+    blue: BLUE_BORDER,
+  };
+  const bgColors: Record<string, string> = {
+    amber: AMBER_GLASS,
+    teal: TEAL_GLASS,
+    green: GREEN_GLASS,
+    red: RED_GLASS,
+    purple: PURPLE_GLASS,
+    blue: BLUE_GLASS,
+  };
+  return (
+    <View
+      style={[
+        {
+          borderRadius: 22,
+          padding: 18,
+          backgroundColor: accent ? bgColors[accent] : CARD,
+          borderWidth: 1,
+          borderColor: accent ? borderColors[accent] : BORDER,
+          borderTopColor: accent ? borderColors[accent] : BORDER_TOP,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function ActionBtn({
+  label,
+  sublabel,
+  onPress,
+  disabled,
+  busy,
+  color = "amber",
+  icon,
+}: {
+  label: string;
+  sublabel?: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  color?: "amber" | "teal" | "green" | "red" | "purple" | "blue" | "ghost";
+  icon?: string;
+}) {
+  const bgMap: Record<string, string> = {
+    amber: AMBER,
+    teal: TEAL,
+    green: GREEN,
+    red: "#EF4444",
+    purple: PURPLE,
+    blue: BLUE,
+    ghost: CARD_RAISED,
+  };
+  const isLight = ["amber", "teal", "green", "blue"].includes(color);
+  const textColor = color === "ghost" ? TEXT : isLight ? BG0 : "#fff";
+  const bg = disabled ? "rgba(255,253,247,0.07)" : bgMap[color];
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      style={{
+        borderRadius: 18,
+        paddingVertical: 15,
+        paddingHorizontal: 18,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: bg,
+        borderWidth: 1,
+        borderColor: disabled ? BORDER : bg,
+        opacity: disabled ? 0.65 : 1,
+        flexDirection: "row",
+        gap: 8,
+      }}
+    >
+      {busy ? (
+        <ActivityIndicator color={textColor} size="small" />
+      ) : icon ? (
+        <Ionicons name={icon as any} size={16} color={textColor} />
+      ) : null}
+      <View style={{ alignItems: "center" }}>
+        <Text style={{ color: textColor, fontWeight: "900", fontSize: 15 }}>{label}</Text>
+        {sublabel ? (
+          <Text style={{ color: `${textColor}99`, fontWeight: "700", fontSize: 11, marginTop: 2 }}>
+            {sublabel}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function OutlineBtn({
+  label,
+  onPress,
+  disabled,
+  busy,
+  color = "amber",
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  color?: "amber" | "teal" | "green" | "red" | "purple" | "blue" | "ghost";
+  icon?: string;
+}) {
+  const fgMap: Record<string, string> = {
+    amber: AMBER,
+    teal: TEAL,
+    green: "#34D399",
+    red: ROSE,
+    purple: "#A78BFA",
+    blue: BLUE,
+    ghost: MUTED,
+  };
+  const borderMap: Record<string, string> = {
+    amber: AMBER_BORDER,
+    teal: TEAL_BORDER,
+    green: GREEN_BORDER,
+    red: RED_BORDER,
+    purple: PURPLE_BORDER,
+    blue: BLUE_BORDER,
+    ghost: BORDER,
+  };
+  const bgMap: Record<string, string> = {
+    amber: AMBER_GLASS,
+    teal: TEAL_GLASS,
+    green: GREEN_GLASS,
+    red: RED_GLASS,
+    purple: PURPLE_GLASS,
+    blue: BLUE_GLASS,
+    ghost: CARD_RAISED,
+  };
+  const fg = fgMap[color];
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      style={{
+        borderRadius: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 8,
+        backgroundColor: bgMap[color],
+        borderWidth: 1,
+        borderColor: borderMap[color],
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
+      {busy ? (
+        <ActivityIndicator color={fg} size="small" />
+      ) : icon ? (
+        <Ionicons name={icon as any} size={15} color={fg} />
+      ) : null}
+      <Text style={{ color: fg, fontWeight: "800", fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ErrBanner({ message }: { message: string }) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        padding: 13,
+        borderRadius: 14,
+        backgroundColor: RED_GLASS,
+        borderWidth: 1,
+        borderColor: RED_BORDER,
+      }}
+    >
+      <Ionicons name="alert-circle-outline" size={16} color={ROSE} />
+      <Text style={{ color: ROSE, fontWeight: "700", fontSize: 13, flex: 1, lineHeight: 18 }}>
+        {message}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Order Status Timeline ─────────────────────────────────────────────────────
+function OrderStatusTimeline({ order }: { order: OrderRow }) {
+  const steps = [
+    { key: "CREATED", label: "Order Created", icon: "receipt-outline", time: order.created_at },
+    { key: "IN_ESCROW", label: "Payment in Escrow", icon: "lock-closed-outline", time: order.in_escrow_at },
+    { key: "OUT_FOR_DELIVERY", label: "Out for Delivery", icon: "bicycle-outline", time: order.out_for_delivery_at },
+    { key: "DELIVERED", label: "Delivered", icon: "checkmark-circle-outline", time: order.delivered_at },
+    { key: "RELEASED", label: "Funds Released", icon: "shield-checkmark-outline", time: order.released_at },
+  ];
+  const refundedOrCancelled =
+    order.status === "REFUNDED" || order.status === "CANCELLED";
+
+  const statusOrder = ["CREATED", "IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERED", "RELEASED"];
+  const currentIdx = statusOrder.indexOf(order.status);
+
+  return (
+    <View style={{ gap: 0 }}>
+      {steps.map((step, idx) => {
+        const isActive = statusOrder.indexOf(step.key) <= currentIdx;
+        const isCurrent = step.key === order.status;
+        const isLast = idx === steps.length - 1;
+
+        let dotColor = FAINT;
+        let lineColor = "rgba(255,253,247,0.08)";
+        if (isActive && !refundedOrCancelled) {
+          dotColor = isCurrent ? AMBER : TEAL;
+          lineColor = idx < currentIdx ? "rgba(45,212,191,0.4)" : "rgba(255,253,247,0.08)";
+        }
+
+        return (
+          <View key={step.key} style={{ flexDirection: "row", gap: 12 }}>
+            {/* Spine */}
+            <View style={{ alignItems: "center", width: 28 }}>
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 10,
+                  backgroundColor: isActive && !refundedOrCancelled ? (isCurrent ? AMBER_GLASS : TEAL_GLASS) : CARD,
+                  borderWidth: 1.5,
+                  borderColor: dotColor,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons
+                  name={step.icon as any}
+                  size={13}
+                  color={isActive && !refundedOrCancelled ? dotColor : FAINT}
+                />
+              </View>
+              {!isLast && (
+                <View
+                  style={{
+                    width: 1.5,
+                    flex: 1,
+                    minHeight: 20,
+                    backgroundColor: lineColor,
+                    marginVertical: 2,
+                  }}
+                />
+              )}
+            </View>
+
+            {/* Content */}
+            <View style={{ flex: 1, paddingBottom: isLast ? 0 : 14, paddingTop: 4 }}>
+              <Text
+                style={{
+                  color: isActive && !refundedOrCancelled ? (isCurrent ? AMBER : TEXT) : FAINT,
+                  fontWeight: isCurrent ? "900" : "700",
+                  fontSize: 13,
+                }}
+              >
+                {step.label}
+              </Text>
+              {step.time ? (
+                <Text style={{ color: FAINT, fontSize: 11, marginTop: 2 }}>
+                  {new Date(step.time).toLocaleString()}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        );
+      })}
+
+      {refundedOrCancelled && (
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ alignItems: "center", width: 28 }}>
+            <View
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 10,
+                backgroundColor: RED_GLASS,
+                borderWidth: 1.5,
+                borderColor: ROSE,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="close-outline" size={13} color={ROSE} />
+            </View>
+          </View>
+          <View style={{ flex: 1, paddingTop: 4 }}>
+            <Text style={{ color: ROSE, fontWeight: "900", fontSize: 13 }}>
+              {order.status === "REFUNDED" ? "Refunded" : "Cancelled"}
+            </Text>
+            {(order.refunded_at || order.cancelled_at) && (
+              <Text style={{ color: FAINT, fontSize: 11, marginTop: 2 }}>
+                {new Date(
+                  (order.refunded_at || order.cancelled_at) as string,
+                ).toLocaleString()}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── Order Summary Panel ───────────────────────────────────────────────────────
+function OrderSummaryPanel({
+  order,
+  listing,
+  seller,
+  isBuyer,
+  isSeller,
+}: {
+  order: OrderRow;
+  listing: ListingRow | null;
+  seller: SellerRow | null;
+  isBuyer: boolean;
+  isSeller: boolean;
+}) {
+  return (
+    <PanelCard>
+      <SectionLabel text="Order Summary" />
+      <View style={{ marginTop: 14, gap: 12 }}>
+        {/* Listing */}
+        <View>
+          <Text style={{ color: FAINT, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 }}>
+            ITEM
+          </Text>
+          <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16, marginTop: 3 }}>
+            {listing?.title ?? "Listing"}
+          </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+            {listing?.category ? (
+              <View
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 999,
+                  backgroundColor: CARD_RAISED,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>
+                  {listing.category}
+                </Text>
+              </View>
+            ) : null}
+            {listing?.delivery_type ? (
+              <View
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 999,
+                  backgroundColor: CARD_RAISED,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>
+                  {listing.delivery_type}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Divider */}
+        <View style={{ height: 1, backgroundColor: BORDER }} />
+
+        {/* Amount */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <View>
+            <Text style={{ color: FAINT, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 }}>
+              AMOUNT
+            </Text>
+            <Text style={{ color: AMBER, fontWeight: "900", fontSize: 26, marginTop: 3, letterSpacing: -0.5 }}>
+              {money(order.currency, order.amount)}
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+              {order.currency} · Qty {order.quantity}
+            </Text>
+          </View>
+          <StatusBadge status={order.status} />
+        </View>
+
+        {/* Divider */}
+        <View style={{ height: 1, backgroundColor: BORDER }} />
+
+        {/* Seller info (shown to buyer) */}
+        {isBuyer && seller ? (
+          <View>
+            <Text style={{ color: FAINT, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 }}>
+              SELLER
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5 }}>
+              <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+                {seller.business_name || seller.display_name || "Seller"}
+              </Text>
+              {seller.is_verified ? (
+                <Ionicons name="checkmark-circle" size={14} color={BLUE} />
+              ) : null}
+            </View>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+              @{seller.market_username || "seller"}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Order ID */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ color: FAINT, fontSize: 11, flex: 1 }} numberOfLines={1}>
+            ID: {order.id}
+          </Text>
+          <Pressable
+            onPress={async () => {
+              await Clipboard.setStringAsync(order.id);
+              Alert.alert("Copied", "Order ID copied to clipboard.");
+            }}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 8,
+              backgroundColor: AMBER_GLASS,
+              borderWidth: 1,
+              borderColor: AMBER_BORDER,
+            }}
+          >
+            <Text style={{ color: AMBER, fontWeight: "900", fontSize: 10 }}>COPY</Text>
+          </Pressable>
+        </View>
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── Counterparty Panel ────────────────────────────────────────────────────────
+function CounterpartyPanel({
+  isBuyer,
+  isSeller,
+  seller,
+  buyerProfile,
+  order,
+  counterpartyUsername,
+  counterpartyName,
+  counterpartyLabel,
+  counterpartyHandleHint,
+  canOrderChat,
+  onChat,
+}: {
+  isBuyer: boolean;
+  isSeller: boolean;
+  seller: SellerRow | null;
+  buyerProfile: BuyerProfileRow | null;
+  order: OrderRow;
+  counterpartyUsername: string | null;
+  counterpartyName: string;
+  counterpartyLabel: string;
+  counterpartyHandleHint: string;
+  canOrderChat: boolean;
+  onChat: () => void;
+}) {
+  const hasDeliveryGeo = !!(order as any)?.delivery_address?.geo;
+  const contact = (order as any)?.buyer_contact;
+  const deliveryContact = (order as any)?.delivery_address?.contact;
+  const phoneVal = contact?.phone || deliveryContact?.phone;
+  const emailVal = contact?.email || deliveryContact?.email;
+  const nameVal = contact?.name || deliveryContact?.name;
+  const noteVal = contact?.note || deliveryContact?.note;
+
+  return (
+    <PanelCard>
+      <SectionLabel text={isBuyer ? "Seller" : "Buyer"} color={TEAL} />
+      <View style={{ marginTop: 14, gap: 12 }}>
+        {/* Identity row */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            padding: 12,
+            borderRadius: 16,
+            backgroundColor: CARD_RAISED,
+            borderWidth: 1,
+            borderColor: BORDER,
+          }}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              backgroundColor: TEAL_GLASS,
+              borderWidth: 1,
+              borderColor: TEAL_BORDER,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons
+              name={isBuyer ? "storefront-outline" : "person-outline"}
+              size={20}
+              color={TEAL}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 14 }}>
+                {counterpartyName}
+              </Text>
+              {isBuyer && seller?.is_verified ? (
+                <Ionicons name="checkmark-circle" size={14} color={BLUE} />
+              ) : null}
+            </View>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 1 }}>
+              {counterpartyHandleHint}
+            </Text>
+          </View>
+          {canOrderChat ? (
+            <Pressable
+              onPress={onChat}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                backgroundColor: TEAL_GLASS,
+                borderWidth: 1,
+                borderColor: TEAL_BORDER,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color={TEAL} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* Buyer contact (seller only) */}
+        {isSeller && (nameVal || phoneVal || emailVal) ? (
+          <View style={{ gap: 6, padding: 12, borderRadius: 14, backgroundColor: CARD_RAISED, borderWidth: 1, borderColor: BORDER }}>
+            <Text style={{ color: FAINT, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 }}>
+              CONTACT DETAILS
+            </Text>
+            {nameVal ? <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>{nameVal}</Text> : null}
+            {phoneVal ? (
+              <Text style={{ color: MUTED, fontSize: 13 }}>📞 {phoneVal}</Text>
+            ) : null}
+            {emailVal ? (
+              <Text style={{ color: MUTED, fontSize: 13 }}>✉️ {emailVal}</Text>
+            ) : null}
+            {noteVal ? (
+              <Text style={{ color: FAINT, fontSize: 12, lineHeight: 18 }}>Note: {noteVal}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Delivery geo */}
+        {hasDeliveryGeo ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: FAINT, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 }}>
+              {isSeller ? "DELIVERY LOCATION" : "YOUR LOCATION"}
+            </Text>
+            <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+              {(order as any).delivery_address?.geo?.label || "Location set"}
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 12 }}>
+              {(order as any).delivery_address?.geo?.city || "–"},{" "}
+              {(order as any).delivery_address?.geo?.region || "–"},{" "}
+              {(order as any).delivery_address?.geo?.country || "–"}
+            </Text>
+            {Number.isFinite(Number((order as any).delivery_address?.geo?.lat)) &&
+            Number.isFinite(Number((order as any).delivery_address?.geo?.lng)) ? (
+              <OutlineBtn
+                label="Open in Maps"
+                icon="map-outline"
+                color="teal"
+                onPress={() =>
+                  Linking.openURL(
+                    `https://maps.google.com/?q=${(order as any).delivery_address.geo.lat},${(order as any).delivery_address.geo.lng}`,
+                  )
+                }
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Chat CTA */}
+        {canOrderChat ? (
+          <ActionBtn
+            label={`Message ${counterpartyLabel}`}
+            icon="chatbubble-ellipses-outline"
+            color="teal"
+            onPress={onChat}
+            disabled={!counterpartyUsername}
+          />
+        ) : null}
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── Crypto Activity Panel ─────────────────────────────────────────────────────
+function CryptoActivityPanel({
+  intents,
+  piPayment,
+  order,
+  isBuyer,
+  awaitingConfirmations,
+  canResyncDeposit,
+  pollRemainingSec,
+  defaultDepositTx,
+  defaultDepositRef,
+  defaultDepositHash,
+  busy,
+  onResyncDeposit,
+  onOpenResync,
+}: {
+  intents: CryptoIntent[];
+  piPayment: PiPaymentRow | null;
+  order: OrderRow;
+  isBuyer: boolean;
+  awaitingConfirmations: boolean;
+  canResyncDeposit: boolean;
+  pollRemainingSec: number;
+  defaultDepositTx: string;
+  defaultDepositRef: string;
+  defaultDepositHash: string;
+  busy: boolean;
+  onResyncDeposit: () => void;
+  onOpenResync: () => void;
+}) {
+  const intentTypeColor: Record<string, string> = {
+    DEPOSIT: AMBER,
+    RELEASE: TEAL,
+    REFUND: ROSE,
+    SETTLEMENT: "#34D399",
+  };
+  const statusColor: Record<string, string> = {
+    SUBMITTED: BLUE,
+    CONFIRMED: TEAL,
+    FAILED: ROSE,
+    PENDING: AMBER,
+    CREATED: MUTED,
+    PROCESSING: PURPLE,
+  };
+
+  return (
+    <PanelCard>
+      <SectionLabel text="Payment & Crypto" color={PURPLE} />
+      <View style={{ marginTop: 14, gap: 12 }}>
+        {/* Awaiting confirmations alert */}
+        {awaitingConfirmations && (
+          <View
+            style={{
+              padding: 14,
+              borderRadius: 16,
+              backgroundColor: PURPLE_GLASS,
+              borderWidth: 1,
+              borderColor: PURPLE_BORDER,
+              gap: 8,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <ActivityIndicator size="small" color="#A78BFA" />
+              <Text style={{ color: "#A78BFA", fontWeight: "900", fontSize: 13 }}>
+                Awaiting blockchain confirmations
+              </Text>
+            </View>
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Your deposit is submitted. We scan for confirmations every ~5 minutes.
+            </Text>
+            {pollRemainingSec > 0 ? (
+              <Text style={{ color: FAINT, fontSize: 12 }}>
+                Next auto-check: {fmtCountdown(pollRemainingSec)}
+              </Text>
+            ) : null}
+            {defaultDepositTx ? (
+              <Text style={{ color: FAINT, fontSize: 11 }} numberOfLines={1}>
+                Tx: {defaultDepositTx}
+              </Text>
+            ) : defaultDepositRef ? (
+              <Text style={{ color: FAINT, fontSize: 11 }} numberOfLines={1}>
+                Ref: {defaultDepositRef}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              <OutlineBtn label="Refresh status" color="purple" icon="refresh-outline" onPress={onResyncDeposit} busy={busy} />
+              <OutlineBtn label="Resync deposit" color="ghost" icon="sync-outline" onPress={onOpenResync} />
+            </View>
+          </View>
+        )}
+
+        {/* Resync available (not awaiting) */}
+        {!awaitingConfirmations && canResyncDeposit && (
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              backgroundColor: CARD_RAISED,
+              borderWidth: 1,
+              borderColor: BORDER,
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Deposit confirmed on-chain but order still shows Created?
+            </Text>
+            <OutlineBtn label="Resync deposit" color="ghost" icon="sync-outline" onPress={onOpenResync} />
+          </View>
+        )}
+
+        {/* Pi payment */}
+        {piPayment && (
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              backgroundColor: AMBER_GLASS,
+              borderWidth: 1,
+              borderColor: AMBER_BORDER,
+              gap: 6,
+            }}
+          >
+            <Text style={{ color: AMBER, fontWeight: "900", fontSize: 12, letterSpacing: 0.5 }}>
+              PI PAYMENT
+            </Text>
+            <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+              Status: {piPayment.status}
+            </Text>
+            {piPayment.payment_id ? (
+              <Text style={{ color: FAINT, fontSize: 11 }} numberOfLines={1}>
+                ID: {piPayment.payment_id}
+              </Text>
+            ) : null}
+            {piPayment.topup_pi_required ? (
+              <Text style={{ color: ROSE, fontSize: 12, fontWeight: "700" }}>
+                Top-up required: {piPayment.topup_pi_required} Pi
+                {piPayment.shortfall_usd ? ` (~$${piPayment.shortfall_usd})` : ""}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        {/* Intent list */}
+        {intents.length === 0 ? (
+          <Text style={{ color: FAINT, fontSize: 13 }}>No crypto intents recorded yet.</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {intents.slice(0, 5).map((intent) => {
+              const typeKey = String(intent.intent_type || "").toUpperCase();
+              const statusKey = String(intent.status || "").toUpperCase();
+              const fg = intentTypeColor[typeKey] ?? MUTED;
+              const statusFg = statusColor[statusKey] ?? FAINT;
+              return (
+                <View
+                  key={intent.id}
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    backgroundColor: CARD_RAISED,
+                    borderWidth: 1,
+                    borderColor: BORDER,
+                    gap: 4,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: fg, fontWeight: "900", fontSize: 12 }}>
+                      {typeKey} · {String(intent.chain).toUpperCase()}
+                    </Text>
+                    <Text style={{ color: statusFg, fontWeight: "800", fontSize: 11 }}>
+                      {statusKey}
+                    </Text>
+                  </View>
+                  {intent.tx_hash ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ color: FAINT, fontSize: 11, flex: 1 }} numberOfLines={1}>
+                        {intent.tx_hash}
+                      </Text>
+                      <Pressable
+                        onPress={() => Clipboard.setStringAsync(intent.tx_hash!)}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="copy-outline" size={13} color={FAINT} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  <Text style={{ color: FAINT, fontSize: 10 }}>
+                    {new Date(intent.created_at).toLocaleString()}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── Deliverables Panel ────────────────────────────────────────────────────────
+function DeliverablesPanel({
+  isBuyer,
+  isSeller,
+  canSellerUpload,
+  canDownloadFinal,
+  deliverables,
+  listing,
+  uploadBusy,
+  uploadErr,
+  onPickUpload,
+  onPreview,
+  onDownload,
+}: {
+  isBuyer: boolean;
+  isSeller: boolean;
+  canSellerUpload: boolean;
+  canDownloadFinal: boolean;
+  deliverables: OrderDeliverable[];
+  listing: ListingRow | null;
+  uploadBusy: boolean;
+  uploadErr: string | null;
+  onPickUpload: (access: "preview" | "final") => void;
+  onPreview: (d: OrderDeliverable) => void;
+  onDownload: (d: OrderDeliverable) => void;
+}) {
+  const previewItems = deliverables.filter((d) => d.access === "preview");
+  const finalItems = deliverables.filter((d) => d.access === "final");
+  const isDigital = String(listing?.delivery_type ?? "").toLowerCase() === "digital";
+  const hasWebsite = !!listing?.website_url;
+
+  return (
+    <PanelCard>
+      <SectionLabel text="Files & Deliverables" color={TEAL} />
+      <View style={{ marginTop: 14, gap: 14 }}>
+        {/* Buyer view */}
+        {isBuyer ? (
+          <>
+            {/* Website preview */}
+            {hasWebsite ? (
+              <Pressable
+                onPress={() =>
+                  onPreview({
+                    id: "website",
+                    kind: "link",
+                    access: "preview",
+                    title: "Website preview",
+                    link_url: listing?.website_url ?? "",
+                  } as any)
+                }
+                style={{
+                  padding: 14,
+                  borderRadius: 16,
+                  backgroundColor: TEAL_GLASS,
+                  borderWidth: 1,
+                  borderColor: TEAL_BORDER,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    backgroundColor: "rgba(45,212,191,0.18)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Ionicons name="globe-outline" size={18} color={TEAL} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+                    Website preview
+                  </Text>
+                  <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>
+                    Tap to open · Demo link
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color={MUTED} />
+              </Pressable>
+            ) : null}
+
+            {/* Preview files */}
+            {previewItems.length === 0 && !hasWebsite ? (
+              <View
+                style={{
+                  alignItems: "center",
+                  paddingVertical: 20,
+                  gap: 8,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  borderStyle: "dashed",
+                }}
+              >
+                <Ionicons name="documents-outline" size={24} color={FAINT} />
+                <Text style={{ color: FAINT, fontSize: 13 }}>
+                  {isDigital ? "No preview files yet" : "Physical delivery — no file previews"}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {previewItems.map((d) => (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => onPreview(d)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: 12,
+                      borderRadius: 14,
+                      backgroundColor: CARD_RAISED,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 9,
+                        backgroundColor: AMBER_GLASS,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons name="play-circle-outline" size={16} color={AMBER} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+                        {d.title ?? `${String(d.kind).toUpperCase()} preview`}
+                      </Text>
+                      <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }}>
+                        Tap to preview · Watermarked
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={15} color={MUTED} />
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {/* Full downloads (unlocked after OTP + delivered) */}
+            {canDownloadFinal ? (
+              <View style={{ gap: 8 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: GREEN_GLASS,
+                    borderWidth: 1,
+                    borderColor: GREEN_BORDER,
+                  }}
+                >
+                  <Ionicons name="lock-open-outline" size={14} color={TEAL} />
+                  <Text style={{ color: TEAL, fontWeight: "800", fontSize: 12 }}>
+                    Full quality unlocked · OTP verified
+                  </Text>
+                </View>
+                {finalItems.length === 0 ? (
+                  <Text style={{ color: FAINT, fontSize: 13 }}>
+                    Seller hasn't uploaded full-quality files yet.
+                  </Text>
+                ) : (
+                  finalItems.map((d) => (
+                    <View
+                      key={d.id}
+                      style={{
+                        padding: 12,
+                        borderRadius: 14,
+                        backgroundColor: CARD_RAISED,
+                        borderWidth: 1,
+                        borderColor: BORDER,
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={{ color: TEXT, fontWeight: "800", fontSize: 13 }}>
+                        {d.title ?? `${String(d.kind).toUpperCase()} full`}
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        <Pressable
+                          onPress={() => onPreview(d)}
+                          style={{
+                            flex: 1,
+                            borderRadius: 12,
+                            paddingVertical: 10,
+                            alignItems: "center",
+                            backgroundColor: CARD_RAISED,
+                            borderWidth: 1,
+                            borderColor: BORDER,
+                          }}
+                        >
+                          <Text style={{ color: MUTED, fontWeight: "800", fontSize: 12 }}>
+                            View
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => onDownload(d)}
+                          style={{
+                            flex: 1,
+                            borderRadius: 12,
+                            paddingVertical: 10,
+                            alignItems: "center",
+                            backgroundColor: GREEN_GLASS,
+                            borderWidth: 1,
+                            borderColor: GREEN_BORDER,
+                          }}
+                        >
+                          <Text style={{ color: "#34D399", fontWeight: "900", fontSize: 12 }}>
+                            Download
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            ) : finalItems.length === 0 ? null : (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
+                  borderRadius: 12,
+                  backgroundColor: CARD_RAISED,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                }}
+              >
+                <Ionicons name="lock-closed-outline" size={14} color={FAINT} />
+                <Text style={{ color: FAINT, fontSize: 12 }}>
+                  Full quality locked · Requires OTP + Delivered status
+                </Text>
+              </View>
+            )}
+          </>
+        ) : null}
+
+        {/* Seller upload section */}
+        {isSeller ? (
+          <View style={{ gap: 10 }}>
+            {uploadErr ? <ErrBanner message={uploadErr} /> : null}
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+              Upload preview (watermarked) and full-quality files for the buyer.
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <Pressable
+                disabled={uploadBusy || !canSellerUpload}
+                onPress={() => onPickUpload("preview")}
+                style={{
+                  flex: 1,
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  backgroundColor: uploadBusy || !canSellerUpload ? CARD_RAISED : AMBER_GLASS,
+                  borderWidth: 1,
+                  borderColor: uploadBusy || !canSellerUpload ? BORDER : AMBER_BORDER,
+                  gap: 5,
+                }}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={18}
+                  color={!canSellerUpload ? FAINT : AMBER}
+                />
+                <Text
+                  style={{
+                    color: !canSellerUpload ? FAINT : AMBER,
+                    fontWeight: "900",
+                    fontSize: 12,
+                  }}
+                >
+                  {uploadBusy ? "Uploading…" : "Preview"}
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={uploadBusy || !canSellerUpload}
+                onPress={() => onPickUpload("final")}
+                style={{
+                  flex: 1,
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  backgroundColor: uploadBusy || !canSellerUpload ? CARD_RAISED : TEAL_GLASS,
+                  borderWidth: 1,
+                  borderColor: uploadBusy || !canSellerUpload ? BORDER : TEAL_BORDER,
+                  gap: 5,
+                }}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color={!canSellerUpload ? FAINT : TEAL}
+                />
+                <Text
+                  style={{
+                    color: !canSellerUpload ? FAINT : TEAL,
+                    fontWeight: "900",
+                    fontSize: 12,
+                  }}
+                >
+                  {uploadBusy ? "Uploading…" : "Full Quality"}
+                </Text>
+              </Pressable>
+            </View>
+            {!canSellerUpload ? (
+              <Text style={{ color: FAINT, fontSize: 11 }}>
+                Available when order is IN_ESCROW, OUT_FOR_DELIVERY, or DELIVERABLE_UPLOADED.
+              </Text>
+            ) : null}
+            {deliverables.length > 0 ? (
+              <Text style={{ color: MUTED, fontSize: 12 }}>
+                Uploaded: {previewItems.length} preview · {finalItems.length} full-quality
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── Dispute Panel ─────────────────────────────────────────────────────────────
+function DisputePanel({
+  dispute,
+  disputeMessages,
+  disputeText,
+  disputeFiles,
+  disputeBusy,
+  disputeErr,
+  canUseDisputeCenter,
+  disputeClosed,
+  disputeRoleLabel,
+  me,
+  onChangeText,
+  onPickFiles,
+  onRemoveFile,
+  onSubmit,
+  onOpenAttachment,
+}: {
+  dispute: MarketDispute | null;
+  disputeMessages: DisputeMessage[];
+  disputeText: string;
+  disputeFiles: DisputeLocalFile[];
+  disputeBusy: boolean;
+  disputeErr: string | null;
+  canUseDisputeCenter: boolean;
+  disputeClosed: boolean;
+  disputeRoleLabel: string;
+  me: string | null;
+  onChangeText: (v: string) => void;
+  onPickFiles: () => void;
+  onRemoveFile: (i: number) => void;
+  onSubmit: () => void;
+  onOpenAttachment: (a: any) => void;
+}) {
+  return (
+    <PanelCard accent={dispute ? (disputeClosed ? "green" : "red") : undefined}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <SectionLabel text="Dispute Center" color={dispute ? (disputeClosed ? "#34D399" : ROSE) : MUTED} />
+        <View
+          style={{
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 999,
+            backgroundColor: disputeClosed ? GREEN_GLASS : dispute ? RED_GLASS : CARD_RAISED,
+            borderWidth: 1,
+            borderColor: disputeClosed ? GREEN_BORDER : dispute ? RED_BORDER : BORDER,
+          }}
+        >
+          <Text
+            style={{
+              color: disputeClosed ? "#34D399" : dispute ? ROSE : FAINT,
+              fontWeight: "900",
+              fontSize: 11,
+            }}
+          >
+            {dispute ? dispute.status.replace(/_/g, " ") : "No dispute"}
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ marginTop: 14, gap: 12 }}>
+        {!dispute ? (
+          <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19 }}>
+            If there's a problem with this order, describe what happened and attach proof before submitting to admin review.
+          </Text>
+        ) : null}
+
+        {dispute?.resolution ? (
+          <View style={{ padding: 12, borderRadius: 14, backgroundColor: GREEN_GLASS, borderWidth: 1, borderColor: GREEN_BORDER }}>
+            <Text style={{ color: "#34D399", fontWeight: "900", fontSize: 12 }}>RESOLUTION</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>
+              {String(dispute.resolution).replace(/_/g, " ").toLowerCase()}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Messages */}
+        {disputeMessages.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            {disputeMessages.map((msg) => {
+              const mine = msg.sender_id === me;
+              const speakerLabel =
+                msg.sender_kind === "ADMIN"
+                  ? "Admin"
+                  : msg.sender_kind === "SELLER"
+                  ? "Seller"
+                  : "Buyer";
+              return (
+                <View
+                  key={msg.id}
+                  style={{
+                    borderRadius: 16,
+                    padding: 12,
+                    backgroundColor: mine ? PURPLE_GLASS : CARD_RAISED,
+                    borderWidth: 1,
+                    borderColor: mine ? PURPLE_BORDER : BORDER,
+                    gap: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <Text style={{ color: mine ? "#A78BFA" : MUTED, fontWeight: "900", fontSize: 12 }}>
+                      {mine ? "You" : speakerLabel}
+                    </Text>
+                    <Text style={{ color: FAINT, fontSize: 10 }}>
+                      {new Date(msg.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+                  {msg.body ? (
+                    <Text style={{ color: MUTED, lineHeight: 19, fontSize: 13 }}>{msg.body}</Text>
+                  ) : (
+                    <Text style={{ color: FAINT, fontSize: 13 }}>Proof attached.</Text>
+                  )}
+                  {msg.attachments?.length ? (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                      {msg.attachments.map((att: any) => (
+                        <Pressable
+                          key={att.id}
+                          onPress={() => onOpenAttachment(att)}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 999,
+                            backgroundColor: BLUE_GLASS,
+                            borderWidth: 1,
+                            borderColor: BLUE_BORDER,
+                          }}
+                        >
+                          <Ionicons name="document-attach-outline" size={13} color={BLUE} />
+                          <Text
+                            numberOfLines={1}
+                            style={{ color: "#E0F2FE", fontWeight: "800", fontSize: 11, maxWidth: 160 }}
+                          >
+                            {att.file_name || "Proof"}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {/* Compose form */}
+        {!disputeClosed ? (
+          <View style={{ gap: 10 }}>
+            <TextInput
+              value={disputeText}
+              onChangeText={onChangeText}
+              placeholder={`Write your ${disputeRoleLabel} statement…`}
+              placeholderTextColor="rgba(255,253,247,0.32)"
+              multiline
+              textAlignVertical="top"
+              style={{
+                minHeight: 96,
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderWidth: 1,
+                borderColor: BORDER,
+                backgroundColor: CARD_RAISED,
+                color: TEXT,
+                fontSize: 14,
+                lineHeight: 20,
+              }}
+            />
+
+            {disputeFiles.length > 0 ? (
+              <View style={{ gap: 6 }}>
+                {disputeFiles.map((file, idx) => (
+                  <View
+                    key={`${file.uri}-${idx}`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: 10,
+                      borderRadius: 12,
+                      backgroundColor: CARD_RAISED,
+                      borderWidth: 1,
+                      borderColor: BORDER,
+                    }}
+                  >
+                    <Ionicons name="document-attach-outline" size={15} color={BLUE} />
+                    <Text numberOfLines={1} style={{ flex: 1, color: MUTED, fontWeight: "700", fontSize: 12 }}>
+                      {file.name || "Proof"}
+                    </Text>
+                    <Pressable onPress={() => onRemoveFile(idx)} hitSlop={8}>
+                      <Ionicons name="close-circle-outline" size={18} color={ROSE} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {disputeErr ? (
+              <Text
+                style={{
+                  color: disputeErr.includes("Describe") ? AMBER : ROSE,
+                  fontWeight: "700",
+                  fontSize: 12,
+                  lineHeight: 18,
+                }}
+              >
+                {disputeErr}
+              </Text>
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <OutlineBtn
+                label="Attach proof"
+                icon="attach-outline"
+                color="blue"
+                disabled={!canUseDisputeCenter || disputeBusy}
+                onPress={onPickFiles}
+              />
+              <View style={{ flex: 1 }}>
+                <ActionBtn
+                  label={dispute ? "Send update" : "Open dispute"}
+                  icon="shield-outline"
+                  color="red"
+                  disabled={!canUseDisputeCenter}
+                  busy={disputeBusy}
+                  onPress={onSubmit}
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── AI Risk Panel ─────────────────────────────────────────────────────────────
+function AiRiskPanel({
+  riskResult,
+  riskBusy,
+  isBuyer,
+  onRun,
+}: {
+  riskResult: MarketOrderAiRiskResult | null;
+  riskBusy: boolean;
+  isBuyer: boolean;
+  onRun: () => void;
+}) {
+  function riskColor(level?: string) {
+    const r = String(level || "").toUpperCase();
+    if (r === "URGENT" || r === "HIGH") return ROSE;
+    if (r === "MEDIUM") return AMBER;
+    return TEAL;
+  }
+
+  return (
+    <PanelCard>
+      <SectionLabel text="AI Risk Check" color={TEAL} />
+      <View style={{ marginTop: 14, gap: 12 }}>
+        <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19 }}>
+          Scan payment, delivery, escrow, and dispute signals for this order.
+        </Text>
+        <ActionBtn
+          label={riskBusy ? "Checking…" : "Run risk check"}
+          icon="sparkles-outline"
+          color="teal"
+          busy={riskBusy}
+          onPress={onRun}
+        />
+        {riskResult?.risk ? (
+          <View
+            style={{
+              borderRadius: 16,
+              padding: 14,
+              backgroundColor: `${riskColor(riskResult.risk.risk_level)}18`,
+              borderWidth: 1,
+              borderColor: `${riskColor(riskResult.risk.risk_level)}55`,
+              gap: 8,
+            }}
+          >
+            <Text style={{ color: riskColor(riskResult.risk.risk_level), fontWeight: "900", fontSize: 13 }}>
+              {riskResult.risk.risk_level} risk · {riskResult.risk.confidence} confidence
+            </Text>
+            {riskResult.risk.summary ? (
+              <Text style={{ color: MUTED, lineHeight: 19, fontSize: 13 }}>
+                {riskResult.risk.summary}
+              </Text>
+            ) : null}
+            {[
+              ...riskResult.risk.mismatch_flags,
+              ...riskResult.risk.payment_flags,
+              ...riskResult.risk.delivery_flags,
+            ].length > 0 ? (
+              <Text style={{ color: riskColor(riskResult.risk.risk_level), fontSize: 12, lineHeight: 18 }}>
+                Flags:{" "}
+                {[
+                  ...riskResult.risk.mismatch_flags,
+                  ...riskResult.risk.payment_flags,
+                  ...riskResult.risk.delivery_flags,
+                ].join(", ")}
+              </Text>
+            ) : null}
+            {riskResult.risk.recommended_actions?.length ? (
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>
+                Recommended: {riskResult.risk.recommended_actions.join(" ")}
+              </Text>
+            ) : null}
+            {(isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note) ? (
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18, fontStyle: "italic" }}>
+                {isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    </PanelCard>
+  );
+}
+
+// ─── Buyer Order View ──────────────────────────────────────────────────────────
+function BuyerOrderView({
+  order,
+  listing,
+  seller,
+  otp,
+  otpVerified,
+  otpExpiryRemainingSec,
+  otpCooldownRemainingSec,
+  hasPendingUnexpiredOtp,
+  canGenerateOtpNow,
+  canRelease,
+  canGoCheckout,
+  canCancel,
+  canReviewListingFromOrder,
+  isPiRailOrder,
+  latestPiPaymentStatus,
+  generatedOtpCode,
+  busy,
+  err,
+  onRequestOTP,
+  onReleaseFunds,
+  onGoCheckout,
+  onCancelOrder,
+  onReviewListing,
+  onPrepareDispute,
+}: {
+  order: OrderRow;
+  listing: ListingRow | null;
+  seller: SellerRow | null;
+  otp: OtpRow | null;
+  otpVerified: boolean;
+  otpExpiryRemainingSec: number;
+  otpCooldownRemainingSec: number;
+  hasPendingUnexpiredOtp: boolean;
+  canGenerateOtpNow: boolean;
+  canRelease: boolean;
+  canGoCheckout: boolean;
+  canCancel: boolean;
+  canReviewListingFromOrder: boolean;
+  isPiRailOrder: boolean;
+  latestPiPaymentStatus: string;
+  generatedOtpCode: string | null;
+  busy: boolean;
+  err: string | null;
+  onRequestOTP: () => void;
+  onReleaseFunds: () => void;
+  onGoCheckout: () => void;
+  onCancelOrder: () => void;
+  onReviewListing: () => void;
+  onPrepareDispute: () => void;
+}) {
+  const orderStatus = String(order.status || "").toUpperCase();
+  const isActive = !["CANCELLED", "REFUNDED", "RELEASED"].includes(orderStatus);
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Role badge */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 12,
+          backgroundColor: BLUE_GLASS,
+          borderWidth: 1,
+          borderColor: BLUE_BORDER,
+          alignSelf: "flex-start",
+        }}
+      >
+        <Ionicons name="bag-handle-outline" size={13} color={BLUE} />
+        <Text style={{ color: BLUE, fontWeight: "900", fontSize: 11, letterSpacing: 0.5 }}>
+          BUYER VIEW
+        </Text>
+      </View>
+
+      {/* Primary action card */}
+      {canGoCheckout ? (
+        <PanelCard accent="amber">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: AMBER_GLASS,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="card-outline" size={20} color={AMBER} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Payment Required</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+                Complete checkout to secure your order in escrow
+              </Text>
+            </View>
+          </View>
+          {seller?.market_username ? (
+            <OutlineBtn
+              label="Ask seller a question first"
+              icon="chatbubble-ellipses-outline"
+              color="ghost"
+              onPress={() =>
+                router.push({
+                  pathname: "/market/dm/[username]" as any,
+                  params: { username: seller.market_username },
+                })
+              }
+            />
+          ) : null}
+          <View style={{ marginTop: 8 }}>
+            <ActionBtn
+              label={
+                isPiRailOrder
+                  ? latestPiPaymentStatus === "UNDERPAID"
+                    ? "Retry Pi top-up"
+                    : "Continue Pi checkout"
+                  : "Continue to checkout"
+              }
+              sublabel={
+                isPiRailOrder ? "Complete your Pi payment" : "Choose USDC, USDT, or Pi"
+              }
+              color="amber"
+              icon="arrow-forward-outline"
+              onPress={onGoCheckout}
+            />
+          </View>
+          {canCancel ? (
+            <View style={{ marginTop: 8 }}>
+              <OutlineBtn
+                label="Cancel this order"
+                icon="close-outline"
+                color="red"
+                disabled={busy}
+                busy={busy}
+                onPress={onCancelOrder}
+              />
+            </View>
+          ) : null}
+        </PanelCard>
+      ) : null}
+
+      {/* OTP card — when order is out for delivery */}
+      {orderStatus === "OUT_FOR_DELIVERY" && !otpVerified ? (
+        <PanelCard accent="blue">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: BLUE_GLASS,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="key-outline" size={20} color={BLUE} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Delivery OTP</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+                Generate your OTP and share it with the seller to confirm delivery
+              </Text>
+            </View>
+          </View>
+
+          {generatedOtpCode && !otpVerified ? (
+            <View
+              style={{
+                padding: 16,
+                borderRadius: 16,
+                backgroundColor: PURPLE_GLASS,
+                borderWidth: 1,
+                borderColor: PURPLE_BORDER,
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: MUTED, fontWeight: "700", fontSize: 11, letterSpacing: 1 }}>
+                YOUR OTP CODE
+              </Text>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 32, letterSpacing: 8 }}>
+                {generatedOtpCode}
+              </Text>
+              <OutlineBtn
+                label="Copy OTP"
+                icon="copy-outline"
+                color="purple"
+                onPress={async () => {
+                  await Clipboard.setStringAsync(generatedOtpCode);
+                  Alert.alert("Copied", "OTP copied to clipboard.");
+                }}
+              />
+            </View>
+          ) : null}
+
+          {hasPendingUnexpiredOtp && otpExpiryRemainingSec > 0 ? (
+            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 10 }}>
+              OTP active · Expires in {fmtCountdown(otpExpiryRemainingSec)}
+            </Text>
+          ) : null}
+
+          {otpCooldownRemainingSec > 0 ? (
+            <Text style={{ color: FAINT, fontSize: 12, marginBottom: 10 }}>
+              Cooldown: {fmtCountdown(otpCooldownRemainingSec)}
+            </Text>
+          ) : null}
+
+          <ActionBtn
+            label={hasPendingUnexpiredOtp ? "Resend OTP" : "Generate OTP"}
+            icon="key-outline"
+            color="blue"
+            disabled={!canGenerateOtpNow}
+            busy={busy}
+            onPress={onRequestOTP}
+          />
+        </PanelCard>
+      ) : null}
+
+      {/* OTP verified badge */}
+      {otpVerified ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            padding: 14,
+            borderRadius: 16,
+            backgroundColor: GREEN_GLASS,
+            borderWidth: 1,
+            borderColor: GREEN_BORDER,
+          }}
+        >
+          <Ionicons name="checkmark-circle" size={22} color={TEAL} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEAL, fontWeight: "900", fontSize: 14 }}>OTP Verified</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+              Delivery confirmed. Download files then release funds when satisfied.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Release funds */}
+      {isActive && !canGoCheckout ? (
+        <PanelCard accent={canRelease ? "green" : undefined}>
+          <SectionLabel text="Release Funds" color={canRelease ? "#34D399" : FAINT} />
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19 }}>
+              {canRelease
+                ? "OTP verified. Release payment to the seller after downloading and reviewing your files."
+                : "Available after OTP is verified and order is marked Delivered."}
+            </Text>
+            <ActionBtn
+              label={busy ? "Releasing…" : "Release funds to seller"}
+              sublabel="Escrow protected · Requires OTP verified"
+              color="green"
+              icon="shield-checkmark-outline"
+              disabled={!canRelease}
+              busy={busy && canRelease}
+              onPress={onReleaseFunds}
+            />
+          </View>
+        </PanelCard>
+      ) : null}
+
+      {/* Review */}
+      {canReviewListingFromOrder ? (
+        <OutlineBtn
+          label="Review this listing"
+          icon="star-outline"
+          color="amber"
+          onPress={onReviewListing}
+        />
+      ) : null}
+
+      {/* Report issue */}
+      {isActive ? (
+        <OutlineBtn
+          label="Report issue / request refund"
+          icon="flag-outline"
+          color="red"
+          onPress={onPrepareDispute}
+        />
+      ) : null}
+
+      {err ? <ErrBanner message={err} /> : null}
+    </View>
+  );
+}
+
+// ─── Seller Order View ─────────────────────────────────────────────────────────
+function SellerOrderView({
+  order,
+  otp,
+  otpVerified,
+  otpInput,
+  setOtpInput,
+  canOutForDelivery,
+  canVerifyOtp,
+  busy,
+  err,
+  onOutForDelivery,
+  onVerifyOTP,
+  onPrepareDispute,
+}: {
+  order: OrderRow;
+  otp: OtpRow | null;
+  otpVerified: boolean;
+  otpInput: string;
+  setOtpInput: (v: string) => void;
+  canOutForDelivery: boolean;
+  canVerifyOtp: boolean;
+  busy: boolean;
+  err: string | null;
+  onOutForDelivery: () => void;
+  onVerifyOTP: () => void;
+  onPrepareDispute: () => void;
+}) {
+  const orderStatus = String(order.status || "").toUpperCase();
+  const isActive = !["CANCELLED", "REFUNDED", "RELEASED"].includes(orderStatus);
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* Role badge */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 12,
+          backgroundColor: AMBER_GLASS,
+          borderWidth: 1,
+          borderColor: AMBER_BORDER,
+          alignSelf: "flex-start",
+        }}
+      >
+        <Ionicons name="storefront-outline" size={13} color={AMBER} />
+        <Text style={{ color: AMBER, fontWeight: "900", fontSize: 11, letterSpacing: 0.5 }}>
+          SELLER VIEW
+        </Text>
+      </View>
+
+      {/* Primary action — mark out for delivery */}
+      {orderStatus === "IN_ESCROW" ? (
+        <PanelCard accent="amber">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: AMBER_GLASS,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="bicycle-outline" size={20} color={AMBER} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>Payment Secured</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+                Funds are in escrow. Fulfill the order and mark it out for delivery.
+              </Text>
+            </View>
+          </View>
+          <ActionBtn
+            label={busy ? "Working…" : "Mark out for delivery"}
+            sublabel="Notify buyer the order is on its way"
+            color="amber"
+            icon="bicycle-outline"
+            disabled={!canOutForDelivery}
+            busy={busy}
+            onPress={onOutForDelivery}
+          />
+        </PanelCard>
+      ) : null}
+
+      {/* OTP verification */}
+      {orderStatus === "OUT_FOR_DELIVERY" ? (
+        <PanelCard accent={otpVerified ? "green" : "blue"}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: otpVerified ? GREEN_GLASS : BLUE_GLASS,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons
+                name={otpVerified ? "checkmark-circle" : "key-outline"}
+                size={20}
+                color={otpVerified ? TEAL : BLUE}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 15 }}>
+                {otpVerified ? "OTP Verified ✓" : "Enter Buyer OTP"}
+              </Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+                {otpVerified
+                  ? "Delivery confirmed. Ask buyer to release funds."
+                  : "Ask the buyer for their OTP code and enter it here."}
+              </Text>
+            </View>
+          </View>
+
+          {!otpVerified ? (
+            <>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  borderRadius: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  backgroundColor: CARD_RAISED,
+                  marginBottom: 10,
+                }}
+              >
+                <Ionicons name="key-outline" size={18} color={MUTED} />
+                <TextInput
+                  value={otpInput}
+                  onChangeText={setOtpInput}
+                  placeholder="Enter buyer's OTP code"
+                  placeholderTextColor="rgba(255,253,247,0.32)"
+                  keyboardType="number-pad"
+                  style={{ flex: 1, color: TEXT, fontWeight: "900", fontSize: 18, letterSpacing: 4 }}
+                />
+              </View>
+              <ActionBtn
+                label={busy ? "Verifying…" : "Verify OTP"}
+                icon="checkmark-circle-outline"
+                color="blue"
+                disabled={!canVerifyOtp || otpInput.trim().length < 4}
+                busy={busy}
+                onPress={onVerifyOTP}
+              />
+              {otp ? (
+                <Text style={{ color: FAINT, fontSize: 11, marginTop: 8 }}>
+                  OTP attempts: {otp.attempts} · Expires: {new Date(otp.expires_at).toLocaleTimeString()}
+                </Text>
+              ) : (
+                <Text style={{ color: FAINT, fontSize: 11, marginTop: 8 }}>
+                  Waiting for buyer to generate OTP.
+                </Text>
+              )}
+            </>
+          ) : (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: GREEN_GLASS,
+                borderWidth: 1,
+                borderColor: GREEN_BORDER,
+              }}
+            >
+              <Ionicons name="checkmark-circle" size={16} color={TEAL} />
+              <Text style={{ color: TEAL, fontWeight: "800", fontSize: 13 }}>
+                Delivery confirmed — awaiting buyer fund release.
+              </Text>
+            </View>
+          )}
+        </PanelCard>
+      ) : null}
+
+      {/* Awaiting escrow */}
+      {orderStatus === "CREATED" ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            padding: 14,
+            borderRadius: 16,
+            backgroundColor: AMBER_GLASS,
+            borderWidth: 1,
+            borderColor: AMBER_BORDER,
+          }}
+        >
+          <ActivityIndicator size="small" color={AMBER} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: AMBER, fontWeight: "900", fontSize: 13 }}>
+              Awaiting buyer payment
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+              The buyer needs to complete checkout before you can fulfill this order.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* Report issue */}
+      {isActive ? (
+        <OutlineBtn
+          label="Report issue / open complaint"
+          icon="flag-outline"
+          color="red"
+          onPress={onPrepareDispute}
+        />
+      ) : null}
+
+      {err ? <ErrBanner message={err} /> : null}
+    </View>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function OrderDetails() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const contentMaxWidth = width >= 980 ? 1120 : 720;
   const { orderId, tx, uo } = useLocalSearchParams<{ orderId: string; tx?: string; uo?: string }>();
   const oid = useMemo(() => String(orderId || ""), [orderId]);
   const navTx = useMemo(() => String(tx || "").trim(), [tx]);
   const navUserOp = useMemo(() => String(uo || "").trim(), [uo]);
 
+  // Responsive layout
+  const isTablet = width >= 640;
+  const isDesktop = width >= 1024;
+  const contentMaxWidth = 1120;
+  const sidePadding = isDesktop ? 40 : isTablet ? 24 : 16;
+
+  // Tab navigation for desktop
+  const TABS = ["Overview", "Payment", "Files", "Dispute", "Activity"] as const;
+  type TabKey = typeof TABS[number];
+  const [activeTab, setActiveTab] = useState<TabKey>("Overview");
+
+  // ─── State ────────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<string | null>(null);
-
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [listing, setListing] = useState<ListingRow | null>(null);
   const [seller, setSeller] = useState<SellerRow | null>(null);
   const [buyerProfile, setBuyerProfile] = useState<BuyerProfileRow | null>(null);
   const [sellerProfileUsername, setSellerProfileUsername] = useState<string | null>(null);
-
   const [otp, setOtp] = useState<OtpRow | null>(null);
   const [intents, setIntents] = useState<CryptoIntent[]>([]);
   const [piPayment, setPiPayment] = useState<PiPaymentRow | null>(null);
-
   const [deliverables, setDeliverables] = useState<OrderDeliverable[]>([]);
-
   const [otpInput, setOtpInput] = useState("");
   const [generatedOtpCode, setGeneratedOtpCode] = useState<string | null>(null);
   const [otpCooldownUntilMs, setOtpCooldownUntilMs] = useState<number>(0);
@@ -267,12 +2290,8 @@ export default function OrderDetails() {
   const [err, setErr] = useState<string | null>(null);
   const [riskBusy, setRiskBusy] = useState(false);
   const [riskResult, setRiskResult] = useState<MarketOrderAiRiskResult | null>(null);
-
-  // Preview modal
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
-
-  // Upload (seller)
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [reindexOpen, setReindexOpen] = useState(false);
@@ -286,19 +2305,26 @@ export default function OrderDetails() {
   const autoReindexKeyRef = useRef<string>("");
   const autoSyncBusyRef = useRef(false);
 
+  // ─── Derived ──────────────────────────────────────────────────────────────────
   const isBuyer = useMemo(() => !!me && !!order && order.buyer_id === me, [me, order]);
   const isSeller = useMemo(() => !!me && !!order && order.seller_id === me, [me, order]);
+
   const canOrderChat = useMemo(
     () =>
       !!order &&
-      ["IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERED", "RELEASED"].includes(String(order.status || "").toUpperCase()) &&
+      ["IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERED", "RELEASED"].includes(
+        String(order.status || "").toUpperCase(),
+      ) &&
       (isBuyer || isSeller),
     [order, isBuyer, isSeller],
   );
+
   const counterpartyUsername = useMemo(() => {
     if (!order) return null;
     if (isBuyer) {
-      const sellerHandle = String(seller?.market_username || sellerProfileUsername || "").trim().toLowerCase();
+      const sellerHandle = String(seller?.market_username || sellerProfileUsername || "")
+        .trim()
+        .toLowerCase();
       if (sellerHandle) return sellerHandle;
       const sellerId = String((order as any)?.seller_id || "").trim().toLowerCase();
       return isUuid(sellerId) ? sellerId : null;
@@ -310,24 +2336,20 @@ export default function OrderDetails() {
       return isUuid(buyerId) ? buyerId : null;
     }
     return null;
-  }, [
-    order,
-    isBuyer,
-    isSeller,
-    seller?.market_username,
-    sellerProfileUsername,
-    buyerProfile?.username,
-  ]);
+  }, [order, isBuyer, isSeller, seller?.market_username, sellerProfileUsername, buyerProfile?.username]);
+
   const counterpartyHandleHint = useMemo(() => {
     if (!counterpartyUsername) return "Username not set yet";
     if (isUuid(counterpartyUsername)) return "Direct chat link ready";
     return `@${counterpartyUsername}`;
   }, [counterpartyUsername]);
+
   const counterpartyLabel = useMemo(() => {
     if (isBuyer) return "seller";
     if (isSeller) return "buyer";
     return "user";
   }, [isBuyer, isSeller]);
+
   const counterpartyName = useMemo(() => {
     if (isBuyer) {
       return (
@@ -346,18 +2368,14 @@ export default function OrderDetails() {
       );
     }
     return "User";
-  }, [
-    isBuyer,
-    isSeller,
-    seller?.business_name,
-    seller?.display_name,
-    seller?.market_username,
-    buyerProfile?.full_name,
-    buyerProfile?.username,
-    order,
-  ]);
-  const disputeStatus = useMemo(() => String(dispute?.status || "").toUpperCase(), [dispute?.status]);
+  }, [isBuyer, isSeller, seller, buyerProfile, order]);
+
+  const disputeStatus = useMemo(
+    () => String(dispute?.status || "").toUpperCase(),
+    [dispute?.status],
+  );
   const disputeClosed = disputeStatus === "RESOLVED";
+
   const canUseDisputeCenter = useMemo(() => {
     if (!order || (!isBuyer && !isSeller)) return false;
     if (dispute && !disputeClosed) return true;
@@ -365,51 +2383,50 @@ export default function OrderDetails() {
       String(order.status || "").toUpperCase(),
     );
   }, [order, isBuyer, isSeller, dispute, disputeClosed]);
+
   const disputeRoleLabel = isSeller ? "seller" : "buyer";
 
-  async function runOrderRiskCheck() {
-    if (!order?.id) return;
-    setRiskBusy(true);
-    setErr(null);
-    try {
-      const result = await generateOrderAiRisk(order.id);
-      setRiskResult(result);
-    } catch (e: any) {
-      setErr(friendlyMarketError(e, "We couldn't run the order risk check."));
-    } finally {
-      setRiskBusy(false);
-    }
-  }
-
-  function riskColor(level?: string) {
-    const risk = String(level || "").toUpperCase();
-    if (risk === "URGENT" || risk === "HIGH") return "#FCA5A5";
-    if (risk === "MEDIUM") return "#FDE68A";
-    return "#2DD4BF";
-  }
-
   const otpVerified = !!otp?.verified_at;
+
   const latestDepositIntent = useMemo(() => {
     const dep = intents.filter((i) => String(i.intent_type || "").toUpperCase() === "DEPOSIT");
     if (!dep.length) return null;
-    return dep.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    return dep.sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || "")),
+    )[0];
   }, [intents]);
+
   const latestReleaseIntent = useMemo(() => {
     const rel = intents.filter((i) => String(i.intent_type || "").toUpperCase() === "RELEASE");
     if (!rel.length) return null;
-    return rel.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    return rel.sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || "")),
+    )[0];
   }, [intents]);
+
   const latestRefundIntent = useMemo(() => {
     const ref = intents.filter((i) => String(i.intent_type || "").toUpperCase() === "REFUND");
     if (!ref.length) return null;
-    return ref.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    return ref.sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || "")),
+    )[0];
   }, [intents]);
+
   const latestSettlementIntent = useMemo(() => {
-    const candidates = [latestReleaseIntent, latestRefundIntent].filter(Boolean) as CryptoIntent[];
+    const candidates = [latestReleaseIntent, latestRefundIntent].filter(
+      Boolean,
+    ) as CryptoIntent[];
     if (!candidates.length) return null;
-    return candidates.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    return candidates.sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || "")),
+    )[0];
   }, [latestReleaseIntent, latestRefundIntent]);
-  const latestPiPaymentStatus = useMemo(() => String(piPayment?.status || "").toUpperCase(), [piPayment?.status]);
+
+  const latestPiPaymentStatus = useMemo(
+    () => String(piPayment?.status || "").toUpperCase(),
+    [piPayment?.status],
+  );
+
   const isPiRailOrder = useMemo(
     () =>
       !!piPayment ||
@@ -418,74 +2435,142 @@ export default function OrderDetails() {
           String(i.intent_type || "").toUpperCase() === "DEPOSIT" &&
           String(i.chain || "").toLowerCase() === "pi_testnet",
       ),
-    [intents, piPayment?.id],
+    [intents, piPayment],
   );
+
   const isStableOrder = useMemo(
     () => ["USDC", "USDT"].includes(String(order?.currency || "").toUpperCase()),
     [order?.currency],
   );
+
   const hasSubmittedCryptoDeposit = useMemo(() => {
-    return intents.some(
-      (i) =>
-        String(i.intent_type || "").toUpperCase() === "DEPOSIT" &&
-        ["SUBMITTED", "CONFIRMED"].includes(String(i.status || "").toUpperCase()),
-    ) || isHexHash(latestDepositIntent?.tx_hash) || isHexHash(latestDepositIntent?.client_reference) || isHexHash(navTx) || isHexHash(navUserOp);
+    return (
+      intents.some(
+        (i) =>
+          String(i.intent_type || "").toUpperCase() === "DEPOSIT" &&
+          ["SUBMITTED", "CONFIRMED"].includes(String(i.status || "").toUpperCase()),
+      ) ||
+      isHexHash(latestDepositIntent?.tx_hash) ||
+      isHexHash(latestDepositIntent?.client_reference) ||
+      isHexHash(navTx) ||
+      isHexHash(navUserOp)
+    );
   }, [intents, latestDepositIntent?.tx_hash, latestDepositIntent?.client_reference, navTx, navUserOp]);
+
   const defaultDepositTx = useMemo(() => {
     const v = String(latestDepositIntent?.tx_hash || navTx || "").trim();
     return isHexHash(v) ? v : "";
   }, [latestDepositIntent?.tx_hash, navTx]);
+
   const defaultDepositRef = useMemo(() => {
     const v = String(latestDepositIntent?.client_reference || navUserOp || "").trim();
     if (isHexHash(v)) return v;
     if (!latestDepositIntent?.tx_hash && isHexHash(navTx)) return navTx;
     return "";
-  }, [latestDepositIntent?.client_reference, latestDepositIntent?.tx_hash, navTx, navUserOp]);
+  }, [
+    latestDepositIntent?.client_reference,
+    latestDepositIntent?.tx_hash,
+    navTx,
+    navUserOp,
+  ]);
+
   const defaultDepositHash = defaultDepositTx || defaultDepositRef;
-  // Note: `market_crypto_intents` can be temporarily empty (RLS, RPC not writing tx_hash, etc).
-  // Resync must still be available for strict on-chain confirmation.
+
   const awaitingConfirmations =
     !!order &&
     order.status === "CREATED" &&
     isStableOrder &&
     !isPiRailOrder &&
     hasSubmittedCryptoDeposit;
-  const canResyncDeposit = !!order && order.status === "CREATED" && isStableOrder && !isPiRailOrder;
+
+  const canResyncDeposit =
+    !!order && order.status === "CREATED" && isStableOrder && !isPiRailOrder;
+
   const awaitingPiCompletion =
     !!order &&
     isBuyer &&
     String(order.status || "").toUpperCase() === "CREATED" &&
     isPiRailOrder &&
     latestPiPaymentStatus === "APPROVED";
+
   const pollIntervalMs = 5 * 60 * 1000;
-  const depositCreatedAtMs = latestDepositIntent?.created_at ? new Date(latestDepositIntent.created_at).getTime() : 0;
+  const depositCreatedAtMs = latestDepositIntent?.created_at
+    ? new Date(latestDepositIntent.created_at).getTime()
+    : 0;
   const nextPollAtMs = depositCreatedAtMs > 0 ? depositCreatedAtMs + pollIntervalMs : 0;
-  const pollRemainingSec = nextPollAtMs > 0 ? Math.max(0, Math.ceil((nextPollAtMs - nowMs) / 1000)) : 0;
-
-  useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
+  const pollRemainingSec =
+    nextPollAtMs > 0 ? Math.max(0, Math.ceil((nextPollAtMs - nowMs) / 1000)) : 0;
 
   const previewItems = useMemo(() => deliverables.filter((d) => d.access === "preview"), [deliverables]);
   const finalItems = useMemo(() => deliverables.filter((d) => d.access === "final"), [deliverables]);
+  const isDigital = useMemo(
+    () => String(listing?.delivery_type ?? "").toLowerCase() === "digital",
+    [listing?.delivery_type],
+  );
 
-  const isDigital = useMemo(() => String(listing?.delivery_type ?? "").toLowerCase() === "digital", [listing?.delivery_type]);
-  const hasWebsite = useMemo(() => !!listing?.website_url, [listing?.website_url]);
-
-  // Buyer can download full-quality after OTP verified + delivered/released
   const canDownloadFinal =
     !!order &&
     isBuyer &&
     otpVerified &&
     (order.status === "DELIVERED" || order.status === "RELEASED");
 
+  const canGoCheckout =
+    !!order &&
+    order.status === "CREATED" &&
+    isBuyer &&
+    (isPiRailOrder
+      ? ["", "QUOTED", "FAILED", "CANCELLED", "UNDERPAID"].includes(latestPiPaymentStatus)
+      : !hasSubmittedCryptoDeposit);
+
+  const canCancel =
+    !!order && order.status === "CREATED" && isBuyer && !hasSubmittedCryptoDeposit;
+
+  const canOutForDelivery = !!order && isSeller && order.status === "IN_ESCROW";
+  const canRequestOtp = !!order && isBuyer && order.status === "OUT_FOR_DELIVERY";
+  const canVerifyOtp = !!order && isSeller && order.status === "OUT_FOR_DELIVERY";
+  const canRelease = !!order && isBuyer && otpVerified && order.status === "DELIVERED";
+  const canReviewListingFromOrder =
+    !!order &&
+    isBuyer &&
+    ["DELIVERED", "RELEASED"].includes(String(order.status || "").toUpperCase());
+  const canSellerUpload =
+    !!order &&
+    isSeller &&
+    ["IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED"].includes(
+      String(order.status || "").toUpperCase(),
+    );
+
+  const otpExpiresAtMs = otp?.expires_at ? new Date(otp.expires_at).getTime() : 0;
+  const otpExpiryRemainingSec =
+    otpVerified || !otpExpiresAtMs
+      ? 0
+      : Math.max(0, Math.ceil((otpExpiresAtMs - nowMs) / 1000));
+  const otpCooldownRemainingSec = Math.max(
+    0,
+    Math.ceil((otpCooldownUntilMs - nowMs) / 1000),
+  );
+  const hasPendingUnexpiredOtp = !!otp && !otpVerified && otpExpiryRemainingSec > 0;
+  const canGenerateOtpNow =
+    canRequestOtp && !busy && !otpVerified && otpCooldownRemainingSec === 0 && !hasPendingUnexpiredOtp;
+
+  const orderStatus = String(order?.status || "").toUpperCase();
+  const policyAudience = isSeller ? "seller" : isBuyer ? "buyer" : "both";
+  const { bySection: orderPolicy, loading: orderPolicyLoading } = useMarketPolicyBlocks({
+    surface: "order",
+    audience: policyAudience,
+    orderStatus,
+  });
+
+  // ─── Timers ────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ─── Load ──────────────────────────────────────────────────────────────────────
   async function load() {
-    console.log("[OrderDetails] load start", { oid });
     setLoading(true);
     setErr(null);
-
     try {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
@@ -500,7 +2585,7 @@ export default function OrderDetails() {
         const first = await supabase
           .from(ORDERS_TABLE)
           .select(
-            "id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,created_at,in_escrow_at,out_for_delivery_at,delivered_at,released_at,refunded_at,cancelled_at,delivery_address,buyer_contact"
+            "id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,created_at,in_escrow_at,out_for_delivery_at,delivered_at,released_at,refunded_at,cancelled_at,delivery_address,buyer_contact",
           )
           .eq("id", oid)
           .maybeSingle();
@@ -510,7 +2595,7 @@ export default function OrderDetails() {
           const fallback = await supabase
             .from(ORDERS_TABLE)
             .select(
-              "id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,created_at,in_escrow_at,out_for_delivery_at,delivered_at,released_at,refunded_at,cancelled_at,delivery_address"
+              "id,buyer_id,seller_id,listing_id,quantity,unit_price,amount,currency,status,created_at,in_escrow_at,out_for_delivery_at,delivered_at,released_at,refunded_at,cancelled_at,delivery_address",
             )
             .eq("id", oid)
             .maybeSingle();
@@ -522,13 +2607,11 @@ export default function OrderDetails() {
       }
 
       if (!o) throw new Error("Order not found");
-
       if ((o as any).buyer_id !== user.id && (o as any).seller_id !== user.id) {
         throw new Error("You are not allowed to view this order.");
       }
 
       const l = await safeLoadListing((o as any).listing_id);
-
       const { data: s, error: sErr } = await supabase
         .from(SELLERS_TABLE)
         .select("user_id,market_username,display_name,business_name,is_verified")
@@ -547,11 +2630,7 @@ export default function OrderDetails() {
           for (const p of (pData ?? []) as any[]) {
             const pid = String(p.id || "");
             if (pid === String((o as any).buyer_id)) {
-              bProf = {
-                id: pid,
-                username: p.username ?? null,
-                full_name: p.full_name ?? null,
-              };
+              bProf = { id: pid, username: p.username ?? null, full_name: p.full_name ?? null };
             }
             if (pid === String((o as any).seller_id)) {
               const handle = String(p.username || "").trim().toLowerCase();
@@ -580,14 +2659,15 @@ export default function OrderDetails() {
       if (String((o as any)?.buyer_id || "") === user.id) {
         const { data: piRows } = await supabase
           .from("market_pi_payments")
-          .select("id,status,quote_ref,payment_id,txid,quote_expires_at,topup_pi_required,shortfall_usd,updated_at,created_at")
+          .select(
+            "id,status,quote_ref,payment_id,txid,quote_expires_at,topup_pi_required,shortfall_usd,updated_at,created_at",
+          )
           .eq("order_id", oid)
           .order("created_at", { ascending: false })
           .limit(1);
         latestPiPayment = ((piRows ?? [])[0] as PiPaymentRow | undefined) ?? null;
       }
 
-      // deliverables (safe)
       try {
         const ds = await listOrderDeliverables(oid);
         setDeliverables(ds);
@@ -612,7 +2692,7 @@ export default function OrderDetails() {
       setBuyerProfile(bProf);
       setSellerProfileUsername(sellerUsernameFallback);
       setOtp((otpRow as any) ?? null);
-      setIntents(((ints as any) ?? []) as any);
+      setIntents(((ints as any) ?? []) as CryptoIntent[]);
       setPiPayment(latestPiPayment);
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't load this order."));
@@ -629,7 +2709,6 @@ export default function OrderDetails() {
       setDisputeMessages([]);
     } finally {
       setLoading(false);
-      console.log("[OrderDetails] load end");
     }
   }
 
@@ -638,24 +2717,21 @@ export default function OrderDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oid]);
 
+  // ─── Auto-reindex effects (unchanged logic) ────────────────────────────────────
   useEffect(() => {
     if (!awaitingConfirmations) return;
     if (!defaultDepositHash) return;
-
     const key = `${order?.id || ""}:${defaultDepositHash}`;
     if (autoReindexKeyRef.current === key) return;
     autoReindexKeyRef.current = key;
-
     const timer = setTimeout(() => {
       void reindexDeposit();
     }, 1200);
-
     return () => clearTimeout(timer);
   }, [awaitingConfirmations, defaultDepositHash, order?.id]);
 
   useEffect(() => {
     if (!awaitingConfirmations || !order?.id) return;
-
     let alive = true;
     const run = async () => {
       if (!alive || autoSyncBusyRef.current) return;
@@ -663,25 +2739,22 @@ export default function OrderDetails() {
       try {
         const body: Record<string, unknown> = { order_id: order.id };
         if (isHexHash(defaultDepositHash)) body.tx_hash = defaultDepositHash;
-        const first = await supabase.functions.invoke("market-escrow-reindex", { body }).catch(() => null);
+        const first = await supabase.functions
+          .invoke("market-escrow-reindex", { body })
+          .catch(() => null);
         if ((first?.data as any)?.applied !== true) {
-          await supabase.functions.invoke("market-escrow-reindex", { body: { order_id: order.id } }).catch(() => null);
+          await supabase.functions
+            .invoke("market-escrow-reindex", { body: { order_id: order.id } })
+            .catch(() => null);
         }
         await load();
       } finally {
         autoSyncBusyRef.current = false;
       }
     };
-
     void run();
-    const timer = setInterval(() => {
-      void run();
-    }, 15000);
-
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    const timer = setInterval(() => { void run(); }, 15000);
+    return () => { alive = false; clearInterval(timer); };
   }, [awaitingConfirmations, order?.id, defaultDepositHash]);
 
   useEffect(() => {
@@ -690,7 +2763,6 @@ export default function OrderDetails() {
     if (isPiRailOrder) return;
     if (String(order.status || "").toUpperCase() === "RELEASED") return;
     if (String(order.status || "").toUpperCase() === "REFUNDED") return;
-
     const settlementType = String(latestSettlementIntent?.intent_type || "").toUpperCase();
     const settlementStatus = String(latestSettlementIntent?.status || "").toUpperCase();
     const settlementTx = String(latestSettlementIntent?.tx_hash || "").trim();
@@ -698,7 +2770,6 @@ export default function OrderDetails() {
     if (!["RELEASE", "REFUND"].includes(settlementType)) return;
     if (!["SUBMITTED", "CONFIRMED", "PROCESSING", "CREATED"].includes(settlementStatus)) return;
     if (!isHexHash(settlementTx) || !settlementChain) return;
-
     let alive = true;
     const run = async () => {
       if (!alive || autoSyncBusyRef.current) return;
@@ -711,24 +2782,15 @@ export default function OrderDetails() {
             p_tx_hash: settlementTx,
             p_event_type: settlementType,
           });
-        } catch {
-          // ignore; next loop/poller can settle
-        }
+        } catch { /* ignore */ }
         await load();
       } finally {
         autoSyncBusyRef.current = false;
       }
     };
-
     void run();
-    const timer = setInterval(() => {
-      void run();
-    }, 15000);
-
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
+    const timer = setInterval(() => { void run(); }, 15000);
+    return () => { alive = false; clearInterval(timer); };
   }, [
     order?.id,
     order?.status,
@@ -740,53 +2802,7 @@ export default function OrderDetails() {
     latestSettlementIntent?.chain,
   ]);
 
-  // Buttons conditions (your existing logic)
-  const canGoCheckout =
-    !!order &&
-    order.status === "CREATED" &&
-    isBuyer &&
-    (
-      isPiRailOrder
-        ? ["", "QUOTED", "FAILED", "CANCELLED", "UNDERPAID"].includes(latestPiPaymentStatus)
-        : !hasSubmittedCryptoDeposit
-    );
-  const canCancel = !!order && order.status === "CREATED" && isBuyer && !hasSubmittedCryptoDeposit;
-
-  const canOutForDelivery = !!order && isSeller && order.status === "IN_ESCROW";
-  const canRequestOtp = !!order && isBuyer && order.status === "OUT_FOR_DELIVERY";
-  const canVerifyOtp = !!order && isSeller && order.status === "OUT_FOR_DELIVERY";
-
-  // Buyer releases only after OTP verified + delivered
-  const canRelease = !!order && isBuyer && otpVerified && order.status === "DELIVERED";
-  const canReviewListingFromOrder =
-    !!order &&
-    isBuyer &&
-    ["DELIVERED", "RELEASED"].includes(String(order.status || "").toUpperCase());
-  const canSellerUpload =
-    !!order &&
-    isSeller &&
-    ["IN_ESCROW", "OUT_FOR_DELIVERY", "DELIVERABLE_UPLOADED"].includes(String(order.status || "").toUpperCase());
-
-  const otpExpiresAtMs = otp?.expires_at ? new Date(otp.expires_at).getTime() : 0;
-  const otpExpiryRemainingSec = otpVerified || !otpExpiresAtMs ? 0 : Math.max(0, Math.ceil((otpExpiresAtMs - nowMs) / 1000));
-  const otpCooldownRemainingSec = Math.max(0, Math.ceil((otpCooldownUntilMs - nowMs) / 1000));
-  const hasPendingUnexpiredOtp = !!otp && !otpVerified && otpExpiryRemainingSec > 0;
-  const canGenerateOtpNow = canRequestOtp && !busy && !otpVerified && otpCooldownRemainingSec === 0 && !hasPendingUnexpiredOtp;
-  const orderStatus = String(order?.status || "").toUpperCase();
-  const policyAudience = isSeller ? "seller" : isBuyer ? "buyer" : "both";
-  const { bySection: orderPolicy, loading: orderPolicyLoading } = useMarketPolicyBlocks({
-    surface: "order",
-    audience: policyAudience,
-    orderStatus,
-  });
-
-  function fmtCountdown(totalSec: number) {
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  }
-
-
+  // ─── Action handlers (all original logic preserved) ───────────────────────────
   async function doOutForDelivery() {
     if (!order) return;
     setBusy(true);
@@ -809,9 +2825,10 @@ export default function OrderDetails() {
     try {
       const { data, error } = await supabase.rpc(RPC_OTP_GENERATE, { p_order_id: order.id });
       if (error) throw error;
-
       const otpCode = (data as any)?.otp_code ? String((data as any).otp_code) : null;
-      const expiresAt = (data as any)?.expires_at ? new Date((data as any).expires_at).getTime() : 0;
+      const expiresAt = (data as any)?.expires_at
+        ? new Date((data as any).expires_at).getTime()
+        : 0;
       setGeneratedOtpCode(otpCode);
       setOtpCooldownUntilMs(Date.now() + OTP_REQUEST_COOLDOWN_SEC * 1000);
       if (expiresAt > 0) {
@@ -822,13 +2839,12 @@ export default function OrderDetails() {
           verified_at: null,
         }));
       }
-
       if (otpCode) {
-        Alert.alert("Delivery OTP", `Share this OTP with the seller when you are ready to confirm delivery:
-
-${otpCode}`);
+        Alert.alert(
+          "Delivery OTP",
+          `Share this OTP with the seller when ready to confirm delivery:\n\n${otpCode}`,
+        );
       }
-
       await load();
     } catch (e: any) {
       setErr(friendlyMarketError(e, "We couldn't send OTP yet. Please try again."));
@@ -841,11 +2857,13 @@ ${otpCode}`);
     if (!order) return;
     const code = otpInput.trim();
     if (code.length < 4) return setErr("Enter the OTP");
-
     setBusy(true);
     setErr(null);
     try {
-      const { error } = await supabase.rpc(RPC_OTP_VERIFY, { p_order_id: order.id, p_otp: code });
+      const { error } = await supabase.rpc(RPC_OTP_VERIFY, {
+        p_order_id: order.id,
+        p_otp: code,
+      });
       if (error) throw error;
       setOtpInput("");
       await load();
@@ -856,25 +2874,25 @@ ${otpCode}`);
     }
   }
 
-async function releaseFunds() {
-  if (!order) return;
-  setBusy(true);
-  setErr(null);
-  try {
-    if (isPiRailOrder) {
-      await releasePiForOrder(order.id);
-    } else if (["USDC", "USDT"].includes(String(order.currency || "").toUpperCase())) {
-      await releaseUsdcForOrder(order.id);
-    } else {
-      const auth = await requireLocalAuth("Release escrow to seller");
-      if (!auth.ok) throw new Error(auth.message || "Authentication required");
-      const { error } = await supabase.rpc(RPC_RELEASE_ESCROW, { p_order_id: order.id });
-      if (error) throw error;
-    }
-    await load();
-  } catch (e: any) {
-    setErr(friendlyMarketError(e, "We couldn't release funds yet."));
-  } finally {
+  async function releaseFunds() {
+    if (!order) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (isPiRailOrder) {
+        await releasePiForOrder(order.id);
+      } else if (["USDC", "USDT"].includes(String(order.currency || "").toUpperCase())) {
+        await releaseUsdcForOrder(order.id);
+      } else {
+        const auth = await requireLocalAuth("Release escrow to seller");
+        if (!auth.ok) throw new Error(auth.message || "Authentication required");
+        const { error } = await supabase.rpc(RPC_RELEASE_ESCROW, { p_order_id: order.id });
+        if (error) throw error;
+      }
+      await load();
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't release funds yet."));
+    } finally {
       setBusy(false);
     }
   }
@@ -886,7 +2904,12 @@ async function releaseFunds() {
     }
     setDisputeErr("Describe what happened in the Dispute center, then submit it to admin.");
     if (!disputeText.trim()) {
-      setDisputeText(isSeller ? "I need admin review because " : "I need a refund/admin review because ");
+      setDisputeText(
+        isSeller ? "I need admin review because " : "I need a refund/admin review because ",
+      );
+    }
+    if (isDesktop) {
+      setActiveTab("Dispute");
     }
   }
 
@@ -941,16 +2964,18 @@ async function releaseFunds() {
   async function submitDisputeStatement() {
     if (!order || (!isBuyer && !isSeller)) return;
     if (!canUseDisputeCenter || disputeClosed) {
-      setDisputeErr(disputeClosed ? "This dispute has already been resolved." : "Disputes can be opened after payment enters escrow.");
+      setDisputeErr(
+        disputeClosed
+          ? "This dispute has already been resolved."
+          : "Disputes can be opened after payment enters escrow.",
+      );
       return;
     }
-
     const body = disputeText.trim();
     if (!body && !disputeFiles.length) {
       setDisputeErr("Explain what happened or attach proof before sending.");
       return;
     }
-
     setDisputeBusy(true);
     setDisputeErr(null);
     setErr(null);
@@ -989,8 +3014,7 @@ async function releaseFunds() {
   }
 
   async function cancelOrder() {
-    if (!order) return;
-    if (busy) return;
+    if (!order || busy) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1010,7 +3034,8 @@ async function releaseFunds() {
     setErr(null);
     try {
       const txHash = (reindexTx || defaultDepositHash || "").trim();
-      if (txHash && !isHexHash(txHash)) throw new Error("Enter a valid transaction hash or UserOp hash.");
+      if (txHash && !isHexHash(txHash))
+        throw new Error("Enter a valid transaction hash or UserOp hash.");
 
       const { data: esc } = await supabase
         .from("market_crypto_escrows")
@@ -1018,17 +3043,14 @@ async function releaseFunds() {
         .eq("order_id", order.id)
         .maybeSingle();
 
-      const chainName = String((esc as any)?.chain || latestDepositIntent?.chain || "").trim();
+      const chainName = String(
+        (esc as any)?.chain || latestDepositIntent?.chain || "",
+      ).trim();
       let finalizeData: any = null;
 
       if (chainName && txHash) {
         const { data, error } = await supabase.functions.invoke("market-chain-tx-finalize", {
-          body: {
-            order_id: order.id,
-            chain: chainName,
-            tx_hash: txHash,
-            event_type: "DEPOSIT",
-          },
+          body: { order_id: order.id, chain: chainName, tx_hash: txHash, event_type: "DEPOSIT" },
         });
         if (error) {
           console.log("[Order] chain finalize function failed", String(error.message || error));
@@ -1042,7 +3064,11 @@ async function releaseFunds() {
           }
           const confirmations = Number((data as any)?.confirmations ?? NaN);
           const required = Number((data as any)?.required ?? NaN);
-          if (Number.isFinite(confirmations) && Number.isFinite(required) && confirmations < required) {
+          if (
+            Number.isFinite(confirmations) &&
+            Number.isFinite(required) &&
+            confirmations < required
+          ) {
             Alert.alert(
               "Awaiting confirmations",
               `Confirmations: ${confirmations}/${required}\n\nTry again in a few minutes.`,
@@ -1052,12 +3078,10 @@ async function releaseFunds() {
         }
       }
 
-      let { data: reindexData, error: reindexErr } = await supabase.functions.invoke("market-escrow-reindex", {
-        body: {
-          order_id: order.id,
-          ...(txHash ? { tx_hash: txHash } : {}),
-        },
-      });
+      let { data: reindexData, error: reindexErr } = await supabase.functions.invoke(
+        "market-escrow-reindex",
+        { body: { order_id: order.id, ...(txHash ? { tx_hash: txHash } : {}) } },
+      );
       if (reindexErr) throw new Error(reindexErr.message || "Deposit resync failed.");
       if ((reindexData as any)?.applied !== true) {
         const retry = await supabase.functions.invoke("market-escrow-reindex", {
@@ -1074,16 +3098,21 @@ async function releaseFunds() {
         .select("status")
         .eq("id", order.id)
         .maybeSingle();
-      if (String((fresh as any)?.status || "").toUpperCase() === "IN_ESCROW" || (reindexData as any)?.applied === true) {
+      if (
+        String((fresh as any)?.status || "").toUpperCase() === "IN_ESCROW" ||
+        (reindexData as any)?.applied === true
+      ) {
         Alert.alert("Deposit confirmed", "Order moved to escrow.");
         setReindexOpen(false);
         return;
       }
 
-      const pending = String((reindexData as any)?.pending || (finalizeData as any)?.reason || "").trim();
+      const pending = String(
+        (reindexData as any)?.pending || (finalizeData as any)?.reason || "",
+      ).trim();
       if (pending === "event_not_found_yet") {
         throw new Error(
-          "Deposit was not found yet. If you pasted the approval transaction, wait for the escrow deposit transaction and retry. The app also scans the escrow logs automatically.",
+          "Deposit was not found yet. If you pasted the approval transaction, wait for the escrow deposit transaction and retry.",
         );
       }
       if (pending === "receipt") {
@@ -1106,10 +3135,14 @@ async function releaseFunds() {
     if (d.kind === "link") {
       const url = d.link_url ?? listing?.website_url ?? "";
       if (!url) return setErr("No website link available.");
-      openPreview({ kind: "link", access: d.access, title: d.title ?? "Website preview", url });
+      openPreview({
+        kind: "link",
+        access: d.access,
+        title: d.title ?? "Website preview",
+        url,
+      });
       return;
     }
-
     openPreview({
       kind: d.kind as any,
       access: d.access,
@@ -1122,7 +3155,9 @@ async function releaseFunds() {
 
   async function downloadDeliverable(d: OrderDeliverable) {
     try {
-      const rawName = String((d.meta as any)?.originalName || d.title || `deliverable-${d.id}` || "").trim();
+      const rawName = String(
+        (d.meta as any)?.originalName || d.title || `deliverable-${d.id}` || "",
+      ).trim();
       const safeName = rawName ? rawName.replace(/[^\w.\-]+/g, "_") : `deliverable-${d.id}`;
       const url = await signedUrlForDeliverable(d, 900, { download: safeName });
       if (!url) throw new Error("No download URL");
@@ -1158,119 +3193,339 @@ async function releaseFunds() {
     });
   }
 
-  // Seller upload preview/final (safe + production)
-async function pickAndUpload(access: "preview" | "final") {
-  if (!order) return;
-
-  // extra safety: only seller should upload
-  if (!isSeller) {
-    setUploadErr("Only the seller can upload deliverables for this order.");
-    return;
-  }
-  if (!canSellerUpload) {
-    setUploadErr(`Upload is only allowed while order is in escrow/delivery. Current status: ${order.status}`);
-    return;
-  }
-
-  setUploadBusy(true);
-  setUploadErr(null);
-
-  try {
-    const DocumentPicker = await import("expo-document-picker");
-
-    const res = await DocumentPicker.getDocumentAsync({
-      multiple: false,
-      copyToCacheDirectory: true,
-      type: "*/*",
-    });
-
-    if (res.canceled) return;
-
-    const asset = res.assets?.[0];
-    if (!asset?.uri) throw new Error("No file selected");
-
-    const name = asset.name ?? `file-${Date.now()}`;
-    const mime = asset.mimeType ?? null;
-
-    // keep your existing kind guessing logic
-    const kind = guessKindFromMime(mime, name);
-
-    const bucket = "market-deliverables";
-    const safeName = name.replace(/[^\w.\-]+/g, "_");
-    const path = `orders/${order.id}/${access}/${Date.now()}-${safeName}`;
-
-    // ✅ Upload (no expo-file-system EncodingType / bytes here)
-    let uploaded: { publicUrl: string | null; storagePath: string };
+  async function runOrderRiskCheck() {
+    if (!order?.id) return;
+    setRiskBusy(true);
+    setErr(null);
     try {
-      uploaded = await uploadToSupabaseStorage({
-        bucket,
-        path,
-        localUri: asset.uri,
-        contentType: mime ?? "application/octet-stream",
-        upsert: false,
-      });
-    } catch (storageErr: any) {
-      throw new Error(`[storage] ${String(storageErr?.message || storageErr)}`);
+      const result = await generateOrderAiRisk(order.id);
+      setRiskResult(result);
+    } catch (e: any) {
+      setErr(friendlyMarketError(e, "We couldn't run the order risk check."));
+    } finally {
+      setRiskBusy(false);
     }
+  }
 
-    // ✅ Save DB row
-    try {
-      await insertFileDeliverable({
-        orderId: order.id,
-        access, // "preview" | "final" (matches your current UI & filters)
-        kind,
-        title: access === "preview" ? `Preview: ${name}` : `Full: ${name}`,
-        sortOrder: access === "preview" ? previewItems.length : finalItems.length,
-        bucket,
-        storagePath: uploaded.storagePath,
-        mimeType: mime,
-        meta: {
-          note: access === "preview" ? "Low quality / watermarked recommended" : "Full quality",
-          originalName: name,
-          size: asset.size ?? null,
-        },
-      });
-    } catch (dbErr: any) {
-      throw new Error(`[db] ${String(dbErr?.message || dbErr)}`);
+  async function pickAndUpload(access: "preview" | "final") {
+    if (!order) return;
+    if (!isSeller) {
+      setUploadErr("Only the seller can upload deliverables for this order.");
+      return;
     }
-
-    await load();
-  } catch (e: any) {
-    const msg = String(e?.message || "Upload failed");
-    if (msg.toLowerCase().includes("[storage]")) {
-      setUploadErr(`Storage upload failed: ${msg.replace(/^\[storage\]\s*/i, "")}`);
-    } else if (msg.toLowerCase().includes("[db]")) {
-      setUploadErr(`Deliverable save failed: ${msg.replace(/^\[db\]\s*/i, "")}`);
-    } else if (msg.toLowerCase().includes("row-level security")) {
+    if (!canSellerUpload) {
       setUploadErr(
-        "Upload blocked by RLS policy. Apply the latest market deliverables RLS migration, then retry.",
+        `Upload is only allowed while order is in escrow/delivery. Current status: ${order.status}`,
       );
-    } else {
-      setUploadErr(msg);
+      return;
     }
-  } finally {
-    setUploadBusy(false);
+    setUploadBusy(true);
+    setUploadErr(null);
+    try {
+      const DocumentPicker = await import("expo-document-picker");
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+        type: "*/*",
+      });
+      if (res.canceled) return;
+      const asset = res.assets?.[0];
+      if (!asset?.uri) throw new Error("No file selected");
+      const name = asset.name ?? `file-${Date.now()}`;
+      const mime = asset.mimeType ?? null;
+      const kind = guessKindFromMime(mime, name);
+      const bucket = "market-deliverables";
+      const safeName = name.replace(/[^\w.\-]+/g, "_");
+      const path = `orders/${order.id}/${access}/${Date.now()}-${safeName}`;
+      let uploaded: { publicUrl: string | null; storagePath: string };
+      try {
+        uploaded = await uploadToSupabaseStorage({
+          bucket,
+          path,
+          localUri: asset.uri,
+          contentType: mime ?? "application/octet-stream",
+          upsert: false,
+        });
+      } catch (storageErr: any) {
+        throw new Error(`[storage] ${String(storageErr?.message || storageErr)}`);
+      }
+      try {
+        await insertFileDeliverable({
+          orderId: order.id,
+          access,
+          kind,
+          title: access === "preview" ? `Preview: ${name}` : `Full: ${name}`,
+          sortOrder: access === "preview" ? previewItems.length : finalItems.length,
+          bucket,
+          storagePath: uploaded.storagePath,
+          mimeType: mime,
+          meta: {
+            note:
+              access === "preview"
+                ? "Low quality / watermarked recommended"
+                : "Full quality",
+            originalName: name,
+            size: asset.size ?? null,
+          },
+        });
+      } catch (dbErr: any) {
+        throw new Error(`[db] ${String(dbErr?.message || dbErr)}`);
+      }
+      await load();
+    } catch (e: any) {
+      const msg = String(e?.message || "Upload failed");
+      if (msg.toLowerCase().includes("[storage]")) {
+        setUploadErr(`Storage upload failed: ${msg.replace(/^\[storage\]\s*/i, "")}`);
+      } else if (msg.toLowerCase().includes("[db]")) {
+        setUploadErr(`Deliverable save failed: ${msg.replace(/^\[db\]\s*/i, "")}`);
+      } else if (msg.toLowerCase().includes("row-level security")) {
+        setUploadErr(
+          "Upload blocked by RLS policy. Apply the latest market deliverables RLS migration, then retry.",
+        );
+      } else {
+        setUploadErr(msg);
+      }
+    } finally {
+      setUploadBusy(false);
+    }
   }
-}
 
+  // ─── Layout helpers ───────────────────────────────────────────────────────────
+  const showTabs = isDesktop && !!order;
 
+  // ─── Shared panel components ──────────────────────────────────────────────────
+  const summaryPanel = order ? (
+    <OrderSummaryPanel
+      order={order}
+      listing={listing}
+      seller={seller}
+      isBuyer={isBuyer}
+      isSeller={isSeller}
+    />
+  ) : null;
+
+  const timelinePanel = order ? (
+    <PanelCard>
+      <SectionLabel text="Order Timeline" />
+      <View style={{ marginTop: 14 }}>
+        <OrderStatusTimeline order={order} />
+      </View>
+    </PanelCard>
+  ) : null;
+
+  const counterpartyPanel = order ? (
+    <CounterpartyPanel
+      isBuyer={isBuyer}
+      isSeller={isSeller}
+      seller={seller}
+      buyerProfile={buyerProfile}
+      order={order}
+      counterpartyUsername={counterpartyUsername}
+      counterpartyName={counterpartyName}
+      counterpartyLabel={counterpartyLabel}
+      counterpartyHandleHint={counterpartyHandleHint}
+      canOrderChat={canOrderChat}
+      onChat={openOrderChat}
+    />
+  ) : null;
+
+  const cryptoPanel = order ? (
+    <CryptoActivityPanel
+      intents={intents}
+      piPayment={piPayment}
+      order={order}
+      isBuyer={isBuyer}
+      awaitingConfirmations={awaitingConfirmations}
+      canResyncDeposit={canResyncDeposit}
+      pollRemainingSec={pollRemainingSec}
+      defaultDepositTx={defaultDepositTx}
+      defaultDepositRef={defaultDepositRef}
+      defaultDepositHash={defaultDepositHash}
+      busy={busy}
+      onResyncDeposit={() => {
+        if (defaultDepositHash) {
+          setReindexTx(defaultDepositHash);
+          void reindexDeposit();
+        } else {
+          void load();
+        }
+      }}
+      onOpenResync={() => {
+        setReindexTx(defaultDepositHash);
+        setReindexOpen(true);
+      }}
+    />
+  ) : null;
+
+  const deliverablesPanel = order ? (
+    <DeliverablesPanel
+      isBuyer={isBuyer}
+      isSeller={isSeller}
+      canSellerUpload={canSellerUpload}
+      canDownloadFinal={canDownloadFinal}
+      deliverables={deliverables}
+      listing={listing}
+      uploadBusy={uploadBusy}
+      uploadErr={uploadErr}
+      onPickUpload={pickAndUpload}
+      onPreview={previewDeliverable}
+      onDownload={downloadDeliverable}
+    />
+  ) : null;
+
+  const disputePanel = order ? (
+    <DisputePanel
+      dispute={dispute}
+      disputeMessages={disputeMessages}
+      disputeText={disputeText}
+      disputeFiles={disputeFiles}
+      disputeBusy={disputeBusy}
+      disputeErr={disputeErr}
+      canUseDisputeCenter={canUseDisputeCenter}
+      disputeClosed={disputeClosed}
+      disputeRoleLabel={disputeRoleLabel}
+      me={me}
+      onChangeText={setDisputeText}
+      onPickFiles={pickDisputeFiles}
+      onRemoveFile={removeDisputeFile}
+      onSubmit={submitDisputeStatement}
+      onOpenAttachment={openDisputeAttachment}
+    />
+  ) : null;
+
+  const aiRiskPanel = order ? (
+    <AiRiskPanel
+      riskResult={riskResult}
+      riskBusy={riskBusy}
+      isBuyer={isBuyer}
+      onRun={runOrderRiskCheck}
+    />
+  ) : null;
+
+  const policyPanels = order ? (
+    <>
+      <MarketPolicyPanel
+        title="Order guidance"
+        blocks={orderPolicy.status_guidance}
+        emptyText={orderPolicyLoading ? "Loading policy…" : ""}
+        onAction={(action) => { void onPolicyAction(action); }}
+      />
+      <MarketPolicyPanel
+        title="Progress"
+        blocks={orderPolicy.progress}
+        emptyText={orderPolicyLoading ? "Loading policy…" : ""}
+      />
+      <MarketPolicyPanel
+        title="Safety and complaints"
+        blocks={orderPolicy.safety}
+        emptyText={orderPolicyLoading ? "Loading policy…" : ""}
+        onAction={(action) => { void onPolicyAction(action); }}
+      />
+    </>
+  ) : null;
+
+  const buyerView = order && isBuyer ? (
+    <BuyerOrderView
+      order={order}
+      listing={listing}
+      seller={seller}
+      otp={otp}
+      otpVerified={otpVerified}
+      otpExpiryRemainingSec={otpExpiryRemainingSec}
+      otpCooldownRemainingSec={otpCooldownRemainingSec}
+      hasPendingUnexpiredOtp={hasPendingUnexpiredOtp}
+      canGenerateOtpNow={canGenerateOtpNow}
+      canRelease={canRelease}
+      canGoCheckout={canGoCheckout}
+      canCancel={canCancel}
+      canReviewListingFromOrder={canReviewListingFromOrder}
+      isPiRailOrder={isPiRailOrder}
+      latestPiPaymentStatus={latestPiPaymentStatus}
+      generatedOtpCode={generatedOtpCode}
+      busy={busy}
+      err={err}
+      onRequestOTP={requestOTP}
+      onReleaseFunds={releaseFunds}
+      onGoCheckout={() => router.push(`/market/checkout/${order.id}` as any)}
+      onCancelOrder={cancelOrder}
+      onReviewListing={() => router.push(`/market/listing/${order.listing_id}` as any)}
+      onPrepareDispute={prepareDispute}
+    />
+  ) : null;
+
+  const sellerView = order && isSeller ? (
+    <SellerOrderView
+      order={order}
+      otp={otp}
+      otpVerified={otpVerified}
+      otpInput={otpInput}
+      setOtpInput={setOtpInput}
+      canOutForDelivery={canOutForDelivery}
+      canVerifyOtp={canVerifyOtp}
+      busy={busy}
+      err={err}
+      onOutForDelivery={doOutForDelivery}
+      onVerifyOTP={verifyOTP}
+      onPrepareDispute={prepareDispute}
+    />
+  ) : null;
+
+  // Pi completion alert (buyer)
+  const piCompletionAlert = awaitingPiCompletion && order ? (
+    <PanelCard accent="amber">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <ActivityIndicator size="small" color={AMBER} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: AMBER, fontWeight: "900", fontSize: 13 }}>
+            Waiting for Pi payment completion
+          </Text>
+          <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+            Pi Browser finished the payment? Refresh to sync.
+          </Text>
+        </View>
+      </View>
+      {piPayment?.payment_id ? (
+        <Text style={{ color: FAINT, fontSize: 11, marginTop: 8 }}>
+          ID: {piPayment.payment_id}
+        </Text>
+      ) : null}
+      <View style={{ marginTop: 12 }}>
+        <OutlineBtn label="Refresh status" icon="refresh-outline" color="amber" busy={busy} onPress={() => void load()} />
+      </View>
+    </PanelCard>
+  ) : null;
+
+  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <LinearGradient
       colors={[BG2, BG1, BG0]}
       start={{ x: 0.15, y: 0 }}
       end={{ x: 0.9, y: 1 }}
-      style={{ flex: 1, paddingTop: Math.max(insets.top, 14), paddingHorizontal: 16 }}
+      style={{ flex: 1, paddingTop: Math.max(insets.top, 14) }}
     >
-      <ScrollView contentContainerStyle={{ paddingBottom: 28 }}>
-        <View style={{ maxWidth: contentMaxWidth, width: "100%", alignSelf: "center" }}>
-        {/* Header */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 }}>
+      {/* ── Header ────────────────────────────────────────────────────────────── */}
+      <View
+        style={{
+          paddingHorizontal: sidePadding,
+          marginBottom: 6,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: contentMaxWidth,
+            alignSelf: "center",
+            width: "100%",
+          }}
+        >
           <Pressable
             onPress={() => router.back()}
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 16,
+              width: 42,
+              height: 42,
+              borderRadius: 14,
               backgroundColor: CARD,
               borderWidth: 1,
               borderColor: BORDER,
@@ -1283,1237 +3538,408 @@ async function pickAndUpload(access: "preview" | "final") {
           </Pressable>
 
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900" }}>Order</Text>
-            <Text style={{ marginTop: 4, color: MUTED, fontSize: 12, fontWeight: "800" }}>
-              Escrow + OTP delivery protection
-            </Text>
-          </View>
-        </View>
-
-        {loading ? (
-          <View style={{ marginTop: 40, alignItems: "center" }}>
-            <ActivityIndicator color={AMBER} />
-            <Text style={{ marginTop: 10, color: MUTED, fontWeight: "800" }}>Loading...</Text>
-          </View>
-        ) : !order ? (
-          <View style={{ marginTop: 18, borderRadius: 24, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
-            <Text style={{ color: TEXT, fontWeight: "900" }}>Order not found</Text>
-            {!!err && <Text style={{ marginTop: 6, color: MUTED }}>{err}</Text>}
-          </View>
-        ) : (
-          <>
-            {/* Summary */}
-            <View style={{ marginTop: 6, borderRadius: 26, padding: 16, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Item</Text>
-                  <Text style={{ marginTop: 4, color: TEXT, fontWeight: "900" }}>
-                    {listing?.title ?? "Listing"}
-                  </Text>
-                  <Text style={{ marginTop: 6, color: FAINT, fontSize: 12 }}>
-                    {listing?.category ?? "—"} • {listing?.delivery_type ?? "—"} • {listing?.sub_category ?? "—"}
-                  </Text>
-                  {listing?.category === "product" && typeof listing?.stock_qty === "number" ? (
-                    <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-                      Stock left: {Math.max(0, listing.stock_qty)}
-                    </Text>
-                  ) : null}
-                  <Text style={{ marginTop: 6, color: FAINT, fontSize: 12 }}>
-                    <Text style={{ color: TEXT, fontWeight: "900" }}>
-                      Seller: {seller?.business_name || seller?.display_name || "Seller"}{" "}
-                      {seller?.is_verified ? <Ionicons name="checkmark-circle" size={14} color={BLUE} /> : null} @{seller?.market_username || "seller"}
-                    </Text>
-                  </Text>
-                </View>
-
-                <View style={{ alignItems: "flex-end" }}>
-                  <StatusBadge status={order.status} />
-                  <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 20 }}>
-                    {money(order.currency, order.amount)}
-                  </Text>
-                  <Text style={{ marginTop: 4, color: FAINT, fontSize: 12 }}>
-                    Qty: {order.quantity}
-                  </Text>
-                  <Pressable
-                    onPress={async () => {
-                      await Clipboard.setStringAsync(order.id);
-                      Alert.alert("Copied", "Order ID copied. Share it with support/admin when needed.");
-                    }}
-                    style={{
-                      marginTop: 8,
-                      borderRadius: 10,
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
-                      backgroundColor: "rgba(244,183,93,0.16)",
-                      borderWidth: 1,
-                      borderColor: "rgba(244,183,93,0.42)",
-                    }}
-                  >
-                    <Text style={{ color: AMBER, fontWeight: "900", fontSize: 11 }}>Copy Order ID</Text>
-                  </Pressable>
-                </View>
-              </View>
-              <Text style={{ marginTop: 8, color: FAINT, fontSize: 11 }}>
-                Order ID: {order.id}
-              </Text>
-            </View>
-
-            <MarketPolicyPanel
-              title="Order guidance"
-              blocks={orderPolicy.status_guidance}
-              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
-              onAction={(action) => {
-                void onPolicyAction(action);
-              }}
-            />
-
-            {awaitingConfirmations ? (
-              <Card title="Waiting for blockchain confirmations">
-                <Text style={{ color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
-                  Your deposit is submitted. We&apos;re waiting for on-chain confirmations before moving the order
-                  into escrow. We check every ~5 minutes plus chain confirmations.
-                </Text>
-                {pollRemainingSec > 0 ? (
-                  <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                    Next automatic check in {fmtCountdown(pollRemainingSec)}.
-                  </Text>
-                ) : null}
-                {defaultDepositTx ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                    Tx: {defaultDepositTx}
-                  </Text>
-                ) : null}
-                {!defaultDepositTx && defaultDepositRef ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                    Reference: {defaultDepositRef}
-                  </Text>
-                ) : null}
-                <Pressable
-                  onPress={() => {
-                    if (awaitingConfirmations || canResyncDeposit) {
-                      if (!defaultDepositHash) {
-                        setReindexOpen(true);
-                        return;
-                      }
-                      setReindexTx(defaultDepositHash);
-                      reindexDeposit();
-                    } else {
-                      load();
-                    }
-                  }}
-                  style={{
-                    marginTop: 10,
-                    alignSelf: "flex-start",
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    backgroundColor: "rgba(124,58,237,0.18)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.35)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Refresh status</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    setReindexTx(defaultDepositHash);
-                    setReindexOpen(true);
-                  }}
-                  disabled={busy}
-                  style={{
-                    marginTop: 10,
-                    alignSelf: "flex-start",
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    backgroundColor: busy ? "rgba(255,255,255,0.08)" : "rgba(124,58,237,0.25)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.45)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                    Resync deposit now
-                  </Text>
-                </Pressable>
-              </Card>
-            ) : null}
-
-            {!awaitingConfirmations && canResyncDeposit ? (
-              <Card title="Resync deposit">
-                <Text style={{ color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
-                  If your deposit is confirmed on-chain but the order is still Created, resync using the transaction hash.
-                </Text>
-                {defaultDepositTx ? (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                      Tx: {defaultDepositTx}
-                    </Text>
-                    <Pressable
-                      onPress={() => Clipboard.setStringAsync(defaultDepositTx)}
-                      style={{
-                        marginTop: 8,
-                        alignSelf: "flex-start",
-                        borderRadius: 10,
-                        paddingVertical: 8,
-                        paddingHorizontal: 10,
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>Copy hash</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-                {!defaultDepositTx && defaultDepositRef ? (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                      Reference: {defaultDepositRef}
-                    </Text>
-                    <Pressable
-                      onPress={() => Clipboard.setStringAsync(defaultDepositRef)}
-                      style={{
-                        marginTop: 8,
-                        alignSelf: "flex-start",
-                        borderRadius: 10,
-                        paddingVertical: 8,
-                        paddingHorizontal: 10,
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "800", fontSize: 11 }}>Copy hash</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-                <Pressable
-                  onPress={() => {
-                    setReindexTx(defaultDepositHash);
-                    setReindexOpen(true);
-                  }}
-                  disabled={busy}
-                  style={{
-                    marginTop: 10,
-                    alignSelf: "flex-start",
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    backgroundColor: busy ? "rgba(255,255,255,0.08)" : "rgba(124,58,237,0.25)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.45)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Resync deposit now</Text>
-                </Pressable>
-              </Card>
-            ) : null}
-
-            {awaitingPiCompletion ? (
-              <Card title="Waiting for Pi payment completion">
-                <Text style={{ color: "rgba(255,255,255,0.7)", lineHeight: 20 }}>
-                  Your Pi payment was approved and the order is waiting for server completion. If Pi Browser already
-                  finished the payment, refresh this order once.
-                </Text>
-                {!!piPayment?.payment_id ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                    Payment ID: {piPayment.payment_id}
-                  </Text>
-                ) : null}
-                <Pressable
-                  disabled={busy}
-                  onPress={() => void load()}
-                  style={{
-                    marginTop: 10,
-                    alignSelf: "flex-start",
-                    borderRadius: 12,
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    backgroundColor: "rgba(124,58,237,0.18)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.35)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>
-                    {busy ? "Refreshing..." : "Refresh status"}
-                  </Text>
-                </Pressable>
-              </Card>
-            ) : null}
-
-            {(isSeller || isBuyer) && (order as any)?.delivery_address?.geo ? (
-              <Card title={isSeller ? "Buyer delivery location" : "Your delivery location"}>
-                <Text style={{ color: "#fff", fontWeight: "900" }}>
-                  {(order as any)?.delivery_address?.geo?.label || "Location set"}
-                </Text>
-                <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                  {(order as any)?.delivery_address?.geo?.city || "-"},{" "}
-                  {(order as any)?.delivery_address?.geo?.region || "-"},{" "}
-                  {(order as any)?.delivery_address?.geo?.country || "-"}
-                </Text>
-                {Number.isFinite(Number((order as any)?.delivery_address?.geo?.lat)) &&
-                Number.isFinite(Number((order as any)?.delivery_address?.geo?.lng)) ? (
-                  <Pressable
-                    onPress={() =>
-                      Linking.openURL(
-                        `https://maps.google.com/?q=${(order as any).delivery_address.geo.lat},${(order as any).delivery_address.geo.lng}`,
-                      )
-                    }
-                    style={{
-                      marginTop: 10,
-                      alignSelf: "flex-start",
-                      borderRadius: 12,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.12)",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Open in Maps</Text>
-                  </Pressable>
-                ) : null}
-              </Card>
-            ) : null}
-
-            {(isSeller || isBuyer) &&
-            (((order as any)?.buyer_contact?.phone || (order as any)?.buyer_contact?.email) ||
-              ((order as any)?.delivery_address?.contact?.phone || (order as any)?.delivery_address?.contact?.email)) ? (
-              <Card title={isSeller ? "Buyer contact" : "Your contact for seller"}>
-                {((order as any)?.buyer_contact?.name || (order as any)?.delivery_address?.contact?.name) ? (
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>
-                    {(order as any)?.buyer_contact?.name || (order as any)?.delivery_address?.contact?.name}
-                  </Text>
-                ) : null}
-                {((order as any)?.buyer_contact?.phone || (order as any)?.delivery_address?.contact?.phone) ? (
-                  <Text style={{ marginTop: 6, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
-                    Phone: {(order as any)?.buyer_contact?.phone || (order as any)?.delivery_address?.contact?.phone}
-                  </Text>
-                ) : null}
-                {((order as any)?.buyer_contact?.email || (order as any)?.delivery_address?.contact?.email) ? (
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>
-                    Email: {(order as any)?.buyer_contact?.email || (order as any)?.delivery_address?.contact?.email}
-                  </Text>
-                ) : null}
-                {((order as any)?.buyer_contact?.note || (order as any)?.delivery_address?.contact?.note) ? (
-                  <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                    Note: {(order as any)?.buyer_contact?.note || (order as any)?.delivery_address?.contact?.note}
-                  </Text>
-                ) : null}
-              </Card>
-            ) : null}
-
-            {canOrderChat ? (
-              <Card title={isBuyer ? "Message seller" : "Message buyer"}>
-                <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>
-                  Chat directly with {counterpartyName}. Keep all order updates in one thread.
-                </Text>
-                <Pressable
-                  disabled={!counterpartyUsername}
-                  onPress={openOrderChat}
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 14,
-                    paddingVertical: 12,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexDirection: "row",
-                    gap: 8,
-                    backgroundColor: "rgba(124,58,237,0.20)",
-                    borderWidth: 1,
-                    borderColor: "rgba(124,58,237,0.45)",
-                    opacity: counterpartyUsername ? 1 : 0.65,
-                  }}
-                >
-                  <Ionicons name="chatbubble-ellipses-outline" size={16} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>
-                    Open chat with {counterpartyLabel}
-                  </Text>
-                </Pressable>
-                <Text style={{ marginTop: 8, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                  {counterpartyHandleHint}
-                </Text>
-              </Card>
-            ) : null}
-
-            {/* Deliverables & Previews (works for digital + physical; message adapts) */}
-            <Card title="Deliverables & previews">
-              {isBuyer ? (
-                <>
-                  {!isDigital && previewItems.length === 0 && !hasWebsite ? (
-                    <Text style={{ color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-                      This looks like a physical / non-digital delivery. No previews required. Track delivery using the timeline below.
-                    </Text>
-                  ) : (
-                    <Text style={{ color: "rgba(255,255,255,0.65)", lineHeight: 20 }}>
-                      Preview the work (low quality / watermarked). After OTP is verified and marked delivered, full-quality downloads unlock.
-                    </Text>
-                  )}
-
-                  {hasWebsite ? (
-                    <Pressable
-                      onPress={() =>
-                        openPreview({
-                          kind: "link",
-                          access: "preview",
-                          title: "Website preview",
-                          url: String(listing?.website_url ?? ""),
-                        })
-                      }
-                      style={{
-                        marginTop: 12,
-                        borderRadius: 18,
-                        paddingVertical: 14,
-                        alignItems: "center",
-                        backgroundColor: "rgba(124,58,237,0.20)",
-                        borderWidth: 1,
-                        borderColor: "rgba(124,58,237,0.35)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900" }}>Open website preview</Text>
-                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                        Embedded preview • Watermarked
-                      </Text>
-                    </Pressable>
-                  ) : null}
-
-                  {previewItems.length === 0 ? (
-                    <Text style={{ marginTop: 12, color: "rgba(255,255,255,0.60)" }}>No preview files available.</Text>
-                  ) : (
-                    <View style={{ marginTop: 12, gap: 10 }}>
-                      {previewItems.map((d) => (
-                        <Pressable
-                          key={d.id}
-                          onPress={() => previewDeliverable(d)}
-                          style={{
-                            padding: 12,
-                            borderRadius: 16,
-                            backgroundColor: "rgba(255,255,255,0.06)",
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.10)",
-                          }}
-                        >
-                          <Text style={{ color: "#fff", fontWeight: "900" }}>
-                            {d.title ?? `${String(d.kind).toUpperCase()} preview`}
-                          </Text>
-                          <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                            Tap to open • Watermarked / low quality recommended
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-
-                  {canDownloadFinal ? (
-                    <View style={{ marginTop: 14 }}>
-                      <Text style={{ color: "#fff", fontWeight: "900" }}>Full quality downloads</Text>
-                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                        Unlocked (OTP verified + delivered). Download and then release funds when satisfied.
-                      </Text>
-
-                      {finalItems.length === 0 ? (
-                        <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.60)" }}>
-                          Seller has not uploaded full-quality files yet.
-                        </Text>
-                      ) : (
-                        <View style={{ marginTop: 10, gap: 10 }}>
-                          {finalItems.map((d) => (
-                            <View
-                              key={d.id}
-                              style={{
-                                padding: 12,
-                                borderRadius: 16,
-                                backgroundColor: "rgba(255,255,255,0.06)",
-                                borderWidth: 1,
-                                borderColor: "rgba(255,255,255,0.10)",
-                              }}
-                            >
-                              <Text style={{ color: "#fff", fontWeight: "900" }}>
-                                {d.title ?? `${String(d.kind).toUpperCase()} full`}
-                              </Text>
-
-                              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-                                <Pressable
-                                  onPress={() => previewDeliverable(d)}
-                                  style={{
-                                    flex: 1,
-                                    borderRadius: 14,
-                                    paddingVertical: 12,
-                                    alignItems: "center",
-                                    backgroundColor: "rgba(255,255,255,0.08)",
-                                    borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.10)",
-                                  }}
-                                >
-                                  <Text style={{ color: "#fff", fontWeight: "900" }}>View</Text>
-                                </Pressable>
-
-                                <Pressable
-                                  onPress={() => downloadDeliverable(d)}
-                                  style={{
-                                    flex: 1,
-                                    borderRadius: 14,
-                                    paddingVertical: 12,
-                                    alignItems: "center",
-                                    backgroundColor: "rgba(16,185,129,0.22)",
-                                    borderWidth: 1,
-                                    borderColor: "rgba(16,185,129,0.35)",
-                                  }}
-                                >
-                                  <Text style={{ color: "#fff", fontWeight: "900" }}>Download</Text>
-                                </Pressable>
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  ) : null}
-                </>
-              ) : null}
-
-              {isSeller ? (
-                <View style={{ marginTop: isBuyer ? 16 : 0 }}>
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>Seller upload</Text>
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                    Upload preview (low quality / watermarked) and then full-quality deliverables.
-                  </Text>
-
-                  {!!uploadErr ? <Text style={{ marginTop: 10, color: "#FCA5A5", fontWeight: "800" }}>{uploadErr}</Text> : null}
-
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                    <Pressable
-                      disabled={uploadBusy || !canSellerUpload}
-                      onPress={() => pickAndUpload("preview")}
-                      style={{
-                        flex: 1,
-                        borderRadius: 16,
-                        paddingVertical: 14,
-                        alignItems: "center",
-                        backgroundColor: "rgba(124,58,237,0.20)",
-                        borderWidth: 1,
-                        borderColor: "rgba(124,58,237,0.35)",
-                        opacity: uploadBusy || !canSellerUpload ? 0.7 : 1,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900" }}>{uploadBusy ? "Uploading…" : "Upload preview"}</Text>
-                    </Pressable>
-
-                    <Pressable
-                      disabled={uploadBusy || !canSellerUpload}
-                      onPress={() => pickAndUpload("final")}
-                      style={{
-                        flex: 1,
-                        borderRadius: 16,
-                        paddingVertical: 14,
-                        alignItems: "center",
-                        backgroundColor: "rgba(16,185,129,0.20)",
-                        borderWidth: 1,
-                        borderColor: "rgba(16,185,129,0.35)",
-                        opacity: uploadBusy || !canSellerUpload ? 0.7 : 1,
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900" }}>{uploadBusy ? "Uploading…" : "Upload full"}</Text>
-                    </Pressable>
-                  </View>
-
-                  {!canSellerUpload ? (
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                      Upload is available when order is IN_ESCROW, OUT_FOR_DELIVERY, or DELIVERABLE_UPLOADED.
-                    </Text>
-                  ) : null}
-
-                  {deliverables.length ? (
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.60)", fontSize: 12 }}>
-                      Uploaded: {previewItems.length} preview • {finalItems.length} full
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-            </Card>
-
-            {/* Buyer checkout */}
-            {canGoCheckout ? (
-              <>
-                {isBuyer && seller?.market_username ? (
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/market/dm/[username]" as any,
-                        params: { username: seller.market_username },
-                      })
-                    }
-                    style={{
-                      marginTop: 12,
-                      borderRadius: 18,
-                      paddingVertical: 14,
-                      alignItems: "center",
-                      backgroundColor: "rgba(124,58,237,0.20)",
-                      borderWidth: 1,
-                      borderColor: "rgba(124,58,237,0.45)",
-                      flexDirection: "row",
-                      gap: 8,
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Message seller</Text>
-                    <Text style={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }}>Ask questions before you pay</Text>
-                  </Pressable>
-                ) : null}
-
-                <Pressable
-                  onPress={() => router.push(`/market/checkout/${order.id}` as any)}
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 22,
-                    paddingVertical: 16,
-                    alignItems: "center",
-                    backgroundColor: PURPLE,
-                    borderWidth: 1,
-                    borderColor: PURPLE,
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-                    {isPiRailOrder
-                      ? latestPiPaymentStatus === "UNDERPAID"
-                        ? "Retry Pi top-up"
-                        : "Continue Pi checkout"
-                      : "Continue to checkout"}
-                  </Text>
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
-                    {isPiRailOrder
-                      ? "Open the current Pi payment flow for this order"
-                      : "Choose USDC, USDT, or PI"}
-                  </Text>
-                </Pressable>
-              </>
-            ) : null}
-
-            {canCancel ? (
-              <Pressable
-                disabled={busy}
-                onPress={cancelOrder}
-                style={{
-                  marginTop: 10,
-                  borderRadius: 18,
-                  paddingVertical: 14,
-                  alignItems: "center",
-                  backgroundColor: "rgba(239,68,68,0.12)",
-                  borderWidth: 1,
-                  borderColor: "rgba(239,68,68,0.25)",
-                }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Cancel order"}</Text>
-              </Pressable>
-            ) : null}
-
-            {!!err ? (
-              <View style={{ marginTop: 10 }}>
-                <Text style={{ color: "#FCA5A5", fontWeight: "800" }}>{err}</Text>
-              </View>
-            ) : null}
-
-            <Card title="BestCity Ai order risk">
-              <View style={{ gap: 10 }}>
-                <Text style={{ color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
-                  Check payment, delivery, escrow, and dispute signals for this order.
-                </Text>
-                <Pressable
-                  disabled={riskBusy || !order?.id}
-                  onPress={runOrderRiskCheck}
-                  style={{
-                    borderRadius: 18,
-                    paddingVertical: 12,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "rgba(45,212,191,0.18)",
-                    borderWidth: 1,
-                    borderColor: "rgba(45,212,191,0.4)",
-                    opacity: riskBusy || !order?.id ? 0.6 : 1,
-                    flexDirection: "row",
-                    gap: 8,
-                  }}
-                >
-                  {riskBusy ? <ActivityIndicator /> : <Ionicons name="sparkles-outline" size={18} color="#fff" />}
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{riskBusy ? "Checking..." : "Run risk check"}</Text>
-                </Pressable>
-                {riskResult?.risk ? (
-                  <View style={{ borderRadius: 16, padding: 12, backgroundColor: `${riskColor(riskResult.risk.risk_level)}18`, borderWidth: 1, borderColor: `${riskColor(riskResult.risk.risk_level)}55`, gap: 8 }}>
-                    <Text style={{ color: riskColor(riskResult.risk.risk_level), fontWeight: "900" }}>
-                      {riskResult.risk.risk_level} risk - {riskResult.risk.confidence} confidence
-                    </Text>
-                    {riskResult.risk.summary ? (
-                      <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>{riskResult.risk.summary}</Text>
-                    ) : null}
-                    {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].length ? (
-                      <Text style={{ color: riskColor(riskResult.risk.risk_level), fontSize: 12, lineHeight: 18 }}>
-                        Flags: {[...riskResult.risk.mismatch_flags, ...riskResult.risk.payment_flags, ...riskResult.risk.delivery_flags].join(", ")}
-                      </Text>
-                    ) : null}
-                    {riskResult.risk.recommended_actions?.length ? (
-                      <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
-                        Next: {riskResult.risk.recommended_actions.join(" ")}
-                      </Text>
-                    ) : null}
-                    {(isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note) ? (
-                      <Text style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 18 }}>
-                        {isBuyer ? riskResult.risk.buyer_note : riskResult.risk.seller_note}
-                      </Text>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            </Card>
-
-            <MarketPolicyPanel
-              title="Progress"
-              blocks={orderPolicy.progress}
-              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
-            />
-            <MarketPolicyPanel
-              title="Safety and complaints"
-              blocks={orderPolicy.safety}
-              emptyText={orderPolicyLoading ? "Loading policy..." : "Policy unavailable."}
-              onAction={(action) => {
-                void onPolicyAction(action);
-              }}
-            />
-
-            <Card title="Dispute center">
-              <View style={{ gap: 12 }}>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                  <View
-                    style={{
-                      borderRadius: 999,
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      backgroundColor: disputeClosed
-                        ? "rgba(16,185,129,0.14)"
-                        : dispute
-                          ? "rgba(244,183,93,0.16)"
-                          : "rgba(255,255,255,0.06)",
-                      borderWidth: 1,
-                      borderColor: disputeClosed
-                        ? "rgba(16,185,129,0.35)"
-                        : dispute
-                          ? "rgba(244,183,93,0.40)"
-                          : "rgba(255,255,255,0.10)",
-                    }}
-                  >
-                    <Text style={{ color: disputeClosed ? "#6EE7B7" : dispute ? AMBER : MUTED, fontWeight: "900", fontSize: 12 }}>
-                      {dispute ? dispute.status.replace(/_/g, " ") : "No dispute opened"}
-                    </Text>
-                  </View>
-                  {dispute?.resolution ? (
-                    <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>
-                      Resolution: {String(dispute.resolution).replace(/_/g, " ").toLowerCase()}
-                    </Text>
-                  ) : null}
-                </View>
-
-                {dispute ? (
-                  <View style={{ gap: 10 }}>
-                    {disputeMessages.length ? (
-                      disputeMessages.map((message) => {
-                        const mine = message.sender_id === me;
-                        const speaker =
-                          message.sender_kind === "ADMIN"
-                            ? "Admin"
-                            : message.sender_kind === "SELLER"
-                              ? "Seller"
-                              : "Buyer";
-                        return (
-                          <View
-                            key={message.id}
-                            style={{
-                              borderRadius: 16,
-                              padding: 12,
-                              backgroundColor: mine ? "rgba(124,58,237,0.14)" : "rgba(255,255,255,0.06)",
-                              borderWidth: 1,
-                              borderColor: mine ? "rgba(124,58,237,0.28)" : "rgba(255,255,255,0.10)",
-                              gap: 8,
-                            }}
-                          >
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 13 }}>{mine ? "You" : speaker}</Text>
-                              <Text style={{ color: FAINT, fontSize: 11, fontWeight: "800" }}>{new Date(message.created_at).toLocaleString()}</Text>
-                            </View>
-                            {message.body ? (
-                              <Text style={{ color: "rgba(255,255,255,0.72)", lineHeight: 20 }}>{message.body}</Text>
-                            ) : (
-                              <Text style={{ color: FAINT, lineHeight: 20 }}>Proof attached.</Text>
-                            )}
-                            {message.attachments?.length ? (
-                              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                                {message.attachments.map((attachment) => (
-                                  <Pressable
-                                    key={attachment.id}
-                                    onPress={() => openDisputeAttachment(attachment)}
-                                    style={{
-                                      borderRadius: 999,
-                                      paddingHorizontal: 10,
-                                      paddingVertical: 7,
-                                      borderWidth: 1,
-                                      borderColor: "rgba(56,189,248,0.28)",
-                                      backgroundColor: "rgba(56,189,248,0.12)",
-                                      flexDirection: "row",
-                                      gap: 6,
-                                      alignItems: "center",
-                                      maxWidth: "100%",
-                                    }}
-                                  >
-                                    <Ionicons name="document-attach-outline" size={14} color={BLUE} />
-                                    <Text numberOfLines={1} style={{ color: "#E0F2FE", fontWeight: "900", fontSize: 12, maxWidth: 180 }}>
-                                      {attachment.file_name || "Proof"}
-                                    </Text>
-                                  </Pressable>
-                                ))}
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      })
-                    ) : (
-                      <Text style={{ color: MUTED, lineHeight: 20 }}>No statements yet. Send your side clearly and attach screenshots, receipts, chat logs, or delivery proof.</Text>
-                    )}
-                  </View>
-                ) : (
-                  <Text style={{ color: MUTED, lineHeight: 20 }}>
-                    If this trade has a problem, write what happened and attach proof before admin reviews it.
-                  </Text>
-                )}
-
-                {!disputeClosed ? (
-                  <View style={{ gap: 10 }}>
-                    <TextInput
-                      value={disputeText}
-                      onChangeText={setDisputeText}
-                      placeholder={`Write your ${disputeRoleLabel} statement`}
-                      placeholderTextColor="rgba(255,255,255,0.42)"
-                      multiline
-                      textAlignVertical="top"
-                      style={{
-                        minHeight: 104,
-                        borderRadius: 18,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.12)",
-                        backgroundColor: "rgba(255,255,255,0.06)",
-                        color: TEXT,
-                        lineHeight: 20,
-                      }}
-                    />
-
-                    {disputeFiles.length ? (
-                      <View style={{ gap: 8 }}>
-                        {disputeFiles.map((file, index) => (
-                          <View
-                            key={`${file.uri}-${index}`}
-                            style={{
-                              borderRadius: 14,
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              backgroundColor: "rgba(255,255,255,0.06)",
-                              borderWidth: 1,
-                              borderColor: "rgba(255,255,255,0.10)",
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                          >
-                            <Ionicons name="document-attach-outline" size={16} color={BLUE} />
-                            <Text numberOfLines={1} style={{ flex: 1, color: MUTED, fontWeight: "800" }}>{file.name || "Proof"}</Text>
-                            <Pressable onPress={() => removeDisputeFile(index)} hitSlop={8}>
-                              <Ionicons name="close-circle-outline" size={20} color="#FCA5A5" />
-                            </Pressable>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {disputeErr ? (
-                      <Text style={{ color: disputeErr.includes("Describe") ? AMBER : "#FCA5A5", fontWeight: "800", lineHeight: 18 }}>
-                        {disputeErr}
-                      </Text>
-                    ) : null}
-
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                      <Pressable
-                        disabled={!canUseDisputeCenter || disputeBusy}
-                        onPress={pickDisputeFiles}
-                        style={{
-                          flexGrow: 1,
-                          borderRadius: 18,
-                          paddingVertical: 13,
-                          paddingHorizontal: 14,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "rgba(56,189,248,0.12)",
-                          borderWidth: 1,
-                          borderColor: "rgba(56,189,248,0.28)",
-                          opacity: canUseDisputeCenter ? 1 : 0.55,
-                          flexDirection: "row",
-                          gap: 8,
-                        }}
-                      >
-                        <Ionicons name="attach-outline" size={17} color={BLUE} />
-                        <Text style={{ color: "#E0F2FE", fontWeight: "900" }}>Attach proof</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={!canUseDisputeCenter || disputeBusy}
-                        onPress={submitDisputeStatement}
-                        style={{
-                          flexGrow: 1,
-                          borderRadius: 18,
-                          paddingVertical: 13,
-                          paddingHorizontal: 14,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: canUseDisputeCenter ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.06)",
-                          borderWidth: 1,
-                          borderColor: canUseDisputeCenter ? "rgba(239,68,68,0.34)" : "rgba(255,255,255,0.10)",
-                          opacity: canUseDisputeCenter ? 1 : 0.55,
-                          flexDirection: "row",
-                          gap: 8,
-                        }}
-                      >
-                        {disputeBusy ? <ActivityIndicator /> : <Ionicons name="shield-outline" size={17} color="#FCA5A5" />}
-                        <Text style={{ color: "#fff", fontWeight: "900" }}>{dispute ? "Send update" : "Open dispute"}</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            </Card>
-
-            {/* Crypto intents */}
-            <Card title="Crypto activity (USDC / USDT / PI)">
-              {intents.length === 0 ? (
-                <Text style={{ color: "rgba(255,255,255,0.65)" }}>No crypto intents yet.</Text>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  {intents.slice(0, 4).map((i) => (
-                    <View
-                      key={i.id}
-                      style={{
-                        padding: 12,
-                        borderRadius: 16,
-                        backgroundColor: "rgba(255,255,255,0.06)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.10)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900" }}>
-                        {i.intent_type} • {String(i.chain).toUpperCase()}
-                      </Text>
-                      <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                        Status: {i.status}
-                        {i.tx_hash ? ` • tx: ${i.tx_hash.slice(0, 10)}…` : ""}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </Card>
-
-            {/* Seller actions */}
-            {isSeller ? (
-              <Card title="Seller actions">
-                <Pressable
-                  disabled={!canOutForDelivery || busy}
-                  onPress={doOutForDelivery}
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 18,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                    backgroundColor: canOutForDelivery && !busy ? PURPLE : "rgba(124,58,237,0.35)",
-                    borderWidth: 1,
-                    borderColor: canOutForDelivery && !busy ? PURPLE : "rgba(124,58,237,0.35)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Mark out for delivery"}</Text>
-                </Pressable>
-
-                {otpVerified ? (
-                  <View
-                    style={{
-                      marginTop: 14,
-                      borderRadius: 14,
-                      padding: 12,
-                      backgroundColor: "rgba(16,185,129,0.14)",
-                      borderWidth: 1,
-                      borderColor: "rgba(16,185,129,0.35)",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>OTP verified</Text>
-                    <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12 }}>
-                      OTP verification is complete. Ask buyer to release funds.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ marginTop: 14 }}>
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Enter OTP</Text>
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-                    Buyer provides OTP to complete server verification.
-                  </Text>
-
-                  <View
-                    style={{
-                      marginTop: 10,
-                      borderRadius: 18,
-                      paddingHorizontal: 14,
-                      paddingVertical: 12,
-                      borderWidth: 1,
-                      borderColor: "rgba(255,255,255,0.10)",
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <Ionicons name="key-outline" size={18} color="rgba(255,255,255,0.75)" />
-                    <TextInput
-                      value={otpInput}
-                      onChangeText={setOtpInput}
-                      placeholder="Enter OTP"
-                      placeholderTextColor="rgba(255,255,255,0.45)"
-                      style={{ flex: 1, color: "#fff", fontWeight: "900" }}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-
-                  <Pressable
-                    disabled={!canVerifyOtp || busy}
-                    onPress={verifyOTP}
-                    style={{
-                      marginTop: 10,
-                      borderRadius: 18,
-                      paddingVertical: 14,
-                      alignItems: "center",
-                      backgroundColor: canVerifyOtp && !busy ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.06)",
-                      borderWidth: 1,
-                      borderColor: canVerifyOtp && !busy ? "rgba(16,185,129,0.40)" : "rgba(255,255,255,0.10)",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>{otpVerified ? "OTP verified ✅" : busy ? "Verifying…" : "Verify OTP"}</Text>
-                  </Pressable>
-
-                  {otp ? (
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                      OTP status: {otp.verified_at ? "Verified" : "Pending"} • attempts: {otp.attempts}
-                    </Text>
-                  ) : (
-                    <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>OTP not created yet.</Text>
-                  )}
-                  </View>
-                )}
-
-                {canReviewListingFromOrder ? (
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => router.push(`/market/listing/${order.listing_id}` as any)}
-                    style={{
-                      marginTop: 10,
-                      borderRadius: 18,
-                      paddingVertical: 14,
-                      alignItems: "center",
-                      backgroundColor: "rgba(244,183,93,0.18)",
-                      borderWidth: 1,
-                      borderColor: "rgba(244,183,93,0.35)",
-                      flexDirection: "row",
-                      gap: 8,
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="star-outline" size={18} color={AMBER} />
-                    <Text style={{ color: "#fff", fontWeight: "900" }}>Review this listing</Text>
-                  </Pressable>
-                ) : null}
-
-                <Pressable
-                  disabled={busy}
-                  onPress={prepareDispute}
-                  style={{
-                    marginTop: 10,
-                    borderRadius: 18,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                    backgroundColor: "rgba(239,68,68,0.12)",
-                    borderWidth: 1,
-                    borderColor: "rgba(239,68,68,0.25)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Report issue / open complaint"}</Text>
-                </Pressable>
-              </Card>
-            ) : null}
-
-            {/* Buyer actions */}
-            {isBuyer ? (
-              <Card title="Buyer actions">
-                <Pressable
-                  disabled={!canGenerateOtpNow}
-                  onPress={requestOTP}
-                  style={{
-                    marginTop: 12,
-                    borderRadius: 18,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                    backgroundColor: canGenerateOtpNow ? "rgba(59,130,246,0.22)" : "rgba(255,255,255,0.06)",
-                    borderWidth: 1,
-                    borderColor: canGenerateOtpNow ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.10)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Generate delivery OTP"}</Text>
-                </Pressable>
-
-                {generatedOtpCode && !otpVerified ? (
-                  <View
-                    style={{
-                      marginTop: 10,
-                      borderRadius: 14,
-                      padding: 12,
-                      backgroundColor: "rgba(124,58,237,0.12)",
-                      borderWidth: 1,
-                      borderColor: "rgba(124,58,237,0.35)",
-                    }}
-                  >
-                    <Text style={{ color: "rgba(255,255,255,0.75)", fontWeight: "800", fontSize: 12 }}>
-                      Your OTP code
-                    </Text>
-                    <Text style={{ marginTop: 6, color: TEXT, fontWeight: "900", fontSize: 24, letterSpacing: 0 }}>
-                      {generatedOtpCode}
-                    </Text>
-                    <Pressable
-                      onPress={async () => {
-                        await Clipboard.setStringAsync(generatedOtpCode);
-                        Alert.alert("Copied", "OTP copied to clipboard");
-                      }}
-                      style={{
-                        marginTop: 8,
-                        alignSelf: "flex-start",
-                        paddingVertical: 8,
-                        paddingHorizontal: 10,
-                        borderRadius: 10,
-                        backgroundColor: "rgba(255,255,255,0.10)",
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.16)",
-                      }}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "900", fontSize: 12 }}>Copy OTP</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-
-                <Pressable
-                  disabled={!canRelease || busy}
-                  onPress={releaseFunds}
-                  style={{
-                    marginTop: 10,
-                    borderRadius: 18,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                    backgroundColor: canRelease && !busy ? "rgba(16,185,129,0.25)" : "rgba(16,185,129,0.10)",
-                    borderWidth: 1,
-                    borderColor: canRelease && !busy ? "rgba(16,185,129,0.40)" : "rgba(16,185,129,0.18)",
-                    opacity: canRelease ? 1 : 0.7,
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Releasing…" : "Release funds to seller"}</Text>
-                  <Text style={{ marginTop: 4, color: "rgba(255,255,255,0.8)", fontWeight: "800", fontSize: 12 }}>
-                    Requires OTP verified
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  disabled={busy}
-                  onPress={prepareDispute}
-                  style={{
-                    marginTop: 10,
-                    borderRadius: 18,
-                    paddingVertical: 14,
-                    alignItems: "center",
-                    backgroundColor: "rgba(239,68,68,0.12)",
-                    borderWidth: 1,
-                    borderColor: "rgba(239,68,68,0.25)",
-                  }}
-                >
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>{busy ? "Working…" : "Report issue / request refund"}</Text>
-                </Pressable>
-
-                {otp ? (
-                  <Text style={{ marginTop: 10, color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
-                    OTP status: {otp.verified_at ? "Verified ✅" : "Pending"} • expires: {new Date(otp.expires_at).toLocaleString()}
-                  </Text>
-                ) : null}
-              </Card>
-            ) : null}
-
-            <Pressable
-              onPress={load}
-              disabled={busy}
+            <Text
               style={{
-                marginTop: 14,
-                borderRadius: 22,
-                paddingVertical: 14,
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: BORDER,
-                backgroundColor: CARD_RAISED,
+                color: TEXT,
+                fontSize: isTablet ? 22 : 18,
+                fontWeight: "900",
+                letterSpacing: -0.3,
               }}
             >
-              <Text style={{ color: TEXT, fontWeight: "900" }}>Refresh</Text>
-            </Pressable>
-          </>
-        )}
+              Order details
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 2 }}>
+              {isBuyer ? "Buyer" : isSeller ? "Seller" : "Loading"} · Escrow-protected
+            </Text>
+          </View>
+
+          {order ? (
+            <View style={{ alignItems: "flex-end", gap: 6 }}>
+              <StatusBadge status={order.status} />
+              <Text style={{ color: AMBER, fontWeight: "900", fontSize: 14 }}>
+                {money(order.currency, order.amount)}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── Desktop tab bar ─────────────────────────────────────────────────── */}
+        {showTabs ? (
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 4,
+              marginTop: 14,
+              maxWidth: contentMaxWidth,
+              alignSelf: "center",
+              width: "100%",
+              borderBottomWidth: 1,
+              borderBottomColor: BORDER,
+              paddingBottom: 0,
+            }}
+          >
+            {TABS.map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <Pressable
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderBottomWidth: 2,
+                    borderBottomColor: isActive ? AMBER : "transparent",
+                    marginBottom: -1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: isActive ? AMBER : MUTED,
+                      fontWeight: isActive ? "900" : "700",
+                      fontSize: 13,
+                    }}
+                  >
+                    {tab}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── Body ──────────────────────────────────────────────────────────────── */}
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: 120,
+          paddingHorizontal: sidePadding,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          style={{
+            maxWidth: contentMaxWidth,
+            width: "100%",
+            alignSelf: "center",
+          }}
+        >
+          {/* Loading */}
+          {loading ? (
+            <View
+              style={{
+                marginTop: 60,
+                alignItems: "center",
+                gap: 16,
+              }}
+            >
+              <View
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 20,
+                  backgroundColor: CARD_RAISED,
+                  borderWidth: 1,
+                  borderColor: BORDER,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ActivityIndicator color={AMBER} size="large" />
+              </View>
+              <Text style={{ color: MUTED, fontWeight: "700", fontSize: 14, letterSpacing: 0.4 }}>
+                Loading order…
+              </Text>
+            </View>
+          ) : !order ? (
+            <PanelCard style={{ marginTop: 18 }}>
+              <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>Order not found</Text>
+              {!!err && (
+                <Text style={{ marginTop: 8, color: MUTED, lineHeight: 20 }}>{err}</Text>
+              )}
+              <View style={{ marginTop: 18 }}>
+                <ActionBtn
+                  label="Go back"
+                  color="ghost"
+                  onPress={() => router.back()}
+                  icon="arrow-back-outline"
+                />
+              </View>
+            </PanelCard>
+          ) : (
+            <>
+              {/* ─── DESKTOP TWO-COLUMN LAYOUT ──────────────────────────────── */}
+              {isDesktop ? (
+                <View style={{ flexDirection: "row", gap: 20, marginTop: 10, alignItems: "flex-start" }}>
+                  {/* ── Left / main column ────────────────────────────────────── */}
+                  <View style={{ flex: 1.5, gap: 14 }}>
+                    {/* Tab content */}
+                    {activeTab === "Overview" ? (
+                      <>
+                        {isBuyer ? buyerView : null}
+                        {isSeller ? sellerView : null}
+                        {piCompletionAlert}
+                        {policyPanels}
+                      </>
+                    ) : null}
+
+                    {activeTab === "Payment" ? (
+                      <>
+                        {cryptoPanel}
+                      </>
+                    ) : null}
+
+                    {activeTab === "Files" ? (
+                      <>
+                        {deliverablesPanel}
+                      </>
+                    ) : null}
+
+                    {activeTab === "Dispute" ? (
+                      <>
+                        {disputePanel}
+                      </>
+                    ) : null}
+
+                    {activeTab === "Activity" ? (
+                      <>
+                        {timelinePanel}
+                        {aiRiskPanel}
+                      </>
+                    ) : null}
+
+                    {/* Refresh */}
+                    <OutlineBtn
+                      label="Refresh order"
+                      icon="refresh-outline"
+                      color="ghost"
+                      busy={busy}
+                      onPress={() => void load()}
+                    />
+                  </View>
+
+                  {/* ── Right sidebar ─────────────────────────────────────────── */}
+                  <View style={{ width: 340, gap: 14 }}>
+                    {summaryPanel}
+                    {counterpartyPanel}
+                    {/* Quick links to other tabs */}
+                    <PanelCard>
+                      <SectionLabel text="Quick Actions" color={FAINT} />
+                      <View style={{ marginTop: 12, gap: 8 }}>
+                        {["Payment", "Files", "Dispute", "Activity"].map((tab) => (
+                          <Pressable
+                            key={tab}
+                            onPress={() => setActiveTab(tab as TabKey)}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              paddingVertical: 10,
+                              paddingHorizontal: 12,
+                              borderRadius: 12,
+                              backgroundColor: activeTab === tab ? AMBER_GLASS : CARD_RAISED,
+                              borderWidth: 1,
+                              borderColor: activeTab === tab ? AMBER_BORDER : BORDER,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: activeTab === tab ? AMBER : MUTED,
+                                fontWeight: "800",
+                                fontSize: 13,
+                              }}
+                            >
+                              {tab}
+                            </Text>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={14}
+                              color={activeTab === tab ? AMBER : FAINT}
+                            />
+                          </Pressable>
+                        ))}
+                      </View>
+                    </PanelCard>
+                  </View>
+                </View>
+              ) : (
+                // ─── MOBILE / TABLET SINGLE-COLUMN LAYOUT ──────────────────────
+                <View style={{ marginTop: 10, gap: 12 }}>
+                  {summaryPanel}
+
+                  {/* Role-specific primary action */}
+                  {isBuyer ? buyerView : null}
+                  {isSeller ? sellerView : null}
+
+                  {piCompletionAlert}
+
+                  {/* Timeline */}
+                  {timelinePanel}
+
+                  {/* Policy */}
+                  {policyPanels}
+
+                  {/* Counterparty */}
+                  {counterpartyPanel}
+
+                  {/* Crypto */}
+                  {cryptoPanel}
+
+                  {/* Deliverables */}
+                  {deliverablesPanel}
+
+                  {/* AI Risk */}
+                  {aiRiskPanel}
+
+                  {/* Dispute */}
+                  {disputePanel}
+
+                  {/* Refresh */}
+                  <OutlineBtn
+                    label="Refresh order"
+                    icon="refresh-outline"
+                    color="ghost"
+                    busy={busy}
+                    onPress={() => void load()}
+                  />
+                </View>
+              )}
+            </>
+          )}
         </View>
       </ScrollView>
 
-      <Modal visible={reindexOpen} transparent animationType="slide" onRequestClose={() => setReindexOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 }}>
-          <View style={{ width: "100%", maxWidth: 520, alignSelf: "center", borderRadius: 20, padding: 16, backgroundColor: BG0, borderWidth: 1, borderColor: BORDER, borderTopColor: BORDER_TOP }}>
-            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 16 }}>Resync deposit</Text>
-            <Text style={{ marginTop: 6, color: MUTED, fontSize: 12 }}>
-              Paste the deposit transaction hash or leave it blank to scan this order on-chain.
+      {/* ── Sticky checkout bar (mobile buyer only) ───────────────────────────── */}
+      {!isDesktop && order && isBuyer && canGoCheckout ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            paddingBottom: Math.max(insets.bottom, 16),
+            paddingTop: 12,
+            paddingHorizontal: sidePadding,
+            backgroundColor: "rgba(6,8,7,0.96)",
+            borderTopWidth: 1,
+            borderTopColor: BORDER,
+          }}
+        >
+          <ActionBtn
+            label={
+              isPiRailOrder
+                ? latestPiPaymentStatus === "UNDERPAID"
+                  ? "Retry Pi top-up"
+                  : "Continue Pi checkout"
+                : "Continue to checkout"
+            }
+            sublabel="Escrow protected · Complete payment"
+            color="amber"
+            icon="arrow-forward-outline"
+            onPress={() => router.push(`/market/checkout/${order.id}` as any)}
+          />
+        </View>
+      ) : null}
+
+      {/* ── Sticky release bar (mobile buyer only) ────────────────────────────── */}
+      {!isDesktop && order && isBuyer && canRelease && !canGoCheckout ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            paddingBottom: Math.max(insets.bottom, 16),
+            paddingTop: 12,
+            paddingHorizontal: sidePadding,
+            backgroundColor: "rgba(6,8,7,0.96)",
+            borderTopWidth: 1,
+            borderTopColor: BORDER,
+          }}
+        >
+          <ActionBtn
+            label={busy ? "Releasing…" : "Release funds to seller"}
+            sublabel="OTP verified · Escrow release"
+            color="green"
+            icon="shield-checkmark-outline"
+            disabled={!canRelease}
+            busy={busy}
+            onPress={releaseFunds}
+          />
+        </View>
+      ) : null}
+
+      {/* ── Reindex modal ─────────────────────────────────────────────────────── */}
+      <Modal
+        visible={reindexOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReindexOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              alignSelf: "center",
+              borderRadius: 24,
+              padding: 20,
+              backgroundColor: BG1,
+              borderWidth: 1,
+              borderColor: BORDER,
+              borderTopColor: BORDER_TOP,
+            }}
+          >
+            <Text style={{ color: TEXT, fontWeight: "900", fontSize: 17 }}>Resync deposit</Text>
+            <Text style={{ marginTop: 6, color: MUTED, fontSize: 13, lineHeight: 19 }}>
+              Paste the deposit transaction hash or leave blank to scan this order on-chain.
             </Text>
             <TextInput
               value={reindexTx}
               onChangeText={setReindexTx}
-              placeholder="0x... optional"
-              placeholderTextColor="rgba(255,255,255,0.45)"
+              placeholder="0x… (optional)"
+              placeholderTextColor="rgba(255,253,247,0.32)"
               autoCapitalize="none"
               style={{
-                marginTop: 12,
+                marginTop: 14,
                 borderRadius: 14,
                 borderWidth: 1,
                 borderColor: BORDER,
                 color: TEXT,
-                backgroundColor: CARD,
-                paddingHorizontal: 12,
-                paddingVertical: 10,
+                backgroundColor: CARD_RAISED,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: 14,
               }}
             />
-            <View style={{ marginTop: 14, flexDirection: "row", gap: 10 }}>
-              <Pressable
-                onPress={() => setReindexOpen(false)}
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: CARD_RAISED, borderWidth: 1, borderColor: BORDER }}
-              >
-                <Text style={{ color: TEXT, fontWeight: "900" }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={reindexDeposit}
-                disabled={busy}
-                style={{ flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: "center", backgroundColor: "rgba(244,183,93,0.18)", borderWidth: 1, borderColor: "rgba(244,183,93,0.42)" }}
-              >
-                <Text style={{ color: AMBER, fontWeight: "900" }}>{busy ? "Working..." : "Resync"}</Text>
-              </Pressable>
+            <View style={{ marginTop: 16, flexDirection: "row", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <OutlineBtn
+                  label="Cancel"
+                  color="ghost"
+                  onPress={() => setReindexOpen(false)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <ActionBtn
+                  label={busy ? "Working…" : "Resync"}
+                  color="amber"
+                  busy={busy}
+                  onPress={reindexDeposit}
+                />
+              </View>
             </View>
           </View>
         </View>
       </Modal>
 
+      {/* ── Preview modal ─────────────────────────────────────────────────────── */}
       <OrderPreviewModal
         open={previewOpen}
         onClose={() => {
