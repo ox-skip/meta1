@@ -1204,5 +1204,46 @@ const txHash = normalizeHexHash(String((sendResult as any)?.transactionHash ?? "
     });
   }
 
-  return { ...intent, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null };
+return { ...intent, tx_hash: resolvedTxHash || null, user_op_hash: resolvedUserOpHash || null };
+}
+
+async function reindexDeposit(orderId: string, txHash?: string | null) {
+  try {
+    const body: Record<string, unknown> = { order_id: orderId };
+    if (isHexHash(txHash)) body.tx_hash = txHash;
+    const { data, error } = await supabase.functions.invoke("market-escrow-reindex", { body });
+    if (error) throw error;
+    return { ok: (data as any)?.applied === true, data };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+export async function autoSyncPendingDeposit(orderId: string) {
+  const { data: escrow, error: escErr } = await supabase
+    .from("market_crypto_escrows")
+    .select("order_id,chain,order_key,deposited_tx_hash,deposited_at")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  
+  if (escErr || !escrow) return { ok: false, error: "Escrow record not found" };
+  if (escrow.deposited_tx_hash || escrow.deposited_at) return { ok: true, already_settled: true };
+
+  const { data: latestIntent } = await supabase
+    .from("market_crypto_intents")
+    .select("tx_hash,client_reference")
+    .eq("order_id", orderId)
+    .eq("intent_type", "DEPOSIT")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const txHash = String((latestIntent as any)?.tx_hash || "").trim();
+  const reindexResult = await reindexDeposit(orderId, isHexHash(txHash) ? txHash : null);
+  
+  return {
+    ok: reindexResult.ok || (reindexResult as any)?.data?.applied === true,
+    reindexed: reindexResult.ok,
+    tx_hash: (reindexResult as any)?.data?.tx_hash || txHash || null,
+  };
 }

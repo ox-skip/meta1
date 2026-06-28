@@ -47,9 +47,9 @@ async function rpcCall(rpcUrl: string, method: string, params: unknown[]) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json?.error) throw new Error(json?.error?.message || `RPC ${method} failed`);
-  return json?.result;
+  const jsonRes = await res.json().catch(() => ({}));
+  if (!res.ok || jsonRes?.error) throw new Error(jsonRes?.error?.message || `RPC ${method} failed`);
+  return jsonRes?.result;
 }
 
 function toNum(hexOrNum: string | number | null | undefined): number {
@@ -211,7 +211,94 @@ async function processLogs(
   }
 }
 
-serve(async () => {
+async function runDepositScan(admin: any, chains: ChainConfig[]) {
+  const scanResults: Record<string, unknown> = {};
+
+  for (const cfg of chains) {
+    const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
+    if (!rpcUrl || !cfg.escrow_address) {
+      scanResults[cfg.chain] = { ok: false, reason: "rpc_url or escrow_address missing" };
+      continue;
+    }
+
+    const { data: orders } = await admin
+      .from("market_orders")
+      .select("id")
+      .eq("status", "CREATED")
+      .gt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+    if (!orders?.length) {
+      scanResults[cfg.chain] = { ok: true, processed: 0, message: "No CREATED orders" };
+      continue;
+    }
+
+    const orderIds = (orders as any[]).map((o) => o.id);
+    const { data: escrows } = await admin
+      .from("market_crypto_escrows")
+      .select("order_id,order_key,deposited_tx_hash")
+      .in("order_id", orderIds);
+
+    const pending = (escrows as any[] ?? []).filter((e) => !e.deposited_tx_hash);
+    if (pending.length === 0) {
+      scanResults[cfg.chain] = { ok: true, processed: 0, message: "No pending deposits" };
+      continue;
+    }
+
+    const latest = toNum(await rpcCall(rpcUrl, "eth_blockNumber", []));
+    const required = Math.max(1, Number(cfg.confirmations_required ?? 1));
+    const fromBlock = latest - required - 8000;
+
+    const logs = (await rpcCall(rpcUrl, "eth_getLogs", [{
+      address: cfg.escrow_address,
+      fromBlock: `0x${Math.max(0, fromBlock).toString(16)}`,
+      toBlock: `0x${latest.toString(16)}`,
+      topics: [[TOPIC_DEPOSIT_MULTI, TOPIC_DEPOSIT_SINGLE]],
+    }])) as RpcLog[];
+
+    let appliedCount = 0;
+    for (const log of logs ?? []) {
+      const logAddr = String(log.address ?? "").toLowerCase();
+      if (logAddr !== String(cfg.escrow_address).toLowerCase()) continue;
+
+      const topic1 = String(log.topics?.[1] ?? "").toLowerCase();
+      const orderKeyNo0x = topic1.startsWith("0x") ? topic1.slice(2) : topic1;
+      
+      const escrow = pending.find((e: any) => {
+        const k = String(e.order_key ?? "").toLowerCase();
+        return k === topic1 || k === orderKeyNo0x || k === normalizeOrderKey(topic1);
+      });
+
+      if (!escrow?.order_id) continue;
+
+      const buyer = hexToAddress(log.topics?.[2]);
+      const seller = hexToAddress(log.topics?.[3]);
+      const { token, amountRaw } = decodeData(log.data);
+
+      await applyChainDeposit(admin, {
+        orderId: escrow.order_id,
+        chain: cfg.chain,
+        buyerWallet: buyer,
+        sellerWallet: seller,
+        amountRaw: amountRaw ? amountRaw.toString() : null,
+        amountUnits: Number(amountRaw) / 1_000_000,
+        txHash: String(log.transactionHash ?? ""),
+        logIndex: toNum(log.logIndex),
+        blockNumber: toNum(log.blockNumber),
+        blockTime: null,
+        raw: log,
+        tokenAddress: (token || "").toLowerCase(),
+      }).catch(() => null);
+      
+      appliedCount++;
+    }
+
+    scanResults[cfg.chain] = { chain: cfg.chain, ok: true, processed: appliedCount };
+  }
+
+  return scanResults;
+}
+
+serve(async (req) => {
   try {
     const SB_URL = envAny(["SB_URL", "SUPABASE_URL", "sb_url"], "");
     const SB_SERVICE = envAny(
@@ -229,6 +316,9 @@ serve(async () => {
 
     const admin = createClient(SB_URL, SB_SERVICE);
 
+    const url = new URL(req.url);
+    const mode = url.searchParams.get("mode") || "";
+
     const { data: chains, error: cfgErr } = await admin
       .from("market_chain_config")
       .select("chain,rpc_url,escrow_address,confirmations_required,usdc_address,usdt_address,active")
@@ -238,6 +328,11 @@ serve(async () => {
     if (!chains?.length) return json(200, { ok: true, message: "No active chains" });
 
     const results: Record<string, unknown> = {};
+
+    if (mode === "deposit_scan") {
+      const scanResults = await runDepositScan(admin, chains as ChainConfig[]);
+      return json(200, { ok: true, mode: "deposit_scan", results: scanResults });
+    }
 
     for (const cfg of chains as ChainConfig[]) {
       const rpcUrl = resolveRpcUrlForChain(cfg.chain, cfg.rpc_url);
@@ -261,9 +356,6 @@ serve(async () => {
         .eq("chain", cfg.chain)
         .maybeSingle();
 
-      // Keep per-request ranges small to satisfy provider limits.
-      // If we already have a sync cursor, never skip old blocks; catch up incrementally.
-      // Only bootstrap new chains from a recent backfill window.
       const bootstrapBackfill = 20;
       const maxBlocksPerRun = 60;
       let lastBlock = Number((syncRow as ChainSync | null)?.last_block ?? 0);
@@ -285,7 +377,6 @@ serve(async () => {
         reset = true;
       }
 
-      // Bootstrap-only jump for first run; do not skip historical blocks once synced.
       if (!hasSyncedBefore && cursor < backfillStart) {
         cursor = backfillStart;
         truncated = backfillStart > 0;
