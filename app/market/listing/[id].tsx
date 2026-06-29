@@ -39,7 +39,7 @@ import {
   sortMarketMedia,
 } from "@/utils/marketMedia";
 import { friendlyMarketError } from "@/utils/marketUx";
-import { OrderPreviewModal, PreviewPayload } from "@/components/market/OrderPreviewModal";
+import { OrderPreviewModal, PreviewPayload, MultiPreviewPayload } from "@/components/market/OrderPreviewModal";
 import { formatCurrency, getListingPriceDisplay } from "@/utils/pricing";
 import { resolveUserCountry, type UserCountry } from "@/utils/country";
 
@@ -364,7 +364,7 @@ export default function ListingDetails() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewPayload, setPreviewPayload] = useState<PreviewPayload | null>(null);
+  const [previewPayload, setPreviewPayload] = useState<PreviewPayload | MultiPreviewPayload | null>(null);
   const [userCountry, setUserCountry] = useState<UserCountry | undefined>(undefined);
 
   const supabaseUrl =
@@ -486,66 +486,83 @@ export default function ListingDetails() {
     });
   }, [listing?.id, listing?.category, listing?.stock_qty]);
 
-  // ─── Preview Handlers (unchanged) ────────────────────────────────────────────
+// ─── Preview Handlers ───────────────────────────────────────────────────────────
 
-  function openListingPreview(item: ListingPreview) {
-    const kind = previewKind(item.kind);
+function openListingPreview(item: ListingPreview, index: number = 0, allItems: ListingPreview[] = []) {
+  const kind = previewKind(item.kind);
+  
+  const buildPayload = (i: ListingPreview): PreviewPayload => {
     if (kind === "link") {
-      const url = String(item.link_url || item.public_url || "");
-      if (!url) return setErr("Preview is unavailable.");
-      setPreviewPayload({
+      const url = String(i.link_url || i.public_url || "");
+      if (!url) return null as any;
+      return {
         kind: "link",
         access: "preview",
-        title: item.title || "Website preview",
+        title: i.title || "Website preview",
         url,
-      });
+      };
+    }
+
+    const direct = i.public_url
+      ? String(i.public_url)
+      : i.storage_path
+      ? `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${i.storage_path}`
+      : "";
+
+    const seconds = typeof i.duration_sec === "number" ? i.duration_sec : 20;
+    return {
+      kind: kind as "image" | "audio" | "video" | "file",
+      access: "preview",
+      title: i.title || `${kind.toUpperCase()} preview`,
+      previewSeconds: seconds,
+      mimeType: i.mime_type || undefined,
+      urlPromise: async () => direct || null,
+    } as PreviewPayload;
+  };
+
+  const payloadOrLink = buildPayload(item);
+  if (!payloadOrLink) return setErr("Preview is unavailable.");
+
+  // If multiple previews exist, open multi-preview modal
+  if (allItems.length > 1 && kind !== "link") {
+    const payloads = allItems.map(buildPayload).filter(Boolean) as PreviewPayload[];
+    if (payloads.length > 0) {
+      setPreviewPayload({ items: payloads, startIndex: index });
       setPreviewOpen(true);
       return;
     }
-
-    const direct = item.public_url
-      ? String(item.public_url)
-      : item.storage_path
-      ? `${supabaseUrl}/storage/v1/object/public/${LISTING_IMAGES_BUCKET}/${item.storage_path}`
-      : "";
-
-    setPreviewPayload({
-      kind,
-      access: "preview",
-      title: item.title || `${kind.toUpperCase()} preview`,
-      previewSeconds: 20,
-      mimeType: item.mime_type || undefined,
-      urlPromise: async () => direct || null,
-    });
-    setPreviewOpen(true);
   }
 
-  function openListingMediaPreview(
-    url: string,
-    kind: MarketMediaKind,
-    index: number
-  ) {
-    if (!url) return;
-    setPreviewPayload({
-      kind,
-      access: "final",
-      title: `${listing?.title || "Listing"} - ${kind} ${index + 1}`,
-      urlPromise: async () => url,
-    });
-    setPreviewOpen(true);
-  }
+  setPreviewPayload(payloadOrLink);
+  setPreviewOpen(true);
+}
 
-  function openWebsitePreview(url: string) {
-    const cleanUrl = String(url || "").trim();
-    if (!cleanUrl) return;
-    setPreviewPayload({
-      kind: "link",
-      access: "preview",
-      title: "Website preview",
-      url: cleanUrl,
-    });
-    setPreviewOpen(true);
-  }
+function openListingMediaPreview(
+  url: string,
+  kind: MarketMediaKind,
+  index: number
+) {
+  if (!url) return;
+  setPreviewPayload({
+    kind,
+    access: "final",
+    title: `${listing?.title || "Listing"} - ${kind} ${index + 1}`,
+    urlPromise: async () => url,
+  });
+  setPreviewOpen(true);
+}
+
+function openWebsitePreview(url: string) {
+  const cleanUrl = String(url || "").trim();
+  if (!cleanUrl) return;
+  setPreviewPayload({
+    kind: "link",
+    access: "preview",
+    title: "Website preview",
+    url: cleanUrl,
+  });
+  setPreviewOpen(true);
+}
 
   // ─── Data Loaders (unchanged) ─────────────────────────────────────────────────
 
@@ -1790,25 +1807,25 @@ export default function ListingDetails() {
                     </Pressable>
                   ) : null}
 
-                  {listingPreviews.length === 0 &&
-                  !String(listing.website_url || "").trim() ? (
-                    <Text
-                      style={{
-                        marginTop: 10,
-                        color: FAINT,
-                        fontSize: 13,
-                      }}
-                    >
-                      No preview assets yet.
-                    </Text>
-                  ) : (
-                    <View style={{ marginTop: 10, gap: 8 }}>
-                      {listingPreviews.map((pv) => (
-                        <Pressable
-                          key={pv.id}
-                          onPress={() => openListingPreview(pv)}
-                          style={styles.previewRow}
-                        >
+{listingPreviews.length === 0 &&
+                   !String(listing.website_url || "").trim() ? (
+                     <Text
+                       style={{
+                         marginTop: 10,
+                         color: FAINT,
+                         fontSize: 13,
+                       }}
+                     >
+                       No preview assets yet.
+                     </Text>
+                   ) : (
+                     <View style={{ marginTop: 10, gap: 8 }}>
+                       {listingPreviews.map((pv, idx) => (
+                         <Pressable
+                           key={pv.id}
+                           onPress={() => openListingPreview(pv, idx, listingPreviews)}
+                           style={styles.previewRow}
+                         >
                           <View style={styles.previewIcon}>
                             <Ionicons
                               name={

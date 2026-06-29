@@ -33,6 +33,10 @@ const TEAL = "#2DD4BF";
 const AMBER = "#F4B75D";
 const ROSE = "#FB7185";
 const INK = "#090D0B";
+const GLASS_DARK = "rgba(4,8,6,0.88)";
+const GLASS_LIGHT = "rgba(255,255,255,0.08)";
+const GLOW_TEAL = "rgba(45,212,191,0.32)";
+const GLOW_AMBER = "rgba(244,183,93,0.32)";
 const WatermarkIcon = require("../../assets/images/icon.png");
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -51,6 +55,11 @@ export type PreviewPayload =
       access: "preview" | "final";
       url: string;
     };
+
+export type MultiPreviewPayload = {
+  items: PreviewPayload[];
+  startIndex?: number;
+};
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -135,18 +144,28 @@ export function OrderPreviewModal({
 }: {
   open: boolean;
   onClose: () => void;
-  payload: PreviewPayload | null;
+  payload: PreviewPayload | MultiPreviewPayload | null;
 }) {
   usePreventScreenCapture(open);
   const insets = useSafeAreaInsets();
 
-  const [busy, setBusy] = useState(false);
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const isMulti = payload && "items" in (payload as MultiPreviewPayload);
+  const multiPayload = isMulti ? (payload as MultiPreviewPayload) : null;
+  const singlePayload = !isMulti ? (payload as PreviewPayload) : null;
+  
+  const items = multiPayload?.items ?? (singlePayload ? [singlePayload] : []);
+  const initialIndex = multiPayload?.startIndex ?? 0;
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [resolvedUrls, setResolvedUrls] = useState<(string | null)[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
 
-  const title = useMemo(() => payload?.title ?? "Preview", [payload]);
-  const isPreview = payload?.access === "preview";
+  const currentItem = items[currentIndex] || null;
+  const resolvedUrl = resolvedUrls[currentIndex];
+  const title = useMemo(() => currentItem?.title ?? "Preview", [currentItem]);
+  const isPreview = currentItem?.access === "preview";
+  const hasMultiple = items.length > 1;
+  const kind = currentItem?.kind;
 
   // ── Swipe-down-to-dismiss ───────────────────────────────────────────────────
   const dragY = useRef(new Animated.Value(0)).current;
@@ -181,43 +200,107 @@ export function OrderPreviewModal({
   ).current;
 
   useEffect(() => {
-    if (open) dragY.setValue(0);
-  }, [open, dragY]);
+    if (open) {
+      dragY.setValue(0);
+      setCurrentIndex(initialIndex > 0 ? Math.min(initialIndex, items.length - 1) : 0);
+    } else {
+      setCurrentIndex(0);
+      setResolvedUrls([]);
+    }
+  }, [open, dragY, initialIndex, items.length]);
 
+  // Load URLs for current item
   useEffect(() => {
     let alive = true;
     setErr(null);
-    setResolvedUrl(null);
+    
+    if (!open || !currentItem) return;
 
     (async () => {
-      if (!open || !payload) return;
-
-      if (payload.kind === "link") {
-        setResolvedUrl(payload.url);
+      if (currentItem.kind === "link") {
+        setResolvedUrls(prev => {
+          const next = [...prev];
+          next[currentIndex] = currentItem.url;
+          return next;
+        });
         return;
       }
 
-      setBusy(true);
       try {
-        const nextUrl = await payload.urlPromise();
+        const nextUrl = await currentItem.urlPromise();
         if (!alive) return;
-        setResolvedUrl(nextUrl);
-        if (!nextUrl) setErr("Preview is unavailable.");
+        setResolvedUrls(prev => {
+          const next = [...prev];
+          next[currentIndex] = nextUrl;
+          return next;
+        });
+        if (!nextUrl) setErr("Preview unavailable.");
       } catch (e: any) {
         if (!alive) return;
-        setErr(e?.message || "Preview is unavailable.");
-      } finally {
-        if (alive) setBusy(false);
+        setErr(e?.message || "Preview failed.");
       }
     })();
 
     return () => {
       alive = false;
     };
-  }, [open, payload, retryTick]);
+  }, [open, currentItem, currentIndex, retryTick]);
 
   function handleRetry() {
-    setRetryTick((t) => t + 1);
+    setRetryTick(t => t + 1);
+  }
+
+  const resolvedCount = resolvedUrls.filter(Boolean).length;
+  const isLoading = open && items.length > 0 && resolvedCount < items.length;
+
+  function goToIndex(index: number) {
+    const bounded = Math.max(0, Math.min(items.length - 1, index));
+    setCurrentIndex(bounded);
+  }
+
+  function renderContent() {
+    if (!currentItem) return null;
+
+    if (currentItem.kind === "image") {
+      return resolvedUrl ? <ImageBlock uri={resolvedUrl} watermark={isPreview} fill /> : null;
+    }
+    if (currentItem.kind === "video") {
+      return (
+        <VideoBlock
+          uri={resolvedUrl}
+          watermark={isPreview}
+          previewSeconds={currentItem.previewSeconds ?? 20}
+          fill
+        />
+      );
+    }
+    if (currentItem.kind === "audio") {
+      return (
+        <AudioBlock
+          uri={resolvedUrl}
+          watermark={isPreview}
+          previewSeconds={currentItem.previewSeconds ?? 20}
+        />
+      );
+    }
+    if (currentItem.kind === "file") {
+      return (
+        <FileBlock
+          uri={resolvedUrl}
+          watermark={isPreview}
+          mimeType={currentItem.mimeType}
+          title={currentItem.title}
+        />
+      );
+    }
+    if (currentItem.kind === "link") {
+      return resolvedUrl ? (
+        <View style={{ marginTop: 12, flex: 1 }}>
+          <WatermarkedBrowser initialUrl={resolvedUrl} allowGoogleSearch lockToInitialHost />
+        </View>
+      ) : null;
+    }
+    return null;
   }
 
   return (
@@ -235,21 +318,48 @@ export function OrderPreviewModal({
           <View {...panResponder.panHandlers}>
             <View style={styles.dragHandle} />
 
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} style={{ color: TEXT, fontWeight: "900", fontSize: 18 }}>
+            <View style={styles.headerRow}>
+              <View style={styles.headerLeft}>
+                <Text numberOfLines={1} style={styles.titleText}>
                   {title}
                 </Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                  <View
-                    style={[
-                      styles.accessDot,
-                      { backgroundColor: isPreview ? AMBER : TEAL },
-                    ]}
-                  />
-                  <Text style={{ color: MUTED, fontSize: 12, fontWeight: "700" }}>
-                    {isPreview ? "Preview access" : "Full access"}
-                  </Text>
+                
+                <View style={styles.metaRow}>
+                  {hasMultiple && (
+                    <>
+                      <View style={styles.paginationDots}>
+                        {items.map((_, i) => (
+                          <Pressable
+                            key={`dot-${i}`}
+                            onPress={() => goToIndex(i)}
+                            style={{
+                              width: currentIndex === i ? 20 : 7,
+                              height: 7,
+                              borderRadius: 999,
+                              backgroundColor: currentIndex === i ? TEAL : "rgba(255,253,247,0.28)",
+                            }}
+                          />
+                        ))}
+                      </View>
+                      <Text style={styles.pageIndicator}>
+                        {currentIndex + 1} / {items.length}
+                      </Text>
+                    </>
+                  )}
+                  
+                  {!hasMultiple && (
+                    <View style={styles.accessBadge}>
+                      <View
+                        style={[
+                          styles.accessDot,
+                          { backgroundColor: isPreview ? AMBER : TEAL },
+                        ]}
+                      />
+                      <Text style={styles.accessText}>
+                        {isPreview ? "Preview" : "Unlocked"}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -260,46 +370,57 @@ export function OrderPreviewModal({
                 style={({ pressed }) => ({
                   width: 42,
                   height: 42,
-                  borderRadius: 16,
+                  borderRadius: 21,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: pressed ? "rgba(255,253,247,0.14)" : "rgba(255,253,247,0.08)",
+                  backgroundColor: pressed ? GLASS_LIGHT : "rgba(255,255,255,0.06)",
                   borderWidth: 1,
                   borderColor: BORDER,
-                  transform: [{ scale: pressed ? 0.96 : 1 }],
+                  transform: [{ scale: pressed ? 0.94 : 1 }],
+                  shadowColor: "rgba(0,0,0,0.3)",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
                 })}
               >
                 <Ionicons name="close" size={20} color={TEXT} />
               </Pressable>
             </View>
+
+            {hasMultiple && (
+              <View style={styles.navArrows}>
+                {currentIndex > 0 && (
+                  <Pressable
+                    onPress={() => goToIndex(currentIndex - 1)}
+                    style={styles.navBtn}
+                    accessibilityLabel="Previous preview"
+                  >
+                    <Ionicons name="chevron-back" size={24} color={TEXT} />
+                  </Pressable>
+                )}
+                {currentIndex < items.length - 1 && (
+                  <Pressable
+                    onPress={() => goToIndex(currentIndex + 1)}
+                    style={styles.navBtn}
+                    accessibilityLabel="Next preview"
+                  >
+                    <Ionicons name="chevron-forward" size={24} color={TEXT} />
+                  </Pressable>
+                )}
+              </View>
+            )}
           </View>
 
-          {busy ? (
-            <LoadingSkeleton kind={payload?.kind} />
+          {isLoading ? (
+            <LoadingSkeleton kind={kind} />
           ) : err ? (
             <ErrorState message={err} onRetry={handleRetry} />
-          ) : !payload ? null : payload.kind === "image" ? (
-            resolvedUrl ? <ImageBlock uri={resolvedUrl} watermark={isPreview} fill /> : null
-          ) : payload.kind === "video" ? (
-            <VideoBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} fill />
-          ) : payload.kind === "audio" ? (
-            <AudioBlock uri={resolvedUrl} watermark={isPreview} previewSeconds={payload.previewSeconds ?? 20} />
-          ) : payload.kind === "file" ? (
-            <FileBlock uri={resolvedUrl} watermark={isPreview} mimeType={payload.mimeType} title={payload.title} />
-          ) : payload.kind === "link" ? (
-            resolvedUrl ? (
-              <View style={{ marginTop: 12, flex: 1 }}>
-                <WatermarkedBrowser initialUrl={resolvedUrl} allowGoogleSearch lockToInitialHost />
-              </View>
-            ) : null
-          ) : null}
+          ) : renderContent()}
         </LinearGradient>
       </Animated.View>
     </Modal>
   );
 }
-
-// ─── Loading / error states ─────────────────────────────────────────────────────
 
 function LoadingSkeleton({ kind }: { kind?: PreviewPayload["kind"] }) {
   if (kind === "audio") {
@@ -448,7 +569,7 @@ function MediaFrame({
           }}
         >
           <Text style={{ color: "rgba(255,253,247,0.86)", fontWeight: "900", fontSize: 12 }}>
-            {watermark ? "Preview access" : "Full access"}
+            {watermark ? "Preview mode" : "Unlocked"}
           </Text>
         </View>
       )}
@@ -984,10 +1105,73 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,253,247,0.24)",
     marginBottom: 12,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 14,
+  },
+  headerLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  titleText: {
+    color: TEXT,
+    fontWeight: "900",
+    fontSize: 18,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+    flexWrap: "wrap",
+  },
+  paginationDots: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  pageIndicator: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  accessBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: GLASS_DARK,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
   accessDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  accessText: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  navArrows: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingHorizontal: 8,
+  },
+  navBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: BORDER,
   },
   panel: {
     borderRadius: 22,
@@ -995,6 +1179,10 @@ const styles = StyleSheet.create({
     backgroundColor: PANEL,
     borderWidth: 1,
     borderColor: BORDER_TOP,
+    shadowColor: "rgba(0,0,0,0.4)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
   },
   skeletonSpinnerWrap: {
     position: "absolute",
@@ -1051,6 +1239,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    shadowColor: "rgba(0,0,0,0.5)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
   },
   videoControlBtn: {
     width: 28,
@@ -1058,6 +1250,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   scrubTrack: {
     flex: 1,
@@ -1099,6 +1292,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,253,247,0.92)",
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 12,
   },
   previewEndedOverlay: {
     position: "absolute",
@@ -1132,6 +1329,10 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 16,
     backgroundColor: AMBER,
+    shadowColor: GLOW_AMBER,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
   },
   previewEndedReplayText: {
     color: INK,

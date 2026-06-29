@@ -1060,18 +1060,31 @@ function CryptoActivityPanel({
                       </Pressable>
                     </View>
                   ) : null}
-                  <Text style={{ color: FAINT, fontSize: 10 }}>
-                    {new Date(intent.created_at).toLocaleString()}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
-    </PanelCard>
-  );
-}
+<Text style={{ color: FAINT, fontSize: 10 }}>
+                     {new Date(intent.created_at).toLocaleString()}
+                   </Text>
+                 </View>
+               );
+             })}
+           </View>
+         )}
+
+         {/* End of section message */}
+         <View style={{ marginTop: 12, padding: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+           <Text style={{ color: FAINT, fontSize: 11 }}>
+             {isBuyer
+               ? awaitingConfirmations
+                 ? "Deposit processing — status updates in real-time. No need to refresh."
+                 : intents.length === 0
+                 ? "No payment activity yet. Complete checkout to fund escrow."
+                 : "Payment activity updates in real-time when blockchain confirms."
+               : "Monitor payment and escrow status here."}
+           </Text>
+         </View>
+       </View>
+     </PanelCard>
+   );
+ }
 
 // ─── Deliverables Panel ────────────────────────────────────────────────────────
 function DeliverablesPanel({
@@ -1086,6 +1099,7 @@ function DeliverablesPanel({
   onPickUpload,
   onPreview,
   onDownload,
+  orderStatus,
 }: {
   isBuyer: boolean;
   isSeller: boolean;
@@ -1098,8 +1112,9 @@ function DeliverablesPanel({
   onPickUpload: (access: "preview" | "final") => void;
   onPreview: (d: OrderDeliverable) => void;
   onDownload: (d: OrderDeliverable) => void;
+orderStatus?: string;
 }) {
-  const previewItems = deliverables.filter((d) => d.access === "preview");
+   const previewItems = deliverables.filter((d) => d.access === "preview");
   const finalItems = deliverables.filter((d) => d.access === "final");
   const isDigital = String(listing?.delivery_type ?? "").toLowerCase() === "digital";
   const hasWebsite = !!listing?.website_url;
@@ -1388,22 +1403,33 @@ function DeliverablesPanel({
                 </Text>
               </Pressable>
             </View>
-            {!canSellerUpload ? (
-              <Text style={{ color: FAINT, fontSize: 11 }}>
-                Available when order is IN_ESCROW, OUT_FOR_DELIVERY, or DELIVERABLE_UPLOADED.
-              </Text>
-            ) : null}
-            {deliverables.length > 0 ? (
-              <Text style={{ color: MUTED, fontSize: 12 }}>
-                Uploaded: {previewItems.length} preview · {finalItems.length} full-quality
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
-    </PanelCard>
-  );
-}
+{!canSellerUpload ? (
+               <Text style={{ color: FAINT, fontSize: 11 }}>
+                 Available when order is IN_ESCROW, OUT_FOR_DELIVERY, or DELIVERABLE_UPLOADED.
+               </Text>
+             ) : null}
+             {deliverables.length > 0 ? (
+               <Text style={{ color: MUTED, fontSize: 12 }}>
+                 Uploaded: {previewItems.length} preview · {finalItems.length} full-quality
+               </Text>
+             ) : null}
+           </View>
+         ) : null}
+
+         {/* End of section message */}
+         <View style={{ marginTop: 12, padding: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+           <Text style={{ color: FAINT, fontSize: 11 }}>
+             {isBuyer
+               ? deliverables.length === 0
+                 ? "No files uploaded yet. Check back when seller uploads deliverables."
+                 : "Files update in real-time when seller uploads."
+               : "Files will be visible to buyer once uploaded."}
+           </Text>
+         </View>
+       </View>
+     </PanelCard>
+   );
+ }
 
 // ─── Dispute Panel ─────────────────────────────────────────────────────────────
 function DisputePanel({
@@ -2007,19 +2033,32 @@ function BuyerOrderView({
         />
       ) : null}
 
-      {/* Report issue */}
-      {isActive ? (
-        <OutlineBtn
-          label="Report issue / request refund"
-          icon="flag-outline"
-          color="red"
-          onPress={onPrepareDispute}
-        />
-      ) : null}
+{/* Report issue */}
+       {isActive ? (
+         <OutlineBtn
+           label="Report issue / request refund"
+           icon="flag-outline"
+           color="red"
+           onPress={onPrepareDispute}
+         />
+       ) : null}
 
-      {err ? <ErrBanner message={err} /> : null}
-    </View>
-  );
+       {err ? <ErrBanner message={err} /> : null}
+
+       {/* End of section status message */}
+       <View style={{ marginTop: 12, padding: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+         <Text style={{ color: FAINT, fontSize: 11 }}>
+           {orderStatus === "DELIVERED"
+             ? "Order delivered. Verify OTP and release funds to complete the transaction."
+             : orderStatus === "RELEASED"
+             ? "Transaction complete. Funds have been released to seller."
+             : orderStatus === "IN_ESCROW"
+             ? "Payment secured in escrow. Seller will process your order."
+             : "Check back for updates on this order."}
+         </Text>
+       </View>
+     </View>
+   );
 }
 
 // ─── Seller Order View ─────────────────────────────────────────────────────────
@@ -2235,19 +2274,32 @@ function SellerOrderView({
         </View>
       ) : null}
 
-      {/* Report issue */}
-      {isActive ? (
-        <OutlineBtn
-          label="Report issue / open complaint"
-          icon="flag-outline"
-          color="red"
-          onPress={onPrepareDispute}
-        />
-      ) : null}
+{/* Report issue */}
+       {isActive ? (
+         <OutlineBtn
+           label="Report issue / open complaint"
+           icon="flag-outline"
+           color="red"
+           onPress={onPrepareDispute}
+         />
+       ) : null}
 
-      {err ? <ErrBanner message={err} /> : null}
-    </View>
-  );
+       {err ? <ErrBanner message={err} /> : null}
+
+       {/* End of section status message */}
+       <View style={{ marginTop: 12, padding: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}>
+         <Text style={{ color: FAINT, fontSize: 11 }}>
+           {orderStatus === "IN_ESCROW"
+             ? "Payment secured. Mark as out for delivery when ready to fulfill."
+             : orderStatus === "OUT_FOR_DELIVERY"
+             ? "Order in delivery. Ask buyer for OTP to confirm delivery."
+             : orderStatus === "DELIVERED" && otpVerified
+             ? "Delivery confirmed. Awaiting buyer to release funds."
+             : "Check back for updates on this order."}
+         </Text>
+       </View>
+     </View>
+   );
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -2768,46 +2820,217 @@ export default function OrderDetails() {
     return () => { void supabase.removeChannel(channel); };
   }, [oid, order?.status]);
 
-  // ─── Real-time crypto intent updates ────────────────────────────────────────────
-  useEffect(() => {
-    if (!oid) return;
-    const channel = supabase
-      .channel(`order-intents-${oid}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: CRYPTO_INTENTS_TABLE,
-          filter: `order_id=eq.${oid}`,
-        },
-        async () => {
-          const { data } = await supabase
-            .from(CRYPTO_INTENTS_TABLE)
-            .select("*")
-            .eq("order_id", oid);
-          setIntents((data as CryptoIntent[]) || []);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: CRYPTO_INTENTS_TABLE,
-          filter: `order_id=eq.${oid}`,
-        },
-        async () => {
-          const { data } = await supabase
-            .from(CRYPTO_INTENTS_TABLE)
-            .select("*")
-            .eq("order_id", oid);
-          setIntents((data as CryptoIntent[]) || []);
-        }
-      )
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [oid]);
+// ─── Real-time crypto intent updates ────────────────────────────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`order-intents-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "INSERT",
+           schema: "public",
+           table: CRYPTO_INTENTS_TABLE,
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           const { data } = await supabase
+             .from(CRYPTO_INTENTS_TABLE)
+             .select("*")
+             .eq("order_id", oid);
+           setIntents((data as CryptoIntent[]) || []);
+         }
+       )
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: CRYPTO_INTENTS_TABLE,
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           const { data } = await supabase
+             .from(CRYPTO_INTENTS_TABLE)
+             .select("*")
+             .eq("order_id", oid);
+           setIntents((data as CryptoIntent[]) || []);
+         }
+       )
+       .subscribe();
+     return () => { void supabase.removeChannel(channel); };
+   }, [oid]);
+
+   // ─── Real-time deliverables updates ──────────────────────────────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`order-deliverables-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "INSERT",
+           schema: "public",
+           table: "market_deliverables",
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           try {
+             const ds = await listOrderDeliverables(oid);
+             setDeliverables(ds);
+             if (isBuyer) {
+               Alert.alert(
+                 "Files Uploaded",
+                 "Seller has uploaded deliverables for this order.",
+                 [{ text: "View", onPress: () => {} }]
+               );
+             }
+           } catch (e: any) {
+             console.log("[Order] deliverables realtime refresh failed:", e?.message ?? e);
+           }
+         }
+       )
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: "market_deliverables",
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           try {
+             const ds = await listOrderDeliverables(oid);
+             setDeliverables(ds);
+           } catch (e: any) {
+             console.log("[Order] deliverables realtime refresh failed:", e?.message ?? e);
+           }
+         }
+       )
+       .subscribe();
+     return () => { void supabase.removeChannel(channel); };
+   }, [oid, isBuyer]);
+
+   // ─── Real-time OTP updates ───────────────────────────────────────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`order-otp-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "INSERT",
+           schema: "public",
+           table: OTP_TABLE,
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           const { data: otpRow } = await supabase
+             .from(OTP_TABLE)
+             .select("order_id,expires_at,attempts,verified_at")
+             .eq("order_id", oid)
+             .maybeSingle();
+           setOtp((otpRow as any) ?? null);
+         }
+       )
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: OTP_TABLE,
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           const { data: otpRow } = await supabase
+             .from(OTP_TABLE)
+             .select("order_id,expires_at,attempts,verified_at")
+             .eq("order_id", oid)
+             .maybeSingle();
+           setOtp((otpRow as any) ?? null);
+         }
+       )
+       .subscribe();
+     return () => { void supabase.removeChannel(channel); };
+   }, [oid]);
+
+   // ─── Real-time dispute updates ───────────────────────────────────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`order-dispute-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "INSERT",
+           schema: "public",
+           table: "market_disputes",
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           try {
+             const disputeThread = await fetchOrderDispute(oid);
+             setDispute(disputeThread?.dispute ?? null);
+             setDisputeMessages(disputeThread?.messages ?? []);
+             if (isBuyer || isSeller) {
+               Alert.alert(
+                 "Dispute Opened",
+                 "A dispute has been opened for this order. Please review the details.",
+                 [{ text: "Continue", onPress: () => {} }]
+               );
+             }
+           } catch (e: any) {
+             console.log("[Order] dispute realtime refresh failed:", e?.message ?? e);
+           }
+         }
+       )
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: "market_disputes",
+           filter: `order_id=eq.${oid}`,
+         },
+         async () => {
+           try {
+             const disputeThread = await fetchOrderDispute(oid);
+             setDispute(disputeThread?.dispute ?? null);
+             setDisputeMessages(disputeThread?.messages ?? []);
+           } catch (e: any) {
+             console.log("[Order] dispute realtime refresh failed:", e?.message ?? e);
+           }
+         }
+       )
+       .subscribe();
+     return () => { void supabase.removeChannel(channel); };
+   }, [oid, isBuyer, isSeller]);
+
+   // ─── Real-time dispute message updates ─────────────────────────────────────────────
+   useEffect(() => {
+     if (!oid || !dispute?.id) return;
+     const channel = supabase
+       .channel(`order-dispute-messages-${dispute.id}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "*",
+           schema: "public",
+           table: "market_dispute_messages",
+           filter: `dispute_id=eq.${dispute.id}`,
+         },
+         async () => {
+           try {
+             const disputeThread = await fetchOrderDispute(oid);
+             setDisputeMessages(disputeThread?.messages ?? []);
+           } catch (e: any) {
+             console.log("[Order] dispute messages realtime refresh failed:", e?.message ?? e);
+           }
+         }
+       )
+       .subscribe();
+     return () => { void supabase.removeChannel(channel); };
+   }, [oid, dispute?.id]);
 
   // ─── Auto-reindex effects (unchanged logic) ────────────────────────────────────
   useEffect(() => {
@@ -3462,6 +3685,7 @@ export default function OrderDetails() {
       onPickUpload={pickAndUpload}
       onPreview={previewDeliverable}
       onDownload={downloadDeliverable}
+      orderStatus={order?.status}
     />
   ) : null;
 

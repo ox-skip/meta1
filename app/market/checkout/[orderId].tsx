@@ -767,43 +767,100 @@ export default function Checkout() {
     selectedChainStillAvailable,
   ]);
 
-  useEffect(() => {
-    if (!oid) return;
-    const channel = supabase
-      .channel(`checkout-order-${oid}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "market_orders",
-          filter: `id=eq.${oid}`,
-        },
-        (payload) => {
-          const next = (payload.new ?? {}) as any;
-          const prevStatus = String(order?.status ?? "").toUpperCase();
-          const newStatus = String(next?.status ?? "").toUpperCase();
-          setOrder((prev: any) => ({ ...(prev ?? {}), ...next }));
-          if (prevStatus !== "IN_ESCROW" && newStatus === "IN_ESCROW") {
-            // Escrow funded - show notification and auto-redirect
-            Alert.alert(
-              "Escrow Funded!",
-              "Your payment has been confirmed and is now secured in escrow. You'll be redirected to track your order.",
-              [
-                {
-                  text: "View Order",
-                  onPress: () => router.replace(`/market/order/${oid}` as any),
-                },
-              ]
-            );
-          }
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [oid, order?.status]);
+// ─── Real-time crypto intent tracking for deposit confirmation ────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`checkout-intents-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "INSERT",
+           schema: "public",
+           table: "market_crypto_intents",
+           filter: `order_id=eq.${oid}`,
+         },
+         async (payload) => {
+           const intent = (payload.new ?? {}) as any;
+           const intentType = String(intent?.intent_type ?? "").toUpperCase();
+           const intentStatus = String(intent?.status ?? "").toUpperCase();
+           if (intentType === "DEPOSIT") {
+             if (intentStatus === "CONFIRMED") {
+               Alert.alert(
+                 "Deposit Confirmed!",
+                 "Your transaction was confirmed. The order status will update when escrow is funded.",
+                 [{ text: "OK", onPress: () => {} }]
+               );
+             }
+           }
+         }
+       )
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: "market_crypto_intents",
+           filter: `order_id=eq.${oid}`,
+         },
+         async (payload) => {
+           const intent = (payload.new ?? {}) as any;
+           const intentType = String(intent?.intent_type ?? "").toUpperCase();
+           const intentStatus = String(intent?.status ?? "").toUpperCase();
+           const prevStatus = String(intent?._prev_status ?? intent?.status ?? "").toUpperCase();
+           if (intentType === "DEPOSIT" && prevStatus !== "CONFIRMED" && intentStatus === "CONFIRMED") {
+             Alert.alert(
+               "Deposit Confirmed!",
+               "Your transaction was confirmed. The order status will update when escrow is funded.",
+               [{ text: "OK", onPress: () => {} }]
+             );
+           }
+         }
+       )
+       .subscribe();
+     return () => {
+       void supabase.removeChannel(channel);
+     };
+   }, [oid]);
+
+   // ─── Real-time order status (auto-redirect when escrow funded) ───────────────────────
+   useEffect(() => {
+     if (!oid) return;
+     const channel = supabase
+       .channel(`checkout-order-${oid}`)
+       .on(
+         "postgres_changes",
+         {
+           event: "UPDATE",
+           schema: "public",
+           table: "market_orders",
+           filter: `id=eq.${oid}`,
+         },
+         (payload) => {
+           const next = (payload.new ?? {}) as any;
+           const prevStatus = String(order?.status ?? "").toUpperCase();
+           const newStatus = String(next?.status ?? "").toUpperCase();
+           setOrder((prev: any) => ({ ...(prev ?? {}), ...next }));
+           if (prevStatus !== "IN_ESCROW" && newStatus === "IN_ESCROW") {
+             // Escrow funded - show notification and auto-redirect
+             Alert.alert(
+               "Escrow Funded!",
+               "Your payment has been confirmed and is now secured in escrow. You'll be redirected to track your order.",
+               [
+                 {
+                   text: "View Order",
+                   onPress: () => router.replace(`/market/order/${oid}` as any),
+                 },
+               ]
+             );
+           }
+         }
+       )
+       .subscribe();
+     return () => {
+       void supabase.removeChannel(channel);
+     };
+   }, [oid, order?.status]);
 
   useEffect(() => {
     if (!oid || autoRoutedRef.current) return;
