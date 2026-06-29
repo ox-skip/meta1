@@ -27,6 +27,7 @@ const BG1 = "#10130E";
 const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
 const FAINT = "rgba(255,253,247,0.44)";
+const BORDER_TOP = "rgba(255,253,247,0.24)";
 const TEAL = "#2DD4BF";
 const AMBER = "#F4B75D";
 const ROSE = "#FB7185";
@@ -319,7 +320,7 @@ export function OrderPreviewModal({
             )}
           </View>
 
-<View style={styles.playerContainer}>
+          <View style={styles.playerContainer}>
             <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
               {isLoading ? <LoadingSkeleton kind={kind} /> : err ? <ErrorState message={err} onRetry={handleRetry} /> : renderContent()}
             </Animated.View>
