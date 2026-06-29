@@ -2717,6 +2717,98 @@ export default function OrderDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oid]);
 
+  // ─── Real-time status notifications ───────────────────────────────────────────
+  const prevOrderStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!oid) return;
+    const channel = supabase
+      .channel(`order-realtime-${oid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: ORDERS_TABLE,
+          filter: `id=eq.${oid}`,
+        },
+        (payload) => {
+          const next = (payload.new ?? {}) as OrderRow;
+          const prevStatus = prevOrderStatusRef.current;
+          const newStatus = String(next?.status ?? "").toUpperCase();
+          setOrder((prev: any) => ({ ...(prev ?? {}), ...next }));
+          prevOrderStatusRef.current = newStatus;
+
+          // Show notifications for key status changes
+          if (prevStatus && prevStatus !== newStatus) {
+            if (newStatus === "DELIVERED") {
+              Alert.alert(
+                "Order Delivered!",
+                "The seller has marked this order as delivered. You can now verify OTP and release funds.",
+                [{ text: "Continue", onPress: () => {} }]
+              );
+            } else if (newStatus === "RELEASED") {
+              Alert.alert(
+                "Funds Released!",
+                "Payment has been released from escrow. Thank you for your purchase.",
+                [{ text: "OK", onPress: () => {} }]
+              );
+            } else if (newStatus === "OUT_FOR_DELIVERY") {
+              Alert.alert(
+                "Out for Delivery",
+                "The seller is now processing your order. You can generate an OTP to confirm delivery.",
+                [{ text: "Continue", onPress: () => {} }]
+              );
+            }
+          }
+        }
+      )
+      .subscribe();
+    // Set initial status
+    prevOrderStatusRef.current = String(order?.status ?? "").toUpperCase() || null;
+    return () => { void supabase.removeChannel(channel); };
+  }, [oid, order?.status]);
+
+  // ─── Real-time crypto intent updates ────────────────────────────────────────────
+  useEffect(() => {
+    if (!oid) return;
+    const channel = supabase
+      .channel(`order-intents-${oid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: CRYPTO_INTENTS_TABLE,
+          filter: `order_id=eq.${oid}`,
+        },
+        async () => {
+          const { data } = await supabase
+            .from(CRYPTO_INTENTS_TABLE)
+            .select("*")
+            .eq("order_id", oid);
+          setIntents((data as CryptoIntent[]) || []);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: CRYPTO_INTENTS_TABLE,
+          filter: `order_id=eq.${oid}`,
+        },
+        async () => {
+          const { data } = await supabase
+            .from(CRYPTO_INTENTS_TABLE)
+            .select("*")
+            .eq("order_id", oid);
+          setIntents((data as CryptoIntent[]) || []);
+        }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [oid]);
+
   // ─── Auto-reindex effects (unchanged logic) ────────────────────────────────────
   useEffect(() => {
     if (!awaitingConfirmations) return;

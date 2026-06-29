@@ -781,14 +781,29 @@ export default function Checkout() {
         },
         (payload) => {
           const next = (payload.new ?? {}) as any;
+          const prevStatus = String(order?.status ?? "").toUpperCase();
+          const newStatus = String(next?.status ?? "").toUpperCase();
           setOrder((prev: any) => ({ ...(prev ?? {}), ...next }));
+          if (prevStatus !== "IN_ESCROW" && newStatus === "IN_ESCROW") {
+            // Escrow funded - show notification and auto-redirect
+            Alert.alert(
+              "Escrow Funded!",
+              "Your payment has been confirmed and is now secured in escrow. You'll be redirected to track your order.",
+              [
+                {
+                  text: "View Order",
+                  onPress: () => router.replace(`/market/order/${oid}` as any),
+                },
+              ]
+            );
+          }
         }
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [oid]);
+  }, [oid, order?.status]);
 
   useEffect(() => {
     if (!oid || autoRoutedRef.current) return;
