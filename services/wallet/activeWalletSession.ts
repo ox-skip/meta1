@@ -91,7 +91,8 @@ export function getConnectedWalletMode(): WalletMode | null {
   if (base.connected && base.address) return "base_smart";
 
   const wc = getWalletConnectSession();
-  if (wc.connected && wc.address) return "email_market";
+  const currentMode = getWalletModeSync();
+  if (wc.connected && wc.address) return currentMode || "walletconnect";
 
   return null;
 }

@@ -2,11 +2,6 @@ import { createPublicClient, createWalletClient, custom, http } from "viem";
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 import { connectActiveWalletEvm, getActiveWalletEip155Provider, getActiveWalletSession } from "@/services/wallet/activeWalletSession";
-import {
-  getCircleMarketSmartAccount,
-  isCircleMarketWalletEnabled,
-  isCircleSupportedChain,
-} from "@/services/wallet/circleMarketWallet";
 
 export type MarketChainConfig = {
   chain: string;
@@ -323,17 +318,9 @@ async function ensureWalletHasDirectGas(args: {
     const balance = await publicClient.getBalance({ address: args.from });
     const value = toBigIntValue(args.value);
     if (balance > value) return;
-
-    const chainName = String(args.chainName || "this chain");
-    const symbol = String(args.nativeSymbol || "ETH");
-    throw new Error(
-      `This WalletConnect wallet needs ${symbol} on ${chainName} for gas. ` +
-        `It currently has ${formatWeiForDisplay(balance)} ${symbol}. ` +
-        `Fund ${args.from} with a small amount of ${symbol}, or use a wallet that already has gas.`,
-    );
-  } catch (err: any) {
-    const msg = String(err?.message || err || "");
-    if (msg.includes("needs") && msg.includes("for gas")) throw err;
+    // Wallet will pay its own gas - proceed without error
+  } catch {
+    // ignore - let wallet handle the transaction
   }
 }
 
@@ -510,9 +497,6 @@ async function ensureConnectedProviderAndAddress(chainConfig: MarketChainConfig)
 }
 
 export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: string | null) {
-  if (isCircleMarketWalletEnabled() && isCircleSupportedChain((chainConfig as any).chain)) {
-    return await getCircleMarketSmartAccount(chainConfig as any);
-  }
 
   const { provider, chain, address, rpcUrl } = await ensureConnectedProviderAndAddress(chainConfig);
   const chainId = normalizeChainId((chainConfig as any).chain_id);
@@ -536,7 +520,7 @@ export async function getSmartAccount(chainConfig: MarketChainConfig, _scope?: s
 
       const session = getActiveWalletSession();
       const txFrom = preferredSenderAddress(session, from);
-      if (session.mode === "walletconnect" && !paymasterUrlForChainId(chainId)) {
+      if ((session.mode === "walletconnect" || session.mode === "email_market") && !paymasterUrlForChainId(chainId)) {
         await ensureWalletHasDirectGas({
           rpcUrl,
           chainName: String(chain?.name || chainConfig.chain || "Base"),
