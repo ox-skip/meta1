@@ -16,6 +16,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// eslint-disable-next-line import/no-unresolved
+import * as Haptics from "expo-haptics";
 
 import { usePreventScreenCapture } from "@/hooks/usePreventScreenCapture";
 import { WatermarkedBrowser } from "@/components/market/WatermarkedBrowser";
@@ -25,18 +27,12 @@ const BG1 = "#10130E";
 const TEXT = "#FFFDF7";
 const MUTED = "rgba(255,253,247,0.68)";
 const FAINT = "rgba(255,253,247,0.44)";
-const BORDER = "rgba(255,253,247,0.12)";
-const BORDER_TOP = "rgba(255,253,247,0.24)";
-const PANEL = "rgba(255,253,247,0.065)";
-const PANEL_RAISED = "rgba(255,253,247,0.09)";
 const TEAL = "#2DD4BF";
 const AMBER = "#F4B75D";
 const ROSE = "#FB7185";
 const INK = "#090D0B";
-const GLASS_DARK = "rgba(4,8,6,0.88)";
-const GLASS_LIGHT = "rgba(255,255,255,0.08)";
-const GLOW_TEAL = "rgba(45,212,191,0.32)";
-const GLOW_AMBER = "rgba(244,183,93,0.32)";
+const GLOW_TEAL = "rgba(45,212,191,0.4)";
+const GLOW_AMBER = "rgba(244,183,93,0.4)";
 const WatermarkIcon = require("../../assets/images/icon.png");
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -60,8 +56,6 @@ export type MultiPreviewPayload = {
   items: PreviewPayload[];
   startIndex?: number;
 };
-
-// ─── Shared helpers ─────────────────────────────────────────────────────────────
 
 function formatTime(totalSeconds: number) {
   const safe = Number.isFinite(totalSeconds) && totalSeconds > 0 ? totalSeconds : 0;
@@ -99,8 +93,6 @@ function fileIconForExtension(ext: string): IconName {
   return "document-attach-outline";
 }
 
-// ─── Shimmer / skeleton ─────────────────────────────────────────────────────────
-
 function Shimmer({ style }: { style?: any }) {
   const sweep = useRef(new Animated.Value(0)).current;
 
@@ -135,8 +127,6 @@ function Shimmer({ style }: { style?: any }) {
   );
 }
 
-// ─── Root modal ─────────────────────────────────────────────────────────────────
-
 export function OrderPreviewModal({
   open,
   onClose,
@@ -152,31 +142,25 @@ export function OrderPreviewModal({
   const isMulti = payload && "items" in (payload as MultiPreviewPayload);
   const multiPayload = isMulti ? (payload as MultiPreviewPayload) : null;
   const singlePayload = !isMulti ? (payload as PreviewPayload) : null;
-  
+
   const items = multiPayload?.items ?? (singlePayload ? [singlePayload] : []);
   const initialIndex = multiPayload?.startIndex ?? 0;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [resolvedUrls, setResolvedUrls] = useState<(string | null)[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   const currentItem = items[currentIndex] || null;
   const resolvedUrl = resolvedUrls[currentIndex];
-  const title = useMemo(() => currentItem?.title ?? "Preview", [currentItem]);
-  const isPreview = currentItem?.access === "preview";
   const hasMultiple = items.length > 1;
   const kind = currentItem?.kind;
+  const isPreview = currentItem?.access === "preview";
 
-  // ── Swipe-down-to-dismiss ───────────────────────────────────────────────────
   const dragY = useRef(new Animated.Value(0)).current;
   const dragOpacity = dragY.interpolate({
     inputRange: [0, 240],
     outputRange: [1, 0.4],
-    extrapolate: "clamp",
-  });
-  const dragScale = dragY.interpolate({
-    inputRange: [0, 240],
-    outputRange: [1, 0.94],
     extrapolate: "clamp",
   });
 
@@ -203,17 +187,18 @@ export function OrderPreviewModal({
     if (open) {
       dragY.setValue(0);
       setCurrentIndex(initialIndex > 0 ? Math.min(initialIndex, items.length - 1) : 0);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     } else {
       setCurrentIndex(0);
       setResolvedUrls([]);
+      fadeAnim.setValue(0);
     }
-  }, [open, dragY, initialIndex, items.length]);
+  }, [open, dragY, initialIndex, items.length, fadeAnim]);
 
-  // Load URLs for current item
   useEffect(() => {
     let alive = true;
     setErr(null);
-    
+
     if (!open || !currentItem) return;
 
     (async () => {
@@ -255,6 +240,9 @@ export function OrderPreviewModal({
 
   function goToIndex(index: number) {
     const bounded = Math.max(0, Math.min(items.length - 1, index));
+    if (bounded !== currentIndex) {
+      Haptics.selectionAsync();
+    }
     setCurrentIndex(bounded);
   }
 
@@ -262,40 +250,34 @@ export function OrderPreviewModal({
     if (!currentItem) return null;
 
     if (currentItem.kind === "image") {
-      return resolvedUrl ? <ImageBlock uri={resolvedUrl} watermark={isPreview} fill /> : null;
+      return resolvedUrl ? <ReelImageBlock uri={resolvedUrl} watermark={isPreview} /> : null;
     }
     if (currentItem.kind === "video") {
       return (
-        <VideoBlock
+        <ReelVideoBlock
           uri={resolvedUrl}
           watermark={isPreview}
           previewSeconds={currentItem.previewSeconds ?? 20}
-          fill
         />
       );
     }
     if (currentItem.kind === "audio") {
       return (
-        <AudioBlock
-          uri={resolvedUrl}
-          watermark={isPreview}
-          previewSeconds={currentItem.previewSeconds ?? 20}
-        />
+        <View style={styles.audioPanel}>
+          <AudioBlockSimple uri={resolvedUrl} watermark={isPreview} previewSeconds={currentItem.previewSeconds ?? 20} />
+        </View>
       );
     }
     if (currentItem.kind === "file") {
       return (
-        <FileBlock
-          uri={resolvedUrl}
-          watermark={isPreview}
-          mimeType={currentItem.mimeType}
-          title={currentItem.title}
-        />
+        <View style={styles.audioPanel}>
+          <FileBlockSimple uri={resolvedUrl} watermark={isPreview} mimeType={currentItem.mimeType} title={currentItem.title} />
+        </View>
       );
     }
     if (currentItem.kind === "link") {
       return resolvedUrl ? (
-        <View style={{ marginTop: 12, flex: 1 }}>
+        <View style={styles.browserWrapper}>
           <WatermarkedBrowser initialUrl={resolvedUrl} allowGoogleSearch lockToInitialHost />
         </View>
       ) : null;
@@ -304,118 +286,82 @@ export function OrderPreviewModal({
   }
 
   return (
-    <Modal visible={open} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <Animated.View style={{ flex: 1, opacity: dragOpacity, transform: [{ translateY: dragY }, { scale: dragScale }] }}>
+    <Modal visible={open} animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <Animated.View style={{ flex: 1, opacity: dragOpacity }}>
         <LinearGradient
           colors={[BG1, BG0]}
           style={{
             flex: 1,
-            paddingTop: Math.max(insets.top, 18),
-            paddingBottom: Math.max(insets.bottom, 16),
-            paddingHorizontal: 16,
+            paddingTop: Math.max(insets.top, 12),
+            paddingBottom: Math.max(insets.bottom, 12),
+            paddingHorizontal: 12,
           }}
         >
-          <View {...panResponder.panHandlers}>
-            <View style={styles.dragHandle} />
-
-            <View style={styles.headerRow}>
-              <View style={styles.headerLeft}>
-                <Text numberOfLines={1} style={styles.titleText}>
-                  {title}
-                </Text>
-                
-                <View style={styles.metaRow}>
-                  {hasMultiple && (
-                    <>
-                      <View style={styles.paginationDots}>
-                        {items.map((_, i) => (
-                          <Pressable
-                            key={`dot-${i}`}
-                            onPress={() => goToIndex(i)}
-                            style={{
-                              width: currentIndex === i ? 20 : 7,
-                              height: 7,
-                              borderRadius: 999,
-                              backgroundColor: currentIndex === i ? TEAL : "rgba(255,253,247,0.28)",
-                            }}
-                          />
-                        ))}
-                      </View>
-                      <Text style={styles.pageIndicator}>
-                        {currentIndex + 1} / {items.length}
-                      </Text>
-                    </>
-                  )}
-                  
-                  {!hasMultiple && (
-                    <View style={styles.accessBadge}>
-                      <View
-                        style={[
-                          styles.accessDot,
-                          { backgroundColor: isPreview ? AMBER : TEAL },
-                        ]}
-                      />
-                      <Text style={styles.accessText}>
-                        {isPreview ? "Preview" : "Unlocked"}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              <Pressable
-                onPress={onClose}
-                accessibilityRole="button"
-                accessibilityLabel="Close preview"
-                style={({ pressed }) => ({
-                  width: 42,
-                  height: 42,
-                  borderRadius: 21,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: pressed ? GLASS_LIGHT : "rgba(255,255,255,0.06)",
-                  borderWidth: 1,
-                  borderColor: BORDER,
-                  transform: [{ scale: pressed ? 0.94 : 1 }],
-                  shadowColor: "rgba(0,0,0,0.3)",
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                })}
-              >
-                <Ionicons name="close" size={20} color={TEXT} />
-              </Pressable>
-            </View>
+          <View {...panResponder.panHandlers} style={styles.topBar}>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close preview"
+              style={({ pressed }) => [
+                styles.closeBtn,
+                { backgroundColor: pressed ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.4)" },
+              ]}
+            >
+              <Ionicons name="close" size={22} color={TEXT} />
+            </Pressable>
 
             {hasMultiple && (
-              <View style={styles.navArrows}>
-                {currentIndex > 0 && (
-                  <Pressable
-                    onPress={() => goToIndex(currentIndex - 1)}
-                    style={styles.navBtn}
-                    accessibilityLabel="Previous preview"
-                  >
-                    <Ionicons name="chevron-back" size={24} color={TEXT} />
-                  </Pressable>
-                )}
-                {currentIndex < items.length - 1 && (
-                  <Pressable
-                    onPress={() => goToIndex(currentIndex + 1)}
-                    style={styles.navBtn}
-                    accessibilityLabel="Next preview"
-                  >
-                    <Ionicons name="chevron-forward" size={24} color={TEXT} />
-                  </Pressable>
-                )}
+              <View style={styles.pageIndicatorBadge}>
+                <Text style={styles.pageIndicatorText}>
+                  {currentIndex + 1}/{items.length}
+                </Text>
               </View>
             )}
           </View>
 
-          {isLoading ? (
-            <LoadingSkeleton kind={kind} />
-          ) : err ? (
-            <ErrorState message={err} onRetry={handleRetry} />
-          ) : renderContent()}
+<View style={styles.playerContainer}>
+            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+              {isLoading ? <LoadingSkeleton kind={kind} /> : err ? <ErrorState message={err} onRetry={handleRetry} /> : renderContent()}
+            </Animated.View>
+
+            {hasMultiple && (
+              <View style={styles.sideNav}>
+                {currentIndex > 0 && (
+                  <Pressable 
+                    onPress={() => goToIndex(currentIndex - 1)} 
+                    style={[styles.sideNavBtn, styles.prevBtn]} 
+                    accessibilityLabel="Previous preview"
+                  >
+                    <Ionicons name="chevron-back" size={28} color={TEXT} />
+                  </Pressable>
+                )}
+                {currentIndex < items.length - 1 && (
+                  <Pressable 
+                    onPress={() => goToIndex(currentIndex + 1)} 
+                    style={[styles.sideNavBtn, styles.nextBtn]} 
+                    accessibilityLabel="Next preview"
+                  >
+                    <Ionicons name="chevron-forward" size={28} color={TEXT} />
+                  </Pressable>
+                )}
+              </View>
+            )}
+
+            {hasMultiple && (
+              <View style={styles.bottomDots}>
+                {items.map((_, i) => (
+                  <Pressable
+                    key={`dot-${i}`}
+                    onPress={() => goToIndex(i)}
+                    style={[
+                      styles.dot,
+                      { backgroundColor: i === currentIndex ? TEAL : "rgba(255,255,255,0.2)" },
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
         </LinearGradient>
       </Animated.View>
     </Modal>
@@ -423,39 +369,11 @@ export function OrderPreviewModal({
 }
 
 function LoadingSkeleton({ kind }: { kind?: PreviewPayload["kind"] }) {
-  if (kind === "audio") {
-    return (
-      <View style={[styles.panel, { marginTop: 14 }]}>
-        <Shimmer style={{ width: 56, height: 56, borderRadius: 22 }} />
-        <Shimmer style={{ width: "60%", height: 16, borderRadius: 6, marginTop: 16 }} />
-        <Shimmer style={{ width: "40%", height: 12, borderRadius: 6, marginTop: 8 }} />
-        <Shimmer style={{ width: "100%", height: 48, borderRadius: 18, marginTop: 16 }} />
-      </View>
-    );
-  }
-  if (kind === "file") {
-    return (
-      <View style={[styles.panel, { marginTop: 14 }]}>
-        <Shimmer style={{ width: 56, height: 56, borderRadius: 16 }} />
-        <Shimmer style={{ width: "70%", height: 16, borderRadius: 6, marginTop: 16 }} />
-        <Shimmer style={{ width: "100%", height: 48, borderRadius: 18, marginTop: 16 }} />
-      </View>
-    );
-  }
   return (
-    <View
-      style={{
-        marginTop: 14,
-        flex: 1,
-        borderRadius: 22,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: BORDER_TOP,
-      }}
-    >
-      <Shimmer style={{ flex: 1 }} />
-      <View style={styles.skeletonSpinnerWrap}>
-        <ActivityIndicator color={TEAL} size="small" />
+    <View style={styles.skeletonWrapper}>
+      <Shimmer style={{ flex: 1, borderRadius: 28 }} />
+      <View style={styles.skeletonSpinner}>
+        <ActivityIndicator color={TEAL} size="large" />
       </View>
     </View>
   );
@@ -463,280 +381,126 @@ function LoadingSkeleton({ kind }: { kind?: PreviewPayload["kind"] }) {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <View style={[styles.panel, { marginTop: 18, alignItems: "center" }]}>
-      <Ionicons name="alert-circle-outline" size={26} color={ROSE} />
-      <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900", fontSize: 15 }}>Preview failed</Text>
-      <Text style={{ marginTop: 5, color: MUTED, textAlign: "center" }}>{message}</Text>
-      <Pressable
-        onPress={onRetry}
-        style={({ pressed }) => ({
-          marginTop: 16,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          borderRadius: 16,
-          paddingVertical: 12,
-          paddingHorizontal: 20,
-          backgroundColor: pressed ? "rgba(45,212,191,0.22)" : "rgba(45,212,191,0.14)",
-          borderWidth: 1,
-          borderColor: "rgba(45,212,191,0.4)",
-        })}
-      >
-        <Ionicons name="refresh" size={16} color={TEAL} />
-        <Text style={{ color: TEAL, fontWeight: "900" }}>Try again</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-// ─── Media frame shell (watermark + access badge wrapper) ─────────────────────
-
-function fitAspectRatio(raw?: number | null) {
-  const ratio = Number(raw || 0);
-  if (!Number.isFinite(ratio) || ratio <= 0) return 9 / 16;
-  return Math.max(9 / 21, Math.min(21 / 9, ratio));
-}
-
-function MediaFrame({
-  watermark,
-  children,
-  fill = false,
-  aspectRatio,
-  footer,
-}: {
-  watermark: boolean;
-  children: React.ReactNode;
-  fill?: boolean;
-  aspectRatio?: number | null;
-  /** Optional custom footer content (e.g. video control bar) replacing the default access badge. */
-  footer?: React.ReactNode;
-}) {
-  const fittedAspectRatio = fitAspectRatio(aspectRatio);
-  const portraitLike = fittedAspectRatio < 1;
-
-  return (
-    <View
-      style={{
-        marginTop: 14,
-        flex: fill ? 1 : undefined,
-        minHeight: fill ? 0 : undefined,
-        borderRadius: 22,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: BORDER_TOP,
-        backgroundColor: "#000",
-      }}
-    >
-      <View
-        style={{
-          flex: fill ? 1 : undefined,
-          minHeight: fill ? 0 : 380,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingVertical: fill ? 8 : 0,
-          paddingHorizontal: fill ? 4 : 0,
-        }}
-      >
-        <View
-          style={{
-            width: portraitLike ? undefined : "100%",
-            height: portraitLike ? "100%" : undefined,
-            maxWidth: "100%",
-            maxHeight: "100%",
-            aspectRatio: fittedAspectRatio,
-            alignSelf: "center",
-          }}
-        >
-          {children}
-        </View>
-
-        {watermark ? <PreviewWatermark /> : null}
+    <View style={styles.errorWrapper}>
+      <View style={styles.errorIcon}>
+        <Ionicons name="alert-circle-outline" size={32} color={ROSE} />
       </View>
-
-      {footer ?? (
-        <View
-          style={{
-            position: fill ? "absolute" : "relative",
-            left: fill ? 12 : 0,
-            right: fill ? 12 : 0,
-            bottom: fill ? 12 : 0,
-            borderRadius: fill ? 15 : 0,
-            paddingHorizontal: 12,
-            paddingVertical: 9,
-            backgroundColor: fill ? "rgba(0,0,0,0.54)" : "rgba(0,0,0,0.36)",
-            borderWidth: fill ? 1 : 0,
-            borderColor: fill ? "rgba(255,253,247,0.12)" : "transparent",
-          }}
-        >
-          <Text style={{ color: "rgba(255,253,247,0.86)", fontWeight: "900", fontSize: 12 }}>
-            {watermark ? "Preview mode" : "Unlocked"}
-          </Text>
-        </View>
-      )}
+      <Text style={styles.errorTitle}>Preview failed</Text>
+      <Text style={styles.errorText}>{message}</Text>
+      <Pressable onPress={onRetry} style={styles.retryBtn}>
+        <Ionicons name="refresh" size={18} color={TEAL} />
+        <Text style={styles.retryText}>Try again</Text>
+      </Pressable>
     </View>
   );
 }
 
 function PreviewWatermark() {
   return (
-    <View
-      pointerEvents="none"
-      style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, overflow: "hidden" }}
-    >
-      {Array.from({ length: 8 }).map((_, row) => (
-        <View
-          key={`wm-row-${row}`}
-          style={{
-            position: "absolute",
-            top: row * 58 - 20,
-            left: row % 2 === 0 ? -24 : -82,
-            flexDirection: "row",
-          }}
-        >
-          {Array.from({ length: 7 }).map((__, col) => (
-            <View
-              key={`wm-cell-${row}-${col}`}
-              style={{
-                width: 140,
-                transform: [{ rotate: "-24deg" }],
-                opacity: 0.16,
-              }}
-            >
-              <Text style={{ color: "rgba(255,253,247,0.42)", fontSize: 10, fontWeight: "900" }}>PREVIEW</Text>
+    <View pointerEvents="none" style={styles.watermarkOverlay}>
+      {Array.from({ length: 9 }).map((_, row) => (
+        <View key={`wm-row-${row}`} style={[styles.watermarkRow, { top: row * 56 - 20 }]}>
+          {Array.from({ length: 8 }).map((__, col) => (
+            <View key={`wm-cell-${row}-${col}`} style={styles.watermarkCell}>
+              <Text style={styles.watermarkText}>PREVIEW</Text>
             </View>
           ))}
         </View>
       ))}
-      <View style={{ position: "absolute", right: 10, bottom: 10, opacity: 0.22 }}>
-        <Image source={WatermarkIcon} style={{ width: 34, height: 34 }} />
+      <View style={styles.watermarkLogo}>
+        <Image source={WatermarkIcon} style={{ width: 32, height: 32 }} />
       </View>
     </View>
   );
 }
 
-// ─── Image (with pinch-free but real tap-to-zoom + drag-to-pan) ───────────────
+// ─── REDESIGNED: Full-screen YouTube/Reels-style Image ──────────────────────────
 
-function ImageBlock({ uri, watermark, fill = false }: { uri: string; watermark: boolean; fill?: boolean }) {
+function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean }) {
   const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
-  const [zoomed, setZoomed] = useState(false);
-
+  const [zoomScale, setZoomScale] = useState(1);
   const scale = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const lastTap = useRef(0);
-  const panStart = useRef({ x: 0, y: 0 });
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     let alive = true;
+    setZoomScale(1);
+    scale.setValue(1);
     Image.getSize(
       uri,
       (w, h) => {
-        if (alive && w > 0 && h > 0) setAspectRatio(w / h);
+        if (alive && w > 0 && h > 0) {
+          setAspectRatio(w / h);
+          Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+        }
       },
       () => {
-        if (alive) setAspectRatio(9 / 16);
+        if (alive) {
+          setAspectRatio(9 / 16);
+          Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+        }
       },
     );
     return () => {
       alive = false;
     };
-  }, [uri]);
+  }, [uri, fadeAnim, scale]);
 
-  const currentOffset = useRef({ x: 0, y: 0 });
+  const fittedRatio = Math.max(9 / 21, Math.min(21 / 9, aspectRatio));
+  const isPortrait = fittedRatio < 1;
 
-  useEffect(() => {
-    const xId = translateX.addListener(({ value }) => {
-      currentOffset.current.x = value;
-    });
-    const yId = translateY.addListener(({ value }) => {
-      currentOffset.current.y = value;
-    });
-    return () => {
-      translateX.removeListener(xId);
-      translateY.removeListener(yId);
-    };
-  }, [translateX, translateY]);
-
-  function resetZoom() {
-    setZoomed(false);
-    Animated.parallel([
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, damping: 18, stiffness: 220 }),
-      Animated.spring(translateX, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 220 }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 220 }),
-    ]).start();
-  }
-
-  function zoomIn() {
-    setZoomed(true);
-    Animated.spring(scale, { toValue: 2.4, useNativeDriver: true, damping: 18, stiffness: 220 }).start();
-  }
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => zoomed && (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4),
-      onPanResponderGrant: () => {
-        panStart.current = { x: currentOffset.current.x, y: currentOffset.current.y };
-      },
-      onPanResponderMove: (_, gesture) => {
-        if (!zoomed) return;
-        translateX.setValue(panStart.current.x + gesture.dx);
-        translateY.setValue(panStart.current.y + gesture.dy);
-      },
-    }),
-  ).current;
-
-  function handleTap() {
+  const handleDoubleTap = () => {
     const now = Date.now();
-    if (now - lastTap.current < 280) {
-      // Double tap → toggle zoom
-      zoomed ? resetZoom() : zoomIn();
+    if (lastTapRef.current && now - lastTapRef.current < 300) {
+      const newScale = zoomScale === 1 ? 2 : 1;
+      setZoomScale(newScale);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Animated.spring(scale, {
+        toValue: newScale,
+        useNativeDriver: true,
+        bouncy: 8,
+        speed: 20,
+      }).start();
     }
-    lastTap.current = now;
-  }
-
+    lastTapRef.current = now;
+  };
 
   return (
-    <MediaFrame watermark={watermark} fill={fill} aspectRatio={aspectRatio}>
-      <Pressable onPress={handleTap} {...panResponder.panHandlers} style={{ width: "100%", height: "100%" }}>
-        <Animated.View
-          style={{
-            width: "100%",
-            height: "100%",
-            transform: [{ scale }, { translateX }, { translateY }],
-          }}
-        >
-          <Image source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+    <View style={styles.reelImageContainer}>
+      <Pressable onPress={handleDoubleTap} style={{ flex: 1 }}>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ scale }] }}>
+          <View
+            style={[
+              styles.reelImageFrame,
+              {
+                aspectRatio: fittedRatio,
+                maxHeight: isPortrait ? "95%" : "90%",
+                maxWidth: isPortrait ? "95%" : "90%",
+              },
+            ]}
+          >
+            <Image source={{ uri }} style={styles.reelImage} resizeMode="contain" />
+            {watermark && <PreviewWatermark />}
+          </View>
         </Animated.View>
       </Pressable>
-      {!zoomed ? (
-        <View pointerEvents="none" style={styles.zoomHint}>
-          <Ionicons name="scan-outline" size={12} color="rgba(255,253,247,0.7)" />
-          <Text style={styles.zoomHintText}>Double-tap to zoom</Text>
-        </View>
-      ) : (
-        <Pressable onPress={resetZoom} style={styles.zoomResetBtn}>
-          <Ionicons name="contract-outline" size={14} color={TEXT} />
-        </Pressable>
-      )}
-    </MediaFrame>
+    </View>
   );
 }
 
-// ─── Video, with a real scrubber + "preview ended" overlay ────────────────────
+// ─── REDESIGNED: YouTube/Reels-style Video ─────────────────────────────────────
 
-function VideoBlock({
+function ReelVideoBlock({
   uri,
   watermark,
   previewSeconds,
-  fill = false,
 }: {
   uri: string | null;
   watermark: boolean;
   previewSeconds: number;
-  fill?: boolean;
 }) {
   const videoRef = useRef<any>(null);
-  const trackWidthRef = useRef(0);
   const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -745,12 +509,26 @@ function VideoBlock({
   const [previewEnded, setPreviewEnded] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [pulseAnim]);
 
   useEffect(() => {
     setAspectRatio(9 / 16);
     setPreviewEnded(false);
     setPositionMillis(0);
-  }, [uri]);
+    fadeAnim.setValue(0);
+  }, [uri, fadeAnim]);
 
   function scheduleHide() {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -766,158 +544,164 @@ function VideoBlock({
 
   if (!uri) {
     return (
-      <View style={[styles.panel, { marginTop: 14, alignItems: "center" }]}>
-        <ActivityIndicator color={TEAL} />
-        <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900" }}>Loading video</Text>
-        <Text style={{ marginTop: 5, color: MUTED }}>One moment…</Text>
+      <View style={styles.loadingWrapper}>
+        <ActivityIndicator color={TEAL} size="large" />
       </View>
     );
   }
 
   const previewCapMillis = previewSeconds * 1000;
   const effectiveDuration = watermark ? Math.min(durationMillis || previewCapMillis, previewCapMillis) : durationMillis;
-  const progress = effectiveDuration > 0 ? clampNum(positionMillis / effectiveDuration, 0, 1) : 0;
+  const progress = effectiveDuration > 0 ? Math.max(0, Math.min(1, positionMillis / effectiveDuration)) : 0;
+  const fittedRatio = Math.max(9 / 21, Math.min(21 / 9, aspectRatio));
+  const isPortrait = fittedRatio < 1;
 
   async function togglePlay() {
     if (previewEnded) {
       await videoRef.current?.setPositionAsync?.(0);
       setPreviewEnded(false);
       await videoRef.current?.playAsync?.();
+      Haptics.selectionAsync();
       return;
     }
     if (isPlaying) {
       await videoRef.current?.pauseAsync?.();
     } else {
+      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
       await videoRef.current?.playAsync?.();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setControlsVisible(true);
     scheduleHide();
   }
 
   async function toggleMute() {
-    setIsMuted((m) => !m);
+    Haptics.selectionAsync();
+    setIsMuted(m => !m);
   }
 
-  async function seekTo(ratio: number) {
-    if (!durationMillis) return;
-    const cap = watermark ? previewCapMillis : durationMillis;
-    const target = clampNum(ratio, 0, 1) * Math.min(cap, durationMillis);
-    await videoRef.current?.setPositionAsync?.(target);
-    setControlsVisible(true);
-    scheduleHide();
-  }
+  const positionSecs = Math.floor(positionMillis / 1000);
+  const durationSecs = Math.floor(effectiveDuration / 1000);
+  const timeDisplay = watermark 
+    ? `${formatTime(positionSecs)} / ${formatTime(previewSeconds)}`
+    : `${formatTime(positionSecs)} / ${formatTime(durationSecs)}`;
 
   return (
-    <MediaFrame
-      watermark={watermark}
-      fill={fill}
-      aspectRatio={aspectRatio}
-      footer={
-        <View style={styles.videoControlBar}>
-          <Pressable onPress={togglePlay} style={styles.videoControlBtn} hitSlop={8}>
-            <Ionicons name={previewEnded ? "refresh" : isPlaying ? "pause" : "play"} size={16} color={TEXT} />
-          </Pressable>
-
-          <Pressable
-            style={styles.scrubTrack}
-            onLayout={(e) => {
-              trackWidthRef.current = e.nativeEvent.layout.width;
+    <View style={styles.reelVideoContainer}>
+      <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+        <View
+          style={[
+            styles.reelVideoFrame,
+            {
+              aspectRatio: fittedRatio,
+              maxHeight: isPortrait ? "95%" : "90%",
+              maxWidth: isPortrait ? "95%" : "90%",
+            },
+          ]}
+        >
+          <Video
+            ref={videoRef}
+            source={{ uri }}
+            style={styles.reelVideo}
+            resizeMode={ResizeMode.CONTAIN}
+            useNativeControls={false}
+            shouldPlay={false}
+            isMuted={isMuted}
+            onReadyForDisplay={event => {
+              const w = Number(event?.naturalSize?.width ?? event?.status?.naturalSize?.width ?? 0);
+              const h = Number(event?.naturalSize?.height ?? event?.status?.naturalSize?.height ?? 0);
+              if (w > 0 && h > 0) {
+                setAspectRatio(w / h);
+                Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+              }
             }}
-            onPress={(e) => {
-              const x = e.nativeEvent.locationX;
-              const w = trackWidthRef.current;
-              void seekTo(w > 0 ? x / w : progress);
+            onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
+              if (!status?.isLoaded) return;
+              setIsPlaying(!!status.isPlaying);
+              setPositionMillis(status.positionMillis ?? 0);
+              setDurationMillis(status.durationMillis ?? 0);
+
+              if (watermark && (status.positionMillis ?? 0) >= previewCapMillis && status.isPlaying) {
+                videoRef.current?.pauseAsync?.();
+                setPreviewEnded(true);
+                setControlsVisible(true);
+              }
             }}
-          >
-            <View style={styles.scrubTrackBg} />
-            <View style={[styles.scrubTrackFill, { width: `${progress * 100}%` }]} />
-          </Pressable>
+          />
+          {watermark && <PreviewWatermark />}
 
-          <Text style={styles.videoTimeText}>
-            {formatTime(positionMillis / 1000)} / {formatTime(effectiveDuration / 1000)}
-          </Text>
-
-          <Pressable onPress={toggleMute} style={styles.videoControlBtn} hitSlop={8}>
-            <Ionicons name={isMuted ? "volume-mute" : "volume-medium"} size={16} color={TEXT} />
-          </Pressable>
-        </View>
-      }
-    >
-      <Pressable
-        style={{ width: "100%", height: "100%" }}
-        onPress={() => {
-          setControlsVisible((v) => !v);
-          scheduleHide();
-        }}
-      >
-        <Video
-          ref={videoRef}
-          source={{ uri }}
-          style={{ width: "100%", height: "100%" }}
-          resizeMode={ResizeMode.CONTAIN}
-          useNativeControls={false}
-          shouldPlay={false}
-          isMuted={isMuted}
-          onReadyForDisplay={(event: any) => {
-            const naturalWidth = Number(event?.naturalSize?.width ?? event?.status?.naturalSize?.width ?? 0);
-            const naturalHeight = Number(event?.naturalSize?.height ?? event?.status?.naturalSize?.height ?? 0);
-            if (naturalWidth > 0 && naturalHeight > 0) setAspectRatio(naturalWidth / naturalHeight);
-          }}
-          onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
-            if (!status?.isLoaded) return;
-            setIsPlaying(!!status.isPlaying);
-            setPositionMillis(status.positionMillis ?? 0);
-            setDurationMillis(status.durationMillis ?? 0);
-
-            if (watermark && (status.positionMillis ?? 0) >= previewCapMillis && status.isPlaying) {
-              videoRef.current?.pauseAsync?.();
-              setPreviewEnded(true);
-              setControlsVisible(true);
-            }
-          }}
-        />
-
-        {!isPlaying && !previewEnded ? (
-          <View style={styles.bigPlayWrap}>
-            <View style={styles.bigPlayBtn}>
-              <Ionicons name="play" size={26} color={INK} />
+          {!isPlaying && !previewEnded && (
+            <View style={styles.bigPlayCenter}>
+              <Pressable onPress={togglePlay} style={styles.bigPlayBtn}>
+                <Ionicons name="play" size={32} color={INK} />
+              </Pressable>
             </View>
-          </View>
-        ) : null}
+          )}
 
-        {previewEnded ? (
-          <View style={styles.previewEndedOverlay}>
-            <Ionicons name="lock-closed-outline" size={22} color={AMBER} />
-            <Text style={styles.previewEndedTitle}>Preview ended</Text>
-            <Text style={styles.previewEndedBody}>
-              You've seen the first {previewSeconds}s. Full access unlocks after checkout.
-            </Text>
-            <Pressable onPress={togglePlay} style={styles.previewEndedReplay}>
-              <Ionicons name="refresh" size={14} color={INK} />
-              <Text style={styles.previewEndedReplayText}>Replay preview</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </Pressable>
-    </MediaFrame>
+          {previewEnded && (
+            <View style={styles.previewEndedOverlayReel}>
+              <View style={styles.previewEndedIcon}>
+                <Ionicons name="lock-closed-outline" size={24} color={AMBER} />
+              </View>
+              <Text style={styles.previewEndedTitle}>Preview ended</Text>
+              <Pressable onPress={togglePlay} style={styles.previewEndedBtn}>
+                <Ionicons name="refresh" size={16} color={INK} />
+                <Text style={styles.previewEndedText}>Replay</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {controlsVisible && (
+            <View style={styles.reelControls}>
+              <Pressable onPress={togglePlay} style={styles.controlBtn}>
+                <Ionicons name={previewEnded ? "refresh" : isPlaying ? "pause" : "play"} size={20} color={TEXT} />
+              </Pressable>
+
+              <View style={styles.progressTrack}>
+                <View style={styles.progressBg} />
+                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              </View>
+
+              <Text style={styles.progressTime}>{timeDisplay}</Text>
+
+              <Pressable onPress={toggleMute} style={styles.controlBtn}>
+                <Ionicons name={isMuted ? "volume-mute" : "volume-medium"} size={18} color={TEXT} />
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </View>
   );
 }
 
-function clampNum(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
+// ─── Simplified Audio/File blocks ─────────────────────────────────────────────
 
-// ─── Audio, with a real progress bar + waveform-style visual ──────────────────
-
-function AudioBlock({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
+function AudioBlockSimple({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [positionMillis, setPositionMillis] = useState(0);
   const [durationMillis, setDurationMillis] = useState(0);
   const [ended, setEnded] = useState(false);
+  const rotateAnim = useRef(new Animated.Value(0)).current;
 
-  const barHeights = useMemo(() => Array.from({ length: 28 }, (_, i) => 10 + ((i * 37) % 26)), []);
+  const barHeights = useMemo(() => Array.from({ length: 40 }, (_, i) => 8 + ((i * 47) % 40)), []);
+
+  useEffect(() => {
+    if (playing) {
+      const spin = Animated.loop(
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      );
+      spin.start();
+      return () => spin.stop();
+    }
+  }, [playing, rotateAnim]);
 
   useEffect(() => {
     return () => {
@@ -933,6 +717,7 @@ function AudioBlock({ uri, watermark, previewSeconds }: { uri: string | null; wa
         await sound?.setPositionAsync(0);
         await sound?.playAsync();
         setEnded(false);
+        Haptics.selectionAsync();
         return;
       }
       if (!sound) {
@@ -949,242 +734,194 @@ function AudioBlock({ uri, watermark, previewSeconds }: { uri: string | null; wa
           }
         });
         setSound(nextSound);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       } else {
         const status: any = await sound.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) await sound.pauseAsync();
-        else await sound.playAsync();
+        if (status.isLoaded && status.isPlaying) {
+          await sound.pauseAsync();
+        } else {
+          await sound.playAsync();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
       }
     } finally {
       setLoading(false);
     }
   }
 
-  if (!uri) {
-    return (
-      <View style={[styles.panel, { marginTop: 14, alignItems: "center" }]}>
-        <ActivityIndicator color={AMBER} />
-        <Text style={{ marginTop: 10, color: TEXT, fontWeight: "900" }}>Loading audio</Text>
-        <Text style={{ marginTop: 5, color: MUTED }}>One moment…</Text>
-      </View>
-    );
-  }
+  if (!uri) return null;
 
   const effectiveDuration = watermark ? Math.min(durationMillis || previewSeconds * 1000, previewSeconds * 1000) : durationMillis;
-  const progress = effectiveDuration > 0 ? clampNum(positionMillis / effectiveDuration, 0, 1) : 0;
+  const progress = effectiveDuration > 0 ? Math.max(0, Math.min(1, positionMillis / effectiveDuration)) : 0;
   const activeBars = Math.round(progress * barHeights.length);
 
-  return (
-    <View style={[styles.panel, { marginTop: 14 }]}>
-      <View style={styles.audioIconWrap}>
-        <Ionicons name="musical-notes" size={23} color={AMBER} />
-      </View>
-      <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 18 }}>
-        {watermark ? "Audio preview" : "Audio"}
-      </Text>
-      <Text style={{ marginTop: 6, color: MUTED }}>
-        {ended
-          ? `Preview ended at ${previewSeconds}s. Tap play to replay the preview.`
-          : watermark
-          ? `Playback stops at ${previewSeconds}s.`
-          : "Ready to play."}
-      </Text>
+  const spin = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
 
-      <View style={styles.waveformRow}>
+  return (
+    <View style={styles.mediaPanel}>
+      <Animated.View style={{ transform: [{ rotate: spin }] }}>
+        <View style={styles.audioIconCircle}>
+          <Ionicons name="musical-notes" size={32} color={AMBER} />
+        </View>
+      </Animated.View>
+
+      <View style={styles.waveformContainer}>
         {barHeights.map((h, i) => (
           <View
             key={i}
             style={[
               styles.waveformBar,
-              { height: h, backgroundColor: i < activeBars ? TEAL : "rgba(255,253,247,0.14)" },
+              {
+                height: h,
+                backgroundColor: i < activeBars 
+                  ? `rgba(45,212,191,${0.4 + (i / barHeights.length) * 0.5})` 
+                  : "rgba(255,255,255,0.12)",
+              },
             ]}
           />
         ))}
       </View>
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8 }}>
-        <Text style={styles.audioTimeText}>{formatTime(positionMillis / 1000)}</Text>
-        <Text style={styles.audioTimeText}>{formatTime(effectiveDuration / 1000)}</Text>
-      </View>
+      <Text style={{ color: MUTED, fontSize: 12, marginTop: -8 }}>
+        {watermark ? `${formatTime(Math.floor(positionMillis / 1000))} / ${formatTime(previewSeconds)}` : formatTime(Math.floor(positionMillis / 1000))}
+      </Text>
 
-      <Pressable
-        onPress={toggle}
-        disabled={loading}
-        style={({ pressed }) => ({
-          marginTop: 14,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          borderRadius: 18,
-          paddingVertical: 13,
-          backgroundColor: TEAL,
-          opacity: loading ? 0.7 : 1,
-          transform: [{ translateY: pressed ? 1 : 0 }],
-        })}
-      >
+      <Pressable onPress={toggle} disabled={loading} style={styles.playBtn}>
         {loading ? (
           <ActivityIndicator color={INK} />
         ) : (
-          <>
-            <Ionicons name={ended ? "refresh" : playing ? "pause" : "play"} size={16} color={INK} />
-            <Text style={{ color: INK, fontWeight: "900" }}>{ended ? "Replay" : playing ? "Pause" : "Play"}</Text>
-          </>
+          <Ionicons name={ended ? "refresh" : playing ? "pause" : "play"} size={24} color={INK} />
         )}
       </Pressable>
+
+      {ended && watermark && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+          <Ionicons name="lock-closed" size={14} color={AMBER} />
+          <Text style={{ color: AMBER, fontSize: 12, fontWeight: "700" }}>Preview ended</Text>
+        </View>
+      )}
     </View>
   );
 }
 
-// ─── File, with extension-aware icon + filename ────────────────────────────────
-
-function FileBlock({
-  uri,
-  watermark,
-  mimeType,
-  title,
-}: {
-  uri: string | null;
-  watermark: boolean;
-  mimeType?: string | null;
-  title?: string | null;
-}) {
+function FileBlockSimple({ uri, watermark, mimeType, title }: { uri: string | null; watermark: boolean; mimeType?: string | null; title?: string | null }) {
   const fileName = title?.trim() || guessFileNameFromUrl(uri);
   const ext = getFileExtension(fileName) || getFileExtension(mimeType ?? "");
   const icon = fileIconForExtension(ext);
 
   return (
-    <View style={[styles.panel, { marginTop: 14 }]}>
-      <View style={styles.fileIconWrap}>
-        <Ionicons name={icon} size={24} color={TEAL} />
+    <View style={styles.mediaPanel}>
+      <View style={styles.fileIconCircle}>
+        <Ionicons name={icon} size={32} color={TEAL} />
       </View>
-      <Text style={{ marginTop: 14, color: TEXT, fontWeight: "900", fontSize: 16 }} numberOfLines={2}>
+      {ext && (
+        <View style={styles.fileExtBadge}>
+          <Text style={styles.fileExtText}>{ext.toUpperCase()}</Text>
+        </View>
+      )}
+      {watermark && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+          <Ionicons name="lock-closed" size={14} color={AMBER} />
+          <Text style={{ color: AMBER, fontSize: 12, fontWeight: "700" }}>Preview access</Text>
+        </View>
+      )}
+      <Pressable disabled={!uri} onPress={() => uri && Linking.openURL(uri)} style={styles.openBtn}>
+        <Ionicons name="open-outline" size={22} color={uri ? INK : FAINT} />
+      </Pressable>
+      <Text style={{ color: MUTED, fontSize: 12, marginTop: -12, maxWidth: 200, textAlign: "center" }}>
         {fileName}
       </Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-        {ext ? (
-          <View style={styles.fileExtBadge}>
-            <Text style={styles.fileExtBadgeText}>{ext.toUpperCase()}</Text>
-          </View>
-        ) : null}
-        <Text style={{ color: MUTED, fontSize: 12 }}>
-          {watermark ? "Preview file · opens in your device browser" : "Opens in your device browser"}
-        </Text>
-      </View>
-
-      <Pressable
-        disabled={!uri}
-        onPress={() => uri && Linking.openURL(uri)}
-        style={({ pressed }) => ({
-          marginTop: 14,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          borderRadius: 18,
-          paddingVertical: 13,
-          backgroundColor: uri ? TEAL : "rgba(255,253,247,0.12)",
-          opacity: uri ? 1 : 0.7,
-          transform: [{ translateY: pressed ? 1 : 0 }],
-        })}
-      >
-        <Ionicons name="open-outline" size={16} color={uri ? INK : FAINT} />
-        <Text style={{ color: uri ? INK : FAINT, fontWeight: "900" }}>{uri ? "Open file" : "Loading…"}</Text>
-      </Pressable>
     </View>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  dragHandle: {
-    alignSelf: "center",
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,253,247,0.24)",
-    marginBottom: 12,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 14,
-  },
-  headerLeft: {
-    flex: 1,
-    minWidth: 0,
-  },
-  titleText: {
-    color: TEXT,
-    fontWeight: "900",
-    fontSize: 18,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-    flexWrap: "wrap",
-  },
-  paginationDots: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  pageIndicator: {
-    color: MUTED,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  accessBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: GLASS_DARK,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  accessDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  accessText: {
-    color: TEXT,
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  navArrows: {
+  topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 12,
-    paddingHorizontal: 8,
+    alignItems: "center",
   },
-  navBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: BORDER,
+    backgroundColor: "rgba(0,0,0,0.4)",
   },
-  panel: {
-    borderRadius: 22,
-    padding: 18,
-    backgroundColor: PANEL,
+  pageIndicatorBadge: {
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER_TOP,
-    shadowColor: "rgba(0,0,0,0.4)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    borderColor: "rgba(255,255,255,0.15)",
   },
-  skeletonSpinnerWrap: {
+  pageIndicatorText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  playerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sideNav: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    pointerEvents: "box-none",
+  },
+  sideNavBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  prevBtn: {
+    marginLeft: 4,
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+  },
+  nextBtn: {
+    marginRight: 4,
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+  },
+  bottomDots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 3,
+  },
+  skeletonWrapper: {
+    flex: 1,
+    borderRadius: 28,
+    overflow: "hidden",
+  },
+  skeletonSpinner: {
     position: "absolute",
     top: 0,
     left: 0,
@@ -1193,90 +930,127 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  // Image zoom affordances
-  zoomHint: {
-    position: "absolute",
-    top: 12,
-    left: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.5)",
-  },
-  zoomHintText: {
-    color: "rgba(255,253,247,0.78)",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-  zoomResetBtn: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  errorWrapper: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 32,
+    gap: 12,
   },
-
-  // Video controls
-  videoControlBar: {
-    position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "rgba(6,8,7,0.72)",
-    borderWidth: 1,
-    borderColor: "rgba(255,253,247,0.12)",
+  errorIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(251,113,133,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorTitle: {
+    color: TEXT,
+    fontWeight: "900",
+    fontSize: 18,
+    letterSpacing: 0.3,
+  },
+  errorText: {
+    color: MUTED,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  retryBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    shadowColor: "rgba(0,0,0,0.5)",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: "rgba(45,212,191,0.2)",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(45,212,191,0.4)",
   },
-  videoControlBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  retryText: {
+    color: TEAL,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  // Watermark
+  watermarkOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: "hidden",
+  },
+  watermarkRow: {
+    position: "absolute",
+    left: -100,
+    flexDirection: "row",
+  },
+  watermarkCell: {
+    width: 140,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    transform: [{ rotate: "-24deg" }],
+    opacity: 0.08,
   },
-  scrubTrack: {
+  watermarkText: {
+    color: "rgba(255,253,247,0.4)",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  watermarkLogo: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    opacity: 0.25,
+  },
+  // Image reel
+  reelImageContainer: {
     flex: 1,
-    height: 16,
+    alignItems: "center",
     justifyContent: "center",
   },
-  scrubTrackBg: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,253,247,0.2)",
+  reelImageFrame: {
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: "#000",
   },
-  scrubTrackFill: {
+  reelImage: {
+    width: "100%",
+    height: "100%",
+  },
+  doubleTapHint: {
     position: "absolute",
-    left: 0,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: TEAL,
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.7,
   },
-  videoTimeText: {
-    color: "rgba(255,253,247,0.78)",
-    fontSize: 10,
-    fontWeight: "800",
-    minWidth: 70,
-    textAlign: "right",
+  // Video reel
+  reelVideoContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  bigPlayWrap: {
+  reelVideoFrame: {
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: "#000",
+    position: "relative",
+  },
+  reelVideo: {
+    width: "100%",
+    height: "100%",
+  },
+  bigPlayCenter: {
     position: "absolute",
     top: 0,
     left: 0,
@@ -1286,18 +1060,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bigPlayBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "rgba(255,255,255,0.95)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,253,247,0.92)",
     shadowColor: GLOW_TEAL,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
-    shadowRadius: 12,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  previewEndedOverlay: {
+  previewEndedOverlayReel: {
     position: "absolute",
     top: 0,
     left: 0,
@@ -1305,89 +1080,185 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(6,8,7,0.86)",
-    paddingHorizontal: 24,
-    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    gap: 12,
+  },
+  previewEndedIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(244,183,93,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
   },
   previewEndedTitle: {
     color: TEXT,
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 18,
+    letterSpacing: 0.5,
   },
-  previewEndedBody: {
-    color: MUTED,
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 17,
-  },
-  previewEndedReplay: {
-    marginTop: 10,
+  previewEndedBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    gap: 8,
     backgroundColor: AMBER,
-    shadowColor: GLOW_AMBER,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    marginTop: 8,
   },
-  previewEndedReplayText: {
+  previewEndedText: {
     color: INK,
-    fontWeight: "900",
-    fontSize: 12,
+    fontWeight: "800",
+    fontSize: 14,
   },
-
-  // Audio
-  audioIconWrap: {
-    width: 56,
-    height: 56,
+  reelControls: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(0,0,0,0.6)",
     borderRadius: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  controlBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(244,183,93,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(244,183,93,0.34)",
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
-  waveformRow: {
-    marginTop: 16,
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    justifyContent: "center",
+  },
+  progressBg: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  progressFill: {
+    position: "absolute",
+    left: 0,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: TEAL,
+  },
+  progressTime: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "700",
+    minWidth: 70,
+    textAlign: "right",
+  },
+  loadingWrapper: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Audio/File panels
+  audioPanel: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mediaPanel: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+  },
+  audioIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(244,183,93,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(244,183,93,0.4)",
+    shadowColor: GLOW_AMBER,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+  },
+  fileIconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(45,212,191,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(45,212,191,0.4)",
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+  },
+  waveformContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    height: 36,
+    gap: 4,
+    height: 56,
   },
   waveformBar: {
     flex: 1,
-    borderRadius: 2,
+    borderRadius: 3,
   },
-  audioTimeText: {
-    color: FAINT,
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  // File
-  fileIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  playBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: TEAL,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(45,212,191,0.13)",
-    borderWidth: 1,
-    borderColor: "rgba(45,212,191,0.32)",
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 14,
+  },
+  openBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: TEAL,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: GLOW_TEAL,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
   },
   fileExtBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: "rgba(45,212,191,0.16)",
+    position: "absolute",
+    top: -6,
+    right: -6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(45,212,191,0.95)",
   },
-  fileExtBadgeText: {
-    color: TEAL,
-    fontSize: 10,
+  fileExtText: {
+    color: INK,
+    fontSize: 11,
     fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  browserWrapper: {
+    flex: 1,
+    width: "100%",
+    borderRadius: 28,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: BORDER_TOP,
   },
 });
