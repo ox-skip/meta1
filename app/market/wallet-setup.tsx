@@ -43,46 +43,35 @@ export default function MarketWalletSetup() {
         <View style={[styles.inner, desktop ? styles.innerDesktop : undefined]}>
           <View style={styles.header}>
             <View style={styles.headerIcon}>
-              <Ionicons name="shield-checkmark-outline" size={24} color={TEAL} />
+              <Ionicons name="mail-outline" size={24} color={TEAL} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.kicker}>Market Wallet</Text>
-              <Text style={styles.title}>{wallet.hasMarketWallet ? "Your wallet is ready" : "Create your marketplace wallet"}</Text>
+              <Text style={styles.kicker}>Market Wallet!</Text>
+              <Text style={styles.title}>Connect your wallet with email or social login</Text>
               <Text style={styles.subtitle}>
-                One Circle user-controlled wallet becomes your Best City wallet for Arc and supported EVM chains.
+                Use WalletConnect to connect your wallet with email, social, or any mobile/browser wallet.
               </Text>
             </View>
           </View>
 
           <View style={[styles.layout, desktop ? styles.layoutDesktop : undefined]}>
             <View style={styles.setupPanel}>
-              <Text style={styles.panelTitle}>{wallet.hasMarketWallet ? "Continue to market" : "Set up now or skip"}</Text>
+              <Text style={styles.panelTitle}>Connect now or skip</Text>
               <Text style={styles.panelText}>
-                {wallet.hasMarketWallet
-                  ? "Your account already has a Market wallet. You can enter the marketplace and approve future transactions from the wallet UI."
-                  : "You can create your Market wallet now, or skip and create it later from the wallet button or wallet screen."}
+                Choose Market Wallet! to connect with email/social login, or use WalletConnect for traditional wallets. You can skip for now and connect later.
               </Text>
 
               <View style={styles.actionStack}>
-                {!wallet.hasMarketWallet ? (
-                  <Pressable onPress={createWallet} disabled={wallet.busy || !wallet.circleConfigured} style={[styles.primary, wallet.busy || !wallet.circleConfigured ? styles.dimmed : undefined]}>
-                    {wallet.busy ? <ActivityIndicator color={INK} /> : <Ionicons name="add-circle-outline" size={18} color={INK} />}
-                    <Text style={styles.primaryText}>Create Market Wallet</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable onPress={goHome} style={styles.primary}>
-                    <Ionicons name="storefront-outline" size={18} color={INK} />
-                    <Text style={styles.primaryText}>Enter Market</Text>
-                  </Pressable>
-                )}
+                <Pressable onPress={createWallet} disabled={wallet.busy} style={[styles.primary, wallet.busy ? styles.dimmed : undefined]}>
+                  {wallet.busy ? <ActivityIndicator color={INK} /> : <Ionicons name="mail-outline" size={18} color={INK} />}
+                  <Text style={styles.primaryText}>Market Wallet!</Text>
+                </Pressable>
 
                 <Pressable onPress={goHome} style={styles.secondary}>
                   <Ionicons name="arrow-forward-outline" size={17} color={TEXT} />
-                  <Text style={styles.secondaryText}>{wallet.hasMarketWallet ? "Go Home" : "Skip for now"}</Text>
+                  <Text style={styles.secondaryText}>Skip for now</Text>
                 </Pressable>
               </View>
-
-              {!wallet.circleConfigured ? <Text style={styles.warning}>Circle wallet is not configured on the server yet.</Text> : null}
             </View>
 
             <View style={styles.walletPreview}>
@@ -204,11 +193,6 @@ const styles = StyleSheet.create({
     color: TEXT,
     fontWeight: "900",
     fontSize: 13,
-  },
-  warning: {
-    color: "#FCD34D",
-    fontSize: 12,
-    fontWeight: "900",
   },
   walletPreview: {
     flex: 1.5,

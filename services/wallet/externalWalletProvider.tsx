@@ -16,9 +16,5 @@ export function ExternalWalletProvider({ children }: { children: React.ReactNode
     return <BaseSmartProvider>{children}</BaseSmartProvider>;
   }
 
-  if (mode === "circle_market") {
-    return <>{children}</>;
-  }
-
   return <WalletConnectProvider>{children}</WalletConnectProvider>;
 }

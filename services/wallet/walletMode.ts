@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 
 import * as SecureStore from "@/utils/secureStore";
 
-export type WalletMode = "circle_market" | "walletconnect" | "base_smart";
+export type WalletMode = "email_market" | "walletconnect" | "base_smart";
 
 const KEY_WALLET_MODE = "bc_wallet_mode_v1";
 
@@ -12,7 +12,7 @@ function isCircleWalletModeEnabled() {
 }
 
 function defaultWalletMode(): WalletMode {
-  return isCircleWalletModeEnabled() ? "circle_market" : "walletconnect";
+  return "email_market";
 }
 
 let modeState: WalletMode = defaultWalletMode();
@@ -33,7 +33,7 @@ function emit() {
 
 function normalizeMode(value: unknown): WalletMode {
   const raw = String(value || "").trim().toLowerCase();
-  if (raw === "circle_market") return isCircleWalletModeEnabled() ? "circle_market" : "walletconnect";
+  if (raw === "email_market") return "email_market";
   if (raw === "base_smart") return "base_smart";
   if (raw === "walletconnect") return "walletconnect";
   return defaultWalletMode();

@@ -36,17 +36,19 @@ function sleep(ms: number) {
 }
 
 function snapshotForMode(mode: WalletMode): ActiveWalletSession {
-  if (mode === "circle_market") {
+  if (mode === "email_market") {
+    const wc = getWalletConnectSession();
     return {
       mode,
-      connected: false,
-      address: "",
-      chainId: 0,
-      provider: null,
-      providerType: "circle_market",
-      accountType: "smartAccount",
-      smartAccounts: [],
-      runtime: {},
+      connected: wc.connected,
+      address: wc.address,
+      chainId: wc.chainId,
+      provider: wc.provider,
+      providerType: wc.providerType || "walletconnect",
+      caipAddress: wc.caipAddress,
+      accountType: wc.accountType,
+      smartAccounts: wc.smartAccounts,
+      runtime: wc.runtime,
     };
   }
 
@@ -89,17 +91,13 @@ export function getConnectedWalletMode(): WalletMode | null {
   if (base.connected && base.address) return "base_smart";
 
   const wc = getWalletConnectSession();
-  if (wc.connected && wc.address) return "walletconnect";
+  if (wc.connected && wc.address) return "email_market";
 
   return null;
 }
 
 export async function disconnectWalletMode(mode?: WalletMode | null, timeoutMs = 1_500) {
   const target = mode ?? getConnectedWalletMode() ?? getWalletModeSync();
-
-  if (target === "circle_market") {
-    return;
-  }
 
   if (target === "base_smart") {
     const runtime = getBaseSmartSession().runtime;
@@ -177,9 +175,6 @@ type ConnectOpts = {
 
 export async function connectActiveWalletEvm(timeoutMs = 60_000, opts?: ConnectOpts) {
   const mode = getWalletModeSync();
-  if (mode === "circle_market") {
-    throw new Error("Market Wallet approvals are handled inside Best City. Open the wallet panel to create or approve your Market wallet.");
-  }
   if (mode === "base_smart") {
     return connectBaseSmartEvm(timeoutMs, opts);
   }
@@ -188,9 +183,6 @@ export async function connectActiveWalletEvm(timeoutMs = 60_000, opts?: ConnectO
 
 export async function getActiveWalletEip155Provider(timeoutMs = 60_000) {
   const mode = getWalletModeSync();
-  if (mode === "circle_market") {
-    throw new Error("Market Wallet does not expose an injected EIP-155 provider.");
-  }
   if (mode === "base_smart") {
     return getBaseSmartEip155Provider(timeoutMs);
   }
