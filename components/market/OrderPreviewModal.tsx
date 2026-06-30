@@ -1,7 +1,7 @@
 import { ResizeMode, Video, Audio, type AVPlaybackStatus } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -182,7 +182,7 @@ export function OrderPreviewModal({
     }),
   ).current;
 
-useEffect(() => {
+  useEffect(() => {
     if (open) {
       dragY.setValue(0);
       setCurrentIndex(initialIndex > 0 ? Math.min(initialIndex, items.length - 1) : 0);
@@ -232,7 +232,6 @@ useEffect(() => {
     setRetryTick(t => t + 1);
   }
 
-  const isCurrentLoaded = open && items.length > 0 && !!resolvedUrl;
   const isLoading = open && items.length > 0 && !resolvedUrl && !err;
 
   function goToIndex(index: number) {
@@ -409,38 +408,15 @@ function PreviewWatermark() {
   );
 }
 
-// ─── REDESIGNED: Full-screen YouTube/Reels-style Image ──────────────────────────
-
 function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean }) {
-  const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
   const [zoomScale, setZoomScale] = useState(1);
   const scale = useRef(new Animated.Value(1)).current;
   const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
-    let alive = true;
-    setZoomScale(1);
     scale.setValue(1);
-    Image.getSize(
-      uri,
-      (w, h) => {
-        if (alive && w > 0 && h > 0) {
-          setAspectRatio(w / h);
-        }
-      },
-      () => {
-        if (alive) {
-          setAspectRatio(9 / 16);
-        }
-      },
-    );
-    return () => {
-      alive = false;
-    };
+    setZoomScale(1);
   }, [uri, scale]);
-
-  const fittedRatio = Math.max(9 / 21, Math.min(21 / 9, aspectRatio));
-  const isPortrait = fittedRatio < 1;
 
   const handleDoubleTap = () => {
     const now = Date.now();
@@ -461,27 +437,16 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
   return (
     <View style={styles.reelImageContainer}>
       <Pressable onPress={handleDoubleTap} style={{ flex: 1 }}>
-        <View style={{ flex: 1, transform: [{ scale }] }}>
-          <View
-            style={[
-              styles.reelImageFrame,
-              {
-                aspectRatio: fittedRatio,
-                maxHeight: isPortrait ? "95%" : "90%",
-                maxWidth: isPortrait ? "95%" : "90%",
-              },
-            ]}
-          >
+        <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
+          <View style={styles.reelImageFrame}>
             <Image source={{ uri }} style={styles.reelImage} resizeMode="contain" />
             {watermark && <PreviewWatermark />}
           </View>
-        </View>
+        </Animated.View>
       </Pressable>
     </View>
   );
 }
-
-// ─── REDESIGNED: YouTube/Reels-style Video ─────────────────────────────────────
 
 function ReelVideoBlock({
   uri,
@@ -493,7 +458,6 @@ function ReelVideoBlock({
   previewSeconds: number;
 }) {
   const videoRef = useRef<any>(null);
-  const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [positionMillis, setPositionMillis] = useState(0);
@@ -503,7 +467,6 @@ function ReelVideoBlock({
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setAspectRatio(9 / 16);
     setPreviewEnded(false);
     setPositionMillis(0);
   }, [uri]);
@@ -531,8 +494,6 @@ function ReelVideoBlock({
   const previewCapMillis = previewSeconds * 1000;
   const effectiveDuration = watermark ? Math.min(durationMillis || previewCapMillis, previewCapMillis) : durationMillis;
   const progress = effectiveDuration > 0 ? Math.max(0, Math.min(1, positionMillis / effectiveDuration)) : 0;
-  const fittedRatio = Math.max(9 / 21, Math.min(21 / 9, aspectRatio));
-  const isPortrait = fittedRatio < 1;
 
   async function togglePlay() {
     if (previewEnded) {
@@ -565,16 +526,7 @@ function ReelVideoBlock({
 
   return (
     <View style={styles.reelVideoContainer}>
-      <View
-        style={[
-          styles.reelVideoFrame,
-          {
-            aspectRatio: fittedRatio,
-            maxHeight: isPortrait ? "95%" : "90%",
-            maxWidth: isPortrait ? "95%" : "90%",
-          },
-        ]}
-      >
+      <View style={styles.reelVideoFrame}>
         <Video
             ref={videoRef}
             source={{ uri }}
@@ -583,13 +535,6 @@ function ReelVideoBlock({
             useNativeControls={false}
             shouldPlay={false}
             isMuted={isMuted}
-            onReadyForDisplay={event => {
-              const w = Number(event?.naturalSize?.width ?? event?.status?.naturalSize?.width ?? 0);
-              const h = Number(event?.naturalSize?.height ?? event?.status?.naturalSize?.height ?? 0);
-              if (w > 0 && h > 0) {
-                setAspectRatio(w / h);
-              }
-            }}
             onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
               if (!status?.isLoaded) return;
               setIsPlaying(!!status.isPlaying);
@@ -649,8 +594,6 @@ function ReelVideoBlock({
   );
 }
 
-// ─── Simplified Audio/File blocks ─────────────────────────────────────────────
-
 function AudioBlockSimple({ uri, watermark, previewSeconds }: { uri: string | null; watermark: boolean; previewSeconds: number }) {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -660,7 +603,7 @@ function AudioBlockSimple({ uri, watermark, previewSeconds }: { uri: string | nu
   const [ended, setEnded] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
-  const barHeights = useMemo(() => Array.from({ length: 40 }, (_, i) => 8 + ((i * 47) % 40)), []);
+  const barHeights = Array.from({ length: 40 }, (_, i) => 8 + ((i * 47) % 40));
 
   useEffect(() => {
     if (playing) {
@@ -809,8 +752,6 @@ function FileBlockSimple({ uri, watermark, mimeType, title }: { uri: string | nu
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
@@ -948,7 +889,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 14,
   },
-  // Watermark
   watermarkOverlay: {
     position: "absolute",
     top: 0,
@@ -970,7 +910,7 @@ const styles = StyleSheet.create({
     opacity: 0.08,
   },
   watermarkText: {
-    color: "rgba(255,253,247,0.4)",
+    color: "rgba(255,253,255,0.4)",
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 2,
@@ -981,7 +921,6 @@ const styles = StyleSheet.create({
     bottom: 12,
     opacity: 0.25,
   },
-  // Image reel
   reelImageContainer: {
     flex: 1,
     alignItems: "center",
@@ -990,25 +929,11 @@ const styles = StyleSheet.create({
   reelImageFrame: {
     borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: "#000",
   },
   reelImage: {
     width: "100%",
     height: "100%",
   },
-  doubleTapHint: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: 0.7,
-  },
-  // Video reel
   reelVideoContainer: {
     flex: 1,
     alignItems: "center",
@@ -1017,8 +942,8 @@ const styles = StyleSheet.create({
   reelVideoFrame: {
     borderRadius: 28,
     overflow: "hidden",
-    backgroundColor: "#000",
-    position: "relative",
+    width: "100%",
+    height: "100%",
   },
   reelVideo: {
     width: "100%",
@@ -1139,7 +1064,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Audio/File panels
   audioPanel: {
     flex: 1,
     alignItems: "center",
