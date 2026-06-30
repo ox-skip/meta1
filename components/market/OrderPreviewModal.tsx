@@ -150,12 +150,10 @@ export function OrderPreviewModal({
   const [resolvedUrls, setResolvedUrls] = useState<(string | null)[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
-  const [fadeAnim] = useState(new Animated.Value(0));
 
   const currentItem = items[currentIndex] || null;
   const resolvedUrl = resolvedUrls[currentIndex];
-  const hasMultiple = items.length > 1;
-  const kind = currentItem?.kind;
+  const hasMultiple = items.length > 0 && items.length > 1;
   const isPreview = currentItem?.access === "preview";
 
   const dragY = useRef(new Animated.Value(0)).current;
@@ -184,17 +182,15 @@ export function OrderPreviewModal({
     }),
   ).current;
 
-  useEffect(() => {
+useEffect(() => {
     if (open) {
       dragY.setValue(0);
       setCurrentIndex(initialIndex > 0 ? Math.min(initialIndex, items.length - 1) : 0);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     } else {
       setCurrentIndex(0);
       setResolvedUrls([]);
-      fadeAnim.setValue(0);
     }
-  }, [open, dragY, initialIndex, items.length, fadeAnim]);
+  }, [open, dragY, initialIndex, items.length]);
 
   useEffect(() => {
     let alive = true;
@@ -236,8 +232,8 @@ export function OrderPreviewModal({
     setRetryTick(t => t + 1);
   }
 
-  const resolvedCount = resolvedUrls.filter(Boolean).length;
-  const isLoading = open && items.length > 0 && resolvedCount < items.length;
+  const isCurrentLoaded = open && items.length > 0 && !!resolvedUrl;
+  const isLoading = open && items.length > 0 && !resolvedUrl && !err;
 
   function goToIndex(index: number) {
     const bounded = Math.max(0, Math.min(items.length - 1, index));
@@ -321,34 +317,33 @@ export function OrderPreviewModal({
           </View>
 
           <View style={styles.playerContainer}>
-            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-              {isLoading ? <LoadingSkeleton kind={kind} /> : err ? <ErrorState message={err} onRetry={handleRetry} /> : renderContent()}
-            </Animated.View>
+            {isLoading ? <LoadingSkeleton /> : err ? <ErrorState message={err} onRetry={handleRetry} /> : renderContent()}
+          </View>
 
-            {hasMultiple && (
-              <View style={styles.sideNav}>
-                {currentIndex > 0 && (
-                  <Pressable 
-                    onPress={() => goToIndex(currentIndex - 1)} 
-                    style={[styles.sideNavBtn, styles.prevBtn]} 
-                    accessibilityLabel="Previous preview"
-                  >
-                    <Ionicons name="chevron-back" size={28} color={TEXT} />
-                  </Pressable>
-                )}
-                {currentIndex < items.length - 1 && (
-                  <Pressable 
-                    onPress={() => goToIndex(currentIndex + 1)} 
-                    style={[styles.sideNavBtn, styles.nextBtn]} 
-                    accessibilityLabel="Next preview"
-                  >
-                    <Ionicons name="chevron-forward" size={28} color={TEXT} />
-                  </Pressable>
-                )}
-              </View>
-            )}
+          {hasMultiple && (
+            <View style={styles.sideNav}>
+              {currentIndex > 0 && (
+                <Pressable 
+                  onPress={() => goToIndex(currentIndex - 1)} 
+                  style={[styles.sideNavBtn, styles.prevBtn]} 
+                  accessibilityLabel="Previous preview"
+                >
+                  <Ionicons name="chevron-back" size={28} color={TEXT} />
+                </Pressable>
+              )}
+              {currentIndex < items.length - 1 && (
+                <Pressable 
+                  onPress={() => goToIndex(currentIndex + 1)} 
+                  style={[styles.sideNavBtn, styles.nextBtn]} 
+                  accessibilityLabel="Next preview"
+                >
+                  <Ionicons name="chevron-forward" size={28} color={TEXT} />
+                </Pressable>
+              )}
+            </View>
+          )}
 
-            {hasMultiple && (
+          {hasMultiple && (
               <View style={styles.bottomDots}>
                 {items.map((_, i) => (
                   <Pressable
@@ -362,7 +357,6 @@ export function OrderPreviewModal({
                 ))}
               </View>
             )}
-          </View>
         </LinearGradient>
       </Animated.View>
     </Modal>
@@ -421,7 +415,6 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
   const [aspectRatio, setAspectRatio] = useState<number>(9 / 16);
   const [zoomScale, setZoomScale] = useState(1);
   const scale = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
@@ -433,20 +426,18 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
       (w, h) => {
         if (alive && w > 0 && h > 0) {
           setAspectRatio(w / h);
-          Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
         }
       },
       () => {
         if (alive) {
           setAspectRatio(9 / 16);
-          Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
         }
       },
     );
     return () => {
       alive = false;
     };
-  }, [uri, fadeAnim, scale]);
+  }, [uri, scale]);
 
   const fittedRatio = Math.max(9 / 21, Math.min(21 / 9, aspectRatio));
   const isPortrait = fittedRatio < 1;
@@ -470,7 +461,7 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
   return (
     <View style={styles.reelImageContainer}>
       <Pressable onPress={handleDoubleTap} style={{ flex: 1 }}>
-        <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ scale }] }}>
+        <View style={{ flex: 1, transform: [{ scale }] }}>
           <View
             style={[
               styles.reelImageFrame,
@@ -484,7 +475,7 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
             <Image source={{ uri }} style={styles.reelImage} resizeMode="contain" />
             {watermark && <PreviewWatermark />}
           </View>
-        </Animated.View>
+        </View>
       </Pressable>
     </View>
   );
@@ -510,26 +501,12 @@ function ReelVideoBlock({
   const [previewEnded, setPreviewEnded] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.05, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [pulseAnim]);
 
   useEffect(() => {
     setAspectRatio(9 / 16);
     setPreviewEnded(false);
     setPositionMillis(0);
-    fadeAnim.setValue(0);
-  }, [uri, fadeAnim]);
+  }, [uri]);
 
   function scheduleHide() {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -568,7 +545,6 @@ function ReelVideoBlock({
     if (isPlaying) {
       await videoRef.current?.pauseAsync?.();
     } else {
-      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
       await videoRef.current?.playAsync?.();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -589,18 +565,17 @@ function ReelVideoBlock({
 
   return (
     <View style={styles.reelVideoContainer}>
-      <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-        <View
-          style={[
-            styles.reelVideoFrame,
-            {
-              aspectRatio: fittedRatio,
-              maxHeight: isPortrait ? "95%" : "90%",
-              maxWidth: isPortrait ? "95%" : "90%",
-            },
-          ]}
-        >
-          <Video
+      <View
+        style={[
+          styles.reelVideoFrame,
+          {
+            aspectRatio: fittedRatio,
+            maxHeight: isPortrait ? "95%" : "90%",
+            maxWidth: isPortrait ? "95%" : "90%",
+          },
+        ]}
+      >
+        <Video
             ref={videoRef}
             source={{ uri }}
             style={styles.reelVideo}
@@ -613,7 +588,6 @@ function ReelVideoBlock({
               const h = Number(event?.naturalSize?.height ?? event?.status?.naturalSize?.height ?? 0);
               if (w > 0 && h > 0) {
                 setAspectRatio(w / h);
-                Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
               }
             }}
             onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
@@ -671,7 +645,6 @@ function ReelVideoBlock({
             </View>
           )}
         </View>
-      </Animated.View>
     </View>
   );
 }
