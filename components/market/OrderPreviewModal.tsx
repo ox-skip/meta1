@@ -1,7 +1,7 @@
 import { ResizeMode, Video, Audio, type AVPlaybackStatus } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -409,13 +409,19 @@ function PreviewWatermark() {
 }
 
 function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean }) {
+  const imageSource = useMemo(() => ({ uri }), [uri]);
   const [zoomScale, setZoomScale] = useState(1);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const loadedImageUriRef = useRef<string | null>(null);
   const scale = useRef(new Animated.Value(1)).current;
   const lastTapRef = useRef<number>(0);
 
   useEffect(() => {
     scale.setValue(1);
     setZoomScale(1);
+    setImageLoaded(loadedImageUriRef.current === uri);
+    setImageError(false);
   }, [uri, scale]);
 
   const handleDoubleTap = () => {
@@ -436,11 +442,41 @@ function ReelImageBlock({ uri, watermark }: { uri: string; watermark: boolean })
 
   return (
     <View style={styles.reelImageContainer}>
-      <Pressable onPress={handleDoubleTap} style={{ flex: 1 }}>
-        <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
+      <Pressable onPress={handleDoubleTap} style={styles.reelImagePressable}>
+        <Animated.View style={[styles.reelImageZoomLayer, { transform: [{ scale }] }]}>
           <View style={styles.reelImageFrame}>
-            <Image source={{ uri }} style={styles.reelImage} resizeMode="contain" />
-            {watermark && <PreviewWatermark />}
+            <Image
+              source={imageSource}
+              style={[styles.reelImage, { opacity: imageLoaded ? 1 : 0 }]}
+              resizeMode="contain"
+              onLoadStart={() => {
+                if (loadedImageUriRef.current !== uri) {
+                  setImageLoaded(false);
+                }
+                setImageError(false);
+              }}
+              onLoad={() => {
+                loadedImageUriRef.current = uri;
+                setImageLoaded(true);
+              }}
+              onError={() => {
+                setImageLoaded(false);
+                setImageError(true);
+              }}
+            />
+            {!imageLoaded && !imageError ? (
+              <View pointerEvents="none" style={styles.reelImageLoading}>
+                <Shimmer style={StyleSheet.absoluteFill} />
+                <ActivityIndicator color={TEAL} size="large" />
+              </View>
+            ) : null}
+            {imageError ? (
+              <View style={styles.reelImageError}>
+                <Ionicons name="image-outline" size={34} color={ROSE} />
+                <Text style={styles.reelImageErrorText}>Image failed to load</Text>
+              </View>
+            ) : null}
+            {watermark && imageLoaded && !imageError ? <PreviewWatermark /> : null}
           </View>
         </Animated.View>
       </Pressable>
@@ -923,16 +959,57 @@ const styles = StyleSheet.create({
   },
   reelImageContainer: {
     flex: 1,
+    alignSelf: "stretch",
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
+  reelImagePressable: {
+    flex: 1,
+    alignSelf: "stretch",
+    width: "100%",
+  },
+  reelImageZoomLayer: {
+    flex: 1,
+    alignSelf: "stretch",
+    width: "100%",
+  },
   reelImageFrame: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
     borderRadius: 28,
     overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   reelImage: {
     width: "100%",
     height: "100%",
+  },
+  reelImageLoading: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reelImageError: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "rgba(251,113,133,0.10)",
+  },
+  reelImageErrorText: {
+    color: ROSE,
+    fontWeight: "800",
+    fontSize: 13,
   },
   reelVideoContainer: {
     flex: 1,

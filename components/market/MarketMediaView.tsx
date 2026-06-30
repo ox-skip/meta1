@@ -1,6 +1,6 @@
 import { ResizeMode, Video, type AVPlaybackStatus } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Image, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 
 import { inferMarketMediaKind, type MarketMediaKind } from "@/utils/marketMedia";
@@ -122,7 +122,10 @@ export default function MarketMediaView({
   /** Shows a small play-icon badge in the corner for video tiles. Defaults to true. */
   showVideoBadge?: boolean;
 }) {
-  const resolvedKind = kind || inferMarketMediaKind(uri);
+  const resolvedKind = useMemo(() => kind || inferMarketMediaKind(uri), [kind, uri]);
+  const mediaSource = useMemo(() => ({ uri }), [uri]);
+  const loadedImageUriRef = useRef<string | null>(null);
+  const readyVideoUriRef = useRef<string | null>(null);
   const [imageLoading, setImageLoading] = useState(resolvedKind === "image");
   const [imageError, setImageError] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
@@ -131,11 +134,17 @@ export default function MarketMediaView({
 
   // Reset state when the underlying source changes (e.g. carousel swaps media item).
   useEffect(() => {
-    setImageLoading(resolvedKind === "image");
+    const imageAlreadyLoaded = loadedImageUriRef.current === uri;
+    const videoAlreadyReady = readyVideoUriRef.current === uri;
+    const sourceAlreadyReady =
+      (resolvedKind === "image" && imageAlreadyLoaded) ||
+      (resolvedKind === "video" && videoAlreadyReady);
+
+    setImageLoading(resolvedKind === "image" && !imageAlreadyLoaded);
     setImageError(false);
-    setVideoReady(false);
+    setVideoReady(resolvedKind === "video" && videoAlreadyReady);
     setVideoError(false);
-    fadeAnim.setValue(0);
+    fadeAnim.setValue(sourceAlreadyReady ? 1 : 0);
   }, [uri, resolvedKind, fadeAnim]);
 
   function fadeIn() {
@@ -157,7 +166,7 @@ export default function MarketMediaView({
         <>
           <Animated.View style={[styles.fill, { opacity: videoReady ? fadeAnim : 0 }]}>
             <Video
-              source={{ uri }}
+              source={mediaSource}
               style={styles.fill}
               resizeMode={toVideoResizeMode(resizeMode)}
               shouldPlay={autoplay}
@@ -165,6 +174,7 @@ export default function MarketMediaView({
               isLooping={loop}
               useNativeControls={controls}
               onReadyForDisplay={() => {
+                readyVideoUriRef.current = uri;
                 setVideoReady(true);
                 fadeIn();
               }}
@@ -183,11 +193,17 @@ export default function MarketMediaView({
         <>
           <Animated.View style={[styles.fill, { opacity: imageLoading ? 0 : fadeAnim }]}>
             <Image
-              source={{ uri }}
+              source={mediaSource}
               style={styles.fill}
               resizeMode={resizeMode}
-              onLoadStart={() => setImageLoading(true)}
+              onLoadStart={() => {
+                if (loadedImageUriRef.current !== uri) {
+                  setImageLoading(true);
+                  fadeAnim.setValue(0);
+                }
+              }}
               onLoad={() => {
+                loadedImageUriRef.current = uri;
                 setImageLoading(false);
                 fadeIn();
               }}
