@@ -73,6 +73,15 @@ const SUPABASE_URL = cleanText(
   (process.env as any)?.EXPO_PUBLIC_SUPABASE_URL ?? (process.env as any)?.SUPABASE_URL
 );
 
+// Team grid tuning — change these two numbers to control how many cards
+// sit on one row. minCardWidth is a floor so cards never get too skinny;
+// maxCardWidth is a ceiling so a single card (or a short last row) never
+// stretches edge-to-edge and blows up the photo.
+const TEAM_CARD_MIN_WIDTH = 150;
+const TEAM_CARD_MAX_WIDTH = 220;
+const TEAM_CARD_BASIS_MOBILE = "47%"; // ~2 per row on phones
+const TEAM_CARD_BASIS_DESKTOP = "22%"; // ~4 per row on desktop
+
 type Props = {
   demoOnly?: boolean;
 };
@@ -1180,6 +1189,17 @@ export default function PublicLandingPage({ demoOnly = false }: Props) {
     );
   }
 
+  /**
+   * Team grid — rebuilt so cards use a percentage `flexBasis` (with a
+   * min/max width clamp) instead of `flex: 1` + `minWidth`. The old combo
+   * meant a single card (or short last row) would greedily fill the whole
+   * row, and since the photo used `aspectRatio: 1`, a full-width card
+   * produced a giant square portrait. Now:
+   *  - at least 2 cards per row on mobile (~47% basis each)
+   *  - ~4 cards per row on desktop (~22% basis each)
+   *  - maxWidth caps every card so it never stretches to fill a half-empty
+   *    row, keeping the photo a sane, consistent size everywhere.
+   */
   function renderTeam() {
     return (
       <Section bg={INK}>
@@ -1190,19 +1210,37 @@ export default function PublicLandingPage({ demoOnly = false }: Props) {
               {team.map((member, i) => {
                 const imgUrl = resolveMedia(member.image_url, (member as any).image_storage_path);
                 return (
-                  <FadeIn key={member.id} delay={Math.min(i, 8) * 50} style={{ flex: 1, minWidth: 220 }}>
+                  <FadeIn
+                    key={member.id}
+                    delay={Math.min(i, 8) * 50}
+                    style={{
+                      flexGrow: 0,
+                      flexShrink: 0,
+                      flexBasis: isDesktop ? TEAM_CARD_BASIS_DESKTOP : TEAM_CARD_BASIS_MOBILE,
+                      minWidth: TEAM_CARD_MIN_WIDTH,
+                      maxWidth: TEAM_CARD_MAX_WIDTH,
+                    }}
+                  >
                     <HoverCard glowColor={COBALT} style={{ borderRadius: 6, borderWidth: 1, borderColor: LINE, backgroundColor: PANEL, overflow: "hidden" }}>
                       <View style={{ aspectRatio: 1, backgroundColor: SURFACE, alignItems: "center", justifyContent: "center" }}>
                         {imgUrl ? (
                           <Image source={{ uri: imgUrl }} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
                         ) : (
-                          <Image source={LOGO} resizeMode="contain" style={{ width: 80, height: 80, opacity: 0.75 }} />
+                          <Image source={LOGO} resizeMode="contain" style={{ width: 56, height: 56, opacity: 0.75 }} />
                         )}
                       </View>
-                      <View style={{ padding: 15 }}>
-                        <Text style={{ color: TEXT, fontFamily: FONT_DISPLAY, fontWeight: "700", fontSize: 17 }}>{member.name}</Text>
-                        <Text style={{ marginTop: 4, color: LIME, fontFamily: FONT_MONO, fontWeight: "700", fontSize: 11, textTransform: "uppercase" }}>{member.role_title}</Text>
-                        {member.bio ? <Text style={{ marginTop: 9, color: MUTED, fontSize: 13, lineHeight: 19 }}>{member.bio}</Text> : null}
+                      <View style={{ padding: 12 }}>
+                        <Text numberOfLines={1} style={{ color: TEXT, fontFamily: FONT_DISPLAY, fontWeight: "700", fontSize: 15 }}>
+                          {member.name}
+                        </Text>
+                        <Text numberOfLines={1} style={{ marginTop: 3, color: LIME, fontFamily: FONT_MONO, fontWeight: "700", fontSize: 10, textTransform: "uppercase" }}>
+                          {member.role_title}
+                        </Text>
+                        {member.bio ? (
+                          <Text numberOfLines={3} style={{ marginTop: 7, color: MUTED, fontSize: 12, lineHeight: 17 }}>
+                            {member.bio}
+                          </Text>
+                        ) : null}
                       </View>
                     </HoverCard>
                   </FadeIn>
