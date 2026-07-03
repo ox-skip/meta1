@@ -202,7 +202,7 @@ export default function RootLayout() {
   const lastSavedRouteRef = useRef<string | null>(null);
   const routeSegments = segments as readonly string[];
   const routeParamsKey = useMemo(() => JSON.stringify(routeParams ?? {}), [routeParams]);
-  const isPublicWebRoute = Platform.OS === "web" && (
+const isPublicRoute = (
     pathname === "/" ||
     pathname === "/landing" ||
     pathname.startsWith("/landing/") ||
@@ -273,7 +273,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     const userId = user?.id ?? null;
-    if (!userId || !lastRouteReady || booting || loading || isPublicWebRoute) return;
+    if (!userId || !lastRouteReady || booting || loading || isPublicRoute) return;
 
     const shouldRestore =
       !!lastRouteHref &&
@@ -299,7 +299,7 @@ export default function RootLayout() {
     pathname,
     routeParamsKey,
     routeSegments.join("/"),
-    isPublicWebRoute,
+    isPublicRoute,
   ]);
 
   /* ---------------- SYSTEM CONTROL CHECK ---------------- */
@@ -428,7 +428,7 @@ export default function RootLayout() {
   /* ---------------- GLOBAL BLOCK ---------------- */
   const isAdminRoute = routeSegments[0] === "market" && routeSegments[1] === "admin";
   const isAuthRoute = routeSegments[0] === "(auth)";
-  const canBypassMaintenance = isAdminRoute || isAuthRoute || isPublicWebRoute;
+  const canBypassMaintenance = isAdminRoute || isAuthRoute || isPublicRoute;
 
   if ((booting || loading) && !bootError) {
     return <BrandBootLoader />;
@@ -498,11 +498,11 @@ export default function RootLayout() {
     initialUrlChecked &&
     !hasInitialUrl &&
     !isPasswordRecovery &&
-    !isPublicWebRoute &&
+    !isPublicRoute &&
     isSessionRestoreEntryPoint(routeSegments, pathname) &&
     lastRouteHref !== pathname;
 
-  if (!user && !isPublicWebRoute && group !== "(auth)" && group !== "pi") {
+  if (!user && !isPublicRoute && group !== "(auth)" && group !== "pi") {
     return <Redirect href="/(auth)/login" />;
   }
 
@@ -514,7 +514,7 @@ export default function RootLayout() {
     return <Redirect href="/market/wallet-setup" />;
   }
 
-  if (user && !isPublicWebRoute && !group) {
+  if (user && !isPublicRoute && !group) {
     return <Redirect href={(lastRouteHref || "/market/(tabs)") as any} />;
   }
 
