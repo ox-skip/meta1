@@ -1192,7 +1192,7 @@ export default function PublicLandingPage({ demoOnly = false }: Props) {
                 return (
                   <FadeIn key={member.id} delay={Math.min(i, 8) * 50} style={{ flex: 1, minWidth: 220 }}>
                     <HoverCard glowColor={COBALT} style={{ borderRadius: 6, borderWidth: 1, borderColor: LINE, backgroundColor: PANEL, overflow: "hidden" }}>
-                      <View style={{ height: 180, backgroundColor: SURFACE, alignItems: "center", justifyContent: "center" }}>
+                      <View style={{ aspectRatio: 1, backgroundColor: SURFACE, alignItems: "center", justifyContent: "center" }}>
                         {imgUrl ? (
                           <Image source={{ uri: imgUrl }} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
                         ) : (
