@@ -192,8 +192,13 @@ async function uploadViaWebBlob(params: {
     contentType,
     upsert,
   });
-  const { error: uploadErr } = await withTimeout(uploadPromise, 900_000, "Web storage upload");
+  const result = await withTimeout(uploadPromise, 900_000, "Web storage upload");
+  const uploadErr = (result as any)?.error;
   if (uploadErr) {
+    const msg = String(uploadErr.message || "").toLowerCase();
+    if (msg.includes("abort") || msg.includes("signal")) {
+      throw new Error(`Upload timed out or was interrupted. Try a smaller file.`);
+    }
     throw new Error(`Upload failed: ${uploadErr.message}`);
   }
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
@@ -246,7 +251,7 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
       }
     }
 
-    if (Platform.OS === "web" && fileBody instanceof Blob) {
+if (Platform.OS === "web" && fileBody instanceof Blob) {
       console.log("[uploadToSupabaseStorage] Web blob upload -> start", {
         path,
         contentType,
@@ -271,9 +276,14 @@ export async function uploadToSupabaseStorage(params: UploadParams) {
     });
 
     console.log("[uploadToSupabaseStorage] Uploading to Supabase:", { bucket, path });
-    const { error: uploadErr } = await withTimeout(uploadPromise, 900_000, "Storage upload");
+    const uploadResult = await withTimeout(uploadPromise, 900_000, "Storage upload");
+    const uploadErr = (uploadResult as any)?.error;
     if (uploadErr) {
       console.error("[uploadToSupabaseStorage] Upload error:", uploadErr);
+      const msg = String(uploadErr.message || "").toLowerCase();
+      if (msg.includes("abort") || msg.includes("signal")) {
+        throw new Error(`Upload timed out or was interrupted. Try a smaller file.`);
+      }
       throw new Error(`Upload failed: ${uploadErr.message}`);
     }
 

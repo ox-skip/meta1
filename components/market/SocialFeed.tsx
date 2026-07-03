@@ -131,9 +131,11 @@ function friendlySocialError(error: unknown, fallback = "Social feed is unavaila
     lower.includes("schema cache") ||
     lower.includes("row-level security") ||
     lower.includes("policy") ||
-    lower.includes("bucket")
+    lower.includes("bucket") ||
+    lower.includes("abort") ||
+    lower.includes("signal")
   ) {
-    return fallback;
+    return "Upload timed out or was interrupted. Try again with a smaller file or check your connection.";
   }
   return msg;
 }

@@ -258,7 +258,12 @@ export default function LandingAdminPanel({ landing, workingKey, onAction }: Pro
       setNotice("Media uploaded. Save the record to publish the change.");
       return uploaded;
     } catch (e: any) {
-      setNotice(String(e?.message || e || "Upload failed."));
+      const msg = String(e?.message || e || "");
+      if (msg.toLowerCase().includes("abort") || msg.toLowerCase().includes("signal")) {
+        setNotice("Upload timed out. Try again with a smaller file or check your connection.");
+      } else {
+        setNotice(msg.replace(/^\[storage\]\s*/i, ""));
+      }
       return null;
     } finally {
       setUploading(null);
