@@ -73,6 +73,15 @@ export type MarketAdminWorkspace = {
       referrals?: any[];
       referral_leaderboard?: any[];
     };
+    landing?: {
+      config: any | null;
+      sections: any[];
+      features: any[];
+      roadmap: any[];
+      team_members: any[];
+      faqs: any[];
+      demo_videos: any[];
+    };
   };
 };
 

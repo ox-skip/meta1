@@ -2759,6 +2759,15 @@ export default function MarketHome() {
             router.push("/market/stock" as any);
           }}
         />
+        {Platform.OS === "web" ? (
+          <QuickAction
+            label="Public Site"
+            subtitle="Open company landing"
+            icon="globe-outline"
+            accent={AMBER}
+            onPress={() => router.push("/" as any)}
+          />
+        ) : null}
       </View>
     );
   }
@@ -3778,6 +3787,19 @@ export default function MarketHome() {
           router.push("/market/stock" as any);
         },
       },
+      ...(Platform.OS === "web"
+        ? [
+            {
+              label: "Public Website",
+              body: "Open the BestCity Market landing page",
+              icon: "globe-outline",
+              onPress: () => {
+                setToolsVisible(false);
+                router.push("/" as any);
+              },
+            },
+          ]
+        : []),
     ];
     const panelWidth = isDesktop ? Math.min(560, usableWidth - 48) : undefined;
 

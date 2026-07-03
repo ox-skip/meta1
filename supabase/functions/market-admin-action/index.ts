@@ -18,6 +18,10 @@ function requireMarketHomeFeatureAccess(ctx: AdminContext) {
   return requireAnyPermission(ctx, ["users.moderate", "listings.moderate", "rewards.promotions.manage"]);
 }
 
+function requireLandingAccess(ctx: AdminContext) {
+  return requireAnyPermission(ctx, ["landing.manage", "users.moderate", "listings.moderate"]);
+}
+
 function isSuperAdmin(ctx: AdminContext) {
   return ctx.roleKey === "super_admin" || ctx.permissions.includes("*");
 }
@@ -1182,6 +1186,368 @@ async function updateRewardReferralConfig(admin: any, ctx: AdminContext, body: a
   return ok({ ok: true, config: data });
 }
 
+function optionalText(input: unknown, max = 1200) {
+  return String(input ?? "").trim().slice(0, max);
+}
+
+function optionalUrlText(input: unknown) {
+  return optionalText(input, 1200) || null;
+}
+
+async function upsertLandingConfig(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const allowedFields = [
+    "brand_name",
+    "hero_eyebrow",
+    "hero_title",
+    "hero_subtitle",
+    "hero_media_url",
+    "hero_media_storage_path",
+    "primary_cta_label",
+    "primary_cta_route",
+    "secondary_cta_label",
+    "secondary_cta_route",
+    "company_overview",
+    "mission_title",
+    "mission_body",
+    "vision_title",
+    "vision_body",
+    "what_building_title",
+    "what_building_body",
+    "why_building_title",
+    "why_building_body",
+    "blockchain_title",
+    "blockchain_body",
+    "product_title",
+    "product_body",
+    "stats_title",
+    "stats_subtitle",
+    "roadmap_title",
+    "roadmap_body",
+    "features_title",
+    "features_body",
+    "team_title",
+    "team_body",
+    "faq_title",
+    "faq_body",
+    "demo_title",
+    "demo_body",
+    "demo_cta_label",
+    "contact_title",
+    "contact_body",
+    "contact_email",
+    "contact_phone",
+    "contact_address",
+    "contact_cta_label",
+    "contact_cta_route",
+  ];
+
+  const patch: Record<string, unknown> = {
+    id: true,
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  for (const field of allowedFields) {
+    if (!(field in body)) continue;
+    if (field.endsWith("_url") || field.endsWith("_path") || field === "contact_phone" || field === "contact_address") {
+      patch[field] = optionalUrlText(body[field]);
+    } else {
+      const value = optionalText(body[field], field.includes("body") || field === "company_overview" ? 5000 : 800);
+      if (value) patch[field] = value;
+    }
+  }
+
+  if ("metadata" in body) patch.metadata = jsonObject("metadata", body.metadata);
+
+  const { data, error } = await admin
+    .from("market_landing_config")
+    .upsert(patch, { onConflict: "id" })
+    .select("*")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: "LANDING_CONFIG_UPDATED",
+    entity_type: "market_landing_config",
+    entity_id: "global",
+    payload: { note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, config: data });
+}
+
+async function upsertLandingSection(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("section_id", body.section_id ?? body.id);
+  const title = optionalText(body.title, 180);
+  const bodyText = optionalText(body.body, 5000);
+  if (!title || !bodyText) return bad("section title and body required");
+
+  const patch = {
+    section_key: cleanKey("section_key", body.section_key || "custom_section"),
+    eyebrow: optionalText(body.eyebrow, 140) || null,
+    title,
+    body: bodyText,
+    media_url: optionalUrlText(body.media_url),
+    media_storage_path: optionalUrlText(body.media_storage_path),
+    cta_label: optionalText(body.cta_label, 100) || null,
+    cta_url: optionalUrlText(body.cta_url),
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_sections").update(patch).eq("id", id)
+    : admin.from("market_landing_sections").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_SECTION_UPDATED" : "LANDING_SECTION_CREATED",
+    entity_type: "market_landing_sections",
+    entity_id: data.id,
+    payload: { section_key: data.section_key, title: data.title, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, section: data });
+}
+
+async function upsertLandingFeature(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("feature_id", body.feature_id ?? body.id);
+  const title = optionalText(body.title, 180);
+  const bodyText = optionalText(body.body, 3000);
+  if (!title || !bodyText) return bad("feature title and body required");
+
+  const patch = {
+    title,
+    body: bodyText,
+    icon_key: optionalText(body.icon_key, 80) || "sparkles-outline",
+    accent: optionalText(body.accent, 32) || "#2DD4BF",
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_features").update(patch).eq("id", id)
+    : admin.from("market_landing_features").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_FEATURE_UPDATED" : "LANDING_FEATURE_CREATED",
+    entity_type: "market_landing_features",
+    entity_id: data.id,
+    payload: { title: data.title, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, feature: data });
+}
+
+async function upsertLandingRoadmap(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("roadmap_id", body.roadmap_id ?? body.id);
+  const title = optionalText(body.title, 180);
+  const bodyText = optionalText(body.body, 3000);
+  const status = String(body.status ?? "planned").trim().toLowerCase();
+  if (!["shipped", "in_progress", "planned", "exploring"].includes(status)) return bad("Unsupported roadmap status");
+  if (!title || !bodyText) return bad("roadmap title and body required");
+
+  const patch = {
+    title,
+    body: bodyText,
+    status,
+    target_label: optionalText(body.target_label, 120) || null,
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_roadmap").update(patch).eq("id", id)
+    : admin.from("market_landing_roadmap").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_ROADMAP_UPDATED" : "LANDING_ROADMAP_CREATED",
+    entity_type: "market_landing_roadmap",
+    entity_id: data.id,
+    payload: { title: data.title, status: data.status, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, roadmap: data });
+}
+
+async function upsertLandingTeamMember(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("team_member_id", body.team_member_id ?? body.id);
+  const name = optionalText(body.name, 180);
+  const roleTitle = optionalText(body.role_title, 180);
+  if (!name || !roleTitle) return bad("team member name and role required");
+
+  const patch = {
+    name,
+    role_title: roleTitle,
+    bio: optionalText(body.bio, 3000) || null,
+    image_url: optionalUrlText(body.image_url),
+    image_storage_path: optionalUrlText(body.image_storage_path),
+    social_url: optionalUrlText(body.social_url),
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_team_members").update(patch).eq("id", id)
+    : admin.from("market_landing_team_members").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_TEAM_MEMBER_UPDATED" : "LANDING_TEAM_MEMBER_CREATED",
+    entity_type: "market_landing_team_members",
+    entity_id: data.id,
+    payload: { name: data.name, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, team_member: data });
+}
+
+async function upsertLandingFaq(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("faq_id", body.faq_id ?? body.id);
+  const question = optionalText(body.question, 240);
+  const answer = optionalText(body.answer, 5000);
+  if (!question || !answer) return bad("FAQ question and answer required");
+
+  const patch = {
+    question,
+    answer,
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_faqs").update(patch).eq("id", id)
+    : admin.from("market_landing_faqs").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_FAQ_UPDATED" : "LANDING_FAQ_CREATED",
+    entity_type: "market_landing_faqs",
+    entity_id: data.id,
+    payload: { question: data.question, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, faq: data });
+}
+
+async function upsertLandingDemoVideo(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const id = optionalUuid("demo_video_id", body.demo_video_id ?? body.id);
+  const title = optionalText(body.title, 180);
+  if (!title) return bad("demo video title required");
+
+  const patch = {
+    title,
+    description: optionalText(body.description, 3000) || null,
+    video_url: optionalUrlText(body.video_url),
+    video_storage_path: optionalUrlText(body.video_storage_path),
+    thumbnail_url: optionalUrlText(body.thumbnail_url),
+    thumbnail_storage_path: optionalUrlText(body.thumbnail_storage_path),
+    sort_order: optionalInt(body.sort_order, 100, -10000, 10000),
+    active: body.active === undefined ? true : requireBoolean("active", body.active),
+    metadata: jsonObject("metadata", body.metadata),
+    updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = id
+    ? admin.from("market_landing_demo_videos").update(patch).eq("id", id)
+    : admin.from("market_landing_demo_videos").insert(patch);
+  const { data, error } = await query.select("*").single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: id ? "LANDING_DEMO_VIDEO_UPDATED" : "LANDING_DEMO_VIDEO_CREATED",
+    entity_type: "market_landing_demo_videos",
+    entity_id: data.id,
+    payload: { title: data.title, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, demo_video: data });
+}
+
+async function setLandingItemActive(admin: any, ctx: AdminContext, body: any) {
+  const blocked = requireLandingAccess(ctx);
+  if (blocked) return blocked;
+
+  const type = String(body.item_type ?? "").trim().toLowerCase();
+  const tables: Record<string, string> = {
+    section: "market_landing_sections",
+    feature: "market_landing_features",
+    roadmap: "market_landing_roadmap",
+    team_member: "market_landing_team_members",
+    faq: "market_landing_faqs",
+    demo_video: "market_landing_demo_videos",
+  };
+  const table = tables[type];
+  if (!table) return bad("Unsupported landing item type");
+
+  const id = requireUuid("item_id", body.item_id ?? body.id);
+  const active = requireBoolean("active", body.active);
+  const { data, error } = await admin
+    .from(table)
+    .update({
+      active,
+      updated_by: ctx.userId === "service-token" ? null : ctx.userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("id,active")
+    .single();
+  if (error) return bad(error.message);
+
+  await audit(admin, ctx, {
+    action: active ? "LANDING_ITEM_PUBLISHED" : "LANDING_ITEM_UNPUBLISHED",
+    entity_type: table,
+    entity_id: id,
+    payload: { item_type: type, note: adminNote(body.note) },
+  });
+
+  return ok({ ok: true, item: data });
+}
+
 async function setAppSystemControl(admin: any, ctx: AdminContext, body: any) {
   if (ctx.roleKey !== "super_admin") return unauth();
 
@@ -1369,6 +1735,14 @@ Deno.serve(async (req) => {
     if (action === "adjust_reward_balance") return await adjustRewardBalance(admin, ctx, body);
     if (action === "update_reward_referral_config") return await updateRewardReferralConfig(admin, ctx, body);
     if (action === "review_reward_completion") return await reviewRewardCompletion(admin, ctx, body);
+    if (action === "upsert_landing_config") return await upsertLandingConfig(admin, ctx, body);
+    if (action === "upsert_landing_section") return await upsertLandingSection(admin, ctx, body);
+    if (action === "upsert_landing_feature") return await upsertLandingFeature(admin, ctx, body);
+    if (action === "upsert_landing_roadmap") return await upsertLandingRoadmap(admin, ctx, body);
+    if (action === "upsert_landing_team_member") return await upsertLandingTeamMember(admin, ctx, body);
+    if (action === "upsert_landing_faq") return await upsertLandingFaq(admin, ctx, body);
+    if (action === "upsert_landing_demo_video") return await upsertLandingDemoVideo(admin, ctx, body);
+    if (action === "set_landing_item_active") return await setLandingItemActive(admin, ctx, body);
 
     return bad("Unsupported admin action");
   } catch (e) {

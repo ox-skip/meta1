@@ -691,6 +691,39 @@ async function loadRewards(admin: any) {
   };
 }
 
+async function loadLanding(admin: any) {
+  const [configRes, sectionsRes, featuresRes, roadmapRes, teamRes, faqsRes, demosRes] = await Promise.all([
+    admin.from("market_landing_config").select("*").eq("id", true).maybeSingle(),
+    admin.from("market_landing_sections").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(120),
+    admin.from("market_landing_features").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(120),
+    admin.from("market_landing_roadmap").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(120),
+    admin.from("market_landing_team_members").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(120),
+    admin.from("market_landing_faqs").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(160),
+    admin.from("market_landing_demo_videos").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true }).limit(120),
+  ]);
+
+  const firstError = [
+    configRes.error,
+    sectionsRes.error,
+    featuresRes.error,
+    roadmapRes.error,
+    teamRes.error,
+    faqsRes.error,
+    demosRes.error,
+  ].find(Boolean);
+  if (firstError) throw firstError;
+
+  return {
+    config: configRes.data ?? null,
+    sections: sectionsRes.data ?? [],
+    features: featuresRes.data ?? [],
+    roadmap: roadmapRes.data ?? [],
+    team_members: teamRes.data ?? [],
+    faqs: faqsRes.data ?? [],
+    demo_videos: demosRes.data ?? [],
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return methodNotAllowed(req);
 
@@ -727,6 +760,10 @@ Deno.serve(async (req) => {
 
     if (canAny(ctx, ["rewards.read", "rewards.tasks.manage", "rewards.promotions.manage", "rewards.adjust", "rewards.review", "rewards.analytics"])) {
       modules.rewards = await loadRewards(admin);
+    }
+
+    if (canAny(ctx, ["landing.manage", "users.moderate", "listings.moderate"])) {
+      modules.landing = await loadLanding(admin);
     }
 
     return ok({

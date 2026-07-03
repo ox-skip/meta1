@@ -37,6 +37,7 @@ import {
   uploadSupportFiles,
   type SupportLocalFile,
 } from "@/services/market/support";
+import LandingAdminPanel from "@/components/market/admin/LandingAdminPanel";
 
 const BG0 = "#0B0907";
 const BG1 = "#22160D";
@@ -52,7 +53,7 @@ const SUCCESS = "#4ADE80";
 const WARNING = "#F59E0B";
 const DANGER = "#F87171";
 
-type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "stocks" | "rewards" | "admins";
+type ModuleKey = "support" | "moderation" | "verification" | "escrow" | "stocks" | "rewards" | "landing" | "admins";
 type ModerationTab = "sellers" | "listings";
 type EscrowTab = "orders" | "stocks" | "chains" | "contracts" | "audit";
 type StockAdminTab = "identities" | "orders" | "trades" | "reinvestments" | "permissions" | "contracts";
@@ -137,6 +138,12 @@ const MODULE_META: Record<ModuleKey, {
     eyebrow: "Noms economy",
     accent: "#2DD4BF",
   },
+  landing: {
+    icon: "globe-outline",
+    shortTitle: "Landing",
+    eyebrow: "Public website",
+    accent: "#38BDF8",
+  },
   admins: {
     icon: "id-card-outline",
     shortTitle: "Admins",
@@ -177,6 +184,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "rewards.adjust": "Adjust Noms balances",
   "rewards.review": "Review reward submissions",
   "rewards.analytics": "View reward analytics",
+  "landing.manage": "Manage public landing website",
   "audit.read": "View audit trail",
   "analytics.read": "View admin analytics",
 };
@@ -216,6 +224,11 @@ const PERMISSION_GROUPS = [
     title: "Rewards",
     permissions: ["rewards.read", "rewards.tasks.manage", "rewards.promotions.manage", "rewards.adjust", "rewards.review", "rewards.analytics"],
     icon: "gift-outline" as keyof typeof Ionicons.glyphMap,
+  },
+  {
+    title: "Public Site",
+    permissions: ["landing.manage"],
+    icon: "globe-outline" as keyof typeof Ionicons.glyphMap,
   },
   {
     title: "Oversight",
@@ -761,6 +774,7 @@ export default function MarketAdminIndex() {
     escrow: "",
     stocks: "",
     rewards: "",
+    landing: "",
     admins: "",
   });
   const [moderationTab, setModerationTab] = useState<ModerationTab>("sellers");
@@ -840,6 +854,9 @@ export default function MarketAdminIndex() {
     }
     if (module.key === "stocks") {
       return permissions.some((permission) => ["stock.read", "stock.manage", "stock.contracts", "chain.read", "chain.admin", "analytics.read"].includes(permission));
+    }
+    if (module.key === "landing") {
+      return permissions.some((permission) => ["landing.manage", "users.moderate", "listings.moderate"].includes(permission));
     }
     return false;
   }
@@ -1055,6 +1072,15 @@ export default function MarketAdminIndex() {
           (modules?.rewards?.listings?.length ?? 0) +
           (modules?.rewards?.pending_reviews?.length ?? 0) +
           (modules?.rewards?.accounts?.length ?? 0)
+        );
+      case "landing":
+        return (
+          (modules?.landing?.sections?.length ?? 0) +
+          (modules?.landing?.features?.length ?? 0) +
+          (modules?.landing?.roadmap?.length ?? 0) +
+          (modules?.landing?.team_members?.length ?? 0) +
+          (modules?.landing?.faqs?.length ?? 0) +
+          (modules?.landing?.demo_videos?.length ?? 0)
         );
       case "admins":
         return (modules?.admins?.users?.length ?? 0) + (modules?.admins?.roles?.length ?? 0) + (modules?.admins?.system_control ? 1 : 0);
@@ -5411,6 +5437,13 @@ export default function MarketAdminIndex() {
         {currentModule === "escrow" ? renderEscrow() : null}
         {currentModule === "stocks" ? renderStocks() : null}
         {currentModule === "rewards" ? renderRewards() : null}
+        {currentModule === "landing" ? (
+          <LandingAdminPanel
+            landing={workspace?.modules.landing}
+            workingKey={workingKey}
+            onAction={performAction}
+          />
+        ) : null}
         {currentModule === "admins" ? renderAdmins() : null}
       </View>
     );

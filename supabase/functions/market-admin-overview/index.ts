@@ -31,6 +31,9 @@ Deno.serve(async (req) => {
       stockIdentitiesRes,
       pausedStockIdentitiesRes,
       pendingStockOrdersRes,
+      landingSectionsRes,
+      landingDemosRes,
+      landingFaqsRes,
     ] = await Promise.all([
       admin.from("market_disputes").select("id", { count: "exact", head: true }).in("status", ["OPEN", "UNDER_REVIEW"]),
       canSeeSupportTickets
@@ -52,6 +55,9 @@ Deno.serve(async (req) => {
       admin.from("market_stock_identities").select("id", { count: "exact", head: true }),
       admin.from("market_stock_identities").select("id", { count: "exact", head: true }).gt("trading_paused_until", new Date().toISOString()),
       admin.from("market_stock_orders").select("id", { count: "exact", head: true }).in("status", ["pending", "submitted"]),
+      admin.from("market_landing_sections").select("id", { count: "exact", head: true }).eq("active", true),
+      admin.from("market_landing_demo_videos").select("id", { count: "exact", head: true }).eq("active", true),
+      admin.from("market_landing_faqs").select("id", { count: "exact", head: true }).eq("active", true),
     ]);
 
     const failures = [
@@ -73,6 +79,9 @@ Deno.serve(async (req) => {
       stockIdentitiesRes.error,
       pausedStockIdentitiesRes.error,
       pendingStockOrdersRes.error,
+      landingSectionsRes.error,
+      landingDemosRes.error,
+      landingFaqsRes.error,
     ].filter(Boolean);
     if (failures.length) return bad(String(failures[0]?.message ?? "Could not load admin overview"));
 
@@ -103,6 +112,9 @@ Deno.serve(async (req) => {
         stock_identities: Number(stockIdentitiesRes.count ?? 0),
         paused_stock_identities: Number(pausedStockIdentitiesRes.count ?? 0),
         pending_stock_orders: Number(pendingStockOrdersRes.count ?? 0),
+        landing_sections: Number(landingSectionsRes.count ?? 0),
+        landing_demos: Number(landingDemosRes.count ?? 0),
+        landing_faqs: Number(landingFaqsRes.count ?? 0),
       },
       modules: [
         {
@@ -140,6 +152,12 @@ Deno.serve(async (req) => {
           title: "Rewards and promotions",
           description: "Manage Noms tasks, rewarded ads, custom campaigns, sponsored placements, reviews, and balance adjustments.",
           permission: "rewards.read",
+        },
+        {
+          key: "landing",
+          title: "Public landing website",
+          description: "Edit public company copy, hero media, team members, sections, FAQs, roadmap, and titled demo videos.",
+          permission: "landing.manage",
         },
         {
           key: "admins",
